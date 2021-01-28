@@ -13,7 +13,7 @@ namespace bztree
  * @brief Status word accessor:
  *
  */
-struct StatusWord {
+struct Status {
  private:
   /*################################################################################################
    * Internal enums and constants
