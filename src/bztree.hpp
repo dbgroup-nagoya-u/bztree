@@ -123,13 +123,13 @@ class BzTree
 
   std::pair<const std::byte *, size_t>
   SearchSeparatorKey(  //
-      std::map<const std::byte *, uint64_t>::iterator meta_iter,
+      std::map<const std::byte *, Metadata>::iterator meta_iter,
       const size_t half_cout)
   {
     for (size_t index = 0; index < half_cout; ++index) {
       ++meta_iter;
     }
-    return std::make_pair(meta_iter->first, Metadata::GetKeyLength(meta_iter->second));
+    return std::make_pair(meta_iter->first, meta_iter->second.GetKeyLength());
   }
 
   /*################################################################################################

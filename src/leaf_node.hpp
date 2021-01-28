@@ -38,20 +38,20 @@ class LeafNode : public BaseNode
    *##############################################################################################*/
 
   std::unique_ptr<std::byte[]>
-  GetCopiedKey(const uint64_t meta)
+  GetCopiedKey(const Metadata meta)
   {
     auto key_ptr = GetKeyPtr(meta);
-    auto key_length = Metadata::GetKeyLength(meta);
+    auto key_length = meta.GetKeyLength();
     auto copied_key_ptr = std::make_unique<std::byte[]>(key_length);
     memcpy(copied_key_ptr.get(), key_ptr, key_length);
     return copied_key_ptr;
   }
 
   std::unique_ptr<std::byte[]>
-  GetCopiedPayload(const uint64_t meta)
+  GetCopiedPayload(const Metadata meta)
   {
     auto payload_ptr = GetPayloadPtr(meta);
-    auto payload_length = Metadata::GetPayloadLength(meta);
+    auto payload_length = meta.GetPayloadLength();
     auto copied_payload_ptr = std::make_unique<std::byte[]>(payload_length);
     memcpy(copied_payload_ptr.get(), payload_ptr, payload_length);
     return copied_payload_ptr;
@@ -97,11 +97,11 @@ class LeafNode : public BaseNode
     for (int32_t i = begin_index; i < record_count; i++) {
       const auto meta = GetMetadataProtected(i);
       if (IsEqual(key, GetKeyPtr(meta), comp)) {
-        if (Metadata::IsVisible(meta)) {
+        if (meta.IsVisible()) {
           return Uniqueness::kKeyExist;
-        } else if (Metadata::IsDeleted(meta)) {
+        } else if (meta.IsDeleted()) {
           return Uniqueness::kKeyNotExist;
-        } else if (Metadata::IsNotCorrupted(meta, index_epoch)) {
+        } else if (!meta.IsCorrupted(index_epoch)) {
           // there is in progress records
           return Uniqueness::kReCheck;
         }
@@ -138,9 +138,9 @@ class LeafNode : public BaseNode
     for (size_t index = record_count - 1; index >= end_index; index--) {
       const auto meta = GetMetadata(index);
       if (IsEqual(key, GetKeyPtr(meta), comp)) {
-        if (Metadata::IsVisible(meta)) {
+        if (meta.IsVisible()) {
           return std::make_pair(KeyExistence::kExist, index);
-        } else if (Metadata::IsDeleted(meta)) {
+        } else if (meta.IsDeleted()) {
           return std::make_pair(KeyExistence::kDeleted, index);
         }
         // there is a key, but it is in inserting or corrupted
@@ -187,10 +187,10 @@ class LeafNode : public BaseNode
     auto new_block_length = 0;
     for (size_t index = GetStatusWord().GetRecordCount() - 1; index >= 0; --index) {
       const auto meta = GetMetadata(index);
-      if (Metadata::IsVisible(meta)) {
+      if (meta.IsVisible()) {
         meta_pairs.try_emplace(GetKeyPtr(meta), GetMetadata(index));
-        new_block_length += Metadata::GetTotalLength(meta);
-      } else if (Metadata::IsDeleted(meta)) {
+        new_block_length += meta.GetTotalLength();
+      } else if (meta.IsDeleted()) {
         meta_pairs.try_emplace(GetKeyPtr(meta), 0);
       }
       // there is a key, but it is in inserting or corrupted.
@@ -201,10 +201,10 @@ class LeafNode : public BaseNode
     return std::make_pair(meta_pairs, new_block_length);
   }
 
-  std::map<std::byte *, uint64_t>::iterator
+  std::map<std::byte *, Metadata>::iterator
   CopyRecordsViaMetadata(  //
       LeafNode *original,
-      std::map<std::byte *, uint64_t>::iterator meta_iter,
+      std::map<std::byte *, Metadata>::iterator meta_iter,
       const size_t record_count)
   {
     auto offset = GetNodeSize();
@@ -212,12 +212,12 @@ class LeafNode : public BaseNode
       const auto meta = meta_iter->second;
       // copy a record
       const auto key = meta_iter->first;
-      const auto key_length = Metadata::GetKeyLength(meta);
+      const auto key_length = meta.GetKeyLength();
       const auto payload = original->GetPayloadPtr(meta);
-      const auto payload_length = Metadata::GetPayloadLength(meta);
+      const auto payload_length = meta.GetPayloadLength();
       offset = CopyRecord(key, key_length, payload, payload_length, offset);
       // copy metadata
-      const auto new_meta = Metadata::UpdateOffset(meta, offset);
+      const auto new_meta = meta.UpdateOffset(offset);
       SetMetadata(index, new_meta);
       // get a next capied metadata
       ++meta_iter;
@@ -302,9 +302,9 @@ class LeafNode : public BaseNode
     for (size_t index = status.GetRecordCount() - 1; index >= sorted_count; --index) {
       const auto meta = GetMetadata(index);
       if (IsInRange(GetKeyPtr(meta), begin_key, begin_is_closed, end_key, end_is_closed, comp)) {
-        if (Metadata::IsVisible(meta)) {
+        if (meta.IsVisible()) {
           sorted_records.try_emplace(GetCopiedKey(meta), GetCopiedPayload(meta));
-        } else if (Metadata::IsDeleted(meta)) {
+        } else if (meta.IsDeleted()) {
           sorted_records.try_emplace(GetCopiedKey(meta), nullptr);
         }
         // there is a key, but it is in inserting or corrupted
@@ -319,7 +319,7 @@ class LeafNode : public BaseNode
     for (size_t index = index_in_sorted; index < sorted_count; ++index) {
       const auto meta = GetMetadata(index);
       if (IsInRange(GetKeyPtr(meta), begin_key, begin_is_closed, end_key, end_is_closed, comp)) {
-        if (Metadata::IsVisible(meta)) {
+        if (meta.IsVisible()) {
           sorted_records.try_emplace(GetCopiedKey(meta), GetCopiedPayload(meta));
         } else {
           // there is no inserting nor corrupted record in a sorted region
@@ -371,7 +371,7 @@ class LeafNode : public BaseNode
     StatusWord new_status;
     size_t record_count;
     const auto total_length = key_length + payload_length;
-    const auto inserting_meta = Metadata::InitForInsert(index_epoch);
+    const auto inserting_meta = kInitMetadata.InitForInsert(index_epoch);
     pmwcas::Descriptor *pd;
 
     /*----------------------------------------------------------------------------------------------
@@ -403,8 +403,7 @@ class LeafNode : public BaseNode
     offset = CopyRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
-    const auto inserted_meta =
-        Metadata::SetRecordInfo(inserting_meta, offset, key_length, total_length);
+    const auto inserted_meta = inserting_meta.SetRecordInfo(offset, key_length, total_length);
 
     // check conflicts (concurrent SMOs)
     do {
@@ -451,7 +450,7 @@ class LeafNode : public BaseNode
     StatusWord new_status;
     size_t record_count;
     const auto total_length = key_length + payload_length;
-    const auto inserting_meta = Metadata::InitForInsert(index_epoch);
+    const auto inserting_meta = kInitMetadata.InitForInsert(index_epoch);
     pmwcas::Descriptor *pd;
     bool cas_failed;
 
@@ -501,8 +500,7 @@ class LeafNode : public BaseNode
     offset = CopyRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
-    const auto inserted_meta =
-        Metadata::SetRecordInfo(inserting_meta, offset, key_length, total_length);
+    const auto inserted_meta = inserting_meta.SetRecordInfo(offset, key_length, total_length);
 
     // check conflicts (concurrent inserts and SMOs)
     do {
@@ -511,7 +509,7 @@ class LeafNode : public BaseNode
                                                        index_epoch);
         if (uniqueness == Uniqueness::kKeyExist) {
           // delete an inserted record
-          SetMetadata(record_count, Metadata::UpdateOffset(inserting_meta, 0));
+          SetMetadata(record_count, inserting_meta.UpdateOffset(0));
           return NodeReturnCode::kKeyExist;
         }
       }
@@ -559,7 +557,7 @@ class LeafNode : public BaseNode
     StatusWord new_status;
     size_t record_count;
     const auto total_length = key_length + payload_length;
-    const auto inserting_meta = Metadata::InitForInsert(index_epoch);
+    const auto inserting_meta = kInitMetadata.InitForInsert(index_epoch);
     pmwcas::Descriptor *pd;
 
     /*----------------------------------------------------------------------------------------------
@@ -598,8 +596,7 @@ class LeafNode : public BaseNode
     offset = CopyRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
-    const auto inserted_meta =
-        Metadata::SetRecordInfo(inserting_meta, offset, key_length, total_length);
+    const auto inserted_meta = inserting_meta.SetRecordInfo(offset, key_length, total_length);
 
     // check conflicts (concurrent SMOs)
     do {
@@ -655,10 +652,10 @@ class LeafNode : public BaseNode
 
       // delete payload infomation from metadata
       const auto current_meta = GetMetadata(record_count);
-      const auto deleted_meta = Metadata::DeletePayload(current_meta);
+      const auto deleted_meta = current_meta.DeleteRecordInfo();
 
       // prepare new status
-      const auto total_length = key_length + Metadata::GetPayloadLength(current_meta);
+      const auto total_length = key_length + current_meta.GetPayloadLength();
       new_status = current_status.AddRecordInfo(0, 0, total_length);
 
       // perform MwCAS to reserve space
@@ -693,7 +690,7 @@ class LeafNode : public BaseNode
     const auto max_node_length = GetNodeSize();
     const auto new_record_count = meta_pairs.size();
     const auto new_occupied_length =
-        kHeaderLength + (Metadata::kMetadataByteLength * new_record_count) + new_block_length;
+        kHeaderLength + (kWordLength * new_record_count) + new_block_length;
     if ((new_occupied_length + free_space_length) > max_node_length) {
       return {NodeReturnCode::kSplitRequired, nullptr, meta_pairs, 0};
     } else if (new_occupied_length < min_node_length) {

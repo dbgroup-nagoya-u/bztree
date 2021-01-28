@@ -13,192 +13,140 @@ namespace bztree
  * @brief Record metadata accessor:
  *
  */
-struct Metadata {
+class alignas(kWordLength) Metadata
+{
  private:
   /*################################################################################################
-   * Internal enums and constants
+   * Internal member variables
    *##############################################################################################*/
 
-  static constexpr size_t kControlBitOffset = 61;
-  static constexpr size_t kVisibleBitOffset = 60;
-  static constexpr size_t kInProgressBitOffset = 59;
-  static constexpr size_t kOffsetBitOffset = 32;
-  static constexpr size_t kKeyLengthBitOffset = 16;
-  static constexpr size_t kTotalLengthBitOffset = 0;
-
-  // bitmask 64-62 [1110 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000]
-  static constexpr uint64_t kControlMask = 0x7UL << kControlBitOffset;
-  // bitmask 61    [0001 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000]
-  static constexpr uint64_t kVisibleMask = 0x1UL << kVisibleBitOffset;
-  // bitmask 60    [0000 1000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000]
-  static constexpr uint64_t kInProgressMask = 0x1UL << kInProgressBitOffset;
-  // bitmask 59-33 [0000 0111 1111 1111 1111 1111 1111 1111 0000 0000 0000 0000 0000 0000 0000 0000]
-  static constexpr uint64_t kOffsetMask = 0x7FFFFFFUL << kOffsetBitOffset;
-  // bitmask 32-17 [0000 0000 0000 0000 0000 0000 0000 0000 1111 1111 1111 1111 0000 0000 0000 0000]
-  static constexpr uint64_t kKeyLengthMask = 0xFFFFUL << kKeyLengthBitOffset;
-  // bitmask 16-1  [0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 1111 1111 1111 1111]
-  static constexpr uint64_t kTotalLengthMask = 0xFFFFUL << kTotalLengthBitOffset;
-
-  /*################################################################################################
-   * Internal getters/setters
-   *##############################################################################################*/
-
-  static bool
-  IsInProgress(const uint64_t meta)
-  {
-    return (meta & kInProgressMask) > 0;
-  }
-
-  static uint64_t
-  GetControlBits(const uint64_t meta)
-  {
-    return (meta & kControlMask) >> kControlBitOffset;
-  }
-
-  static size_t
-  GetEpoch(const uint64_t meta)
-  {
-    return GetOffset(meta);
-  }
-
-  static uint64_t
-  ToVisible(const uint64_t meta)
-  {
-    return (meta | kVisibleMask) & ~kInProgressMask;
-  }
-
-  static uint64_t
-  ToInvisible(const uint64_t meta)
-  {
-    return meta & ~kVisibleMask;
-  }
-
-  static uint64_t
-  SetKeyLength(  //
-      const uint64_t meta,
-      const size_t key_length)
-  {
-    assert((meta & kKeyLengthMask) == 0);           // original metadata has no key length
-    assert((key_length & ~kTotalLengthMask) == 0);  // an input key length must not overflow
-
-    return meta | (key_length << kKeyLengthBitOffset);
-  }
-
-  static uint64_t
-  SetTotalLength(  //
-      const uint64_t meta,
-      const size_t total_length)
-  {
-    assert((meta & kTotalLengthMask) == 0);           // original metadata has no total length
-    assert((total_length & ~kTotalLengthMask) == 0);  // an input total length must not overflow
-
-    return meta | (total_length << kTotalLengthBitOffset);
-  }
+  uint64_t control_ : 3 = 0;
+  bool visible_ : 1 = false;
+  bool in_progress_ : 1 = false;
+  uint64_t offset_ : 27 = 0;
+  uint64_t key_length_ : 16 = 0;
+  uint64_t total_length_ : 16 = 0;
 
  public:
-  /*################################################################################################
-   * Public enums and constants
-   *##############################################################################################*/
-
-  // metadata length in bytes
-  static constexpr size_t kMetadataByteLength = kWordLength;
-
   /*################################################################################################
    * Public getters/setters
    *##############################################################################################*/
 
-  static bool
-  IsVisible(const uint64_t meta)
+  constexpr bool
+  IsVisible() const
   {
-    return (meta & kVisibleMask) > 0;
+    return visible_;
   }
 
-  static bool
-  IsDeleted(const uint64_t meta)
+  constexpr bool
+  IsInProgress() const
   {
-    return !IsVisible(meta) && !IsInProgress(meta);
+    return in_progress_;
   }
 
-  static bool
-  IsNotCorrupted(const uint64_t meta, const size_t index_epoch)
+  constexpr bool
+  IsDeleted() const
   {
-    return IsInProgress(meta) && (GetEpoch(meta) == index_epoch);
+    return !IsVisible() && !IsInProgress();
   }
 
-  static size_t
-  GetOffset(const uint64_t meta)
+  constexpr bool
+  IsCorrupted(const size_t index_epoch) const
   {
-    return (meta & kOffsetMask) >> kOffsetBitOffset;
+    return IsInProgress() && (GetOffset() != index_epoch);
   }
 
-  static size_t
-  GetKeyLength(const uint64_t meta)
+  constexpr uint64_t
+  GetControlBit() const
   {
-    return (meta & kKeyLengthMask) >> kKeyLengthBitOffset;
+    return control_;
   }
 
-  static size_t
-  GetTotalLength(const uint64_t meta)
+  constexpr size_t
+  GetOffset() const
   {
-    return (meta & kTotalLengthMask) >> kTotalLengthBitOffset;
+    return offset_;
   }
 
-  static size_t
-  GetPayloadLength(const uint64_t meta)
+  constexpr size_t
+  GetKeyLength() const
   {
-    return GetTotalLength(meta) - GetKeyLength(meta);
+    return key_length_;
+  }
+
+  constexpr size_t
+  GetTotalLength() const
+  {
+    return total_length_;
+  }
+
+  constexpr size_t
+  GetPayloadLength() const
+  {
+    return GetTotalLength() - GetKeyLength();
   }
 
   /*################################################################################################
    * Public utility functions
    *##############################################################################################*/
 
-  static uint64_t
-  InitForInsert(const size_t index_epoch)
+  constexpr Metadata
+  InitForInsert(const size_t index_epoch) const
   {
-    constexpr uint64_t initial_meta = 0;
-    return UpdateOffset((initial_meta | kInProgressMask), index_epoch);
+    auto inserting_meta = *this;
+    inserting_meta.in_progress_ = true;
+    inserting_meta.offset_ = index_epoch;
+    return inserting_meta;
   }
 
-  static uint64_t
-  UpdateOffset(  //
-      const uint64_t meta,
-      const size_t offset)
+  constexpr Metadata
+  UpdateOffset(const size_t offset) const
   {
-    return (meta & (~kOffsetMask)) | ((offset << kOffsetBitOffset) & kOffsetMask);
+    auto updated_meta = *this;
+    updated_meta.offset_ = offset;
+    return updated_meta;
   }
 
-  static uint64_t
+  constexpr Metadata
   SetRecordInfo(  //
-      const uint64_t meta,
       const size_t offset,
       const size_t key_length,
-      const size_t total_length)
+      const size_t total_length) const
   {
-    return ToVisible(
-        SetTotalLength(SetKeyLength(UpdateOffset(meta, offset), key_length), total_length));
+    auto new_meta = *this;
+    new_meta.visible_ = true;
+    new_meta.in_progress_ = false;
+    new_meta.offset_ = offset;
+    new_meta.key_length_ = key_length;
+    new_meta.total_length_ = total_length;
+    return new_meta;
   }
 
-  static uint64_t
-  DeletePayload(const uint64_t meta)
+  constexpr Metadata
+  DeleteRecordInfo() const
   {
-    return ToInvisible((meta & ~kInProgressMask));
+    auto new_meta = *this;
+    new_meta.visible_ = false;
+    new_meta.in_progress_ = false;
+    return new_meta;
   }
 
   std::string
-  Dump(const uint64_t meta)
+  ToString() const
   {
     std::stringstream ss;
-    ss << "0x" << std::hex << meta << "{" << std::endl
-       << "  control: 0x" << GetControlBits(meta) << "," << std::endl
-       << "  visible: 0x" << IsVisible(meta) << "," << std::endl
-       << "  inserting: 0x" << IsInProgress(meta) << "," << std::dec << std::endl
-       << "  offset/epoch: " << GetOffset(meta) << "," << std::endl
-       << "  key length: " << GetKeyLength(meta) << "," << std::endl
-       << "  total length: " << GetTotalLength(meta) << std::endl
+    ss << "0x" << std::hex << this << "{" << std::endl
+       << "  control: 0x" << GetControlBit() << "," << std::endl
+       << "  visible: 0x" << IsVisible() << "," << std::endl
+       << "  inserting: 0x" << IsInProgress() << "," << std::dec << std::endl
+       << "  offset/epoch: " << GetOffset() << "," << std::endl
+       << "  key length: " << GetKeyLength() << "," << std::endl
+       << "  total length: " << GetTotalLength() << std::endl
        << "}";
     return ss.str();
   }
 };
+
+constexpr Metadata kInitMetadata = Metadata{};
 
 }  // namespace bztree
