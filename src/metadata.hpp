@@ -202,6 +202,7 @@ class alignas(kWordLength) Metadata
   {
     auto new_meta = *this;
     new_meta.visible_ = true;
+    new_meta.in_progress_ = false;
     new_meta.offset_ = offset;
     new_meta.key_length_ = key_length;
     new_meta.total_length_ = total_length;

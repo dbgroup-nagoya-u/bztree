@@ -69,4 +69,24 @@ TEST_F(MetadataFixture, UpdateOffset_InitMeta_UpdateWithoutSideEffect)
   EXPECT_EQ(0, test_meta.GetTotalLength());
 }
 
+TEST_F(MetadataFixture, SetRecordInfo_InitMeta_SetWithoutSideEffect)
+{
+  const Metadata meta;
+  const auto epoch = 0;
+  const auto offset = 256, key_length = 16, total_length = 32;
+  const auto test_meta = meta.InitForInsert(epoch).SetRecordInfo(offset, key_length, total_length);
+
+  EXPECT_EQ(kWordLength, sizeof(test_meta));
+  EXPECT_EQ(0, test_meta.GetControlBit());
+  EXPECT_TRUE(test_meta.IsVisible());
+  EXPECT_FALSE(test_meta.IsInProgress());
+  EXPECT_EQ(offset, test_meta.GetOffset());
+  EXPECT_EQ(key_length, test_meta.GetKeyLength());
+  EXPECT_EQ(total_length, test_meta.GetTotalLength());
+
+  EXPECT_FALSE(test_meta.IsDeleted());
+  EXPECT_FALSE(test_meta.IsCorrupted(epoch));
+  EXPECT_EQ(total_length - key_length, test_meta.GetPayloadLength());
+}
+
 }  // namespace bztree
