@@ -119,12 +119,6 @@ class alignas(kWordLength) Metadata
    * Public getters/setters
    *##############################################################################################*/
 
-  constexpr uint64_t
-  GetControlBit() const
-  {
-    return control_;
-  }
-
   constexpr bool
   IsVisible() const
   {
@@ -135,6 +129,24 @@ class alignas(kWordLength) Metadata
   IsInProgress() const
   {
     return in_progress_;
+  }
+
+  constexpr bool
+  IsDeleted() const
+  {
+    return !IsVisible() && !IsInProgress();
+  }
+
+  constexpr bool
+  IsNotCorrupted(const size_t index_epoch) const
+  {
+    return IsInProgress() && (GetEpoch() == index_epoch);
+  }
+
+  constexpr uint64_t
+  GetControlBit() const
+  {
+    return control_;
   }
 
   constexpr size_t
@@ -160,6 +172,60 @@ class alignas(kWordLength) Metadata
   {
     return total_length_;
   }
+
+  constexpr size_t
+  GetPayloadLength() const
+  {
+    return GetTotalLength() - GetKeyLength();
+  }
+
+  /*################################################################################################
+   * Public utility functions
+   *##############################################################################################*/
+
+  constexpr Metadata
+  InitForInsert(const size_t index_epoch) const
+  {
+    auto inserting_meta = *this;
+    inserting_meta.in_progress_ = true;
+    inserting_meta.offset_ = index_epoch;
+    return inserting_meta;
+  }
+
+  constexpr Metadata
+  UpdateOffset(const size_t offset) const
+  {
+    auto updated_meta = *this;
+    updated_meta.offset_ = offset;
+    return updated_meta;
+  }
+
+  constexpr Metadata
+  SetRecordInfo(  //
+      const size_t offset,
+      const size_t key_length,
+      const size_t total_length) const
+  {
+    auto new_meta = *this;
+    new_meta.visible_ = true;
+    new_meta.offset_ = offset;
+    new_meta.key_length_ = key_length;
+    new_meta.total_length_ = total_length;
+    return new_meta;
+  }
+
+  constexpr Metadata
+  DeletePayload() const
+  {
+    auto new_meta = *this;
+    new_meta.visible_ = false;
+    new_meta.in_progress_ = false;
+    return new_meta;
+  }
+
+  /*################################################################################################
+   * Public getters/setters
+   *##############################################################################################*/
 
   static bool
   IsVisible(const uint64_t meta)
@@ -208,13 +274,6 @@ class alignas(kWordLength) Metadata
    *##############################################################################################*/
 
   static uint64_t
-  InitForInsert(const size_t index_epoch)
-  {
-    constexpr uint64_t initial_meta = 0;
-    return UpdateOffset((initial_meta | kInProgressMask), index_epoch);
-  }
-
-  static uint64_t
   UpdateOffset(  //
       const uint64_t meta,
       const size_t offset)
@@ -254,5 +313,7 @@ class alignas(kWordLength) Metadata
     return ss.str();
   }
 };
+
+constexpr Metadata kInitMetadata = Metadata{};
 
 }  // namespace bztree

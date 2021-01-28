@@ -371,7 +371,7 @@ class LeafNode : public BaseNode
     StatusWord new_status;
     size_t record_count;
     const auto total_length = key_length + payload_length;
-    const auto inserting_meta = Metadata::InitForInsert(index_epoch);
+    const auto inserting_meta = 0;  // Metadata::InitForInsert(index_epoch);
     pmwcas::Descriptor *pd;
 
     /*----------------------------------------------------------------------------------------------
@@ -451,7 +451,7 @@ class LeafNode : public BaseNode
     StatusWord new_status;
     size_t record_count;
     const auto total_length = key_length + payload_length;
-    const auto inserting_meta = Metadata::InitForInsert(index_epoch);
+    const auto inserting_meta = 0;  // Metadata::InitForInsert(index_epoch);
     pmwcas::Descriptor *pd;
     bool cas_failed;
 
@@ -559,7 +559,7 @@ class LeafNode : public BaseNode
     StatusWord new_status;
     size_t record_count;
     const auto total_length = key_length + payload_length;
-    const auto inserting_meta = Metadata::InitForInsert(index_epoch);
+    const auto inserting_meta = 0;  // Metadata::InitForInsert(index_epoch);
     pmwcas::Descriptor *pd;
 
     /*----------------------------------------------------------------------------------------------
