@@ -138,9 +138,9 @@ class alignas(kWordLength) Metadata
   }
 
   constexpr bool
-  IsNotCorrupted(const size_t index_epoch) const
+  IsCorrupted(const size_t index_epoch) const
   {
-    return IsInProgress() && (GetEpoch() == index_epoch);
+    return IsInProgress() && (GetOffset() != index_epoch);
   }
 
   constexpr uint64_t
@@ -151,12 +151,6 @@ class alignas(kWordLength) Metadata
 
   constexpr size_t
   GetOffset() const
-  {
-    return offset_;
-  }
-
-  constexpr size_t
-  GetEpoch() const
   {
     return offset_;
   }
