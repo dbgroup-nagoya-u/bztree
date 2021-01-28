@@ -45,7 +45,7 @@ class BaseNode
 
   uint16_t *sorted_count_;
 
-  uint64_t *metadata_array_;
+  Metadata *meta_array_;
 
  protected:
   /*################################################################################################
@@ -67,16 +67,16 @@ class BaseNode
    *##############################################################################################*/
 
   std::byte *
-  GetKeyPtr(const uint64_t meta)
+  GetKeyPtr(const Metadata meta)
   {
-    const auto offset = Metadata::GetOffset(meta);
+    const auto offset = meta.GetOffset();
     return ShiftAddress(page_.get(), offset);
   }
 
   std::byte *
-  GetPayloadPtr(const uint64_t meta)
+  GetPayloadPtr(const Metadata meta)
   {
-    const auto offset = Metadata::GetOffset(meta) + Metadata::GetKeyLength(meta);
+    const auto offset = meta.GetOffset() + meta.GetKeyLength();
     return ShiftAddress(page_.get(), offset);
   }
 
@@ -107,9 +107,9 @@ class BaseNode
   void
   SetMetadata(  //
       const size_t index,
-      const uint64_t new_meta)
+      const Metadata new_meta)
   {
-    *(metadata_array_ + index) = new_meta;
+    *(meta_array_ + index) = new_meta;
   }
 
   void
@@ -175,7 +175,7 @@ class BaseNode
       const auto meta = GetMetadata(index);
       const std::byte *index_key = GetKeyPtr(meta);
       if (IsEqual(key, index_key, comp)) {
-        if (Metadata::IsVisible(meta)) {
+        if (meta.IsVisible()) {
           return {KeyExistence::kExist, (range_is_closed) ? index : index + 1};
         } else {
           // there is no inserting nor corrupted record in a sorted region
@@ -225,8 +225,7 @@ class BaseNode
     status_word_ = reinterpret_cast<StatusWord *>(ShiftAddress(page_.get(), kStatusWordOffset));
     is_leaf_ = reinterpret_cast<bool *>(ShiftAddress(page_.get(), kIsLeafOffset));
     sorted_count_ = reinterpret_cast<uint16_t *>(ShiftAddress(page_.get(), kSortedCountOffset));
-    metadata_array_ =
-        reinterpret_cast<uint64_t *>(ShiftAddress(page_.get(), kRecordMetadataOffset));
+    meta_array_ = reinterpret_cast<Metadata *>(ShiftAddress(page_.get(), kRecordMetadataOffset));
 
     // initialize header
     SetNodeSize(node_size);
@@ -260,13 +259,13 @@ class BaseNode
   bool
   RecordIsVisible(const size_t index)
   {
-    return Metadata::IsVisible(GetMetadata(index));
+    return GetMetadata(index).IsVisible();
   }
 
   bool
   RecordIsDeleted(const size_t index)
   {
-    return Metadata::IsDeleted(GetMetadata(index));
+    return GetMetadata(index).IsDeleted();
   }
 
   size_t
@@ -322,29 +321,32 @@ class BaseNode
     return *sorted_count_;
   }
 
-  uint64_t
+  Metadata
   GetMetadata(const size_t index)
   {
-    return *(metadata_array_ + index);
+    return *(meta_array_ + index);
   }
 
-  uint64_t
+  Metadata
   GetMetadataProtected(const size_t index)
   {
-    return reinterpret_cast<pmwcas::MwcTargetField<uint64_t> *>(metadata_array_ + index)
-        ->GetValueProtected();
+    auto meta_addr =
+        reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(meta_array_ + index));
+    auto protected_meta =
+        reinterpret_cast<pmwcas::MwcTargetField<uint64_t> *>(meta_addr)->GetValueProtected();
+    return *reinterpret_cast<Metadata *>(reinterpret_cast<std::byte *>(&protected_meta));
   }
 
   size_t
   GetKeyLength(const size_t index)
   {
-    return Metadata::GetKeyLength(GetMetadata(index));
+    return GetMetadata(index).GetKeyLength();
   }
 
   size_t
   GetPayloadLength(const size_t index)
   {
-    return Metadata::GetPayloadLength(GetMetadata(index));
+    return GetMetadata(index).GetPayloadLength();
   }
 
   uint32_t
@@ -362,11 +364,15 @@ class BaseNode
   uint32_t
   SetMetadataForMwCAS(  //
       const size_t index,
-      const uint64_t old_meta,
-      const uint64_t new_meta,
+      Metadata old_meta,
+      Metadata new_meta,
       pmwcas::Descriptor *descriptor)
   {
-    return descriptor->AddEntry(metadata_array_ + index, old_meta, new_meta);
+    auto meta_addr =
+        reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(meta_array_ + index));
+    auto old_meta_int = *reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&old_meta));
+    auto new_meta_int = *reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&new_meta));
+    return descriptor->AddEntry(meta_addr, old_meta_int, new_meta_int);
   }
 
   template <typename T>
@@ -410,20 +416,6 @@ class BaseNode
     } while (pd->MwCAS());
 
     return NodeReturnCode::kSuccess;
-  }
-
-  // WIP
-  void
-  Dump()
-  {
-    std::cout << "size: " << node_size_ << ": " << GetNodeSize()
-              << std::endl
-              // << "stat: " << status_word_ << ": " << GetStatusWord() << std::endl
-              << "leaf: " << is_leaf_ << ": " << IsLeaf() << std::endl
-              << "sort: " << sorted_count_ << ": " << GetSortedCount() << std::endl;
-    for (size_t i = 0; i < 10; i++) {
-      std::cout << "m[" << i << "]: " << metadata_array_ + i << ": " << GetMetadata(i) << std::endl;
-    }
   }
 };
 

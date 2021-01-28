@@ -28,12 +28,12 @@ class InternalNode : public BaseNode
       const auto meta = original_node->GetMetadata(index);
       // copy a record
       const auto key = original_node->GetKeyPtr(meta);
-      const auto key_length = Metadata::GetKeyLength(meta);
+      const auto key_length = meta.GetKeyLength();
       const auto payload = original_node->GetPayloadPtr(meta);
-      const auto payload_length = Metadata::GetPayloadLength(meta);
+      const auto payload_length = meta.GetPayloadLength();
       offset = CopyRecord(key, key_length, payload, payload_length, offset);
       // copy metadata
-      const auto new_meta = Metadata::UpdateOffset(meta, offset);
+      const auto new_meta = meta.UpdateOffset(offset);
       SetMetadata(sorted_count++, new_meta);
     }
     SetStatusWord(kInitStatusWord.AddRecordInfo(sorted_count, offset, 0));
@@ -62,7 +62,7 @@ class InternalNode : public BaseNode
       const size_t key_length,
       const size_t payload_length)
   {
-    const auto metadata_size = Metadata::kMetadataByteLength * (GetRecordCount() + 1);
+    const auto metadata_size = kWordLength * (GetRecordCount() + 1);
     const auto block_size = key_length + payload_length + GetBlockSize();
     return (BaseNode::kHeaderLength + metadata_size + block_size) > GetNodeSize();
   }
@@ -73,7 +73,7 @@ class InternalNode : public BaseNode
       const size_t payload_length,
       const size_t min_node_size)
   {
-    const auto metadata_size = Metadata::kMetadataByteLength * (GetRecordCount() - 1);
+    const auto metadata_size = kWordLength * (GetRecordCount() - 1);
     const auto block_size = GetBlockSize() - (key_length + payload_length);
     return (BaseNode::kHeaderLength + metadata_size + block_size) < min_node_size;
   }
@@ -113,7 +113,7 @@ class InternalNode : public BaseNode
   size_t
   GetOccupiedSize()
   {
-    return kHeaderLength + (GetSortedCount() * Metadata::kMetadataByteLength) + GetBlockSize();
+    return kHeaderLength + (GetSortedCount() * kWordLength) + GetBlockSize();
   }
 
   BaseNode *
@@ -188,26 +188,25 @@ class InternalNode : public BaseNode
       // prepare copying record and metadata
       const auto meta = GetMetadata(old_idx);
       const auto key = GetKeyPtr(meta);
-      const auto key_length = Metadata::GetKeyLength(meta);
+      const auto key_length = meta.GetKeyLength();
       auto node_addr = GetPayloadPtr(meta);
       if (old_idx == split_index) {
         // prepare left child information
-        const auto last_index = left_child->GetSortedCount() - 1;
-        const auto new_key = reinterpret_cast<InternalNode *>(left_child)->GetKeyPtr(last_index);
-        const auto new_key_length =
-            reinterpret_cast<InternalNode *>(left_child)->GetKeyLength(last_index);
+        const auto last_meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
+        const auto new_key = reinterpret_cast<InternalNode *>(left_child)->GetKeyPtr(last_meta);
+        const auto new_key_length = last_meta.GetKeyLength();
         const auto left_addr = reinterpret_cast<std::byte *>(left_child);
         // insert a split left child
         offset = new_parent->CopyRecord(new_key, new_key_length, left_addr, kPointerLength, offset);
         const auto total_length = new_key_length + kPointerLength;
-        const auto left_meta = Metadata::SetRecordInfo(0, offset, new_key_length, total_length);
+        const auto left_meta = kInitMetadata.SetRecordInfo(offset, new_key_length, total_length);
         new_parent->SetMetadata(new_idx++, left_meta);
         // insert a split right child
         node_addr = reinterpret_cast<std::byte *>(right_child);
       }
       // copy a child node
       offset = new_parent->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
-      const auto new_meta = Metadata::UpdateOffset(meta, offset);
+      const auto new_meta = meta.UpdateOffset(offset);
       new_parent->SetMetadata(new_idx, new_meta);
     }
 
@@ -227,22 +226,22 @@ class InternalNode : public BaseNode
     auto new_root = new InternalNode{offset};
 
     // insert a left child node
-    auto index = left_child->GetSortedCount() - 1;
-    auto key = reinterpret_cast<InternalNode *>(left_child)->GetKeyPtr(index);
-    auto key_length = left_child->GetKeyLength(index);
+    auto meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
+    auto key = reinterpret_cast<InternalNode *>(left_child)->GetKeyPtr(meta);
+    auto key_length = meta.GetKeyLength();
     auto node_addr = reinterpret_cast<std::byte *>(left_child);
     offset = new_root->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
-    auto meta = Metadata::SetRecordInfo(0, offset, key_length, key_length + kPointerLength);
-    new_root->SetMetadata(0, meta);
+    auto new_meta = kInitMetadata.SetRecordInfo(offset, key_length, key_length + kPointerLength);
+    new_root->SetMetadata(0, new_meta);
 
     // insert a right child node
-    index = right_child->GetSortedCount() - 1;
-    key = reinterpret_cast<InternalNode *>(right_child)->GetKeyPtr(index);
-    key_length = right_child->GetKeyLength(index);
+    meta = right_child->GetMetadata(right_child->GetSortedCount() - 1);
+    key = reinterpret_cast<InternalNode *>(right_child)->GetKeyPtr(meta);
+    key_length = meta.GetKeyLength();
     node_addr = reinterpret_cast<std::byte *>(right_child);
     offset = new_root->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
-    meta = Metadata::SetRecordInfo(0, offset, key_length, key_length + kPointerLength);
-    new_root->SetMetadata(1, meta);
+    new_meta = kInitMetadata.SetRecordInfo(offset, key_length, key_length + kPointerLength);
+    new_root->SetMetadata(1, new_meta);
 
     // set a new header
     new_root->SetSortedCount(2);
@@ -267,18 +266,18 @@ class InternalNode : public BaseNode
       // prepare copying record and metadata
       auto meta = GetMetadata(old_idx);
       auto key = GetKeyPtr(meta);
-      auto key_length = Metadata::GetKeyLength(meta);
+      auto key_length = meta.GetKeyLength();
       auto node_addr = GetPayloadPtr(meta);
       if (old_idx == deleted_index) {
         // skip a deleted node and insert a merged node
         meta = GetMetadata(++old_idx);
         key = GetKeyPtr(meta);
-        key_length = Metadata::GetKeyLength(meta);
+        key_length = meta.GetKeyLength();
         node_addr = reinterpret_cast<std::byte *>(merged_child);
       }
       // copy a child node
       offset = new_parent->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
-      const auto new_meta = Metadata::UpdateOffset(meta, offset);
+      const auto new_meta = meta.UpdateOffset(offset);
       new_parent->SetMetadata(new_idx, new_meta);
     }
 
