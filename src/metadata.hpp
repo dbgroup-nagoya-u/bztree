@@ -210,7 +210,7 @@ class alignas(kWordLength) Metadata
   }
 
   constexpr Metadata
-  DeletePayload() const
+  DeleteRecordInfo() const
   {
     auto new_meta = *this;
     new_meta.visible_ = false;
