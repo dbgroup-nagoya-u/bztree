@@ -3,9 +3,6 @@
 
 #include <gtest/gtest.h>
 
-#include <bit>
-#include <memory>
-
 #include "bztree.hpp"
 
 namespace bztree
@@ -39,7 +36,7 @@ TEST_F(StatusWordFixture, New_DefaultConstructor_CorrectlyInitialized)
 TEST_F(StatusWordFixture, Freeze_InitialStatus_FreezeWithoutSideEffect)
 {
   const StatusWord status;
-  auto frozen_status = status.Freeze();
+  const auto frozen_status = status.Freeze();
 
   EXPECT_EQ(kWordLength, sizeof(frozen_status));
   EXPECT_EQ(0, frozen_status.GetControlBit());
@@ -53,7 +50,7 @@ TEST_F(StatusWordFixture, AddRecordInfo_InitialStatus_AddInfoWithoutSideEffect)
 {
   const StatusWord status;
   const size_t record_count = 16, block_size = 8, deleted_size = 4;
-  auto updated_status = status.AddRecordInfo(record_count, block_size, deleted_size);
+  const auto updated_status = status.AddRecordInfo(record_count, block_size, deleted_size);
 
   EXPECT_EQ(kWordLength, sizeof(updated_status));
   EXPECT_EQ(0, updated_status.GetControlBit());

@@ -39,7 +39,7 @@ class BaseNode
 
   uint32_t *node_size_;
 
-  uint64_t *status_word_;
+  StatusWord *status_word_;
 
   bool *is_leaf_;
 
@@ -87,7 +87,7 @@ class BaseNode
   }
 
   void
-  SetStatusWord(const uint64_t status)
+  SetStatusWord(const StatusWord status)
   {
     *status_word_ = status;
   }
@@ -222,7 +222,7 @@ class BaseNode
 
     // set page addresses
     node_size_ = reinterpret_cast<uint32_t *>(ShiftAddress(page_.get(), kNodeSizeOffset));
-    status_word_ = reinterpret_cast<uint64_t *>(ShiftAddress(page_.get(), kStatusWordOffset));
+    status_word_ = reinterpret_cast<StatusWord *>(ShiftAddress(page_.get(), kStatusWordOffset));
     is_leaf_ = reinterpret_cast<bool *>(ShiftAddress(page_.get(), kIsLeafOffset));
     sorted_count_ = reinterpret_cast<uint16_t *>(ShiftAddress(page_.get(), kSortedCountOffset));
     metadata_array_ =
@@ -230,7 +230,7 @@ class BaseNode
 
     // initialize header
     SetNodeSize(node_size);
-    SetStatusWord(0);
+    SetStatusWord(StatusWord{});
     SetIsLeaf(is_leaf);
     SetSortedCount(0);
   }
@@ -254,7 +254,7 @@ class BaseNode
   bool
   IsFrozen()
   {
-    return StatusWord::IsFrozen(GetStatusWordProtected());
+    return GetStatusWordProtected().IsFrozen();
   }
 
   bool
@@ -275,42 +275,45 @@ class BaseNode
     return *node_size_;
   }
 
-  uint64_t
+  StatusWord
   GetStatusWord()
   {
     return *status_word_;
   }
 
-  uint64_t
+  StatusWord
   GetStatusWordProtected()
   {
-    return reinterpret_cast<pmwcas::MwcTargetField<uint64_t> *>(status_word_)->GetValueProtected();
+    auto status_addr = reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(status_word_));
+    auto protected_status =
+        reinterpret_cast<pmwcas::MwcTargetField<uint64_t> *>(status_addr)->GetValueProtected();
+    return StatusWord{
+        *reinterpret_cast<StatusWord *>(reinterpret_cast<std::byte *>(protected_status))};
   }
 
   size_t
   GetRecordCount()
   {
-    return StatusWord::GetRecordCount(GetStatusWord());
+    return status_word_->GetRecordCount();
   }
 
   size_t
   GetBlockSize()
   {
-    return StatusWord::GetBlockSize(GetStatusWord());
+    return status_word_->GetBlockSize();
   }
 
   size_t
   GetDeletedSize()
   {
-    return StatusWord::GetDeletedSize(GetStatusWord());
+    return status_word_->GetDeletedSize();
   }
 
   size_t
   GetApproximateDataSize()
   {
-    const auto status = GetStatusWord();
-    return (Metadata::kMetadataByteLength * StatusWord::GetRecordCount(status))
-           + StatusWord::GetBlockSize(status) - StatusWord::GetDeletedSize(status);
+    return (kWordLength * status_word_->GetRecordCount()) + status_word_->GetBlockSize()
+           - status_word_->GetDeletedSize();
   }
 
   size_t
@@ -346,11 +349,14 @@ class BaseNode
 
   uint32_t
   SetStatusForMwCAS(  //
-      const uint64_t old_status,
-      const uint64_t new_status,
+      StatusWord old_status,
+      StatusWord new_status,
       pmwcas::Descriptor *descriptor)
   {
-    return descriptor->AddEntry(status_word_, old_status, new_status);
+    auto status_addr = reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(status_word_));
+    auto old_stat_int = *reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&old_status));
+    auto new_stat_int = *reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&new_status));
+    return descriptor->AddEntry(status_addr, old_stat_int, new_stat_int);
   }
 
   uint32_t
@@ -394,11 +400,11 @@ class BaseNode
     pmwcas::Descriptor *pd;
     do {
       const auto current_status = GetStatusWordProtected();
-      if (StatusWord::IsFrozen(current_status)) {
+      if (current_status.IsFrozen()) {
         return NodeReturnCode::kFrozen;
       }
 
-      const auto new_status = StatusWord::Freeze(current_status);
+      const auto new_status = current_status.Freeze();
       pd = pmwcas_pool->AllocateDescriptor();
       SetStatusForMwCAS(current_status, new_status, pd);
     } while (pd->MwCAS());
@@ -410,8 +416,9 @@ class BaseNode
   void
   Dump()
   {
-    std::cout << "size: " << node_size_ << ": " << GetNodeSize() << std::endl
-              << "stat: " << status_word_ << ": " << GetStatusWord() << std::endl
+    std::cout << "size: " << node_size_ << ": " << GetNodeSize()
+              << std::endl
+              // << "stat: " << status_word_ << ": " << GetStatusWord() << std::endl
               << "leaf: " << is_leaf_ << ": " << IsLeaf() << std::endl
               << "sort: " << sorted_count_ << ": " << GetSortedCount() << std::endl;
     for (size_t i = 0; i < 10; i++) {
