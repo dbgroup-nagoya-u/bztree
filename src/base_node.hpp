@@ -255,11 +255,8 @@ class alignas(kWordLength) BaseNode
   {
     assert((node_size % kWordLength) == 0);
 
-    // auto aligned_page = aligned_alloc(kWordLength, node_size);
-    // auto new_node = new (aligned_page) BaseNode{node_size, is_leaf};
-
-    auto new_node = new BaseNode{node_size, is_leaf};
-
+    auto aligned_page = aligned_alloc(kWordLength, node_size);
+    auto new_node = new (aligned_page) BaseNode{node_size, is_leaf};
     return new_node;
   }
 
@@ -267,8 +264,8 @@ class alignas(kWordLength) BaseNode
    * Public getters/setters
    *##############################################################################################*/
 
-  bool
-  IsLeaf()
+  constexpr bool
+  IsLeaf() const
   {
     return is_leaf_;
   }
@@ -279,26 +276,26 @@ class alignas(kWordLength) BaseNode
     return GetStatusWordProtected().IsFrozen();
   }
 
-  bool
-  RecordIsVisible(const size_t index)
+  constexpr bool
+  RecordIsVisible(const size_t index) const
   {
     return GetMetadata(index).IsVisible();
   }
 
-  bool
-  RecordIsDeleted(const size_t index)
+  constexpr bool
+  RecordIsDeleted(const size_t index) const
   {
     return GetMetadata(index).IsDeleted();
   }
 
-  size_t
-  GetNodeSize()
+  constexpr size_t
+  GetNodeSize() const
   {
     return node_size_;
   }
 
-  StatusWord
-  GetStatusWord()
+  constexpr StatusWord
+  GetStatusWord() const
   {
     return status_word_;
   }
@@ -313,39 +310,39 @@ class alignas(kWordLength) BaseNode
         *reinterpret_cast<StatusWord *>(reinterpret_cast<std::byte *>(protected_status))};
   }
 
-  size_t
-  GetRecordCount()
+  constexpr size_t
+  GetRecordCount() const
   {
     return status_word_.GetRecordCount();
   }
 
-  size_t
-  GetBlockSize()
+  constexpr size_t
+  GetBlockSize() const
   {
     return status_word_.GetBlockSize();
   }
 
-  size_t
-  GetDeletedSize()
+  constexpr size_t
+  GetDeletedSize() const
   {
     return status_word_.GetDeletedSize();
   }
 
-  size_t
-  GetApproximateDataSize()
+  constexpr size_t
+  GetApproximateDataSize() const
   {
     return (kWordLength * status_word_.GetRecordCount()) + status_word_.GetBlockSize()
            - status_word_.GetDeletedSize();
   }
 
-  size_t
-  GetSortedCount()
+  constexpr size_t
+  GetSortedCount() const
   {
     return sorted_count_;
   }
 
-  Metadata
-  GetMetadata(const size_t index)
+  constexpr Metadata
+  GetMetadata(const size_t index) const
   {
     return *(meta_array_ + index);
   }
@@ -360,14 +357,14 @@ class alignas(kWordLength) BaseNode
     return *reinterpret_cast<Metadata *>(reinterpret_cast<std::byte *>(&protected_meta));
   }
 
-  size_t
-  GetKeyLength(const size_t index)
+  constexpr size_t
+  GetKeyLength(const size_t index) const
   {
     return GetMetadata(index).GetKeyLength();
   }
 
-  size_t
-  GetPayloadLength(const size_t index)
+  constexpr size_t
+  GetPayloadLength(const size_t index) const
   {
     return GetMetadata(index).GetPayloadLength();
   }
