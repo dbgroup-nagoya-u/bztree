@@ -172,7 +172,7 @@ class BzTree
       trace.pop();  // remove a leaf node
       auto [parent_node, target_index] = trace.top();
       const auto parent_status = parent_node->GetStatusWordProtected();
-      if (Status::IsFrozen(parent_status)) {
+      if (StatusWord::IsFrozen(parent_status)) {
         continue;
       }
 
@@ -423,12 +423,12 @@ class BzTree
       // check wether related nodes are frozen
       const auto status = old_internal_node->GetStatusWordProtected();
       const auto parent_status = parent_node->GetStatusWordProtected();
-      if (Status::IsFrozen(status) || Status::IsFrozen(parent_status)) {
+      if (StatusWord::IsFrozen(status) || StatusWord::IsFrozen(parent_status)) {
         return false;
       }
 
       // freeze an old internal node
-      const auto frozen_status = Status::Freeze(status);
+      const auto frozen_status = StatusWord::Freeze(status);
 
       // install a new internal node by PMwCAS
       old_internal_node->SetStatusForMwCAS(status, frozen_status, pd);
@@ -443,12 +443,12 @@ class BzTree
 
       // check wether an old root node is frozen
       const auto status = old_root_node->GetStatusWordProtected();
-      if (Status::IsFrozen(status)) {
+      if (StatusWord::IsFrozen(status)) {
         return false;
       }
 
       // freeze an old root node
-      const auto frozen_status = Status::Freeze(status);
+      const auto frozen_status = StatusWord::Freeze(status);
 
       // install a new root node by PMwCAS
       auto *pd = descriptor_pool_->AllocateDescriptor();

@@ -13,7 +13,8 @@ namespace bztree
  * @brief Status word accessor:
  *
  */
-struct Status {
+class alignas(kWordLength) StatusWord
+{
  private:
   /*################################################################################################
    * Internal enums and constants
@@ -37,6 +38,16 @@ struct Status {
   static constexpr uint64_t kDeleteSizeMask = 0x3FFFFFUL << kDeletedSizeBitOffset;
 
   /*################################################################################################
+   * Internal member variables
+   *##############################################################################################*/
+
+  uint64_t control_ : 3 = 0;
+  bool frozen_ : 1 = false;
+  uint64_t record_count_ : 16 = 0;
+  uint64_t block_size_ : 22 = 0;
+  uint64_t deleted_size_ : 22 = 0;
+
+  /*################################################################################################
    * Internal getters/setters
    *##############################################################################################*/
 
@@ -50,6 +61,57 @@ struct Status {
   /*################################################################################################
    * Public getters/setters
    *##############################################################################################*/
+
+  constexpr size_t
+  GetControlBit() const
+  {
+    return control_;
+  }
+
+  constexpr bool
+  IsFrozen() const
+  {
+    return frozen_;
+  }
+
+  constexpr size_t
+  GetRecordCount() const
+  {
+    return record_count_;
+  }
+
+  constexpr size_t
+  GetBlockSize() const
+  {
+    return block_size_;
+  }
+
+  constexpr size_t
+  GetDeletedSize() const
+  {
+    return deleted_size_;
+  }
+
+  constexpr StatusWord
+  Freeze() const
+  {
+    auto frozen_status = *this;
+    frozen_status.frozen_ = true;
+    return frozen_status;
+  }
+
+  constexpr StatusWord
+  AddRecordInfo(  //
+      const size_t record_count,
+      const size_t block_size,
+      const size_t deleted_size) const
+  {
+    auto new_status = *this;
+    new_status.record_count_ += record_count;
+    new_status.block_size_ += block_size;
+    new_status.deleted_size_ += deleted_size;
+    return new_status;
+  }
 
   static bool
   IsFrozen(const uint64_t status)

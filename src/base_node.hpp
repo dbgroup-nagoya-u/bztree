@@ -254,7 +254,7 @@ class BaseNode
   bool
   IsFrozen()
   {
-    return Status::IsFrozen(GetStatusWordProtected());
+    return StatusWord::IsFrozen(GetStatusWordProtected());
   }
 
   bool
@@ -290,27 +290,27 @@ class BaseNode
   size_t
   GetRecordCount()
   {
-    return Status::GetRecordCount(GetStatusWord());
+    return StatusWord::GetRecordCount(GetStatusWord());
   }
 
   size_t
   GetBlockSize()
   {
-    return Status::GetBlockSize(GetStatusWord());
+    return StatusWord::GetBlockSize(GetStatusWord());
   }
 
   size_t
   GetDeletedSize()
   {
-    return Status::GetDeletedSize(GetStatusWord());
+    return StatusWord::GetDeletedSize(GetStatusWord());
   }
 
   size_t
   GetApproximateDataSize()
   {
     const auto status = GetStatusWord();
-    return (Metadata::kMetadataByteLength * Status::GetRecordCount(status))
-           + Status::GetBlockSize(status) - Status::GetDeletedSize(status);
+    return (Metadata::kMetadataByteLength * StatusWord::GetRecordCount(status))
+           + StatusWord::GetBlockSize(status) - StatusWord::GetDeletedSize(status);
   }
 
   size_t
@@ -394,11 +394,11 @@ class BaseNode
     pmwcas::Descriptor *pd;
     do {
       const auto current_status = GetStatusWordProtected();
-      if (Status::IsFrozen(current_status)) {
+      if (StatusWord::IsFrozen(current_status)) {
         return NodeReturnCode::kFrozen;
       }
 
-      const auto new_status = Status::Freeze(current_status);
+      const auto new_status = StatusWord::Freeze(current_status);
       pd = pmwcas_pool->AllocateDescriptor();
       SetStatusForMwCAS(current_status, new_status, pd);
     } while (pd->MwCAS());

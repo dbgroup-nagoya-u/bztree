@@ -170,8 +170,8 @@ class LeafNode : public BaseNode
       const size_t block_size_threshold,
       const size_t deleted_size_threshold)
   {
-    if (Status::GetBlockSize(status) < block_size_threshold
-        && Status::GetDeletedSize(status) < deleted_size_threshold) {
+    if (StatusWord::GetBlockSize(status) < block_size_threshold
+        && StatusWord::GetDeletedSize(status) < deleted_size_threshold) {
       return NodeReturnCode::kSuccess;
     } else {
       return NodeReturnCode::kConsolidationRequired;
@@ -185,7 +185,7 @@ class LeafNode : public BaseNode
     // gather lastest written key and its metadata
     std::map<const std::byte *, uint64_t, Compare> meta_pairs;
     auto new_block_length = 0;
-    for (size_t index = Status::GetRecordCount(GetStatusWord()) - 1; index >= 0; --index) {
+    for (size_t index = StatusWord::GetRecordCount(GetStatusWord()) - 1; index >= 0; --index) {
       const auto meta = GetMetadata(index);
       if (Metadata::IsVisible(meta)) {
         meta_pairs.try_emplace(GetKeyPtr(meta), GetMetadata(index));
@@ -222,7 +222,7 @@ class LeafNode : public BaseNode
       // get a next capied metadata
       ++meta_iter;
     }
-    SetStatusWord(Status::AddRecordInfo(0, record_count, GetNodeSize() - offset, 0));
+    SetStatusWord(StatusWord::AddRecordInfo(0, record_count, GetNodeSize() - offset, 0));
     SetSortedCount(record_count);
 
     return meta_iter;
@@ -260,7 +260,7 @@ class LeafNode : public BaseNode
       Compare comp)
   {
     const auto status = GetStatusWord();
-    const auto result_pair = SearchMetadataToRead(key, comp, Status::GetRecordCount(status));
+    const auto result_pair = SearchMetadataToRead(key, comp, StatusWord::GetRecordCount(status));
     if (result_pair.first == KeyExistence::kNotExist) {
       return std::make_pair(NodeReturnCode::kKeyNotExist, nullptr);
     } else {
@@ -299,7 +299,7 @@ class LeafNode : public BaseNode
      * Scan unsorted region
      *--------------------------------------------------------------------------------------------*/
     const auto sorted_count = GetSortedCount();
-    for (size_t index = Status::GetRecordCount(status) - 1; index >= sorted_count; --index) {
+    for (size_t index = StatusWord::GetRecordCount(status) - 1; index >= sorted_count; --index) {
       const auto meta = GetMetadata(index);
       if (IsInRange(GetKeyPtr(meta), begin_key, begin_is_closed, end_key, end_is_closed, comp)) {
         if (Metadata::IsVisible(meta)) {
@@ -379,13 +379,13 @@ class LeafNode : public BaseNode
      *--------------------------------------------------------------------------------------------*/
     do {
       const auto current_status = GetStatusWordProtected();
-      if (Status::IsFrozen(current_status)) {
+      if (StatusWord::IsFrozen(current_status)) {
         return NodeReturnCode::kFrozen;
       }
 
       // prepare for MwCAS
-      record_count = Status::GetRecordCount(current_status);
-      new_status = Status::AddRecordInfo(current_status, 1, total_length, 0);
+      record_count = StatusWord::GetRecordCount(current_status);
+      new_status = StatusWord::AddRecordInfo(current_status, 1, total_length, 0);
       const auto current_meta = GetMetadata(record_count);
 
       // perform MwCAS to reserve space
@@ -399,7 +399,7 @@ class LeafNode : public BaseNode
      *--------------------------------------------------------------------------------------------*/
 
     // insert a record
-    auto offset = GetNodeSize() - Status::GetBlockSize(new_status);
+    auto offset = GetNodeSize() - StatusWord::GetBlockSize(new_status);
     offset = CopyRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
@@ -409,7 +409,7 @@ class LeafNode : public BaseNode
     // check conflicts (concurrent SMOs)
     do {
       new_status = GetStatusWordProtected();
-      if (Status::IsFrozen(new_status)) {
+      if (StatusWord::IsFrozen(new_status)) {
         return NodeReturnCode::kFrozen;
       }
 
@@ -463,11 +463,11 @@ class LeafNode : public BaseNode
      *--------------------------------------------------------------------------------------------*/
     do {
       const auto current_status = GetStatusWordProtected();
-      if (Status::IsFrozen(current_status)) {
+      if (StatusWord::IsFrozen(current_status)) {
         return NodeReturnCode::kFrozen;
       }
 
-      record_count = Status::GetRecordCount(current_status);
+      record_count = StatusWord::GetRecordCount(current_status);
       if (uniqueness != Uniqueness::kReCheck) {
         uniqueness = CheckUniqueness(key, comp, record_count, index_epoch);
         if (uniqueness == Uniqueness::kKeyExist) {
@@ -476,7 +476,7 @@ class LeafNode : public BaseNode
       }
 
       // prepare new status for MwCAS
-      new_status = Status::AddRecordInfo(current_status, 1, total_length, 0);
+      new_status = StatusWord::AddRecordInfo(current_status, 1, total_length, 0);
 
       // get current metadata for MwCAS
       const auto current_meta = GetMetadata(record_count);
@@ -497,7 +497,7 @@ class LeafNode : public BaseNode
      *--------------------------------------------------------------------------------------------*/
 
     // insert a record
-    auto offset = GetNodeSize() - Status::GetBlockSize(new_status);
+    auto offset = GetNodeSize() - StatusWord::GetBlockSize(new_status);
     offset = CopyRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
@@ -517,7 +517,7 @@ class LeafNode : public BaseNode
       }
 
       new_status = GetStatusWordProtected();
-      if (Status::IsFrozen(new_status)) {
+      if (StatusWord::IsFrozen(new_status)) {
         return NodeReturnCode::kFrozen;
       }
 
@@ -567,18 +567,18 @@ class LeafNode : public BaseNode
      *--------------------------------------------------------------------------------------------*/
     do {
       const auto current_status = GetStatusWordProtected();
-      if (Status::IsFrozen(current_status)) {
+      if (StatusWord::IsFrozen(current_status)) {
         return NodeReturnCode::kFrozen;
       }
 
-      record_count = Status::GetRecordCount(current_status);
+      record_count = StatusWord::GetRecordCount(current_status);
       const auto existence = SearchMetadataToRead(key, comp, record_count).first;
       if (existence == KeyExistence::kNotExist) {
         return NodeReturnCode::kKeyNotExist;
       }
 
       // prepare new status for MwCAS
-      new_status = Status::AddRecordInfo(current_status, 1, total_length, 0);
+      new_status = StatusWord::AddRecordInfo(current_status, 1, total_length, 0);
 
       // get current metadata for MwCAS
       const auto current_meta = GetMetadata(record_count);
@@ -594,7 +594,7 @@ class LeafNode : public BaseNode
      *--------------------------------------------------------------------------------------------*/
 
     // insert a record
-    auto offset = GetNodeSize() - Status::GetBlockSize(new_status);
+    auto offset = GetNodeSize() - StatusWord::GetBlockSize(new_status);
     offset = CopyRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
@@ -604,7 +604,7 @@ class LeafNode : public BaseNode
     // check conflicts (concurrent SMOs)
     do {
       new_status = GetStatusWordProtected();
-      if (Status::IsFrozen(new_status)) {
+      if (StatusWord::IsFrozen(new_status)) {
         return NodeReturnCode::kFrozen;
       }
 
@@ -643,11 +643,11 @@ class LeafNode : public BaseNode
 
     do {
       const auto current_status = GetStatusWordProtected();
-      if (Status::IsFrozen(current_status)) {
+      if (StatusWord::IsFrozen(current_status)) {
         return NodeReturnCode::kFrozen;
       }
 
-      const auto record_count = Status::GetRecordCount(current_status);
+      const auto record_count = StatusWord::GetRecordCount(current_status);
       const auto existence = SearchMetadataToRead(key, comp, record_count).first;
       if (existence == KeyExistence::kNotExist) {
         return NodeReturnCode::kKeyNotExist;
@@ -659,7 +659,7 @@ class LeafNode : public BaseNode
 
       // prepare new status
       const auto total_length = key_length + Metadata::GetPayloadLength(current_meta);
-      new_status = Status::AddRecordInfo(current_status, 0, 0, total_length);
+      new_status = StatusWord::AddRecordInfo(current_status, 0, 0, total_length);
 
       // perform MwCAS to reserve space
       pd = pmwcas_pool->AllocateDescriptor();

@@ -66,10 +66,10 @@ struct CompareAsInt64 {
  *------------------------------------------------------------------------------------------------*/
 
 // this code assumes that one word is represented by 8 bytes.
-static constexpr size_t kWordByteLength = 8;
+static constexpr size_t kWordLength = 8;
 
 // pointer's byte length
-static constexpr size_t kPointerLength = kWordByteLength;
+static constexpr size_t kPointerLength = kWordLength;
 
 template <class Compare>
 struct UniquePtrComparator {
