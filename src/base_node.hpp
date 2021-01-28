@@ -74,6 +74,19 @@ class alignas(kWordLength) BaseNode
   static constexpr size_t kHeaderLength = 2 * kWordLength;
 
   /*################################################################################################
+   * Internally inherited constructors
+   *##############################################################################################*/
+
+  explicit BaseNode(const size_t node_size, const bool is_leaf)
+  {
+    // initialize header
+    SetNodeSize(node_size);
+    SetStatusWord(StatusWord{});
+    SetIsLeaf(is_leaf);
+    SetSortedCount(0);
+  }
+
+  /*################################################################################################
    * Internally inherited getters/setters
    *##############################################################################################*/
 
@@ -224,15 +237,6 @@ class alignas(kWordLength) BaseNode
   /*################################################################################################
    * Public constructors/destructors
    *##############################################################################################*/
-
-  explicit BaseNode(const size_t node_size, const bool is_leaf)
-  {
-    // initialize header
-    SetNodeSize(node_size);
-    SetStatusWord(StatusWord{});
-    SetIsLeaf(is_leaf);
-    SetSortedCount(0);
-  }
 
   BaseNode(const BaseNode &) = delete;
   BaseNode &operator=(const BaseNode &) = delete;
