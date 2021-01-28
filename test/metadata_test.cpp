@@ -54,18 +54,19 @@ TEST_F(MetadataFixture, InitForInsert_InitMeta_InitWithoutSideEffect)
   EXPECT_EQ(0, test_meta.GetPayloadLength());
 }
 
-// TEST_F(MetadataFixture, AddRecordInfo_InitialStatus_AddInfoWithoutSideEffect)
-// {
-//   const Metadata meta;
-//   const size_t record_count = 16, block_size = 8, deleted_size = 4;
-//   const auto updated_meta = meta.AddRecordInfo(record_count, block_size, deleted_size);
+TEST_F(MetadataFixture, UpdateOffset_InitMeta_UpdateWithoutSideEffect)
+{
+  const Metadata meta;
+  const auto offset = 256;
+  const auto test_meta = meta.UpdateOffset(offset);
 
-//   EXPECT_EQ(kWordLength, sizeof(updated_meta));
-//   EXPECT_EQ(0, updated_meta.GetControlBit());
-//   EXPECT_FALSE(updated_meta.IsFrozen());
-//   EXPECT_EQ(record_count, updated_meta.GetRecordCount());
-//   EXPECT_EQ(block_size, updated_meta.GetBlockSize());
-//   EXPECT_EQ(deleted_size, updated_meta.GetDeletedSize());
-// }
+  EXPECT_EQ(kWordLength, sizeof(test_meta));
+  EXPECT_EQ(0, test_meta.GetControlBit());
+  EXPECT_FALSE(test_meta.IsVisible());
+  EXPECT_FALSE(test_meta.IsInProgress());
+  EXPECT_EQ(offset, test_meta.GetOffset());
+  EXPECT_EQ(0, test_meta.GetKeyLength());
+  EXPECT_EQ(0, test_meta.GetTotalLength());
+}
 
 }  // namespace bztree
