@@ -86,17 +86,17 @@ class alignas(kWordLength) StatusWord
     return new_status;
   }
 
-  static std::string
-  Dump(const uint64_t status)
+  std::string
+  ToString() const
   {
     std::stringstream ss;
-    // ss << "StatusWord: 0x" << std::hex << status << "{" << std::endl
-    //    << "  control: 0x" << GetControlBits(status) << "," << std::dec << std::endl
-    //    << "  frozen: 0x" << IsFrozen(status) << "," << std::endl
-    //    << "  block size: " << GetBlockSize(status) << "," << std::endl
-    //    << "  delete size: " << GetDeletedSize(status) << "," << std::endl
-    //    << "  record count: " << GetRecordCount(status) << std::endl
-    //    << "}";
+    ss << "StatusWord: 0x" << std::hex << this << "{" << std::endl
+       << "  control: 0x" << GetControlBit() << "," << std::dec << std::endl
+       << "  frozen: 0x" << IsFrozen() << "," << std::endl
+       << "  block size: " << GetBlockSize() << "," << std::endl
+       << "  delete size: " << GetDeletedSize() << "," << std::endl
+       << "  record count: " << GetRecordCount() << std::endl
+       << "}";
     return ss.str();
   }
 };
