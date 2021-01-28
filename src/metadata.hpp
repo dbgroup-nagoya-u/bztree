@@ -13,7 +13,8 @@ namespace bztree
  * @brief Record metadata accessor:
  *
  */
-struct Metadata {
+class alignas(kWordLength) Metadata
+{
  private:
   /*################################################################################################
    * Internal enums and constants
@@ -38,6 +39,17 @@ struct Metadata {
   static constexpr uint64_t kKeyLengthMask = 0xFFFFUL << kKeyLengthBitOffset;
   // bitmask 16-1  [0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 1111 1111 1111 1111]
   static constexpr uint64_t kTotalLengthMask = 0xFFFFUL << kTotalLengthBitOffset;
+
+  /*################################################################################################
+   * Internal member variables
+   *##############################################################################################*/
+
+  uint64_t control_ : 3 = 0;
+  bool visible_ : 1 = false;
+  bool in_progress_ : 1 = false;
+  uint64_t offset_ : 27 = 0;
+  uint64_t key_length_ : 16 = 0;
+  uint64_t total_length_ : 16 = 0;
 
   /*################################################################################################
    * Internal getters/setters
