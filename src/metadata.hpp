@@ -119,6 +119,48 @@ class alignas(kWordLength) Metadata
    * Public getters/setters
    *##############################################################################################*/
 
+  constexpr uint64_t
+  GetControlBit() const
+  {
+    return control_;
+  }
+
+  constexpr bool
+  IsVisible() const
+  {
+    return visible_;
+  }
+
+  constexpr bool
+  IsInProgress() const
+  {
+    return in_progress_;
+  }
+
+  constexpr size_t
+  GetOffset() const
+  {
+    return offset_;
+  }
+
+  constexpr size_t
+  GetEpoch() const
+  {
+    return offset_;
+  }
+
+  constexpr size_t
+  GetKeyLength() const
+  {
+    return key_length_;
+  }
+
+  constexpr size_t
+  GetTotalLength() const
+  {
+    return total_length_;
+  }
+
   static bool
   IsVisible(const uint64_t meta)
   {

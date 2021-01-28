@@ -26,11 +26,13 @@ TEST_F(MetadataFixture, New_DefaultConstructor_CorrectlyInitialized)
   const Metadata meta;
 
   EXPECT_EQ(kWordLength, sizeof(meta));
-  // EXPECT_EQ(0, meta.GetControlBit());
-  // EXPECT_FALSE(meta.IsFrozen());
-  // EXPECT_EQ(0, meta.GetRecordCount());
-  // EXPECT_EQ(0, meta.GetBlockSize());
-  // EXPECT_EQ(0, meta.GetDeletedSize());
+  EXPECT_EQ(0, meta.GetControlBit());
+  EXPECT_FALSE(meta.IsVisible());
+  EXPECT_FALSE(meta.IsInProgress());
+  EXPECT_EQ(0, meta.GetOffset());
+  EXPECT_EQ(0, meta.GetEpoch());
+  EXPECT_EQ(0, meta.GetKeyLength());
+  EXPECT_EQ(0, meta.GetTotalLength());
 }
 
 // TEST_F(MetadataFixture, Freeze_InitialStatus_FreezeWithoutSideEffect)
