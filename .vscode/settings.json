@@ -20,6 +20,11 @@
     "editor.formatOnPaste": false,
     "editor.formatOnSave": false,
   },
+  "cpplint.lineLength": 100,
+  "cpplint.filters": [
+    "-readability/fn_size",
+    "-whitespace/braces"
+  ],
   "cSpell.words": [
     "Kento",
     "Manabu",

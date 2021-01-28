@@ -51,7 +51,7 @@ class InternalNode : public BaseNode
   InternalNode &operator=(const InternalNode &) = delete;
   InternalNode(InternalNode &&) = default;
   InternalNode &operator=(InternalNode &&) = default;
-  virtual ~InternalNode() = default;
+  ~InternalNode() = default;
 
   /*################################################################################################
    * Public getters/setters

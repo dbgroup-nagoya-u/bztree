@@ -238,7 +238,7 @@ class LeafNode : public BaseNode
   LeafNode &operator=(const LeafNode &) = delete;
   LeafNode(LeafNode &&) = default;
   LeafNode &operator=(LeafNode &&) = default;
-  virtual ~LeafNode() = default;
+  ~LeafNode() = default;
 
   /*################################################################################################
    * Read operations

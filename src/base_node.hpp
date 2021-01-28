@@ -17,35 +17,46 @@
 
 namespace bztree
 {
-class BaseNode
+class alignas(kWordLength) BaseNode
 {
  private:
-  /*################################################################################################
-   * Internal enum and constants
-   *##############################################################################################*/
-
-  // byte offsets to acces node's elements
-  static constexpr uint64_t kNodeSizeOffset = 0;
-  static constexpr uint64_t kStatusWordOffset = 4;
-  static constexpr uint64_t kIsLeafOffset = 12;
-  static constexpr uint64_t kSortedCountOffset = 14;
-  static constexpr uint64_t kRecordMetadataOffset = 16;
-
   /*################################################################################################
    * Internal member variables
    *##############################################################################################*/
 
-  std::unique_ptr<std::byte[]> page_;
+  uint64_t node_size_ : 32;
 
-  uint32_t *node_size_;
+  bool is_leaf_ : 1;
 
-  StatusWord *status_word_;
+  uint64_t sorted_count_ : 16;
 
-  bool *is_leaf_;
+  uint64_t : 0;
 
-  uint16_t *sorted_count_;
+  StatusWord status_word_;
 
-  Metadata *meta_array_;
+  Metadata meta_array_[0];
+
+  /*################################################################################################
+   * Internal getter/setter for test use
+   *##############################################################################################*/
+
+  uint64_t
+  GetHeadAddrForTest(void)
+  {
+    return reinterpret_cast<uint64_t>(reinterpret_cast<std::byte *>(this));
+  }
+
+  uint64_t
+  GetStatusWordAddrForTest(void)
+  {
+    return reinterpret_cast<uint64_t>(reinterpret_cast<std::byte *>(&status_word_));
+  }
+
+  uint64_t
+  GetMetadataArrayAddrForTest(void)
+  {
+    return reinterpret_cast<uint64_t>(reinterpret_cast<std::byte *>(meta_array_));
+  }
 
  protected:
   /*################################################################################################
@@ -60,7 +71,20 @@ class BaseNode
   };
 
   // header length in bytes
-  static constexpr size_t kHeaderLength = kRecordMetadataOffset;
+  static constexpr size_t kHeaderLength = 2 * kWordLength;
+
+  /*################################################################################################
+   * Internally inherited constructors
+   *##############################################################################################*/
+
+  explicit BaseNode(const size_t node_size, const bool is_leaf)
+  {
+    // initialize header
+    SetNodeSize(node_size);
+    SetStatusWord(StatusWord{});
+    SetIsLeaf(is_leaf);
+    SetSortedCount(0);
+  }
 
   /*################################################################################################
    * Internally inherited getters/setters
@@ -70,38 +94,38 @@ class BaseNode
   GetKeyPtr(const Metadata meta)
   {
     const auto offset = meta.GetOffset();
-    return ShiftAddress(page_.get(), offset);
+    return ShiftAddress(reinterpret_cast<std::byte *>(this), offset);
   }
 
   std::byte *
   GetPayloadPtr(const Metadata meta)
   {
     const auto offset = meta.GetOffset() + meta.GetKeyLength();
-    return ShiftAddress(page_.get(), offset);
+    return ShiftAddress(reinterpret_cast<std::byte *>(this), offset);
   }
 
   void
   SetNodeSize(const size_t size)
   {
-    *node_size_ = size;
+    node_size_ = size;
   }
 
   void
   SetStatusWord(const StatusWord status)
   {
-    *status_word_ = status;
+    status_word_ = status;
   }
 
   void
   SetIsLeaf(const bool is_leaf)
   {
-    *is_leaf_ = is_leaf;
+    is_leaf_ = is_leaf;
   }
 
   void
   SetSortedCount(const size_t sorted_count)
   {
-    *sorted_count_ = sorted_count;
+    sorted_count_ = sorted_count;
   }
 
   void
@@ -118,7 +142,7 @@ class BaseNode
       const size_t key_length,
       const size_t offset)
   {
-    const auto key_ptr = ShiftAddress(page_.get(), offset);
+    const auto key_ptr = ShiftAddress(reinterpret_cast<std::byte *>(this), offset);
     memcpy(key_ptr, key, key_length);
   }
 
@@ -128,7 +152,7 @@ class BaseNode
       const size_t payload_length,
       const size_t offset)
   {
-    const auto payload_ptr = ShiftAddress(page_.get(), offset);
+    const auto payload_ptr = ShiftAddress(reinterpret_cast<std::byte *>(this), offset);
     memcpy(payload_ptr, payload, payload_length);
   }
 
@@ -207,47 +231,43 @@ class BaseNode
     kConsolidationRequired,
     kSplitRequired,
     kMergeRequired,
-    kSiblingHasNoSpace,
-    kCASFailed
+    kSiblingHasNoSpace
   };
 
   /*################################################################################################
    * Public constructors/destructors
    *##############################################################################################*/
 
-  explicit BaseNode(const size_t node_size, const bool is_leaf)
-  {
-    // prepare a page region
-    page_ = std::make_unique<std::byte[]>(node_size);
-
-    // set page addresses
-    node_size_ = reinterpret_cast<uint32_t *>(ShiftAddress(page_.get(), kNodeSizeOffset));
-    status_word_ = reinterpret_cast<StatusWord *>(ShiftAddress(page_.get(), kStatusWordOffset));
-    is_leaf_ = reinterpret_cast<bool *>(ShiftAddress(page_.get(), kIsLeafOffset));
-    sorted_count_ = reinterpret_cast<uint16_t *>(ShiftAddress(page_.get(), kSortedCountOffset));
-    meta_array_ = reinterpret_cast<Metadata *>(ShiftAddress(page_.get(), kRecordMetadataOffset));
-
-    // initialize header
-    SetNodeSize(node_size);
-    SetStatusWord(StatusWord{});
-    SetIsLeaf(is_leaf);
-    SetSortedCount(0);
-  }
-
   BaseNode(const BaseNode &) = delete;
   BaseNode &operator=(const BaseNode &) = delete;
   BaseNode(BaseNode &&) = delete;
   BaseNode &operator=(BaseNode &&) = delete;
-  virtual ~BaseNode() = default;
+  ~BaseNode() = default;
+
+  /*################################################################################################
+   * Public builders
+   *##############################################################################################*/
+
+  static BaseNode *
+  CreateEmptyNode(  //
+      const size_t node_size,
+      const bool is_leaf)
+  {
+    assert((node_size % kWordLength) == 0);
+
+    auto aligned_page = aligned_alloc(kWordLength, node_size);
+    auto new_node = new (aligned_page) BaseNode{node_size, is_leaf};
+    return new_node;
+  }
 
   /*################################################################################################
    * Public getters/setters
    *##############################################################################################*/
 
-  bool
-  IsLeaf()
+  constexpr bool
+  IsLeaf() const
   {
-    return *is_leaf_;
+    return is_leaf_;
   }
 
   bool
@@ -256,73 +276,73 @@ class BaseNode
     return GetStatusWordProtected().IsFrozen();
   }
 
-  bool
-  RecordIsVisible(const size_t index)
+  constexpr bool
+  RecordIsVisible(const size_t index) const
   {
     return GetMetadata(index).IsVisible();
   }
 
-  bool
-  RecordIsDeleted(const size_t index)
+  constexpr bool
+  RecordIsDeleted(const size_t index) const
   {
     return GetMetadata(index).IsDeleted();
   }
 
-  size_t
-  GetNodeSize()
+  constexpr size_t
+  GetNodeSize() const
   {
-    return *node_size_;
+    return node_size_;
   }
 
-  StatusWord
-  GetStatusWord()
+  constexpr StatusWord
+  GetStatusWord() const
   {
-    return *status_word_;
+    return status_word_;
   }
 
   StatusWord
   GetStatusWordProtected()
   {
-    auto status_addr = reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(status_word_));
+    auto status_addr = reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&status_word_));
     auto protected_status =
         reinterpret_cast<pmwcas::MwcTargetField<uint64_t> *>(status_addr)->GetValueProtected();
     return StatusWord{
         *reinterpret_cast<StatusWord *>(reinterpret_cast<std::byte *>(protected_status))};
   }
 
-  size_t
-  GetRecordCount()
+  constexpr size_t
+  GetRecordCount() const
   {
-    return status_word_->GetRecordCount();
+    return status_word_.GetRecordCount();
   }
 
-  size_t
-  GetBlockSize()
+  constexpr size_t
+  GetBlockSize() const
   {
-    return status_word_->GetBlockSize();
+    return status_word_.GetBlockSize();
   }
 
-  size_t
-  GetDeletedSize()
+  constexpr size_t
+  GetDeletedSize() const
   {
-    return status_word_->GetDeletedSize();
+    return status_word_.GetDeletedSize();
   }
 
-  size_t
-  GetApproximateDataSize()
+  constexpr size_t
+  GetApproximateDataSize() const
   {
-    return (kWordLength * status_word_->GetRecordCount()) + status_word_->GetBlockSize()
-           - status_word_->GetDeletedSize();
+    return (kWordLength * status_word_.GetRecordCount()) + status_word_.GetBlockSize()
+           - status_word_.GetDeletedSize();
   }
 
-  size_t
-  GetSortedCount()
+  constexpr size_t
+  GetSortedCount() const
   {
-    return *sorted_count_;
+    return sorted_count_;
   }
 
-  Metadata
-  GetMetadata(const size_t index)
+  constexpr Metadata
+  GetMetadata(const size_t index) const
   {
     return *(meta_array_ + index);
   }
@@ -337,14 +357,14 @@ class BaseNode
     return *reinterpret_cast<Metadata *>(reinterpret_cast<std::byte *>(&protected_meta));
   }
 
-  size_t
-  GetKeyLength(const size_t index)
+  constexpr size_t
+  GetKeyLength(const size_t index) const
   {
     return GetMetadata(index).GetKeyLength();
   }
 
-  size_t
-  GetPayloadLength(const size_t index)
+  constexpr size_t
+  GetPayloadLength(const size_t index) const
   {
     return GetMetadata(index).GetPayloadLength();
   }
@@ -355,7 +375,7 @@ class BaseNode
       StatusWord new_status,
       pmwcas::Descriptor *descriptor)
   {
-    auto status_addr = reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(status_word_));
+    auto status_addr = reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&status_word_));
     auto old_stat_int = *reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&old_status));
     auto new_stat_int = *reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&new_status));
     return descriptor->AddEntry(status_addr, old_stat_int, new_stat_int);
@@ -386,6 +406,22 @@ class BaseNode
     return descriptor->AddEntry(reinterpret_cast<uint64_t *>(GetPayloadPtr(GetMetadata(index))),
                                 reinterpret_cast<uint64_t>(old_payload),
                                 reinterpret_cast<uint64_t>(new_payload));
+  }
+
+  /*################################################################################################
+   * Public getter/setter for test use
+   *##############################################################################################*/
+
+  size_t
+  GetStatusWordOffsetForTest(void)
+  {
+    return GetStatusWordAddrForTest() - GetHeadAddrForTest();
+  }
+
+  size_t
+  GetMetadataOffsetForTest(void)
+  {
+    return GetMetadataArrayAddrForTest() - GetStatusWordAddrForTest();
   }
 
   /*################################################################################################
