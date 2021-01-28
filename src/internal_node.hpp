@@ -36,7 +36,7 @@ class InternalNode : public BaseNode
       const auto new_meta = Metadata::UpdateOffset(meta, offset);
       SetMetadata(sorted_count++, new_meta);
     }
-    SetStatusWord(StatusWord::AddRecordInfo(0, sorted_count, offset, 0));
+    SetStatusWord(kInitStatusWord.AddRecordInfo(sorted_count, offset, 0));
     SetSortedCount(sorted_count);
   }
 
@@ -213,7 +213,7 @@ class InternalNode : public BaseNode
 
     // set a new header
     SetSortedCount(++record_count);
-    SetStatusWord(StatusWord::AddRecordInfo(0, record_count, offset, 0));
+    SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, offset, 0));
 
     return reinterpret_cast<BaseNode *>(new_parent);
   }
@@ -246,7 +246,7 @@ class InternalNode : public BaseNode
 
     // set a new header
     new_root->SetSortedCount(2);
-    new_root->SetStatusWord(StatusWord::AddRecordInfo(0, 2, offset, 0));
+    new_root->SetStatusWord(kInitStatusWord.AddRecordInfo(2, offset, 0));
 
     return reinterpret_cast<BaseNode *>(new_root);
   }
@@ -284,7 +284,7 @@ class InternalNode : public BaseNode
 
     // set a new header
     new_parent->SetSortedCount(--record_count);
-    new_parent->SetStatusWord(StatusWord::AddRecordInfo(0, record_count, offset, 0));
+    new_parent->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, offset, 0));
 
     return reinterpret_cast<BaseNode *>(new_parent);
   }

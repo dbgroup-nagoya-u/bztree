@@ -101,7 +101,7 @@ struct Metadata {
    *##############################################################################################*/
 
   // metadata length in bytes
-  static constexpr size_t kMetadataByteLength = kWordByteLength;
+  static constexpr size_t kMetadataByteLength = kWordLength;
 
   /*################################################################################################
    * Public getters/setters

@@ -423,12 +423,12 @@ class BzTree
       // check wether related nodes are frozen
       const auto status = old_internal_node->GetStatusWordProtected();
       const auto parent_status = parent_node->GetStatusWordProtected();
-      if (StatusWord::IsFrozen(status) || StatusWord::IsFrozen(parent_status)) {
+      if (status.IsFrozen() || parent_status.IsFrozen()) {
         return false;
       }
 
       // freeze an old internal node
-      const auto frozen_status = StatusWord::Freeze(status);
+      const auto frozen_status = status.Freeze();
 
       // install a new internal node by PMwCAS
       old_internal_node->SetStatusForMwCAS(status, frozen_status, pd);
@@ -443,12 +443,12 @@ class BzTree
 
       // check wether an old root node is frozen
       const auto status = old_root_node->GetStatusWordProtected();
-      if (StatusWord::IsFrozen(status)) {
+      if (status.IsFrozen()) {
         return false;
       }
 
       // freeze an old root node
-      const auto frozen_status = StatusWord::Freeze(status);
+      const auto frozen_status = status.Freeze();
 
       // install a new root node by PMwCAS
       auto *pd = descriptor_pool_->AllocateDescriptor();
