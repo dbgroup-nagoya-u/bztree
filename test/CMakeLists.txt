@@ -17,4 +17,5 @@ endfunction()
 # add unit tests to build targets
 ADD_BZTREE_TEST(status_word_test)
 ADD_BZTREE_TEST(metadata_test)
+ADD_BZTREE_TEST(base_node_test)
 ADD_BZTREE_TEST(leaf_node_test)
