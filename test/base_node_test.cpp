@@ -19,22 +19,17 @@ static constexpr size_t kIndexEpoch = 0;
 class BaseNodeFixture : public testing::Test
 {
  protected:
-  std::unique_ptr<pmwcas::DescriptorPool> pool;
   std::unique_ptr<BaseNode> node;
 
   void
   SetUp() override
   {
-    pmwcas::InitLibrary(pmwcas::DefaultAllocator::Create, pmwcas::DefaultAllocator::Destroy,
-                        pmwcas::LinuxEnvironment::Create, pmwcas::LinuxEnvironment::Destroy);
-    pool.reset(new pmwcas::DescriptorPool{1000, 1, false});
     node.reset(BaseNode::CreateEmptyNode(kDefaultNodeSize, true));
   }
 
   void
   TearDown() override
   {
-    pmwcas::Thread::ClearRegistry();
   }
 };
 
