@@ -67,7 +67,8 @@ class alignas(kWordLength) BaseNode
   {
     kExist = 0,
     kNotExist,
-    kDeleted
+    kDeleted,
+    kUncertain
   };
 
   // header length in bytes

@@ -527,13 +527,13 @@ class LeafNode : public BaseNode
     // check conflicts (concurrent inserts and SMOs)
     do {
       if (uniqueness == KeyExistence::kUncertain) {
-        uniqueness =
-            SearchUnsortedMetaToWrite(key, record_count - 1, GetSortedCount(), index_epoch, comp);
+        uniqueness = CheckUniqueness(key, comp, record_count, index_epoch);
         if (uniqueness == KeyExistence::kExist) {
           // delete an inserted record
           SetMetadata(record_count, inserting_meta.UpdateOffset(0));
           return NodeReturnCode::kKeyExist;
         }
+        continue;  // recheck
       }
 
       new_status = GetStatusWordProtected();
