@@ -453,6 +453,18 @@ class alignas(kWordLength) BaseNode
 
     return NodeReturnCode::kSuccess;
   }
+
+  static size_t
+  ComputeOccupiedSize(const std::vector<std::pair<std::byte *, Metadata>> &live_meta)
+  {
+    size_t block_size = 0;
+    for (auto &&[key, meta] : live_meta) {
+      block_size += meta.GetTotalLength();
+    }
+    block_size += kHeaderLength + (kWordLength * live_meta.size());
+
+    return block_size;
+  }
 };
 
 }  // namespace bztree
