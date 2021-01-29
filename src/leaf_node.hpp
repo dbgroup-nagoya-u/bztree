@@ -19,6 +19,40 @@ class LeafNode : public BaseNode
 {
  private:
   /*################################################################################################
+   * Internal structs to cpmare key & metadata pairs
+   *##############################################################################################*/
+
+  template <class Compare>
+  struct PairComp {
+    Compare comp;
+
+    explicit PairComp(Compare comparator) : comp{comparator} {}
+
+    bool
+    operator()(  //
+        std::pair<std::byte *, Metadata> a,
+        std::pair<std::byte *, Metadata> b) const noexcept
+    {
+      return comp(a.first, b.first);
+    }
+  };
+
+  template <class Compare>
+  struct PairEqual {
+    Compare comp;
+
+    explicit PairEqual(Compare comparator) : comp{comparator} {}
+
+    bool
+    operator()(  //
+        std::pair<std::byte *, Metadata> a,
+        std::pair<std::byte *, Metadata> b) const noexcept
+    {
+      return IsEqual(a.first, b.first, comp);
+    }
+  };
+
+  /*################################################################################################
    * Internal constructors
    *##############################################################################################*/
 
