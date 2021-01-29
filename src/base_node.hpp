@@ -90,18 +90,18 @@ class alignas(kWordLength) BaseNode
    * Internally inherited getters/setters
    *##############################################################################################*/
 
-  std::byte *
+  constexpr std::byte *
   GetKeyPtr(const Metadata meta)
   {
     const auto offset = meta.GetOffset();
-    return ShiftAddress(reinterpret_cast<std::byte *>(this), offset);
+    return ShiftAddress(this, offset);
   }
 
-  std::byte *
+  constexpr std::byte *
   GetPayloadPtr(const Metadata meta)
   {
     const auto offset = meta.GetOffset() + meta.GetKeyLength();
-    return ShiftAddress(reinterpret_cast<std::byte *>(this), offset);
+    return ShiftAddress(this, offset);
   }
 
   void

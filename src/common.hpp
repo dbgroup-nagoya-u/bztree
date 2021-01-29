@@ -145,10 +145,12 @@ IsInRange(const std::byte *key,
  * @param offset
  * @return byte* shifted address
  */
-static std::byte *
-ShiftAddress(std::byte ptr[], const size_t offset)
+template <typename T>
+constexpr std::byte *
+ShiftAddress(T *ptr, const size_t offset)
 {
-  return reinterpret_cast<std::byte *>(ptr) + offset;
+  return static_cast<std::byte *>(
+      static_cast<void *>(static_cast<std::byte *>(static_cast<void *>(ptr)) + offset));
 }
 
 template <typename T1, typename T2>

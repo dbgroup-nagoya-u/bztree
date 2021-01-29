@@ -164,11 +164,11 @@ class LeafNode : public BaseNode
     }
   }
 
-  NodeReturnCode
+  constexpr NodeReturnCode
   CheckRemainingCapacity(  //
       const StatusWord status,
       const size_t block_size_threshold,
-      const size_t deleted_size_threshold)
+      const size_t deleted_size_threshold) const
   {
     if (status.GetBlockSize() < block_size_threshold
         && status.GetDeletedSize() < deleted_size_threshold) {
