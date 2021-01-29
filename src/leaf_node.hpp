@@ -92,8 +92,8 @@ class LeafNode : public BaseNode
   }
 
   template <class Compare>
-  Uniqueness
-  CheckUniqueInUnsortedMeta(  //
+  KeyExistence
+  SearchUnsortedMetaToWrite(  //
       const std::byte *key,
       const size_t begin_index,
       const size_t sorted_count,
@@ -105,32 +105,35 @@ class LeafNode : public BaseNode
       const auto meta = GetMetadataProtected(index);
       if (IsEqual(key, GetKeyPtr(meta), comp)) {
         if (meta.IsVisible()) {
-          return Uniqueness::kKeyExist;
+          return KeyExistence::kExist;
         } else if (meta.IsDeleted()) {
-          return Uniqueness::kKeyNotExist;
+          return KeyExistence::kDeleted;
         } else if (!meta.IsCorrupted(index_epoch)) {
           // there is in progress records
-          return Uniqueness::kReCheck;
+          return KeyExistence::kUncertain;
         }
         // there is a key, but it is corrupted due to a machine failure
       }
     }
-    return Uniqueness::kKeyNotExist;
+    return KeyExistence::kNotExist;
   }
 
   template <class Compare>
-  Uniqueness
+  KeyExistence
   CheckUniqueness(  //
       const std::byte *key,
       Compare comp,
       const size_t record_count,
       const size_t index_epoch)
   {
-    const auto existence = SearchSortedMetadata(key, true, comp).first;
-    if (existence == KeyExistence::kExist) {
-      return Uniqueness::kKeyExist;
+    if (auto existence =
+            SearchUnsortedMetaToWrite(key, record_count - 1, GetSortedCount(), index_epoch, comp);
+        existence == KeyExistence::kNotExist) {
+      // there is no key in unsorted metadata, so search a sorted region
+      return SearchSortedMetadata(key, true, comp).first;
+    } else {
+      return existence;
     }
-    return CheckUniqueInUnsortedMeta(key, record_count - 1, GetSortedCount(), index_epoch, comp);
   }
 
   template <class Compare>
@@ -474,7 +477,7 @@ class LeafNode : public BaseNode
     bool cas_failed;
 
     // local flags for insertion
-    auto uniqueness = Uniqueness::kKeyNotExist;
+    auto uniqueness = KeyExistence::kNotExist;
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: reserve free space to insert a record
@@ -486,9 +489,9 @@ class LeafNode : public BaseNode
       }
 
       record_count = current_status.GetRecordCount();
-      if (uniqueness != Uniqueness::kReCheck) {
+      if (uniqueness != KeyExistence::kUncertain) {
         uniqueness = CheckUniqueness(key, comp, record_count, index_epoch);
-        if (uniqueness == Uniqueness::kKeyExist) {
+        if (uniqueness == KeyExistence::kExist) {
           return NodeReturnCode::kKeyExist;
         }
       }
@@ -506,7 +509,7 @@ class LeafNode : public BaseNode
       cas_failed = !pd->MwCAS();
 
       if (cas_failed) {
-        uniqueness = Uniqueness::kReCheck;
+        uniqueness = KeyExistence::kUncertain;
       }
     } while (cas_failed);
 
@@ -523,10 +526,10 @@ class LeafNode : public BaseNode
 
     // check conflicts (concurrent inserts and SMOs)
     do {
-      if (uniqueness == Uniqueness::kReCheck) {
+      if (uniqueness == KeyExistence::kUncertain) {
         uniqueness =
-            CheckUniqueInUnsortedMeta(key, record_count - 1, GetSortedCount(), index_epoch, comp);
-        if (uniqueness == Uniqueness::kKeyExist) {
+            SearchUnsortedMetaToWrite(key, record_count - 1, GetSortedCount(), index_epoch, comp);
+        if (uniqueness == KeyExistence::kExist) {
           // delete an inserted record
           SetMetadata(record_count, inserting_meta.UpdateOffset(0));
           return NodeReturnCode::kKeyExist;
