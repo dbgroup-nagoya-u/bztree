@@ -772,6 +772,50 @@ class LeafNode : public BaseNode
 
     return reinterpret_cast<BaseNode *>(merged_node);
   }
+
+  /*################################################################################################
+   * Public utility functions
+   *##############################################################################################*/
+
+  template <class Compare>
+  std::vector<std::pair<std::byte *, Metadata>>
+  GatherSortedLiveMetadata(Compare comp)
+  {
+    const auto record_count = GetStatusWord().GetRecordCount();
+    const auto sorted_count = GetSortedCount();
+
+    // gather valid (live or deleted) records
+    std::vector<std::pair<std::byte *, Metadata>> meta_arr;
+    meta_arr.reserve(record_count);
+
+    // search unsorted metadata in reverse order
+    for (size_t index = record_count - 1; index >= sorted_count; --index) {
+      const auto meta = GetMetadata(index);
+      if (meta.IsVisible() || meta.IsDeleted()) {
+        meta_arr.emplace_back(GetKeyPtr(meta), meta);
+      } else {
+        // there is a key, but it is in inserting or corrupted.
+        // NOTE: we can ignore inserting records because concurrent writes are aborted due to SMOs.
+      }
+    }
+
+    // search sorted metadata
+    for (size_t index = 0; index < sorted_count; ++index) {
+      const auto meta = GetMetadata(index);
+      meta_arr.emplace_back(GetKeyPtr(meta), meta);
+    }
+
+    // make unique with keeping the order of writes
+    std::stable_sort(meta_arr.begin(), meta_arr.end(), PairComp{comp});
+    auto end_iter = std::unique(meta_arr.begin(), meta_arr.end(), PairEqual{comp});
+
+    // gather live records
+    end_iter = std::remove_if(meta_arr.begin(), end_iter,
+                              [](auto &obj) { return obj.second.IsDeleted(); });
+    meta_arr.erase(end_iter, meta_arr.end());
+
+    return meta_arr;
+  }
 };
 
 }  // namespace bztree
