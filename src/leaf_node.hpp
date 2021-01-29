@@ -34,6 +34,12 @@ class LeafNode : public BaseNode
   };
 
   /*################################################################################################
+   * Internal constructors
+   *##############################################################################################*/
+
+  explicit LeafNode(const size_t node_size) : BaseNode(node_size, true) {}
+
+  /*################################################################################################
    * Internal setter/getter
    *##############################################################################################*/
 
@@ -233,12 +239,25 @@ class LeafNode : public BaseNode
    * Public constructor/destructor
    *##############################################################################################*/
 
-  explicit LeafNode(const size_t node_size) : BaseNode(node_size, true) {}
   LeafNode(const LeafNode &) = delete;
   LeafNode &operator=(const LeafNode &) = delete;
   LeafNode(LeafNode &&) = default;
   LeafNode &operator=(LeafNode &&) = default;
   ~LeafNode() = default;
+
+  /*################################################################################################
+   * Public builders
+   *##############################################################################################*/
+
+  static LeafNode *
+  CreateEmptyNode(const size_t node_size)
+  {
+    assert((node_size % kWordLength) == 0);
+
+    auto aligned_page = aligned_alloc(kWordLength, node_size);
+    auto new_node = new (aligned_page) LeafNode{node_size};
+    return new_node;
+  }
 
   /*################################################################################################
    * Read operations
@@ -698,7 +717,7 @@ class LeafNode : public BaseNode
     }
 
     // create a new node and copy records
-    auto new_node = new LeafNode{max_node_length};
+    auto new_node = CreateEmptyNode(max_node_length);
     new_node->CopyRecordsViaMetadata(this, meta_pairs.begin(), new_record_count);
 
     return {NodeReturnCode::kSuccess, new_node, nullptr, 0};
@@ -713,12 +732,12 @@ class LeafNode : public BaseNode
     const auto node_size = GetNodeSize();
 
     // create a split left node
-    auto left_node = new LeafNode{node_size};
+    auto left_node = CreateEmptyNode(node_size);
     auto meta_iter = sorted_meta.begin();
     meta_iter = left_node->CopyRecordsViaMetadata(this, meta_iter, left_record_count);
 
     // create a split right node
-    auto right_node = new LeafNode{node_size};
+    auto right_node = CreateEmptyNode(node_size);
     const auto right_record_count = sorted_meta.size() - left_record_count;
     meta_iter = right_node->CopyRecordsViaMetadata(this, meta_iter, right_record_count);
 
@@ -739,7 +758,7 @@ class LeafNode : public BaseNode
     const auto node_size = GetNodeSize();
 
     // create a merged node
-    auto merged_node = new LeafNode{node_size};
+    auto merged_node = CreateEmptyNode(node_size);
     auto sibling_meta = sibling_node->GatherAndSortLiveMetadata(comp).first;
     if (sibling_is_left) {
       merged_node->CopyRecordsViaMetadata(sibling_node, sibling_meta.begin(), sibling_meta.size());
