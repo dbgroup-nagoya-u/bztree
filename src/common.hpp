@@ -30,10 +30,11 @@ enum ReturnCode
  *
  */
 struct CompareAsCString {
-  bool
+  constexpr bool
   operator()(const std::byte *a, const std::byte *b) const noexcept
   {
-    return reinterpret_cast<const char *>(a) < reinterpret_cast<const char *>(b);
+    return static_cast<const char *>(static_cast<const void *>(a))
+           < static_cast<const char *>(static_cast<const void *>(b));
   }
 };
 
@@ -42,10 +43,11 @@ struct CompareAsCString {
  *
  */
 struct CompareAsUInt64 {
-  bool
+  constexpr bool
   operator()(const std::byte *a, const std::byte *b) const noexcept
   {
-    return reinterpret_cast<uint64_t>(a) < reinterpret_cast<uint64_t>(b);
+    return *static_cast<const uint64_t *>(static_cast<const void *>(a))
+           < *static_cast<const uint64_t *>(static_cast<const void *>(b));
   }
 };
 
@@ -54,10 +56,11 @@ struct CompareAsUInt64 {
  *
  */
 struct CompareAsInt64 {
-  bool
+  constexpr bool
   operator()(const std::byte *a, const std::byte *b) const noexcept
   {
-    return reinterpret_cast<int64_t>(a) < reinterpret_cast<int64_t>(b);
+    return *static_cast<const int64_t *>(static_cast<const void *>(a))
+           < *static_cast<const int64_t *>(static_cast<const void *>(b));
   }
 };
 
@@ -66,10 +69,10 @@ struct CompareAsInt64 {
  *------------------------------------------------------------------------------------------------*/
 
 // this code assumes that one word is represented by 8 bytes.
-static constexpr size_t kWordLength = 8;
+constexpr size_t kWordLength = 8;
 
 // pointer's byte length
-static constexpr size_t kPointerLength = kWordLength;
+constexpr size_t kPointerLength = kWordLength;
 
 template <class Compare>
 struct UniquePtrComparator {
@@ -96,7 +99,7 @@ struct UniquePtrComparator {
  * @return false otherwise
  */
 template <class Compare>
-static bool
+bool
 IsEqual(const std::byte *obj_1, const std::byte *obj_2, Compare comp)
 {
   return !(comp(obj_1, obj_2) || comp(obj_2, obj_1));
@@ -116,7 +119,7 @@ IsEqual(const std::byte *obj_1, const std::byte *obj_2, Compare comp)
  * @return false
  */
 template <class Compare>
-static bool
+bool
 IsInRange(const std::byte *key,
           const std::byte *begin_key,
           const bool begin_is_closed,
@@ -154,7 +157,7 @@ ShiftAddress(T *ptr, const size_t offset)
 }
 
 template <typename T1, typename T2>
-static bool
+bool
 HaveSameAddress(const T1 *a, const T2 *b)
 {
   return reinterpret_cast<std::byte *>(a) == reinterpret_cast<std::byte *>(b);
