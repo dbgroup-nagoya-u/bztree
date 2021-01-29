@@ -11,6 +11,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "metadata.hpp"
 #include "status_word.hpp"
@@ -67,7 +68,8 @@ class alignas(kWordLength) BaseNode
   {
     kExist = 0,
     kNotExist,
-    kDeleted
+    kDeleted,
+    kUncertain
   };
 
   // header length in bytes
@@ -90,18 +92,18 @@ class alignas(kWordLength) BaseNode
    * Internally inherited getters/setters
    *##############################################################################################*/
 
-  std::byte *
+  constexpr std::byte *
   GetKeyPtr(const Metadata meta)
   {
     const auto offset = meta.GetOffset();
-    return ShiftAddress(reinterpret_cast<std::byte *>(this), offset);
+    return ShiftAddress(this, offset);
   }
 
-  std::byte *
+  constexpr std::byte *
   GetPayloadPtr(const Metadata meta)
   {
     const auto offset = meta.GetOffset() + meta.GetKeyLength();
-    return ShiftAddress(reinterpret_cast<std::byte *>(this), offset);
+    return ShiftAddress(this, offset);
   }
 
   void
@@ -228,10 +230,7 @@ class alignas(kWordLength) BaseNode
     kKeyExist,
     kScanInProgress,
     kFrozen,
-    kConsolidationRequired,
-    kSplitRequired,
-    kMergeRequired,
-    kSiblingHasNoSpace
+    kNoSpace
   };
 
   /*################################################################################################
@@ -240,8 +239,8 @@ class alignas(kWordLength) BaseNode
 
   BaseNode(const BaseNode &) = delete;
   BaseNode &operator=(const BaseNode &) = delete;
-  BaseNode(BaseNode &&) = delete;
-  BaseNode &operator=(BaseNode &&) = delete;
+  BaseNode(BaseNode &&) = default;
+  BaseNode &operator=(BaseNode &&) = default;
   ~BaseNode() = default;
 
   /*################################################################################################
@@ -452,6 +451,18 @@ class alignas(kWordLength) BaseNode
     } while (pd->MwCAS());
 
     return NodeReturnCode::kSuccess;
+  }
+
+  static size_t
+  ComputeOccupiedSize(const std::vector<std::pair<std::byte *, Metadata>> &live_meta)
+  {
+    size_t block_size = 0;
+    for (auto &&[key, meta] : live_meta) {
+      block_size += meta.GetTotalLength();
+    }
+    block_size += kHeaderLength + (kWordLength * live_meta.size());
+
+    return block_size;
   }
 };
 
