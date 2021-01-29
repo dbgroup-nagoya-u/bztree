@@ -691,37 +691,16 @@ class LeafNode : public BaseNode
    * Public structure modification operations
    *##############################################################################################*/
 
-  template <class Compare>
-  std::tuple<NodeReturnCode, LeafNode *, std::map<std::byte *, uint64_t, Compare>, size_t>
-  Consolidate(  //
-      const size_t free_space_length,
-      const size_t min_node_length,
-      Compare comp,
-      pmwcas::DescriptorPool *pmwcas_pool)
+  LeafNode *
+  Consolidate(const std::vector<std::pair<std::byte *, Metadata>> &live_meta)
   {
     assert(IsFrozen());  // a consolidating node must be locked
 
-    /*----------------------------------------------------------------------------------------------
-     * This node is now locked, so we can safely perform modification.
-     *--------------------------------------------------------------------------------------------*/
-    auto [meta_pairs, new_block_length] = GatherAndSortLiveMetadata(comp);
-
-    // if there is no sufficient space for a new node, invoke a node split.
-    const auto max_node_length = GetNodeSize();
-    const auto new_record_count = meta_pairs.size();
-    const auto new_occupied_length =
-        kHeaderLength + (kWordLength * new_record_count) + new_block_length;
-    if ((new_occupied_length + free_space_length) > max_node_length) {
-      return {NodeReturnCode::kSplitRequired, nullptr, meta_pairs, 0};
-    } else if (new_occupied_length < min_node_length) {
-      return {NodeReturnCode::kMergeRequired, nullptr, meta_pairs, new_occupied_length};
-    }
-
     // create a new node and copy records
-    auto new_node = CreateEmptyNode(max_node_length);
-    new_node->CopyRecordsViaMetadata(this, meta_pairs.begin(), new_record_count);
+    auto new_node = CreateEmptyNode(GetNodeSize());
+    new_node->CopyRecordsViaMetadata(this, live_meta.begin(), live_meta.size());
 
-    return {NodeReturnCode::kSuccess, new_node, nullptr, 0};
+    return new_node;
   }
 
   template <class Compare>

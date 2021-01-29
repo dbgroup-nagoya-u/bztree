@@ -151,19 +151,20 @@ class BzTree
   {
     // freeze a target node and perform consolidation
     target_leaf->Freeze(descriptor_pool_.get());
-    auto [return_code, consolidated_node, sorted_meta, occupied_size] = target_leaf->Consolidate(
-        desired_free_space_, node_size_min_threshold_, comparator_, descriptor_pool_);
 
-    // if splitting or merging is required, invoke it
-    if (return_code == BaseNode::NodeReturnCode::kSplitRequired) {
-      SplitLeafNode(target_leaf, target_key, sorted_meta);
+    // gather sorted live metadata of a targetnode, and check whether split/merge is required
+    const auto live_meta = target_leaf->GatherSortedLiveMetadata(comparator_);
+    const auto occupied_size = BaseNode::ComputeOccupiedSize(live_meta);
+    if (occupied_size + desired_free_space_ > node_size_) {
+      SplitLeafNode(target_leaf, target_key, live_meta);
       return;
-    } else if (return_code == BaseNode::NodeReturnCode::kMergeRequired) {
-      MergeLeafNode(target_leaf, target_key, target_key_length, occupied_size, sorted_meta);
+    } else if (occupied_size < node_size_min_threshold_) {
+      MergeLeafNode(target_leaf, target_key, target_key_length, occupied_size, live_meta);
       return;
     }
 
     // install a new node
+    auto new_leaf = target_leaf->Consolidate(live_meta);
     pmwcas::Descriptor *pd;
     do {
       // check whether a target node remains
@@ -171,7 +172,7 @@ class BzTree
       const auto current_leaf_node = trace.top().first;
       if (!HaveSameAddress(target_leaf, current_leaf_node)) {
         // other threads have already performed consolidation
-        delete consolidated_node;
+        delete new_leaf;
         return;
       }
 
@@ -186,7 +187,7 @@ class BzTree
       // swap a consolidated node for an old one
       pd = descriptor_pool_->AllocateDescriptor();
       parent_node->SetStatusForMwCAS(parent_status, parent_status, pd);
-      parent_node->SetPayloadForMwCAS(target_index, target_leaf, consolidated_node, pd);
+      parent_node->SetPayloadForMwCAS(target_index, target_leaf, new_leaf, pd);
     } while (!pd->MwCAS());
     // ...WIP...: delete target node
   }
