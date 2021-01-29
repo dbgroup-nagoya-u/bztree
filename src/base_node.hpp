@@ -230,9 +230,7 @@ class alignas(kWordLength) BaseNode
     kKeyExist,
     kScanInProgress,
     kFrozen,
-    kSplitRequired,
-    kMergeRequired,
-    kSiblingHasNoSpace
+    kNoSpace
   };
 
   /*################################################################################################
