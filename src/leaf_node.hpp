@@ -285,39 +285,31 @@ class LeafNode : public BaseNode
       Compare comp)
   {
     const auto status = GetStatusWord();
-    std::map<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>,
-             UniquePtrComparator<Compare>>
-        sorted_records;
-    /*----------------------------------------------------------------------------------------------
-     * Scan unsorted region
-     *--------------------------------------------------------------------------------------------*/
+    const auto record_count = GetStatusWord().GetRecordCount();
     const auto sorted_count = GetSortedCount();
-    for (size_t index = status.GetRecordCount() - 1; index >= sorted_count; --index) {
+
+    // gather valid (live or deleted) records
+    std::vector<std::pair<std::byte *, Metadata>> meta_arr;
+    meta_arr.reserve(record_count);
+
+    // search unsorted metadata in reverse order
+    for (size_t index = record_count - 1; index >= sorted_count; --index) {
       const auto meta = GetMetadata(index);
-      if (IsInRange(GetKeyPtr(meta), begin_key, begin_is_closed, end_key, end_is_closed, comp)) {
-        if (meta.IsVisible()) {
-          sorted_records.try_emplace(GetCopiedKey(meta), GetCopiedPayload(meta));
-        } else if (meta.IsDeleted()) {
-          sorted_records.try_emplace(GetCopiedKey(meta), nullptr);
-        }
-        // there is a key, but it is in inserting or corrupted
+      if (IsInRange(GetKeyPtr(meta), begin_key, begin_is_closed, end_key, end_is_closed, comp)
+          && (meta.IsVisible() || meta.IsDeleted())) {
+        meta_arr.emplace_back(GetKeyPtr(meta), meta);
+      } else {
+        // there is a key, but it is in inserting or corrupted.
       }
     }
 
-    /*----------------------------------------------------------------------------------------------
-     * Scan sorted region
-     *--------------------------------------------------------------------------------------------*/
-    NodeReturnCode return_code = NodeReturnCode::kScanInProgress;
-    const auto index_in_sorted = SearchSortedMetadata(begin_key, begin_is_closed, comp).second;
-    for (size_t index = index_in_sorted; index < sorted_count; ++index) {
+    // search sorted metadata
+    auto return_code = NodeReturnCode::kScanInProgress;
+    const auto begin_index = SearchSortedMetadata(begin_key, begin_is_closed, comp).second;
+    for (size_t index = begin_index; index < sorted_count; ++index) {
       const auto meta = GetMetadata(index);
       if (IsInRange(GetKeyPtr(meta), begin_key, begin_is_closed, end_key, end_is_closed, comp)) {
-        if (meta.IsVisible()) {
-          sorted_records.try_emplace(GetCopiedKey(meta), GetCopiedPayload(meta));
-        } else {
-          // there is no inserting nor corrupted record in a sorted region
-          sorted_records.try_emplace(GetCopiedKey(meta), nullptr);
-        }
+        meta_arr.emplace_back(GetKeyPtr(meta), meta);
       } else {
         // a current key is out of range condition
         return_code = NodeReturnCode::kSuccess;
@@ -325,12 +317,21 @@ class LeafNode : public BaseNode
       }
     }
 
-    // convert a sorted record map into a vector
-    std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>> scan_results;
-    RemoveDeletedRecords(sorted_records);
-    scan_results.reserve(sorted_records.size());
-    scan_results.insert(scan_results.end(), sorted_records.begin(), sorted_records.end());
+    // make unique with keeping the order of writes
+    std::stable_sort(meta_arr.begin(), meta_arr.end(), PairComp{comp});
+    auto end_iter = std::unique(meta_arr.begin(), meta_arr.end(), PairEqual{comp});
 
+    // gather live records
+    end_iter = std::remove_if(meta_arr.begin(), end_iter,
+                              [](auto &obj) { return obj.second.IsDeleted(); });
+    meta_arr.erase(end_iter, meta_arr.end());
+
+    // copy records for return
+    std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>> scan_results;
+    scan_results.reserve(meta_arr.size());
+    for (auto &&[key, meta] : meta_arr) {
+      scan_results.emplace_back(GetCopiedKey(meta), GetCopiedPayload(meta));
+    }
     return {return_code, scan_results};
   }
 
@@ -688,7 +689,7 @@ class LeafNode : public BaseNode
     // all the records must be copied
     assert(meta_iter == sorted_meta.end());
 
-    return {reinterpret_cast<BaseNode *>(left_node), reinterpret_cast<BaseNode *>(right_node)};
+    return {dynamic_cast<BaseNode *>(left_node), dynamic_cast<BaseNode *>(right_node)};
   }
 
   BaseNode *
@@ -708,7 +709,7 @@ class LeafNode : public BaseNode
       merged_node->CopyRecordsViaMetadata(sibling_node, sibling_meta.begin(), sibling_meta.size());
     }
 
-    return reinterpret_cast<BaseNode *>(merged_node);
+    return dynamic_cast<BaseNode *>(merged_node);
   }
 
   /*################################################################################################
