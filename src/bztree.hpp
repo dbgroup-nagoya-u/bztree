@@ -196,7 +196,7 @@ class BzTree
   SplitLeafNode(  //
       LeafNode *target_leaf,
       const std::byte *target_key,
-      const std::map<const std::byte *, uint64_t, Compare> &sorted_meta)
+      const std::vector<std::pair<std::byte *, Metadata>> &sorted_meta)
   {
     assert(target_leaf->IsFrozen());  // a splitting node must be locked
 
@@ -297,7 +297,7 @@ class BzTree
       const std::byte *target_key,
       const size_t target_key_length,
       const size_t target_size,
-      const std::map<const std::byte *, uint64_t, Compare> &sorted_meta)
+      const std::vector<std::pair<std::byte *, Metadata>> &sorted_meta)
   {
     assert(target_node->IsFrozen());  // a merging node must be locked
 
@@ -326,12 +326,14 @@ class BzTree
       if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
         deleted_index = target_index - 1;
         sibling_node = reinterpret_cast<LeafNode *>(parent->GetChildNode(deleted_index));
-        merged_node = target_node->Merge(sorted_meta, sibling_node, true, comparator_);
+        const auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comparator_);
+        merged_node = target_node->Merge(sorted_meta, sibling_node, sibling_meta, true);
       } else if (parent->CanMergeRightSibling(target_index, target_size, max_merged_size_)) {
         const auto right_index = target_index + 1;
         deleted_index = target_index;
         sibling_node = reinterpret_cast<LeafNode *>(parent->GetChildNode(right_index));
-        merged_node = target_node->Merge(sorted_meta, sibling_node, false, comparator_);
+        const auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comparator_);
+        merged_node = target_node->Merge(sorted_meta, sibling_node, sibling_meta, false);
       } else {
         return;  // there is no space to perform merge operation
       }

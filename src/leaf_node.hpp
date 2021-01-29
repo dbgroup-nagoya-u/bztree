@@ -216,10 +216,10 @@ class LeafNode : public BaseNode
     return {meta_pairs, new_block_length};
   }
 
-  std::map<std::byte *, Metadata>::iterator
+  std::vector<std::pair<std::byte *, Metadata>>::const_iterator
   CopyRecordsViaMetadata(  //
       LeafNode *original,
-      std::map<std::byte *, Metadata>::iterator meta_iter,
+      std::vector<std::pair<std::byte *, Metadata>>::const_iterator meta_iter,
       const size_t record_count)
   {
     auto offset = GetNodeSize();
@@ -703,10 +703,9 @@ class LeafNode : public BaseNode
     return new_node;
   }
 
-  template <class Compare>
   std::pair<BaseNode *, BaseNode *>
   Split(  //
-      const std::map<const std::byte *, uint64_t, Compare> &sorted_meta,
+      const std::vector<std::pair<std::byte *, Metadata>> &sorted_meta,
       const size_t left_record_count)
   {
     const auto node_size = GetNodeSize();
@@ -727,25 +726,20 @@ class LeafNode : public BaseNode
     return {reinterpret_cast<BaseNode *>(left_node), reinterpret_cast<BaseNode *>(right_node)};
   }
 
-  template <class Compare>
   BaseNode *
   Merge(  //
-      const std::map<const std::byte *, uint64_t, Compare> &sorted_meta,
+      const std::vector<std::pair<std::byte *, Metadata>> &this_meta,
       LeafNode *sibling_node,
-      const bool sibling_is_left,
-      Compare comp)
+      const std::vector<std::pair<std::byte *, Metadata>> &sibling_meta,
+      const bool sibling_is_left)
   {
-    const auto node_size = GetNodeSize();
-
     // create a merged node
-    auto merged_node = CreateEmptyNode(node_size);
-    auto sibling_meta = sibling_node->GatherAndSortLiveMetadata(comp).first;
+    auto merged_node = CreateEmptyNode(GetNodeSize());
     if (sibling_is_left) {
       merged_node->CopyRecordsViaMetadata(sibling_node, sibling_meta.begin(), sibling_meta.size());
-      merged_node->CopyRecordsViaMetadata(this, sorted_meta.begin(), sorted_meta.size());
-
+      merged_node->CopyRecordsViaMetadata(this, this_meta.begin(), this_meta.size());
     } else {
-      merged_node->CopyRecordsViaMetadata(this, sorted_meta.begin(), sorted_meta.size());
+      merged_node->CopyRecordsViaMetadata(this, this_meta.begin(), this_meta.size());
       merged_node->CopyRecordsViaMetadata(sibling_node, sibling_meta.begin(), sibling_meta.size());
     }
 
