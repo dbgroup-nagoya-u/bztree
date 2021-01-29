@@ -98,18 +98,6 @@ class LeafNode : public BaseNode
     }
   }
 
-  void
-  RemoveDeletedMetadata(std::map<const std::byte *, uint64_t> metadata)
-  {
-    for (auto iter = metadata.begin(); iter != metadata.end();) {
-      if (iter->second == 0) {
-        iter = metadata.erase(iter);
-      } else {
-        ++iter;
-      }
-    }
-  }
-
   template <class Compare>
   KeyExistence
   SearchUnsortedMetaToWrite(  //
@@ -191,29 +179,6 @@ class LeafNode : public BaseNode
     } else {
       return SearchSortedMetadata(key, true, comp);
     }
-  }
-
-  template <class Compare>
-  std::pair<std::map<std::byte *, uint64_t, Compare>, size_t>
-  GatherAndSortLiveMetadata(Compare comp)
-  {
-    // gather lastest written key and its metadata
-    std::map<const std::byte *, uint64_t, Compare> meta_pairs;
-    auto new_block_length = 0;
-    for (size_t index = GetStatusWord().GetRecordCount() - 1; index >= 0; --index) {
-      const auto meta = GetMetadata(index);
-      if (meta.IsVisible()) {
-        meta_pairs.try_emplace(GetKeyPtr(meta), GetMetadata(index));
-        new_block_length += meta.GetTotalLength();
-      } else if (meta.IsDeleted()) {
-        meta_pairs.try_emplace(GetKeyPtr(meta), 0);
-      }
-      // there is a key, but it is in inserting or corrupted.
-      // NOTE: we can ignore inserting records because concurrent writes are aborted due to FREEZE.
-    }
-    RemoveDeletedRecords(meta_pairs);
-
-    return {meta_pairs, new_block_length};
   }
 
   std::vector<std::pair<std::byte *, Metadata>>::const_iterator
