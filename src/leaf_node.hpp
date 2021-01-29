@@ -122,7 +122,7 @@ class LeafNode : public BaseNode
   }
 
   template <class Compare>
-  std::pair<BaseNode::KeyExistence, size_t>
+  std::pair<KeyExistence, size_t>
   SearchUnsortedMetaToRead(  //
       const std::byte *key,
       Compare comp,
@@ -144,7 +144,7 @@ class LeafNode : public BaseNode
   }
 
   template <class Compare>
-  std::pair<BaseNode::KeyExistence, size_t>
+  std::pair<KeyExistence, size_t>
   SearchMetadataToRead(  //
       const std::byte *key,
       Compare comp,
@@ -156,20 +156,6 @@ class LeafNode : public BaseNode
       return {existence, index};
     } else {
       return SearchSortedMetadata(key, true, comp);
-    }
-  }
-
-  constexpr NodeReturnCode
-  CheckRemainingCapacity(  //
-      const StatusWord status,
-      const size_t block_size_threshold,
-      const size_t deleted_size_threshold) const
-  {
-    if (status.GetBlockSize() < block_size_threshold
-        && status.GetDeletedSize() < deleted_size_threshold) {
-      return NodeReturnCode::kSuccess;
-    } else {
-      return NodeReturnCode::kConsolidationRequired;
     }
   }
 
@@ -259,10 +245,10 @@ class LeafNode : public BaseNode
    * @param key
    * @param key_length
    * @param comp
-   * @return std::pair<BaseNode::NodeReturnCode, std::unique_ptr<std::byte[]>>
+   * @return std::pair<NodeReturnCode, std::unique_ptr<std::byte[]>>
    */
   template <class Compare>
-  std::pair<BaseNode::NodeReturnCode, std::unique_ptr<std::byte[]>>
+  std::pair<NodeReturnCode, std::unique_ptr<std::byte[]>>
   Read(  //
       const std::byte *key,
       Compare comp)
@@ -286,11 +272,11 @@ class LeafNode : public BaseNode
    * @param end_key
    * @param end_is_closed
    * @param comp
-   * @return std::pair<BaseNode::NodeReturnCode,
+   * @return std::pair<NodeReturnCode,
    *         std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>>>
    */
   template <class Compare>
-  std::pair<BaseNode::NodeReturnCode,
+  std::pair<NodeReturnCode,
             std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>>>
   Scan(  //
       const std::byte *begin_key,
@@ -364,15 +350,13 @@ class LeafNode : public BaseNode
    * @param pmwcas_pool
    * @return NodeReturnCode
    */
-  NodeReturnCode
+  std::pair<NodeReturnCode, StatusWord>
   Write(  //
       const std::byte *key,
       const size_t key_length,
       const std::byte *payload,
       const size_t payload_length,
       const size_t index_epoch,
-      const size_t block_size_threshold,
-      const size_t deleted_size_threshold,
       pmwcas::DescriptorPool *pmwcas_pool)
   {
     // variables and constants shared in Phase 1 & 2
@@ -388,7 +372,7 @@ class LeafNode : public BaseNode
     do {
       const auto current_status = GetStatusWordProtected();
       if (current_status.IsFrozen()) {
-        return NodeReturnCode::kFrozen;
+        return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
 
       // prepare for MwCAS
@@ -417,7 +401,7 @@ class LeafNode : public BaseNode
     do {
       new_status = GetStatusWordProtected();
       if (new_status.IsFrozen()) {
-        return NodeReturnCode::kFrozen;
+        return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
 
       // perform MwCAS to complete a write
@@ -426,7 +410,7 @@ class LeafNode : public BaseNode
       SetMetadataForMwCAS(record_count, inserting_meta, inserted_meta, pd);
     } while (!pd->MwCAS());
 
-    return CheckRemainingCapacity(new_status, block_size_threshold, deleted_size_threshold);
+    return {NodeReturnCode::kSuccess, new_status};
   }
 
   /**
@@ -439,18 +423,16 @@ class LeafNode : public BaseNode
    * @param payload_length
    * @param comp
    * @param pmwcas_pool
-   * @return BaseNode::NodeReturnCode
+   * @return NodeReturnCode
    */
   template <class Compare>
-  BaseNode::NodeReturnCode
+  std::pair<NodeReturnCode, StatusWord>
   Insert(  //
       const std::byte *key,
       const size_t key_length,
       const std::byte *payload,
       const size_t payload_length,
       const size_t index_epoch,
-      const size_t block_size_threshold,
-      const size_t deleted_size_threshold,
       Compare comp,
       pmwcas::DescriptorPool *pmwcas_pool)
   {
@@ -471,14 +453,14 @@ class LeafNode : public BaseNode
     do {
       const auto current_status = GetStatusWordProtected();
       if (current_status.IsFrozen()) {
-        return NodeReturnCode::kFrozen;
+        return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
 
       record_count = current_status.GetRecordCount();
       if (uniqueness != KeyExistence::kUncertain) {
         uniqueness = CheckUniqueness(key, comp, record_count, index_epoch);
         if (uniqueness == KeyExistence::kExist) {
-          return NodeReturnCode::kKeyExist;
+          return {NodeReturnCode::kKeyExist, kInitStatusWord};
         }
       }
 
@@ -517,14 +499,14 @@ class LeafNode : public BaseNode
         if (uniqueness == KeyExistence::kExist) {
           // delete an inserted record
           SetMetadata(record_count, inserting_meta.UpdateOffset(0));
-          return NodeReturnCode::kKeyExist;
+          return {NodeReturnCode::kKeyExist, kInitStatusWord};
         }
         continue;  // recheck
       }
 
       new_status = GetStatusWordProtected();
       if (new_status.IsFrozen()) {
-        return NodeReturnCode::kFrozen;
+        return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
 
       // perform MwCAS to complete an insert
@@ -533,7 +515,7 @@ class LeafNode : public BaseNode
       SetMetadataForMwCAS(record_count, inserting_meta, inserted_meta, pd);
     } while (!pd->MwCAS());
 
-    return CheckRemainingCapacity(new_status, block_size_threshold, deleted_size_threshold);
+    return {NodeReturnCode::kSuccess, new_status};
   }
 
   /**
@@ -546,18 +528,16 @@ class LeafNode : public BaseNode
    * @param payload_length
    * @param comp
    * @param pmwcas_pool
-   * @return BaseNode::NodeReturnCode
+   * @return NodeReturnCode
    */
   template <class Compare>
-  BaseNode::NodeReturnCode
+  std::pair<NodeReturnCode, StatusWord>
   Update(  //
       const std::byte *key,
       const size_t key_length,
       const std::byte *payload,
       const size_t payload_length,
       const size_t index_epoch,
-      const size_t block_size_threshold,
-      const size_t deleted_size_threshold,
       Compare comp,
       pmwcas::DescriptorPool *pmwcas_pool)
   {
@@ -574,13 +554,13 @@ class LeafNode : public BaseNode
     do {
       const auto current_status = GetStatusWordProtected();
       if (current_status.IsFrozen()) {
-        return NodeReturnCode::kFrozen;
+        return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
 
       record_count = current_status.GetRecordCount();
       const auto existence = SearchMetadataToRead(key, comp, record_count).first;
       if (existence == KeyExistence::kNotExist) {
-        return NodeReturnCode::kKeyNotExist;
+        return {NodeReturnCode::kKeyNotExist, kInitStatusWord};
       }
 
       // prepare new status for MwCAS
@@ -610,7 +590,7 @@ class LeafNode : public BaseNode
     do {
       new_status = GetStatusWordProtected();
       if (new_status.IsFrozen()) {
-        return NodeReturnCode::kFrozen;
+        return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
 
       // perform MwCAS to complete an update
@@ -619,7 +599,7 @@ class LeafNode : public BaseNode
       SetMetadataForMwCAS(record_count, inserting_meta, inserted_meta, pd);
     } while (!pd->MwCAS());
 
-    return CheckRemainingCapacity(new_status, block_size_threshold, deleted_size_threshold);
+    return {NodeReturnCode::kSuccess, new_status};
   }
 
   /**
@@ -630,15 +610,13 @@ class LeafNode : public BaseNode
    * @param key_length
    * @param comp
    * @param pmwcas_pool
-   * @return BaseNode::NodeReturnCode
+   * @return NodeReturnCode
    */
   template <class Compare>
-  BaseNode::NodeReturnCode
+  std::pair<NodeReturnCode, StatusWord>
   Delete(  //
       const std::byte *key,
       const size_t key_length,
-      const size_t block_size_threshold,
-      const size_t deleted_size_threshold,
       Compare comp,
       pmwcas::DescriptorPool *pmwcas_pool)
   {
@@ -649,13 +627,13 @@ class LeafNode : public BaseNode
     do {
       const auto current_status = GetStatusWordProtected();
       if (current_status.IsFrozen()) {
-        return NodeReturnCode::kFrozen;
+        return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
 
       const auto record_count = current_status.GetRecordCount();
       const auto existence = SearchMetadataToRead(key, comp, record_count).first;
       if (existence == KeyExistence::kNotExist) {
-        return NodeReturnCode::kKeyNotExist;
+        return {NodeReturnCode::kKeyNotExist, kInitStatusWord};
       }
 
       // delete payload infomation from metadata
@@ -672,7 +650,7 @@ class LeafNode : public BaseNode
       SetMetadataForMwCAS(record_count, current_meta, deleted_meta, pd);
     } while (!pd->MwCAS());
 
-    return CheckRemainingCapacity(new_status, block_size_threshold, deleted_size_threshold);
+    return {NodeReturnCode::kSuccess, new_status};
   }
 
   /*################################################################################################
