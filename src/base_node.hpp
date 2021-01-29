@@ -240,8 +240,8 @@ class alignas(kWordLength) BaseNode
 
   BaseNode(const BaseNode &) = delete;
   BaseNode &operator=(const BaseNode &) = delete;
-  BaseNode(BaseNode &&) = delete;
-  BaseNode &operator=(BaseNode &&) = delete;
+  BaseNode(BaseNode &&) = default;
+  BaseNode &operator=(BaseNode &&) = default;
   ~BaseNode() = default;
 
   /*################################################################################################
