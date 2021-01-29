@@ -19,21 +19,6 @@ class LeafNode : public BaseNode
 {
  private:
   /*################################################################################################
-   * Internal enum and constants
-   *##############################################################################################*/
-
-  /**
-   * @brief Flags to check the uniqueness of concurrent writes.
-   *
-   */
-  enum Uniqueness
-  {
-    kKeyNotExist,
-    kKeyExist,
-    kReCheck
-  };
-
-  /*################################################################################################
    * Internal constructors
    *##############################################################################################*/
 
@@ -46,8 +31,8 @@ class LeafNode : public BaseNode
   std::unique_ptr<std::byte[]>
   GetCopiedKey(const Metadata meta)
   {
-    auto key_ptr = GetKeyPtr(meta);
-    auto key_length = meta.GetKeyLength();
+    const auto key_ptr = GetKeyPtr(meta);
+    const auto key_length = meta.GetKeyLength();
     auto copied_key_ptr = std::make_unique<std::byte[]>(key_length);
     memcpy(copied_key_ptr.get(), key_ptr, key_length);
     return copied_key_ptr;
@@ -56,8 +41,8 @@ class LeafNode : public BaseNode
   std::unique_ptr<std::byte[]>
   GetCopiedPayload(const Metadata meta)
   {
-    auto payload_ptr = GetPayloadPtr(meta);
-    auto payload_length = meta.GetPayloadLength();
+    const auto payload_ptr = GetPayloadPtr(meta);
+    const auto payload_length = meta.GetPayloadLength();
     auto copied_payload_ptr = std::make_unique<std::byte[]>(payload_length);
     memcpy(copied_payload_ptr.get(), payload_ptr, payload_length);
     return copied_payload_ptr;
@@ -126,9 +111,9 @@ class LeafNode : public BaseNode
       const size_t record_count,
       const size_t index_epoch)
   {
-    if (auto existence =
-            SearchUnsortedMetaToWrite(key, record_count - 1, GetSortedCount(), index_epoch, comp);
-        existence == KeyExistence::kNotExist) {
+    auto existence =
+        SearchUnsortedMetaToWrite(key, record_count - 1, GetSortedCount(), index_epoch, comp);
+    if (existence == KeyExistence::kNotExist) {
       // there is no key in unsorted metadata, so search a sorted region
       return SearchSortedMetadata(key, true, comp).first;
     } else {
@@ -138,7 +123,7 @@ class LeafNode : public BaseNode
 
   template <class Compare>
   std::pair<BaseNode::KeyExistence, size_t>
-  SearchUnsortedMetadataToRead(  //
+  SearchUnsortedMetaToRead(  //
       const std::byte *key,
       Compare comp,
       const size_t end_index,
@@ -165,9 +150,10 @@ class LeafNode : public BaseNode
       Compare comp,
       const size_t record_count)
   {
-    auto result_pair = SearchUnsortedMetadataToRead(key, comp, GetSortedCount(), record_count);
-    if (result_pair.first == KeyExistence::kExist) {
-      return result_pair;
+    const auto [existence, index] =
+        SearchUnsortedMetaToRead(key, comp, GetSortedCount(), record_count);
+    if (existence == KeyExistence::kExist) {
+      return {existence, index};
     } else {
       return SearchSortedMetadata(key, true, comp);
     }
@@ -282,11 +268,11 @@ class LeafNode : public BaseNode
       Compare comp)
   {
     const auto status = GetStatusWord();
-    const auto result_pair = SearchMetadataToRead(key, comp, status.GetRecordCount());
-    if (result_pair.first == KeyExistence::kNotExist) {
+    const auto [existence, index] = SearchMetadataToRead(key, comp, status.GetRecordCount());
+    if (existence == KeyExistence::kNotExist) {
       return std::make_pair(NodeReturnCode::kKeyNotExist, nullptr);
     } else {
-      const auto meta = GetMetadata(result_pair.second);
+      const auto meta = GetMetadata(index);
       return std::make_pair(NodeReturnCode::kSuccess, GetCopiedPayload(meta));
     }
   }
