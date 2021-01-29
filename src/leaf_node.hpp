@@ -86,18 +86,6 @@ class LeafNode : public BaseNode
    * Internal utility functions
    *##############################################################################################*/
 
-  void
-  RemoveDeletedRecords(std::map<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>> records)
-  {
-    for (auto iter = records.begin(); iter != records.end();) {
-      if (iter->second == nullptr) {
-        iter = records.erase(iter);
-      } else {
-        ++iter;
-      }
-    }
-  }
-
   template <class Compare>
   KeyExistence
   SearchUnsortedMetaToWrite(  //
@@ -129,11 +117,11 @@ class LeafNode : public BaseNode
   KeyExistence
   CheckUniqueness(  //
       const std::byte *key,
-      Compare comp,
       const size_t record_count,
-      const size_t index_epoch)
+      const size_t index_epoch,
+      Compare comp)
   {
-    auto existence =
+    const auto existence =
         SearchUnsortedMetaToWrite(key, record_count - 1, GetSortedCount(), index_epoch, comp);
     if (existence == KeyExistence::kNotExist) {
       // there is no key in unsorted metadata, so search a sorted region
@@ -147,9 +135,9 @@ class LeafNode : public BaseNode
   std::pair<KeyExistence, size_t>
   SearchUnsortedMetaToRead(  //
       const std::byte *key,
-      Compare comp,
       const size_t end_index,
-      const size_t record_count)
+      const size_t record_count,
+      Compare comp)
   {
     for (size_t index = record_count - 1; index >= end_index; index--) {
       const auto meta = GetMetadata(index);
@@ -169,11 +157,11 @@ class LeafNode : public BaseNode
   std::pair<KeyExistence, size_t>
   SearchMetadataToRead(  //
       const std::byte *key,
-      Compare comp,
-      const size_t record_count)
+      const size_t record_count,
+      Compare comp)
   {
     const auto [existence, index] =
-        SearchUnsortedMetaToRead(key, comp, GetSortedCount(), record_count);
+        SearchUnsortedMetaToRead(key, GetSortedCount(), record_count, comp);
     if (existence == KeyExistence::kExist) {
       return {existence, index};
     } else {
@@ -183,7 +171,7 @@ class LeafNode : public BaseNode
 
   std::vector<std::pair<std::byte *, Metadata>>::const_iterator
   CopyRecordsViaMetadata(  //
-      LeafNode *original,
+      LeafNode *original_node,
       std::vector<std::pair<std::byte *, Metadata>>::const_iterator meta_iter,
       const size_t record_count)
   {
@@ -193,7 +181,7 @@ class LeafNode : public BaseNode
       // copy a record
       const auto key = meta_iter->first;
       const auto key_length = meta.GetKeyLength();
-      const auto payload = original->GetPayloadPtr(meta);
+      const auto payload = original_node->GetPayloadPtr(meta);
       const auto payload_length = meta.GetPayloadLength();
       offset = CopyRecord(key, key_length, payload, payload_length, offset);
       // copy metadata
@@ -253,7 +241,7 @@ class LeafNode : public BaseNode
       Compare comp)
   {
     const auto status = GetStatusWord();
-    const auto [existence, index] = SearchMetadataToRead(key, comp, status.GetRecordCount());
+    const auto [existence, index] = SearchMetadataToRead(key, status.GetRecordCount(), comp);
     if (existence == KeyExistence::kNotExist) {
       return {NodeReturnCode::kKeyNotExist, nullptr};
     } else {
@@ -320,18 +308,17 @@ class LeafNode : public BaseNode
     // make unique with keeping the order of writes
     std::stable_sort(meta_arr.begin(), meta_arr.end(), PairComp{comp});
     auto end_iter = std::unique(meta_arr.begin(), meta_arr.end(), PairEqual{comp});
-
-    // gather live records
-    end_iter = std::remove_if(meta_arr.begin(), end_iter,
-                              [](auto &obj) { return obj.second.IsDeleted(); });
     meta_arr.erase(end_iter, meta_arr.end());
 
-    // copy records for return
+    // copy live records for return
     std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>> scan_results;
     scan_results.reserve(meta_arr.size());
     for (auto &&[key, meta] : meta_arr) {
-      scan_results.emplace_back(GetCopiedKey(meta), GetCopiedPayload(meta));
+      if (meta.IsVisible()) {
+        scan_results.emplace_back(GetCopiedKey(meta), GetCopiedPayload(meta));
+      }
     }
+
     return {return_code, scan_results};
   }
 
@@ -458,7 +445,7 @@ class LeafNode : public BaseNode
 
       record_count = current_status.GetRecordCount();
       if (uniqueness != KeyExistence::kUncertain) {
-        uniqueness = CheckUniqueness(key, comp, record_count, index_epoch);
+        uniqueness = CheckUniqueness(key, record_count, index_epoch, comp);
         if (uniqueness == KeyExistence::kExist) {
           return {NodeReturnCode::kKeyExist, kInitStatusWord};
         }
@@ -495,7 +482,7 @@ class LeafNode : public BaseNode
     // check conflicts (concurrent inserts and SMOs)
     do {
       if (uniqueness == KeyExistence::kUncertain) {
-        uniqueness = CheckUniqueness(key, comp, record_count, index_epoch);
+        uniqueness = CheckUniqueness(key, record_count, index_epoch, comp);
         if (uniqueness == KeyExistence::kExist) {
           // delete an inserted record
           SetMetadata(record_count, inserting_meta.UpdateOffset(0));
@@ -558,7 +545,7 @@ class LeafNode : public BaseNode
       }
 
       record_count = current_status.GetRecordCount();
-      const auto existence = SearchMetadataToRead(key, comp, record_count).first;
+      const auto existence = SearchMetadataToRead(key, record_count, comp).first;
       if (existence == KeyExistence::kNotExist) {
         return {NodeReturnCode::kKeyNotExist, kInitStatusWord};
       }
@@ -631,7 +618,7 @@ class LeafNode : public BaseNode
       }
 
       const auto record_count = current_status.GetRecordCount();
-      const auto existence = SearchMetadataToRead(key, comp, record_count).first;
+      const auto existence = SearchMetadataToRead(key, record_count, comp).first;
       if (existence == KeyExistence::kNotExist) {
         return {NodeReturnCode::kKeyNotExist, kInitStatusWord};
       }
