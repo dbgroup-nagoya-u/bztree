@@ -93,15 +93,16 @@ class LeafNode : public BaseNode
 
   template <class Compare>
   Uniqueness
-  CheckUniquenessInUnsortedMetadata(  //
+  CheckUniqueInUnsortedMeta(  //
       const std::byte *key,
-      Compare comp,
       const size_t begin_index,
-      const size_t record_count,
-      const size_t index_epoch)
+      const size_t sorted_count,
+      const size_t index_epoch,
+      Compare comp)
   {
-    for (int32_t i = begin_index; i < record_count; i++) {
-      const auto meta = GetMetadataProtected(i);
+    // perform a linear search in revese order
+    for (size_t index = begin_index; index >= sorted_count; --index) {
+      const auto meta = GetMetadataProtected(index);
       if (IsEqual(key, GetKeyPtr(meta), comp)) {
         if (meta.IsVisible()) {
           return Uniqueness::kKeyExist;
@@ -129,8 +130,7 @@ class LeafNode : public BaseNode
     if (existence == KeyExistence::kExist) {
       return Uniqueness::kKeyExist;
     }
-    return CheckUniquenessInUnsortedMetadata(key, comp, GetSortedCount(), record_count,
-                                             index_epoch);
+    return CheckUniqueInUnsortedMeta(key, record_count - 1, GetSortedCount(), index_epoch, comp);
   }
 
   template <class Compare>
@@ -524,8 +524,8 @@ class LeafNode : public BaseNode
     // check conflicts (concurrent inserts and SMOs)
     do {
       if (uniqueness == Uniqueness::kReCheck) {
-        uniqueness = CheckUniquenessInUnsortedMetadata(key, comp, GetSortedCount(), record_count,
-                                                       index_epoch);
+        uniqueness =
+            CheckUniqueInUnsortedMeta(key, record_count - 1, GetSortedCount(), index_epoch, comp);
         if (uniqueness == Uniqueness::kKeyExist) {
           // delete an inserted record
           SetMetadata(record_count, inserting_meta.UpdateOffset(0));
