@@ -133,14 +133,14 @@ class LeafNode : public BaseNode
       const auto meta = GetMetadata(index);
       if (IsEqual(key, GetKeyPtr(meta), comp)) {
         if (meta.IsVisible()) {
-          return std::make_pair(KeyExistence::kExist, index);
+          return {KeyExistence::kExist, index};
         } else if (meta.IsDeleted()) {
-          return std::make_pair(KeyExistence::kDeleted, index);
+          return {KeyExistence::kDeleted, index};
         }
         // there is a key, but it is in inserting or corrupted
       }
     }
-    return std::make_pair(KeyExistence::kNotExist, 0);
+    return {KeyExistence::kNotExist, 0};
   }
 
   template <class Compare>
@@ -179,7 +179,7 @@ class LeafNode : public BaseNode
     }
     RemoveDeletedRecords(meta_pairs);
 
-    return std::make_pair(meta_pairs, new_block_length);
+    return {meta_pairs, new_block_length};
   }
 
   std::map<std::byte *, Metadata>::iterator
@@ -256,10 +256,10 @@ class LeafNode : public BaseNode
     const auto status = GetStatusWord();
     const auto [existence, index] = SearchMetadataToRead(key, comp, status.GetRecordCount());
     if (existence == KeyExistence::kNotExist) {
-      return std::make_pair(NodeReturnCode::kKeyNotExist, nullptr);
+      return {NodeReturnCode::kKeyNotExist, nullptr};
     } else {
       const auto meta = GetMetadata(index);
-      return std::make_pair(NodeReturnCode::kSuccess, GetCopiedPayload(meta));
+      return {NodeReturnCode::kSuccess, GetCopiedPayload(meta)};
     }
   }
 

@@ -136,7 +136,7 @@ class BzTree
     for (size_t index = 0; index < half_cout; ++index) {
       ++meta_iter;
     }
-    return std::make_pair(meta_iter->first, meta_iter->second.GetKeyLength());
+    return {meta_iter->first, meta_iter->second.GetKeyLength()};
   }
 
   /*################################################################################################
@@ -507,9 +507,9 @@ class BzTree
     auto leaf_node = SearchLeafNode(key, true);
     const auto [return_code, payload] = leaf_node->Read(key, comparator_);
     if (return_code == BaseNode::NodeReturnCode::kSuccess) {
-      return std::make_pair(ReturnCode::kSuccess, payload);
+      return {ReturnCode::kSuccess, payload};
     } else {
-      return std::make_pair(ReturnCode::kKeyNotExist, nullptr);
+      return {ReturnCode::kKeyNotExist, nullptr};
     }
   }
 
