@@ -160,7 +160,7 @@ template <typename T1, typename T2>
 bool
 HaveSameAddress(const T1 *a, const T2 *b)
 {
-  return reinterpret_cast<std::byte *>(a) == reinterpret_cast<std::byte *>(b);
+  return static_cast<const void *>(a) == static_cast<const void *>(b);
 }
 
 }  // namespace bztree

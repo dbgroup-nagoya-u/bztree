@@ -216,7 +216,7 @@ class BzTree
 
       // check whether it is required to split a parent node
       trace.pop();  // remove a leaf node
-      auto parent = reinterpret_cast<InternalNode *>(trace.top().first);
+      auto parent = dynamic_cast<InternalNode *>(trace.top().first);
       if (parent->NeedSplit(split_key_length, kPointerLength)) {
         // invoke a parent (internal) node splitting
         SplitInternalNode(parent, target_key);
