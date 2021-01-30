@@ -26,23 +26,31 @@ enum ReturnCode
   kKeyExist
 };
 
-template <typename T>
+template <class T>
 std::byte *
 CastToBytePtr(const T *obj)
 {
   return static_cast<std::byte *>(static_cast<void *>(const_cast<T *>(obj)));
 }
 
+template <class T>
+uint64_t
+CastToUint64(const T *obj)
+{
+  return *static_cast<uint64_t *>(static_cast<void *>(const_cast<T *>(obj)));
+}
+
+template <class T>
+uint64_t *
+CastToUint64Ptr(const T *obj)
+{
+  return static_cast<uint64_t *>(static_cast<void *>(const_cast<T *>(obj)));
+}
+
 char *
 CastToCString(const std::byte *obj)
 {
   return static_cast<char *>(static_cast<void *>(const_cast<std::byte *>(obj)));
-}
-
-uint64_t
-CastToUint64(const std::byte *obj)
-{
-  return *static_cast<uint64_t *>(static_cast<void *>(const_cast<std::byte *>(obj)));
 }
 
 /**
@@ -95,19 +103,8 @@ constexpr size_t kWordLength = 8;
 // pointer's byte length
 constexpr size_t kPointerLength = kWordLength;
 
-template <class Compare>
-struct UniquePtrComparator {
-  Compare comp;
-
-  explicit UniquePtrComparator(Compare comp) : comp(comp) {}
-
-  bool
-  operator()(const std::unique_ptr<std::byte[]> &a,
-             const std::unique_ptr<std::byte[]> &b) const noexcept
-  {
-    return comp(a.get(), b.get());
-  }
-};
+// header length in bytes
+constexpr size_t kHeaderLength = 2 * kWordLength;
 
 /**
  * @brief
@@ -119,9 +116,9 @@ struct UniquePtrComparator {
  * @return true if a specified objects are equivalent according to `comp` comparator
  * @return false otherwise
  */
-template <class Compare>
+template <class Key, template <typename> class Compare>
 bool
-IsEqual(const std::byte *obj_1, const std::byte *obj_2, Compare comp)
+IsEqual(const Key obj_1, const Key obj_2, Compare<Key> comp)
 {
   return !(comp(obj_1, obj_2) || comp(obj_2, obj_1));
 }
@@ -139,14 +136,14 @@ IsEqual(const std::byte *obj_1, const std::byte *obj_2, Compare comp)
  * @return true if a specfied key is in an input interval
  * @return false
  */
-template <class Compare>
+template <class Key, template <typename> class Compare>
 bool
-IsInRange(const std::byte *key,
-          const std::byte *begin_key,
+IsInRange(const Key key,
+          const Key begin_key,
           const bool begin_is_closed,
-          const std::byte *end_key,
+          const Key end_key,
           const bool end_is_closed,
-          Compare comp)
+          Compare<Key> comp)
 {
   if (begin_key != nullptr && end_key != nullptr) {
     return (comp(begin_key, key) && comp(key, end_key))
@@ -169,7 +166,7 @@ IsInRange(const std::byte *key,
  * @param offset
  * @return byte* shifted address
  */
-template <typename T>
+template <class T>
 constexpr std::byte *
 ShiftAddress(T *ptr, const size_t offset)
 {
@@ -177,8 +174,8 @@ ShiftAddress(T *ptr, const size_t offset)
       static_cast<void *>(static_cast<std::byte *>(static_cast<void *>(ptr)) + offset));
 }
 
-template <typename T1, typename T2>
-bool
+template <class T1, class T2>
+constexpr bool
 HaveSameAddress(const T1 *a, const T2 *b)
 {
   return static_cast<const void *>(a) == static_cast<const void *>(b);
