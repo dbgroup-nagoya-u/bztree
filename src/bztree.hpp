@@ -15,7 +15,7 @@
 
 namespace bztree
 {
-template <class Compare>
+template <typename Compare>
 class BzTree
 {
  private:
