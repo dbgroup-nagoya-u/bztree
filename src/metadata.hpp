@@ -20,14 +20,26 @@ class alignas(kWordLength) Metadata
    * Internal member variables
    *##############################################################################################*/
 
-  uint64_t control_ : 3 = 0;
+  uint64_t offset_ : 27 = 0;
   bool visible_ : 1 = false;
   bool in_progress_ : 1 = false;
-  uint64_t offset_ : 27 = 0;
   uint64_t key_length_ : 16 = 0;
   uint64_t total_length_ : 16 = 0;
+  uint64_t control_ : 3 = 0;
 
  public:
+  /*################################################################################################
+   * Public getters/setters
+   *##############################################################################################*/
+
+  constexpr explicit Metadata() = default;
+
+  Metadata(const Metadata &) = default;
+  Metadata &operator=(const Metadata &) = default;
+  Metadata(Metadata &&) = default;
+  Metadata &operator=(Metadata &&) = default;
+  ~Metadata() = default;
+
   /*################################################################################################
    * Public getters/setters
    *##############################################################################################*/
@@ -148,5 +160,13 @@ class alignas(kWordLength) Metadata
 };
 
 constexpr Metadata kInitMetadata = Metadata{};
+
+union MetaUnion {
+  Metadata meta;
+  uint64_t meta_int;
+
+  constexpr explicit MetaUnion() : meta_int{0} {}
+  constexpr explicit MetaUnion(const uint64_t m_int) : meta_int{m_int} {}
+};
 
 }  // namespace bztree
