@@ -100,16 +100,16 @@ TEST_F(LeafNodeFixture, Write_StringValues_ReadWrittenValue)
               second_payload_length, kIndexEpoch, pool.get());
 
   auto [rc, u_ptr] = node->Read(CastToBytePtr(first_key), CompareAsCString{});
-  auto c_string = CastToCString(u_ptr.get());
+  auto result = CastToCString(u_ptr.get());
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  EXPECT_STREQ(first_payload, c_string);
+  EXPECT_STREQ(first_payload, result);
 
   std::tie(rc, u_ptr) = node->Read(CastToBytePtr(second_key), CompareAsCString{});
-  c_string = CastToCString(u_ptr.get());
+  result = CastToCString(u_ptr.get());
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  EXPECT_STREQ(second_payload, c_string);
+  EXPECT_STREQ(second_payload, result);
 
   std::tie(rc, u_ptr) = node->Read(CastToBytePtr("unknown"), CompareAsCString{});
 
@@ -136,7 +136,7 @@ TEST_F(LeafNodeFixture, Write_UIntValues_MetadataCorrectlyUpdated)
   EXPECT_EQ(block_size, status.GetBlockSize());
   EXPECT_EQ(0, status.GetDeletedSize());
 
-  key = 890, payload = 1234;
+  key = 890UL, payload = 1234UL;
   std::tie(rc, status) = node->Write(CastToBytePtr(&key), key_length, CastToBytePtr(&payload),
                                      payload_length, kIndexEpoch, pool.get());
   ++rec_count;
@@ -154,6 +154,35 @@ TEST_F(LeafNodeFixture, Write_UIntValues_MetadataCorrectlyUpdated)
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
   EXPECT_EQ(0, status.GetDeletedSize());
+}
+
+TEST_F(LeafNodeFixture, Write_UIntValues_ReadWrittenValue)
+{
+  const auto first_key = 123UL, first_payload = 4567UL;
+  const auto key_length = kWordLength, payload_length = kWordLength;
+  const auto second_key = 890UL, second_payload = 1234UL;
+
+  node->Write(CastToBytePtr(&first_key), key_length, CastToBytePtr(&first_payload), payload_length,
+              kIndexEpoch, pool.get());
+  node->Write(CastToBytePtr(&second_key), key_length, CastToBytePtr(&second_payload),
+              payload_length, kIndexEpoch, pool.get());
+
+  auto [rc, u_ptr] = node->Read(CastToBytePtr(&first_key), CompareAsCString{});
+  auto result = CastToUint64(u_ptr.get());
+
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(first_payload, result);
+
+  std::tie(rc, u_ptr) = node->Read(CastToBytePtr(&second_key), CompareAsCString{});
+  result = CastToUint64(u_ptr.get());
+
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(second_payload, result);
+
+  const auto unkown_key = 999UL;
+  std::tie(rc, u_ptr) = node->Read(CastToBytePtr(&unkown_key), CompareAsCString{});
+
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 }  // namespace bztree

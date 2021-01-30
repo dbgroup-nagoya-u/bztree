@@ -39,6 +39,12 @@ CastToCString(const std::byte *obj)
   return static_cast<char *>(static_cast<void *>(const_cast<std::byte *>(obj)));
 }
 
+uint64_t
+CastToUint64(const std::byte *obj)
+{
+  return *static_cast<uint64_t *>(static_cast<void *>(const_cast<std::byte *>(obj)));
+}
+
 /**
  * @brief Compare binary keys as C_String. The end of every key must be '\\0'.
  *
