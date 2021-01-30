@@ -28,6 +28,24 @@ class alignas(kWordLength) StatusWord
 
  public:
   /*################################################################################################
+   * Public constructors/destructors
+   *##############################################################################################*/
+
+  constexpr explicit StatusWord() = default;
+
+  StatusWord(const StatusWord &) = default;
+  StatusWord &operator=(const StatusWord &) = default;
+  StatusWord(StatusWord &&) = default;
+  StatusWord &operator=(StatusWord &&) = default;
+  ~StatusWord() = default;
+
+  explicit
+  operator uint64_t *()
+  {
+    return reinterpret_cast<uint64_t *>(reinterpret_cast<char *>(this));
+  }
+
+  /*################################################################################################
    * Public getters/setters
    *##############################################################################################*/
 
@@ -102,5 +120,12 @@ class alignas(kWordLength) StatusWord
 };
 
 constexpr auto kInitStatusWord = StatusWord{};
+
+union Status {
+  StatusWord word_status;
+  uint64_t int_status;
+
+  constexpr explicit Status() : int_status{0} {}
+};
 
 }  // namespace bztree
