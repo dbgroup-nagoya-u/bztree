@@ -33,12 +33,6 @@ CastToBytePtr(const T *obj)
   return static_cast<std::byte *>(static_cast<void *>(const_cast<T *>(obj)));
 }
 
-char *
-CastToCString(const std::byte *obj)
-{
-  return static_cast<char *>(static_cast<void *>(const_cast<std::byte *>(obj)));
-}
-
 template <class T>
 uint64_t
 CastToUint64(const T *obj)
@@ -51,6 +45,12 @@ uint64_t *
 CastToUint64Ptr(const T *obj)
 {
   return static_cast<uint64_t *>(static_cast<void *>(const_cast<T *>(obj)));
+}
+
+char *
+CastToCString(const std::byte *obj)
+{
+  return static_cast<char *>(static_cast<void *>(const_cast<std::byte *>(obj)));
 }
 
 /**
