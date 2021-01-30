@@ -52,13 +52,41 @@ TEST_F(LeafNodeFixture, Write_StringValues_MetadataCorrectlyUpdated)
   auto key_length = 4, payload_length = 5;
   auto [rc, status] = node->Write(CastToBytePtr(str_key), key_length, CastToBytePtr(str_payload),
                                   payload_length, kIndexEpoch, pool.get());
+  auto rec_count = 1, index = 0, block_size = key_length + payload_length;
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  // EXPECT_EQ(1, node->GetRecordCount());
-  // EXPECT_TRUE(node->RecordIsVisible(0));
-  // EXPECT_FALSE(node->RecordIsDeleted(0));
-  // EXPECT_EQ(key_length, node->GetKeyLength(0));
-  // EXPECT_EQ(payload_length, node->GetPayloadLength(0));
+  EXPECT_EQ(rec_count, node->GetRecordCount());
+  EXPECT_FALSE(node->IsFrozen());
+  EXPECT_TRUE(node->RecordIsVisible(index));
+  EXPECT_FALSE(node->RecordIsDeleted(index));
+  EXPECT_EQ(key_length, node->GetKeyLength(index));
+  EXPECT_EQ(payload_length, node->GetPayloadLength(index));
+  EXPECT_FALSE(status.IsFrozen());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(0, status.GetDeletedSize());
+
+  str_key = "test", str_payload = "value";
+  key_length = 6, payload_length = 6;
+  std::tie(rc, status) = node->Write(CastToBytePtr(str_key), key_length, CastToBytePtr(str_payload),
+                                     payload_length, kIndexEpoch, pool.get());
+  ++rec_count;
+  ++index;
+  block_size += key_length + payload_length;
+
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(rec_count, node->GetRecordCount());
+  EXPECT_FALSE(node->IsFrozen());
+  EXPECT_TRUE(node->RecordIsVisible(index));
+  EXPECT_FALSE(node->RecordIsDeleted(index));
+  EXPECT_EQ(key_length, node->GetKeyLength(index));
+  EXPECT_EQ(payload_length, node->GetPayloadLength(index));
+  EXPECT_FALSE(status.IsFrozen());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(0, status.GetDeletedSize());
+}
+
 
   // str_key = "test", str_payload = "value";
   // key_length = 6, payload_length = 6;
