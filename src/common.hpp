@@ -26,7 +26,7 @@ enum ReturnCode
   kKeyExist
 };
 
-template <typename T>
+template <class T>
 std::byte *
 CastToBytePtr(const T *obj)
 {
@@ -39,10 +39,18 @@ CastToCString(const std::byte *obj)
   return static_cast<char *>(static_cast<void *>(const_cast<std::byte *>(obj)));
 }
 
+template <class T>
 uint64_t
-CastToUint64(const std::byte *obj)
+CastToUint64(const T *obj)
 {
-  return *static_cast<uint64_t *>(static_cast<void *>(const_cast<std::byte *>(obj)));
+  return *static_cast<uint64_t *>(static_cast<void *>(const_cast<T *>(obj)));
+}
+
+template <class T>
+uint64_t *
+CastToUint64Ptr(const T *obj)
+{
+  return static_cast<uint64_t *>(static_cast<void *>(const_cast<T *>(obj)));
 }
 
 /**

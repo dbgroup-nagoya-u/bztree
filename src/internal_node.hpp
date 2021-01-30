@@ -9,7 +9,8 @@
 
 namespace bztree
 {
-class InternalNode : public BaseNode
+template <class Key, class Payload, template <typename> class Compare>
+class alignas(kWordLength) InternalNode : public BaseNode
 {
  private:
   /*################################################################################################

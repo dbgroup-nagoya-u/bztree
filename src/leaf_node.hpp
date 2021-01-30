@@ -16,7 +16,7 @@
 namespace bztree
 {
 template <class Key, class Payload, template <typename> class Compare>
-class LeafNode : public BaseNode
+class alignas(kWordLength) LeafNode : public BaseNode
 {
  private:
   /*################################################################################################
@@ -372,7 +372,7 @@ class LeafNode : public BaseNode
 
     // insert a record
     auto offset = GetNodeSize() - current_status.GetBlockSize();
-    offset = CopyRecord(key, key_length, payload, payload_length, offset);
+    offset = SetRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = inserting_meta.SetRecordInfo(offset, key_length, total_length);
@@ -466,7 +466,7 @@ class LeafNode : public BaseNode
 
     // insert a record
     auto offset = GetNodeSize() - new_status.GetBlockSize();
-    offset = CopyRecord(key, key_length, payload, payload_length, offset);
+    offset = SetRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = inserting_meta.SetRecordInfo(offset, key_length, total_length);
@@ -559,7 +559,7 @@ class LeafNode : public BaseNode
 
     // insert a record
     auto offset = GetNodeSize() - new_status.GetBlockSize();
-    offset = CopyRecord(key, key_length, payload, payload_length, offset);
+    offset = SetRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = inserting_meta.SetRecordInfo(offset, key_length, total_length);
