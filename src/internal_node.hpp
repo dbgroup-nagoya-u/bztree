@@ -3,15 +3,19 @@
 
 #pragma once
 
+#include <functional>
 #include <utility>
 
 #include "base_node.hpp"
 
 namespace bztree
 {
-template <class Key, class Payload, template <typename> class Compare>
-class alignas(kWordLength) InternalNode : public BaseNode
+template <class Key, class Payload, class Compare = std::less<Key>>
+class InternalNode : public BaseNode<Key, Payload, Compare>
 {
+  using KeyExistence = BaseNode<Key, Payload, Compare>::KeyExistence;
+  using NodeReturnCode = BaseNode<Key, Payload, Compare>::NodeReturnCode;
+
  private:
   /*################################################################################################
    * Internal utility functions
@@ -23,8 +27,8 @@ class alignas(kWordLength) InternalNode : public BaseNode
       const size_t begin_index,
       const size_t end_index)
   {
-    auto sorted_count = GetSortedCount();
-    auto offset = GetNodeSize() - GetBlockSize();
+    auto sorted_count = this->GetSortedCount();
+    auto offset = this->GetNodeSize() - this->GetBlockSize();
     for (size_t index = begin_index; index < end_index; ++index) {
       const auto meta = original_node->GetMetadata(index);
       // copy a record
@@ -46,7 +50,9 @@ class alignas(kWordLength) InternalNode : public BaseNode
    * Public constructor/destructor
    *##############################################################################################*/
 
-  explicit InternalNode(const size_t node_size) : BaseNode{node_size, false} {}
+  explicit InternalNode(const size_t node_size) : BaseNode<Key, Payload, Compare>{node_size, false}
+  {
+  }
 
   InternalNode(const InternalNode &) = delete;
   InternalNode &operator=(const InternalNode &) = delete;
@@ -58,14 +64,13 @@ class alignas(kWordLength) InternalNode : public BaseNode
    * Public builders
    *##############################################################################################*/
 
-  template <class Key, class Payload, template <typename> class Compare>
   static InternalNode *
   CreateEmptyNode(const size_t node_size)
   {
     assert((node_size % kWordLength) == 0);
 
     auto aligned_page = aligned_alloc(kWordLength, node_size);
-    auto new_node = new (aligned_page) InternalNode<Key, Payload, Compare>{node_size};
+    auto new_node = new (aligned_page) InternalNode{node_size};
     return new_node;
   }
 
@@ -78,9 +83,9 @@ class alignas(kWordLength) InternalNode : public BaseNode
       const size_t key_length,
       const size_t payload_length) const
   {
-    const auto metadata_size = kWordLength * (GetRecordCount() + 1);
-    const auto block_size = key_length + payload_length + GetBlockSize();
-    return (BaseNode::kHeaderLength + metadata_size + block_size) > GetNodeSize();
+    const auto metadata_size = kWordLength * (this->GetRecordCount() + 1);
+    const auto block_size = key_length + payload_length + this->GetBlockSize();
+    return (kHeaderLength + metadata_size + block_size) > this->GetNodeSize();
   }
 
   constexpr bool
@@ -89,9 +94,9 @@ class alignas(kWordLength) InternalNode : public BaseNode
       const size_t payload_length,
       const size_t min_node_size) const
   {
-    const auto metadata_size = kWordLength * (GetRecordCount() - 1);
-    const auto block_size = GetBlockSize() - (key_length + payload_length);
-    return (BaseNode::kHeaderLength + metadata_size + block_size) < min_node_size;
+    const auto metadata_size = kWordLength * (this->GetRecordCount() - 1);
+    const auto block_size = this->GetBlockSize() - (key_length + payload_length);
+    return (kHeaderLength + metadata_size + block_size) < min_node_size;
   }
 
   constexpr bool
@@ -100,12 +105,12 @@ class alignas(kWordLength) InternalNode : public BaseNode
       const size_t merged_node_size,
       const size_t max_merged_node_size) const
   {
-    assert(index < GetSortedCount());  // an input index must be within range
+    assert(index < this->GetSortedCount());  // an input index must be within range
 
     if (index == 0) {
       return false;
     } else {
-      auto child_node = GetChildNode(index - 1);
+      auto child_node = this->GetChildNode(index - 1);
       return (child_node->GetApproximateDataSize() + merged_node_size) < max_merged_node_size;
     }
   }
@@ -116,12 +121,12 @@ class alignas(kWordLength) InternalNode : public BaseNode
       const size_t merged_node_size,
       const size_t max_merged_node_size) const
   {
-    assert(index < GetSortedCount());  // an input index must be within range
+    assert(index < this->GetSortedCount());  // an input index must be within range
 
-    if (index == GetSortedCount() - 1) {
+    if (index == this->GetSortedCount() - 1) {
       return false;
     } else {
-      auto child_node = GetChildNode(index + 1);
+      auto child_node = this->GetChildNode(index + 1);
       return (child_node->GetApproximateDataSize() + merged_node_size) < max_merged_node_size;
     }
   }
@@ -129,33 +134,34 @@ class alignas(kWordLength) InternalNode : public BaseNode
   constexpr size_t
   GetOccupiedSize() const
   {
-    return kHeaderLength + (GetSortedCount() * kWordLength) + GetBlockSize();
+    return kHeaderLength + (this->GetSortedCount() * kWordLength) + this->GetBlockSize();
   }
 
-  BaseNode *
+  BaseNode<Key, Payload, Compare> *
   GetChildNode(const size_t index) const
   {
-    return static_cast<BaseNode *>(static_cast<void *>(GetPayloadPtr(GetMetadata(index))));
+    return static_cast<BaseNode<Key, Payload, Compare> *>(
+        static_cast<void *>(this->GetPayloadPtr(this->GetMetadata(index))));
   }
 
-  std::pair<BaseNode *, size_t>
+  std::pair<BaseNode<Key, Payload, Compare> *, size_t>
   SearchChildNode(  //
       const Key key,
       const bool range_is_closed,
-      Compare<Key> comp) const
+      Compare comp) const
   {
     const auto index = SearchSortedMetadata(key, range_is_closed, comp).second;
-    return {GetChildNode(index), index};
+    return {this->GetChildNode(index), index};
   }
 
   /*################################################################################################
    * Public structure modification operations
    *##############################################################################################*/
 
-  std::pair<BaseNode *, BaseNode *>
+  std::pair<BaseNode<Key, Payload, Compare> *, BaseNode<Key, Payload, Compare> *>
   Split(const size_t left_record_count) const
   {
-    const auto node_size = GetNodeSize();
+    const auto node_size = this->GetNodeSize();
 
     // create a split left node
     auto left_node = CreateEmptyNode<Key, Payload, Compare>(node_size);
@@ -163,48 +169,49 @@ class alignas(kWordLength) InternalNode : public BaseNode
 
     // create a split right node
     auto right_node = CreateEmptyNode<Key, Payload, Compare>(node_size);
-    right_node->CopySortedRecords(this, left_record_count, GetSortedCount());
+    right_node->CopySortedRecords(this, left_record_count, this->GetSortedCount());
 
-    return {dynamic_cast<BaseNode *>(left_node), dynamic_cast<BaseNode *>(right_node)};
+    return {dynamic_cast<BaseNode<Key, Payload, Compare> *>(left_node),
+            dynamic_cast<BaseNode<Key, Payload, Compare> *>(right_node)};
   }
 
-  BaseNode *
+  BaseNode<Key, Payload, Compare> *
   Merge(  //
       InternalNode *sibling_node,
       const bool sibling_is_left) const
   {
-    const auto node_size = GetNodeSize();
+    const auto node_size = this->GetNodeSize();
 
     // create a merged node
     auto merged_node = CreateEmptyNode<Key, Payload, Compare>(node_size);
     if (sibling_is_left) {
       merged_node->CopySortedRecords(sibling_node, 0, sibling_node->GetSortedCount());
-      merged_node->CopySortedRecords(this, 0, GetSortedCount());
+      merged_node->CopySortedRecords(this, 0, this->GetSortedCount());
     } else {
-      merged_node->CopySortedRecords(this, 0, GetSortedCount());
+      merged_node->CopySortedRecords(this, 0, this->GetSortedCount());
       merged_node->CopySortedRecords(sibling_node, 0, sibling_node->GetSortedCount());
     }
 
-    return dynamic_cast<BaseNode *>(merged_node);
+    return dynamic_cast<BaseNode<Key, Payload, Compare> *>(merged_node);
   }
 
-  BaseNode *
+  BaseNode<Key, Payload, Compare> *
   NewParentForSplit(  //
-      BaseNode *left_child,
-      BaseNode *right_child,
+      BaseNode<Key, Payload, Compare> *left_child,
+      BaseNode<Key, Payload, Compare> *right_child,
       const size_t split_index) const
   {
-    auto offset = GetNodeSize();
+    auto offset = this->GetNodeSize();
     auto new_parent = CreateEmptyNode<Key, Payload, Compare>(offset);
 
     // copy child nodes with inserting new split ones
-    auto record_count = GetSortedCount();
+    auto record_count = this->GetSortedCount();
     for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
       // prepare copying record and metadata
-      const auto meta = GetMetadata(old_idx);
-      const auto key = GetKeyPtr(meta);
+      const auto meta = this->GetMetadata(old_idx);
+      const auto key = this->GetKeyPtr(meta);
       const auto key_length = meta.GetKeyLength();
-      auto node_addr = GetPayloadPtr(meta);
+      auto node_addr = this->GetPayloadPtr(meta);
       if (old_idx == split_index) {
         // prepare left child information
         const auto last_meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
@@ -229,13 +236,13 @@ class alignas(kWordLength) InternalNode : public BaseNode
     SetSortedCount(++record_count);
     SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, offset, 0));
 
-    return dynamic_cast<BaseNode *>(new_parent);
+    return dynamic_cast<BaseNode<Key, Payload, Compare> *>(new_parent);
   }
 
-  static BaseNode *
+  static BaseNode<Key, Payload, Compare> *
   NewRoot(  //
-      BaseNode *left_child,
-      BaseNode *right_child)
+      BaseNode<Key, Payload, Compare> *left_child,
+      BaseNode<Key, Payload, Compare> *right_child)
   {
     auto offset = left_child->GetNodeSize();
     auto new_root = CreateEmptyNode<Key, Payload, Compare>(offset);
@@ -262,30 +269,30 @@ class alignas(kWordLength) InternalNode : public BaseNode
     new_root->SetSortedCount(2);
     new_root->SetStatusWord(kInitStatusWord.AddRecordInfo(2, offset, 0));
 
-    return dynamic_cast<BaseNode *>(new_root);
+    return dynamic_cast<BaseNode<Key, Payload, Compare> *>(new_root);
   }
 
-  BaseNode *
+  BaseNode<Key, Payload, Compare> *
   NewParentForMerge(  //
-      BaseNode *merged_child,
+      BaseNode<Key, Payload, Compare> *merged_child,
       const size_t deleted_index,
-      Compare<Key> comp) const
+      Compare comp) const
   {
-    auto offset = GetNodeSize();
+    auto offset = this->GetNodeSize();
     auto new_parent = CreateEmptyNode<Key, Payload, Compare>(offset);
 
     // copy child nodes with deleting a merging target node
-    auto record_count = GetSortedCount();
+    auto record_count = this->GetSortedCount();
     for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
       // prepare copying record and metadata
-      auto meta = GetMetadata(old_idx);
-      auto key = GetKeyPtr(meta);
+      auto meta = this->GetMetadata(old_idx);
+      auto key = this->GetKeyPtr(meta);
       auto key_length = meta.GetKeyLength();
-      auto node_addr = GetPayloadPtr(meta);
+      auto node_addr = this->GetPayloadPtr(meta);
       if (old_idx == deleted_index) {
         // skip a deleted node and insert a merged node
-        meta = GetMetadata(++old_idx);
-        key = GetKeyPtr(meta);
+        meta = this->GetMetadata(++old_idx);
+        key = this->GetKeyPtr(meta);
         key_length = meta.GetKeyLength();
         node_addr = CastToBytePtr(merged_child);
       }
@@ -299,7 +306,7 @@ class alignas(kWordLength) InternalNode : public BaseNode
     new_parent->SetSortedCount(--record_count);
     new_parent->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, offset, 0));
 
-    return dynamic_cast<BaseNode *>(new_parent);
+    return dynamic_cast<BaseNode<Key, Payload, Compare> *>(new_parent);
   }
 };
 

@@ -7,6 +7,7 @@
 #include <pmwcas.h>
 
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -18,7 +19,7 @@
 
 namespace bztree
 {
-template <class Key, class Payload, template <typename> class Compare>
+template <class Key, class Payload, class Compare = std::less<Key>>
 class alignas(kWordLength) BaseNode
 {
  private:
@@ -72,9 +73,6 @@ class alignas(kWordLength) BaseNode
     kDeleted,
     kUncertain
   };
-
-  // header length in bytes
-  static constexpr size_t kHeaderLength = 2 * kWordLength;
 
   /*################################################################################################
    * Internally inherited constructors
@@ -212,7 +210,7 @@ class alignas(kWordLength) BaseNode
   SearchSortedMetadata(  //
       const Key key,
       const bool range_is_closed,
-      Compare<Key> comp)
+      Compare comp)
   {
     // TODO(anyone) implement binary search
     const auto sorted_count = GetSortedCount();
@@ -275,7 +273,7 @@ class alignas(kWordLength) BaseNode
     assert((node_size % kWordLength) == 0);
 
     auto aligned_page = aligned_alloc(kWordLength, node_size);
-    auto new_node = new (aligned_page) BaseNode<Key, Payload, Compare>{node_size, is_leaf};
+    auto new_node = new (aligned_page) BaseNode{node_size, is_leaf};
     return new_node;
   }
 
@@ -393,8 +391,8 @@ class alignas(kWordLength) BaseNode
       pmwcas::Descriptor *descriptor)
   {
     auto status_addr = &status_.int_word;
-    auto old_stat_int = CastToUint64(&old_status));
-    auto new_stat_int = CastToUint64(&new_status));
+    auto old_stat_int = CastToUint64(&old_status);
+    auto new_stat_int = CastToUint64(&new_status);
     return descriptor->AddEntry(status_addr, old_stat_int, new_stat_int);
   }
 
@@ -406,8 +404,8 @@ class alignas(kWordLength) BaseNode
       pmwcas::Descriptor *descriptor)
   {
     auto meta_addr = &((meta_array_ + index)->int_meta);
-    auto old_meta_int = CastToUint64(&old_meta));
-    auto new_meta_int = CastToUint64(&new_meta));
+    auto old_meta_int = CastToUint64(&old_meta);
+    auto new_meta_int = CastToUint64(&new_meta);
     return descriptor->AddEntry(meta_addr, old_meta_int, new_meta_int);
   }
 
