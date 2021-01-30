@@ -172,7 +172,7 @@ ShiftAddress(T *ptr, const size_t offset)
 }
 
 template <class T1, class T2>
-bool
+constexpr bool
 HaveSameAddress(const T1 *a, const T2 *b)
 {
   return static_cast<const void *>(a) == static_cast<const void *>(b);
