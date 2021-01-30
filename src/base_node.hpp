@@ -33,9 +33,9 @@ class alignas(kWordLength) BaseNode
 
   uint64_t : 0;
 
-  StatusWord status_word_;
+  StatusUnion status_;
 
-  Metadata meta_array_[0];
+  MetaUnion meta_array_[0];
 
   /*################################################################################################
    * Internal getter/setter for test use
@@ -50,7 +50,7 @@ class alignas(kWordLength) BaseNode
   uint64_t
   GetStatusWordAddrForTest(void)
   {
-    return reinterpret_cast<uint64_t>(reinterpret_cast<std::byte *>(&status_word_));
+    return reinterpret_cast<uint64_t>(reinterpret_cast<std::byte *>(&status_));
   }
 
   uint64_t
@@ -115,7 +115,7 @@ class alignas(kWordLength) BaseNode
   void
   SetStatusWord(const StatusWord status)
   {
-    status_word_ = status;
+    status_.word = status;
   }
 
   void
@@ -135,7 +135,7 @@ class alignas(kWordLength) BaseNode
       const size_t index,
       const Metadata new_meta)
   {
-    *(meta_array_ + index) = new_meta;
+    (meta_array_ + index)->meta = new_meta;
   }
 
   void
@@ -296,42 +296,41 @@ class alignas(kWordLength) BaseNode
   constexpr StatusWord
   GetStatusWord() const
   {
-    return status_word_;
+    return status_.word;
   }
 
   StatusWord
   GetStatusWordProtected()
   {
-    auto status_addr = reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&status_word_));
-    auto protected_status =
+    auto status_addr = &status_.int_word;
+    const auto protected_status =
         reinterpret_cast<pmwcas::MwcTargetField<uint64_t> *>(status_addr)->GetValueProtected();
-    return StatusWord{
-        *reinterpret_cast<StatusWord *>(reinterpret_cast<std::byte *>(protected_status))};
+    return StatusUnion{protected_status}.word;
   }
 
   constexpr size_t
   GetRecordCount() const
   {
-    return status_word_.GetRecordCount();
+    return GetStatusWord().GetRecordCount();
   }
 
   constexpr size_t
   GetBlockSize() const
   {
-    return status_word_.GetBlockSize();
+    return GetStatusWord().GetBlockSize();
   }
 
   constexpr size_t
   GetDeletedSize() const
   {
-    return status_word_.GetDeletedSize();
+    return GetStatusWord().GetDeletedSize();
   }
 
   constexpr size_t
   GetApproximateDataSize() const
   {
-    return (kWordLength * status_word_.GetRecordCount()) + status_word_.GetBlockSize()
-           - status_word_.GetDeletedSize();
+    return (kWordLength * GetStatusWord().GetRecordCount()) + GetStatusWord().GetBlockSize()
+           - GetStatusWord().GetDeletedSize();
   }
 
   constexpr size_t
@@ -343,17 +342,16 @@ class alignas(kWordLength) BaseNode
   constexpr Metadata
   GetMetadata(const size_t index) const
   {
-    return *(meta_array_ + index);
+    return (meta_array_ + index)->meta;
   }
 
   Metadata
   GetMetadataProtected(const size_t index)
   {
-    auto meta_addr =
-        reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(meta_array_ + index));
+    auto meta_addr = &((meta_array_ + index)->int_meta);
     auto protected_meta =
         reinterpret_cast<pmwcas::MwcTargetField<uint64_t> *>(meta_addr)->GetValueProtected();
-    return *reinterpret_cast<Metadata *>(reinterpret_cast<std::byte *>(&protected_meta));
+    return MetaUnion{protected_meta}.meta;
   }
 
   constexpr size_t
@@ -374,7 +372,7 @@ class alignas(kWordLength) BaseNode
       StatusWord new_status,
       pmwcas::Descriptor *descriptor)
   {
-    auto status_addr = reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&status_word_));
+    auto status_addr = reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&status_));
     auto old_stat_int = *reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&old_status));
     auto new_stat_int = *reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&new_status));
     return descriptor->AddEntry(status_addr, old_stat_int, new_stat_int);

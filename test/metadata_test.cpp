@@ -129,4 +129,43 @@ TEST_F(MetadataFixture, DeletePayload_InitMeta_DeleteWithoutSideEffect)
   EXPECT_FALSE(test_meta.IsCorrupted(epoch));
 }
 
+TEST_F(MetadataFixture, Union_DefaultConstructor_CorrectlyInitialized)
+{
+  const MetaUnion meta_union;
+  const auto union_addr = reinterpret_cast<uint64_t>(&meta_union);
+  const auto meta_addr = reinterpret_cast<uint64_t>(&meta_union.meta);
+  const auto int_addr = reinterpret_cast<uint64_t>(&meta_union.int_meta);
+
+  EXPECT_EQ(kWordLength, sizeof(meta_union));
+  EXPECT_EQ(union_addr, meta_addr);
+  EXPECT_EQ(union_addr, int_addr);
+
+  const Metadata meta = meta_union.meta;
+
+  EXPECT_EQ(0, meta.GetControlBit());
+  EXPECT_FALSE(meta.IsVisible());
+  EXPECT_FALSE(meta.IsInProgress());
+  EXPECT_EQ(0, meta.GetOffset());
+  EXPECT_EQ(0, meta.GetKeyLength());
+  EXPECT_EQ(0, meta.GetTotalLength());
+}
+
+TEST_F(MetadataFixture, Union_CopyByInt_HasSameInformation)
+{
+  const auto epoch = 0;
+  const auto offset = 256, key_length = 16, total_length = 32;
+
+  MetaUnion meta_union, comp_union;
+  meta_union.meta =
+      meta_union.meta.InitForInsert(epoch).SetRecordInfo(offset, key_length, total_length);
+  comp_union.int_meta = meta_union.int_meta;
+
+  EXPECT_EQ(meta_union.meta.GetControlBit(), comp_union.meta.GetControlBit());
+  EXPECT_EQ(meta_union.meta.IsVisible(), comp_union.meta.IsVisible());
+  EXPECT_EQ(meta_union.meta.IsInProgress(), comp_union.meta.IsInProgress());
+  EXPECT_EQ(meta_union.meta.GetOffset(), comp_union.meta.GetOffset());
+  EXPECT_EQ(meta_union.meta.GetKeyLength(), comp_union.meta.GetKeyLength());
+  EXPECT_EQ(meta_union.meta.GetTotalLength(), comp_union.meta.GetTotalLength());
+}
+
 }  // namespace bztree

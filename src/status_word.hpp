@@ -20,13 +20,25 @@ class alignas(kWordLength) StatusWord
    * Internal member variables
    *##############################################################################################*/
 
-  uint64_t control_ : 3 = 0;
-  bool frozen_ : 1 = false;
   uint64_t record_count_ : 16 = 0;
   uint64_t block_size_ : 22 = 0;
   uint64_t deleted_size_ : 22 = 0;
+  bool frozen_ : 1 = false;
+  uint64_t control_ : 3 = 0;
 
  public:
+  /*################################################################################################
+   * Public constructors/destructors
+   *##############################################################################################*/
+
+  constexpr explicit StatusWord() = default;
+
+  StatusWord(const StatusWord &) = default;
+  StatusWord &operator=(const StatusWord &) = default;
+  StatusWord(StatusWord &&) = default;
+  StatusWord &operator=(StatusWord &&) = default;
+  ~StatusWord() = default;
+
   /*################################################################################################
    * Public getters/setters
    *##############################################################################################*/
@@ -102,5 +114,13 @@ class alignas(kWordLength) StatusWord
 };
 
 constexpr auto kInitStatusWord = StatusWord{};
+
+union StatusUnion {
+  StatusWord word;
+  uint64_t int_word;
+
+  constexpr explicit StatusUnion() : int_word{0} {}
+  constexpr explicit StatusUnion(const uint64_t int_stat) : int_word{int_stat} {}
+};
 
 }  // namespace bztree
