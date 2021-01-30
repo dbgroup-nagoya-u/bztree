@@ -347,7 +347,7 @@ class LeafNode : public BaseNode
       pmwcas::DescriptorPool *pmwcas_pool)
   {
     // variables and constants shared in Phase 1 & 2
-    StatusWord new_status;
+    StatusWord current_status;
     size_t record_count;
     const auto total_length = key_length + payload_length;
     const auto inserting_meta = kInitMetadata.InitForInsert(index_epoch);
@@ -357,14 +357,14 @@ class LeafNode : public BaseNode
      * Phase 1: reserve free space to write a record
      *--------------------------------------------------------------------------------------------*/
     do {
-      const auto current_status = GetStatusWordProtected();
+      current_status = GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
 
       // prepare for MwCAS
       record_count = current_status.GetRecordCount();
-      new_status = current_status.AddRecordInfo(1, total_length, 0);
+      const auto new_status = current_status.AddRecordInfo(1, total_length, 0);
       const auto current_meta = GetMetadata(record_count);
 
       // perform MwCAS to reserve space
@@ -378,7 +378,7 @@ class LeafNode : public BaseNode
      *--------------------------------------------------------------------------------------------*/
 
     // insert a record
-    auto offset = GetNodeSize() - new_status.GetBlockSize();
+    auto offset = GetNodeSize() - current_status.GetBlockSize();
     offset = CopyRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
@@ -386,18 +386,18 @@ class LeafNode : public BaseNode
 
     // check conflicts (concurrent SMOs)
     do {
-      new_status = GetStatusWordProtected();
-      if (new_status.IsFrozen()) {
+      current_status = GetStatusWordProtected();
+      if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
 
       // perform MwCAS to complete a write
       pd = pmwcas_pool->AllocateDescriptor();
-      SetStatusForMwCAS(new_status, new_status, pd);
+      SetStatusForMwCAS(current_status, current_status, pd);
       SetMetadataForMwCAS(record_count, inserting_meta, inserted_meta, pd);
     } while (!pd->MwCAS());
 
-    return {NodeReturnCode::kSuccess, new_status};
+    return {NodeReturnCode::kSuccess, current_status};
   }
 
   /**

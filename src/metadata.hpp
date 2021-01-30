@@ -163,10 +163,10 @@ constexpr Metadata kInitMetadata = Metadata{};
 
 union MetaUnion {
   Metadata meta;
-  uint64_t meta_int;
+  uint64_t int_meta;
 
-  constexpr explicit MetaUnion() : meta_int{0} {}
-  constexpr explicit MetaUnion(const uint64_t m_int) : meta_int{m_int} {}
+  constexpr explicit MetaUnion() : int_meta{0} {}
+  constexpr explicit MetaUnion(const uint64_t m_int) : int_meta{m_int} {}
 };
 
 }  // namespace bztree

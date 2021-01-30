@@ -25,6 +25,13 @@ enum ReturnCode
   kKeyExist
 };
 
+template <typename T>
+std::byte *
+CastToBytePtr(const T *obj)
+{
+  return static_cast<std::byte *>(static_cast<void *>(const_cast<T *>(obj)));
+}
+
 /**
  * @brief Compare binary keys as C_String. The end of every key must be '\\0'.
  *

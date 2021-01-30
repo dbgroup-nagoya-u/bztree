@@ -115,12 +115,12 @@ class alignas(kWordLength) StatusWord
 
 constexpr auto kInitStatusWord = StatusWord{};
 
-union Status {
-  StatusWord word_status;
-  uint64_t int_status;
+union StatusUnion {
+  StatusWord word;
+  uint64_t int_word;
 
-  constexpr explicit Status() : int_status{0} {}
-  constexpr explicit Status(const uint64_t int_stat) : int_status{int_stat} {}
+  constexpr explicit StatusUnion() : int_word{0} {}
+  constexpr explicit StatusUnion(const uint64_t int_stat) : int_word{int_stat} {}
 };
 
 }  // namespace bztree

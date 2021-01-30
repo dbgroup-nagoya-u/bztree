@@ -38,26 +38,22 @@ class LeafNodeFixture : public testing::Test
   }
 };
 
-TEST_F(LeafNodeFixture, New_DefaultNodeSize_GetInitializedHeader)
+TEST_F(LeafNodeFixture, New_EmptyNode_CorrectlyInitialized)
 {
-  // EXPECT_EQ(kDefaultNodeSize, node->GetNodeSize());
-  // EXPECT_FALSE(node->IsFrozen());
-  // EXPECT_EQ(0, node->GetRecordCount());
-  // EXPECT_EQ(0, node->GetBlockSize());
-  // EXPECT_EQ(0, node->GetDeletedSize());
-  // EXPECT_TRUE(node->IsLeaf());
-  // EXPECT_EQ(0, node->GetSortedCount());
+  EXPECT_EQ(kWordLength, node->GetStatusWordOffsetForTest());
+  EXPECT_EQ(kWordLength, node->GetMetadataOffsetForTest());
+  EXPECT_EQ(kDefaultNodeSize, node->GetNodeSize());
+  EXPECT_EQ(0, node->GetSortedCount());
 }
 
 TEST_F(LeafNodeFixture, Write_StringValues_MetadataCorrectlyUpdated)
 {
-  // auto str_key = "123", str_payload = "4567";
-  // auto key_length = 4, payload_length = 5;
-  // auto rc = node->Write(reinterpret_cast<const byte *>(str_key), key_length,
-  //                       reinterpret_cast<const byte *>(str_payload), payload_length, kIndexEpoch,
-  //                       kDefaultBlockSizeThreshold, kDefaultDeletedSizeThreshold, pool.get());
+  auto str_key = "123", str_payload = "4567";
+  auto key_length = 4, payload_length = 5;
+  auto [rc, status] = node->Write(CastToBytePtr(str_key), key_length, CastToBytePtr(str_payload),
+                                  payload_length, kIndexEpoch, pool.get());
 
-  // ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   // EXPECT_EQ(1, node->GetRecordCount());
   // EXPECT_TRUE(node->RecordIsVisible(0));
   // EXPECT_FALSE(node->RecordIsDeleted(0));
