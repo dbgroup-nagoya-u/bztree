@@ -135,11 +135,11 @@ class LeafNode : public BaseNode
   std::pair<KeyExistence, size_t>
   SearchUnsortedMetaToRead(  //
       const std::byte *key,
-      const size_t end_index,
+      const int64_t end_index,
       const size_t record_count,
       Compare comp)
   {
-    for (size_t index = record_count - 1; index >= end_index; index--) {
+    for (int64_t index = record_count - 1; index >= end_index; --index) {
       const auto meta = GetMetadata(index);
       if (IsEqual(key, GetKeyPtr(meta), comp)) {
         if (meta.IsVisible()) {

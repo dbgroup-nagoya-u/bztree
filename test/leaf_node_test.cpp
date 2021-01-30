@@ -87,20 +87,33 @@ TEST_F(LeafNodeFixture, Write_StringValues_MetadataCorrectlyUpdated)
   EXPECT_EQ(0, status.GetDeletedSize());
 }
 
+TEST_F(LeafNodeFixture, Write_StringValues_ReadWrittenValue)
+{
+  const auto first_key = "123", first_payload = "4567";
+  const auto first_key_length = 4, first_payload_length = 5;
+  const auto second_key = "test", second_payload = "value";
+  const auto second_key_length = 6, second_payload_length = 6;
 
-  // str_key = "test", str_payload = "value";
-  // key_length = 6, payload_length = 6;
-  // rc = node->Write(reinterpret_cast<const byte *>(str_key), key_length,
-  //                  reinterpret_cast<const byte *>(str_payload), payload_length,  //
-  //                  kIndexEpoch, kDefaultBlockSizeThreshold, kDefaultDeletedSizeThreshold,
-  //                  pool.get());
+  node->Write(CastToBytePtr(first_key), first_key_length, CastToBytePtr(first_payload),
+              first_payload_length, kIndexEpoch, pool.get());
+  node->Write(CastToBytePtr(second_key), second_key_length, CastToBytePtr(second_payload),
+              second_payload_length, kIndexEpoch, pool.get());
 
-  // ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  // EXPECT_EQ(2, node->GetRecordCount());
-  // EXPECT_TRUE(node->RecordIsVisible(1));
-  // EXPECT_FALSE(node->RecordIsDeleted(1));
-  // EXPECT_EQ(key_length, node->GetKeyLength(1));
-  // EXPECT_EQ(payload_length, node->GetPayloadLength(1));
+  auto [rc, u_ptr] = node->Read(CastToBytePtr(first_key), CompareAsCString{});
+  auto c_string = CastToCString(u_ptr.get());
+
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_STREQ(first_payload, c_string);
+
+  std::tie(rc, u_ptr) = node->Read(CastToBytePtr(second_key), CompareAsCString{});
+  c_string = CastToCString(u_ptr.get());
+
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_STREQ(second_payload, c_string);
+
+  std::tie(rc, u_ptr) = node->Read(CastToBytePtr("unknown"), CompareAsCString{});
+
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 }  // namespace bztree

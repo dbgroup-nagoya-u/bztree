@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cassert>
+#include <cstring>
 #include <memory>
 #include <sstream>
 
@@ -32,6 +33,12 @@ CastToBytePtr(const T *obj)
   return static_cast<std::byte *>(static_cast<void *>(const_cast<T *>(obj)));
 }
 
+char *
+CastToCString(const std::byte *obj)
+{
+  return static_cast<char *>(static_cast<void *>(const_cast<std::byte *>(obj)));
+}
+
 /**
  * @brief Compare binary keys as C_String. The end of every key must be '\\0'.
  *
@@ -40,8 +47,9 @@ struct CompareAsCString {
   constexpr bool
   operator()(const std::byte *a, const std::byte *b) const noexcept
   {
-    return static_cast<const char *>(static_cast<const void *>(a))
-           < static_cast<const char *>(static_cast<const void *>(b));
+    return strcmp(static_cast<const char *>(static_cast<const void *>(a)),
+                  static_cast<const char *>(static_cast<const void *>(b)))
+           < 0;
   }
 };
 
