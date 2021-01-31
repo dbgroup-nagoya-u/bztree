@@ -19,12 +19,12 @@ static constexpr size_t kIndexEpoch = 0;
 class BaseNodeFixture : public testing::Test
 {
  protected:
-  std::unique_ptr<BaseNode<uint64_t, uint64_t>> node;
+  std::unique_ptr<BaseNode> node;
 
   void
   SetUp() override
   {
-    node.reset(BaseNode<uint64_t, uint64_t>::CreateEmptyNode(kDefaultNodeSize, true));
+    node.reset(BaseNode::CreateEmptyNode(kDefaultNodeSize, true));
   }
 
   void
