@@ -302,9 +302,7 @@ class alignas(kWordLength) BaseNode
   StatusWord
   GetStatusWordProtected()
   {
-    auto status_addr = &status_.int_word;
-    const auto protected_status =
-        reinterpret_cast<pmwcas::MwcTargetField<uint64_t> *>(status_addr)->GetValueProtected();
+    const auto protected_status = status_.target_field.GetValueProtected();
     return StatusUnion{protected_status}.word;
   }
 
@@ -372,9 +370,9 @@ class alignas(kWordLength) BaseNode
       StatusWord new_status,
       pmwcas::Descriptor *descriptor)
   {
-    auto status_addr = reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&status_));
-    auto old_stat_int = *reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&old_status));
-    auto new_stat_int = *reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&new_status));
+    auto status_addr = &status_.int_word;
+    auto old_stat_int = StatusUnion{old_status}.int_word;
+    auto new_stat_int = StatusUnion{new_status}.int_word;
     return descriptor->AddEntry(status_addr, old_stat_int, new_stat_int);
   }
 

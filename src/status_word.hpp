@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <mwcas/mwcas.h>
+
 #include <string>
 
 #include "common.hpp"
@@ -118,9 +120,11 @@ constexpr auto kInitStatusWord = StatusWord{};
 union StatusUnion {
   StatusWord word;
   uint64_t int_word;
+  pmwcas::MwcTargetField<uint64_t> target_field;
 
   constexpr explicit StatusUnion() : int_word{0} {}
   constexpr explicit StatusUnion(const uint64_t int_stat) : int_word{int_stat} {}
+  constexpr explicit StatusUnion(const StatusWord word_stat) : word{word_stat} {}
 };
 
 }  // namespace bztree
