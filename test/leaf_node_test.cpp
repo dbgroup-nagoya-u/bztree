@@ -300,6 +300,35 @@ TEST_F(LeafNodeCStringFixture, Insert_AlmostFilled_GetCorrectReturnCodes)
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyExist, rc);
 }
 
+/*--------------------------------------------------------------------------------------------------
+ * Update operation
+ *------------------------------------------------------------------------------------------------*/
+
+TEST_F(LeafNodeCStringFixture, Update_StringValues_MetadataCorrectlyUpdated)
+{
+  std::tie(rc, status) = node->Insert(key_1st_ptr, key_length_1st, payload_1st_ptr,
+                                      payload_length_1st, kIndexEpoch, comp, pool.get());
+  rec_count = 1;
+  index = 0;
+  block_size = key_length_1st + payload_length_1st;
+
+  std::tie(rc, status) = node->Update(key_1st_ptr, key_length_1st, payload_2nd_ptr,
+                                      payload_length_2nd, kIndexEpoch, comp, pool.get());
+  ++rec_count;
+  ++index;
+  block_size += key_length_1st + payload_length_2nd;
+
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_TRUE(node->RecordIsVisible(index));
+  EXPECT_FALSE(node->RecordIsDeleted(index));
+  EXPECT_EQ(payload_length_2nd, node->GetPayloadLength(index));
+  EXPECT_FALSE(status.IsFrozen());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(0, status.GetDeletedSize());
+}
+
 /*##################################################################################################
  * Unsigned int 64 bits unit tests
  *################################################################################################*/
