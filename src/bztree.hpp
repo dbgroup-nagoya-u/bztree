@@ -55,11 +55,11 @@ class BzTree
 
     auto current_node = root_;
     do {
-      current_node = reinterpret_cast<InternalNode *>(current_node)
+      current_node = dynamic_cast<InternalNode *>(current_node)
                          ->SearchChildNode(key, range_is_closed, comparator_)
                          .first;
     } while (!current_node->IsLeaf());
-    return reinterpret_cast<LeafNode *>(current_node);
+    return dynamic_cast<LeafNode *>(current_node);
   }
 
   std::stack<std::pair<BaseNode *, size_t>>

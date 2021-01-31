@@ -44,19 +44,19 @@ class alignas(kWordLength) BaseNode
   uint64_t
   GetHeadAddrForTest(void)
   {
-    return reinterpret_cast<uint64_t>(reinterpret_cast<void *>(this));
+    return reinterpret_cast<uint64_t>(this);
   }
 
   uint64_t
   GetStatusWordAddrForTest(void)
   {
-    return reinterpret_cast<uint64_t>(reinterpret_cast<void *>(&status_));
+    return reinterpret_cast<uint64_t>(&status_);
   }
 
   uint64_t
   GetMetadataArrayAddrForTest(void)
   {
-    return reinterpret_cast<uint64_t>(reinterpret_cast<void *>(meta_array_));
+    return reinterpret_cast<uint64_t>(meta_array_);
   }
 
  protected:
@@ -144,7 +144,7 @@ class alignas(kWordLength) BaseNode
       const size_t key_length,
       const size_t offset)
   {
-    const auto key_ptr = ShiftAddress(reinterpret_cast<void *>(this), offset);
+    const auto key_ptr = ShiftAddress(this, offset);
     memcpy(key_ptr, key, key_length);
   }
 
@@ -154,7 +154,7 @@ class alignas(kWordLength) BaseNode
       const size_t payload_length,
       const size_t offset)
   {
-    const auto payload_ptr = ShiftAddress(reinterpret_cast<void *>(this), offset);
+    const auto payload_ptr = ShiftAddress(this, offset);
     memcpy(payload_ptr, payload, payload_length);
   }
 

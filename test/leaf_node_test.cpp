@@ -100,18 +100,18 @@ TEST_F(LeafNodeFixture, Write_StringValues_ReadWrittenValue)
               pool.get());
 
   auto [rc, u_ptr] = node->Read(first_key, CompareAsCString{});
-  auto result = CastToCString(u_ptr.get());
+  auto result = BitCast<const char*>(u_ptr.get());
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_STREQ(first_payload, result);
 
   std::tie(rc, u_ptr) = node->Read(second_key, CompareAsCString{});
-  result = CastToCString(u_ptr.get());
+  result = BitCast<const char*>(u_ptr.get());
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_STREQ(second_payload, result);
 
-  std::tie(rc, u_ptr) = node->Read(CastToBytePtr("unknown"), CompareAsCString{});
+  std::tie(rc, u_ptr) = node->Read("unknown", CompareAsCString{});
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
@@ -166,13 +166,13 @@ TEST_F(LeafNodeFixture, Write_UIntValues_ReadWrittenValue)
   node->Write(&second_key, key_length, &second_payload, payload_length, kIndexEpoch, pool.get());
 
   auto [rc, u_ptr] = node->Read(&first_key, CompareAsUInt64{});
-  auto result = CastToUint64(u_ptr.get());
+  auto result = *BitCast<uint64_t*>(u_ptr.get());
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(first_payload, result);
 
   std::tie(rc, u_ptr) = node->Read(&second_key, CompareAsUInt64{});
-  result = CastToUint64(u_ptr.get());
+  result = *BitCast<uint64_t*>(u_ptr.get());
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(second_payload, result);
