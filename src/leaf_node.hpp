@@ -647,8 +647,6 @@ class LeafNode : public BaseNode
   LeafNode *
   Consolidate(const std::vector<std::pair<void *, Metadata>> &live_meta)
   {
-    assert(IsFrozen());  // a consolidating node must be locked
-
     // create a new node and copy records
     auto new_node = CreateEmptyNode(GetNodeSize());
     new_node->CopyRecordsViaMetadata(this, live_meta.begin(), live_meta.size());

@@ -72,9 +72,6 @@ class alignas(kWordLength) BaseNode
     kUncertain
   };
 
-  // header length in bytes
-  static constexpr size_t kHeaderLength = 2 * kWordLength;
-
   /*################################################################################################
    * Internally inherited constructors
    *##############################################################################################*/
@@ -269,12 +266,6 @@ class alignas(kWordLength) BaseNode
     return is_leaf_;
   }
 
-  bool
-  IsFrozen()
-  {
-    return GetStatusWordProtected().IsFrozen();
-  }
-
   constexpr bool
   RecordIsVisible(const size_t index) const
   {
@@ -304,31 +295,6 @@ class alignas(kWordLength) BaseNode
   {
     const auto protected_status = status_.target_field.GetValueProtected();
     return StatusUnion{protected_status}.word;
-  }
-
-  constexpr size_t
-  GetRecordCount() const
-  {
-    return GetStatusWord().GetRecordCount();
-  }
-
-  constexpr size_t
-  GetBlockSize() const
-  {
-    return GetStatusWord().GetBlockSize();
-  }
-
-  constexpr size_t
-  GetDeletedSize() const
-  {
-    return GetStatusWord().GetDeletedSize();
-  }
-
-  constexpr size_t
-  GetApproximateDataSize() const
-  {
-    return (kWordLength * GetStatusWord().GetRecordCount()) + GetStatusWord().GetBlockSize()
-           - GetStatusWord().GetDeletedSize();
   }
 
   constexpr size_t

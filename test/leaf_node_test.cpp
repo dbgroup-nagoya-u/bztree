@@ -99,8 +99,9 @@ TEST_F(LeafNodeCStringFixture, Write_StringValues_MetadataCorrectlyUpdated)
   block_size = key_length_1st + payload_length_1st;
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(rec_count, node->GetRecordCount());
-  EXPECT_FALSE(node->IsFrozen());
+  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_1st, node->GetKeyLength(index));
@@ -117,8 +118,9 @@ TEST_F(LeafNodeCStringFixture, Write_StringValues_MetadataCorrectlyUpdated)
   block_size += key_length_2nd + payload_length_2nd;
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(rec_count, node->GetRecordCount());
-  EXPECT_FALSE(node->IsFrozen());
+  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_2nd, node->GetKeyLength(index));
@@ -237,8 +239,9 @@ TEST_F(LeafNodeUInt64Fixture, Write_UIntValues_MetadataCorrectlyUpdated)
   block_size = key_length_1st + payload_length_1st;
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(rec_count, node->GetRecordCount());
-  EXPECT_FALSE(node->IsFrozen());
+  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_1st, node->GetKeyLength(index));
@@ -255,8 +258,9 @@ TEST_F(LeafNodeUInt64Fixture, Write_UIntValues_MetadataCorrectlyUpdated)
   block_size += key_length_2nd + payload_length_2nd;
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(rec_count, node->GetRecordCount());
-  EXPECT_FALSE(node->IsFrozen());
+  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_2nd, node->GetKeyLength(index));

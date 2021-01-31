@@ -81,6 +81,9 @@ constexpr size_t kWordLength = 8;
 // pointer's byte length
 constexpr size_t kPointerLength = kWordLength;
 
+// header length in bytes
+constexpr size_t kHeaderLength = 2 * kWordLength;
+
 /**
  * @brief
  *

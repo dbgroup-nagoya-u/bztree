@@ -88,6 +88,18 @@ class alignas(kWordLength) StatusWord
     return deleted_size_;
   }
 
+  constexpr size_t
+  GetOccupiedSize() const
+  {
+    return kHeaderLength + (kWordLength * record_count_) + block_size_;
+  }
+
+  constexpr size_t
+  GetApproxDataSize() const
+  {
+    return (kWordLength * record_count_) + block_size_ - deleted_size_;
+  }
+
   /*################################################################################################
    * Public utility functions
    *##############################################################################################*/

@@ -204,8 +204,6 @@ class BzTree
       const void *target_key,
       const std::vector<std::pair<void *, Metadata>> &sorted_meta)
   {
-    assert(target_leaf->IsFrozen());  // a splitting node must be locked
-
     // get a separator key and its length
     const auto left_record_count = (sorted_meta.size() / 2);
     const auto [split_key, split_key_length] =
@@ -250,8 +248,6 @@ class BzTree
       InternalNode *target_node,
       const void *target_key)
   {
-    assert(target_node->IsFrozen());  // a splitting node must be locked
-
     // get a split index and a corresponding key length
     const auto left_record_count = (target_node->GetSortedCount() / 2);
     const auto split_key_length = target_node->GetKeyLength(left_record_count - 1);
@@ -305,8 +301,6 @@ class BzTree
       const size_t target_size,
       const std::vector<std::pair<void *, Metadata>> &sorted_meta)
   {
-    assert(target_node->IsFrozen());  // a merging node must be locked
-
     bool install_success;
     do {
       // check whether a target node remains
@@ -362,8 +356,6 @@ class BzTree
       const void *target_key,
       const size_t target_key_length)
   {
-    assert(target_node->IsFrozen());  // a merging node must be locked
-
     bool install_success;
     do {
       // check whether a target node remains
@@ -388,7 +380,7 @@ class BzTree
       BaseNode *merged_node, *new_parent;
       InternalNode *sibling_node;
       size_t deleted_index;
-      const auto target_size = target_node->GetOccupiedSize();
+      const auto target_size = target_node->GetStatusWord().GetOccupiedSize();
       if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
         deleted_index = target_index - 1;
         sibling_node = reinterpret_cast<InternalNode *>(parent->GetChildNode(deleted_index));
