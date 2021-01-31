@@ -395,9 +395,9 @@ class alignas(kWordLength) BaseNode
       const T *new_payload,
       pmwcas::Descriptor *descriptor)
   {
-    return descriptor->AddEntry(reinterpret_cast<uint64_t *>(GetPayloadPtr(GetMetadata(index))),
-                                reinterpret_cast<uint64_t>(old_payload),
-                                reinterpret_cast<uint64_t>(new_payload));
+    return descriptor->AddEntry(static_cast<uint64_t *>(GetPayloadPtr(GetMetadata(index))),
+                                PayloadUnion{old_payload}.int_payload,
+                                PayloadUnion{new_payload}.int_payload);
   }
 
   /*################################################################################################

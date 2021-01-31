@@ -39,21 +39,27 @@ class BzTree
   const size_t index_epoch_;
   // a comparator to compare input keys
   const Compare comparator_;
-  BaseNode *root_;
+  PayloadUnion root_;
   std::unique_ptr<pmwcas::DescriptorPool> descriptor_pool_;
 
   /*################################################################################################
    * Internal utility functions
    *##############################################################################################*/
 
+  BaseNode *
+  GetRootAsNode()
+  {
+    return static_cast<BaseNode *>(reinterpret_cast<void *>(root_.payload.value));
+  }
+
   LeafNode *
   SearchLeafNode(  //
       const void *key,
       const bool range_is_closed)
   {
-    assert(!root_->IsLeaf());  // a root node must be an internal node
+    assert(!GetRootAsNode()->IsLeaf());  // a root node must be an internal node
 
-    auto current_node = root_;
+    auto current_node = GetRootAsNode();
     do {
       current_node = dynamic_cast<InternalNode *>(current_node)
                          ->SearchChildNode(key, range_is_closed, comparator_)
@@ -65,10 +71,10 @@ class BzTree
   std::stack<std::pair<BaseNode *, size_t>>
   SearchLeafNodeWithTrace(const void *key)
   {
-    assert(!root_->IsLeaf());  // a root node must be an internal node
+    assert(!GetRootAsNode()->IsLeaf());  // a root node must be an internal node
 
     // set a root node
-    auto current_node = root_;
+    auto current_node = GetRootAsNode();
     size_t index = 0;
 
     // trace nodes to a target leaf node
@@ -88,10 +94,10 @@ class BzTree
       const void *key,
       InternalNode *target_node)
   {
-    assert(!root_->IsLeaf());  // a root node must be an internal node
+    assert(!GetRootAsNode()->IsLeaf());  // a root node must be an internal node
 
     // set a root node
-    auto current_node = root_;
+    auto current_node = GetRootAsNode();
     size_t index = 0;
 
     // trace nodes to a target internal node
@@ -123,9 +129,9 @@ class BzTree
       BaseNode *new_root_node,
       pmwcas::Descriptor *descriptor)
   {
-    return descriptor->AddEntry(reinterpret_cast<uint64_t *>(&root_),
-                                reinterpret_cast<uint64_t>(old_root_node),
-                                reinterpret_cast<uint64_t>(new_root_node));
+    return descriptor->AddEntry(&(root_.int_payload),
+                                PayloadUnion{PtrPayload{old_root_node}}.int_payload,
+                                PayloadUnion{PtrPayload{new_root_node}}.int_payload);
   }
 
   std::pair<const void *, size_t>
@@ -371,7 +377,7 @@ class BzTree
       // check whether it is required to merge a parent node
       trace.pop();  // remove a target node
       auto parent = reinterpret_cast<InternalNode *>(trace.top().first);
-      if (!HaveSameAddress(parent, root_)
+      if (!HaveSameAddress(parent, GetRootAsNode())
           && parent->NeedMerge(target_key_length, kPointerLength, node_size_min_threshold_)) {
         // invoke a parent (internal) node merging
         MergeInternalNodes(parent, target_key, target_key_length);

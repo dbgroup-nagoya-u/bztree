@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <mwcas/mwcas.h>
+
 #include <cassert>
 #include <cstring>
 #include <memory>
@@ -27,7 +29,7 @@ enum ReturnCode
 };
 
 template <class To, class From>
-To
+constexpr To
 BitCast(const From *obj)
 {
   return static_cast<To>(static_cast<void *>(const_cast<From *>(obj)));
@@ -90,7 +92,7 @@ constexpr size_t kPointerLength = kWordLength;
  * @return false otherwise
  */
 template <class Compare>
-bool
+constexpr bool
 IsEqual(const void *obj_1, const void *obj_2, Compare comp)
 {
   return !(comp(obj_1, obj_2) || comp(obj_2, obj_1));
@@ -110,7 +112,7 @@ IsEqual(const void *obj_1, const void *obj_2, Compare comp)
  * @return false
  */
 template <class Compare>
-bool
+constexpr bool
 IsInRange(const void *key,
           const void *begin_key,
           const bool begin_is_closed,
@@ -145,10 +147,29 @@ ShiftAddress(void *ptr, const size_t offset)
   return static_cast<void *>(static_cast<std::byte *>(ptr) + offset);
 }
 
-bool
+constexpr bool
 HaveSameAddress(const void *a, const void *b)
 {
   return a == b;
 }
+
+struct PtrPayload {
+  uintptr_t value : 61 = 0;
+
+  constexpr explicit PtrPayload(const void *ptr) : value{reinterpret_cast<uintptr_t>(ptr)} {}
+
+ private:
+  uint64_t control : 3 = 0;
+};
+
+union PayloadUnion {
+  PtrPayload payload;
+  uint64_t int_payload;
+  pmwcas::MwcTargetField<uint64_t> target_field;
+
+  constexpr explicit PayloadUnion() : int_payload{0} {}
+  constexpr explicit PayloadUnion(const uint64_t int_payload) : int_payload{int_payload} {}
+  constexpr explicit PayloadUnion(const PtrPayload payload) : payload{payload} {}
+};
 
 }  // namespace bztree
