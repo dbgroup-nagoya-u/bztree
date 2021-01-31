@@ -363,7 +363,7 @@ TEST_F(LeafNodeCStringFixture, Delete_StringValues_MetadataCorrectlyUpdated)
                                       payload_length_2nd, kIndexEpoch, comp, pool.get());
   std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
 
-  rec_count = 1;
+  rec_count = 2;
   block_size = key_length_1st + payload_length_1st + key_length_2nd + payload_length_2nd;
   deleted_size = key_length_1st + payload_length_1st;
 
@@ -396,6 +396,24 @@ TEST_F(LeafNodeCStringFixture, Delete_StringValues_UnReadDeletedValue)
   // check double-delete
   std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
   ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
+TEST_F(LeafNodeCStringFixture, Delete_AlmostFilled_GetCorrectReturnCodes)
+{
+  FillNode();
+
+  std::tie(rc, status) =
+      node->Write(null_word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, pool.get());
+
+  std::tie(rc, status) = node->Delete(null_word_ptr, kWordLength, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+
+  std::tie(rc, status) = node->Delete(null_word_ptr, kWordLength, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+
+  std::tie(rc, status) =
+      node->Insert(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kNoSpace, rc);
 }
 
 /*##################################################################################################
@@ -744,7 +762,7 @@ TEST_F(LeafNodeUInt64Fixture, Delete_UIntValues_MetadataCorrectlyUpdated)
                                       payload_length_2nd, kIndexEpoch, comp, pool.get());
   std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
 
-  rec_count = 1;
+  rec_count = 2;
   block_size = key_length_1st + payload_length_1st + key_length_2nd + payload_length_2nd;
   deleted_size = key_length_1st + payload_length_1st;
 
@@ -780,6 +798,21 @@ TEST_F(LeafNodeUInt64Fixture, Delete_UIntValues_UnReadDeletedValue)
 }
 
 TEST_F(LeafNodeUInt64Fixture, Delete_AlmostFilled_GetCorrectReturnCodes)
+{
+  FillNode();
+
+  std::tie(rc, status) =
+      node->Write(null_word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, pool.get());
+
+  std::tie(rc, status) = node->Delete(null_word_ptr, kWordLength, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+
+  std::tie(rc, status) = node->Delete(null_word_ptr, kWordLength, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+
+  std::tie(rc, status) =
+      node->Insert(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kNoSpace, rc);
 }
 
 }  // namespace bztree

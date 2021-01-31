@@ -162,7 +162,7 @@ class LeafNode : public BaseNode
   {
     const auto [existence, index] =
         SearchUnsortedMetaToRead(key, GetSortedCount(), record_count, comp);
-    if (existence == KeyExistence::kExist) {
+    if (existence == KeyExistence::kExist || existence == KeyExistence::kDeleted) {
       return {existence, index};
     } else {
       return SearchSortedMetadata(key, true, comp);
@@ -242,7 +242,7 @@ class LeafNode : public BaseNode
   {
     const auto status = GetStatusWord();
     const auto [existence, index] = SearchMetadataToRead(key, status.GetRecordCount(), comp);
-    if (existence == KeyExistence::kNotExist) {
+    if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
       return {NodeReturnCode::kKeyNotExist, nullptr};
     } else {
       const auto meta = GetMetadata(index);
@@ -554,7 +554,7 @@ class LeafNode : public BaseNode
 
       record_count = current_status.GetRecordCount();
       const auto existence = SearchMetadataToRead(key, record_count, comp).first;
-      if (existence == KeyExistence::kNotExist) {
+      if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
         return {NodeReturnCode::kKeyNotExist, kInitStatusWord};
       }
 
@@ -631,7 +631,7 @@ class LeafNode : public BaseNode
 
       const auto record_count = current_status.GetRecordCount();
       const auto [existence, index] = SearchMetadataToRead(key, record_count, comp);
-      if (existence == KeyExistence::kNotExist) {
+      if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
         return {NodeReturnCode::kKeyNotExist, kInitStatusWord};
       }
 
@@ -641,7 +641,7 @@ class LeafNode : public BaseNode
 
       // prepare new status
       const auto total_length = key_length + current_meta.GetPayloadLength();
-      new_status = current_status.AddRecordInfo(-1, 0, total_length);
+      new_status = current_status.AddRecordInfo(0, 0, total_length);
 
       // perform MwCAS to reserve space
       pd = pmwcas_pool->AllocateDescriptor();
