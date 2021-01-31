@@ -184,6 +184,7 @@ TEST_F(LeafNodeCStringFixture, Write_AlmostFilled_GetCorrectReturnCodes)
   std::tie(rc, status) =
       node->Write(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, pool.get());
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(kDefaultNodeSize, status.GetOccupiedSize());
 
   std::tie(rc, status) = node->Write(key_1st_ptr, key_length_1st, payload_1st_ptr,
                                      payload_length_1st, kIndexEpoch, pool.get());
@@ -265,6 +266,24 @@ TEST_F(LeafNodeCStringFixture, Insert_StringValues_ReadWrittenValue)
   // read not exist key
   std::tie(rc, u_ptr) = node->Read(key_unknown_ptr, comp);
   ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
+TEST_F(LeafNodeCStringFixture, Insert_AlmostFilled_GetCorrectReturnCodes)
+{
+  FillNode();
+
+  std::tie(rc, status) =
+      node->Insert(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(kDefaultNodeSize, status.GetOccupiedSize());
+
+  std::tie(rc, status) = node->Insert(key_1st_ptr, key_length_1st, payload_1st_ptr,
+                                      payload_length_1st, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kNoSpace, rc);
+
+  std::tie(rc, status) =
+      node->Insert(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyExist, rc);
 }
 
 /*##################################################################################################
@@ -516,6 +535,24 @@ TEST_F(LeafNodeUInt64Fixture, Insert_UIntValues_ReadWrittenValue)
   // read not exist key
   std::tie(rc, u_ptr) = node->Read(key_unknown_ptr, comp);
   ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
+TEST_F(LeafNodeUInt64Fixture, Insert_AlmostFilled_GetCorrectReturnCodes)
+{
+  FillNode();
+
+  std::tie(rc, status) =
+      node->Insert(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(kDefaultNodeSize, status.GetOccupiedSize());
+
+  std::tie(rc, status) = node->Insert(key_1st_ptr, key_length_1st, payload_1st_ptr,
+                                      payload_length_1st, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kNoSpace, rc);
+
+  std::tie(rc, status) =
+      node->Insert(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyExist, rc);
 }
 
 }  // namespace bztree
