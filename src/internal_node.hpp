@@ -23,7 +23,7 @@ class InternalNode : public BaseNode
       const size_t end_index)
   {
     auto sorted_count = GetSortedCount();
-    auto offset = GetNodeSize() - GetBlockSize();
+    auto offset = GetNodeSize() - GetStatusWord().GetBlockSize();
     for (size_t index = begin_index; index < end_index; ++index) {
       const auto meta = original_node->GetMetadata(index);
       // copy a record
@@ -62,9 +62,9 @@ class InternalNode : public BaseNode
       const size_t key_length,
       const size_t payload_length)
   {
-    const auto metadata_size = kWordLength * (GetRecordCount() + 1);
-    const auto block_size = key_length + payload_length + GetBlockSize();
-    return (BaseNode::kHeaderLength + metadata_size + block_size) > GetNodeSize();
+    const auto new_block_size =
+        GetStatusWord().GetOccupiedSize() + kWordLength + key_length + payload_length;
+    return new_block_size > GetNodeSize();
   }
 
   bool
@@ -73,9 +73,9 @@ class InternalNode : public BaseNode
       const size_t payload_length,
       const size_t min_node_size)
   {
-    const auto metadata_size = kWordLength * (GetRecordCount() - 1);
-    const auto block_size = GetBlockSize() - (key_length + payload_length);
-    return (BaseNode::kHeaderLength + metadata_size + block_size) < min_node_size;
+    const auto new_block_size =
+        GetStatusWord().GetOccupiedSize() - kWordLength - (key_length + payload_length);
+    return new_block_size < min_node_size;
   }
 
   bool
@@ -89,8 +89,8 @@ class InternalNode : public BaseNode
     if (index == 0) {
       return false;
     } else {
-      auto child_node = GetChildNode(index - 1);
-      return (child_node->GetApproximateDataSize() + merged_node_size) < max_merged_node_size;
+      const auto data_size = GetChildNode(index - 1)->GetStatusWord().GetApproxDataSize();
+      return (merged_node_size + data_size) < max_merged_node_size;
     }
   }
 
@@ -105,15 +105,9 @@ class InternalNode : public BaseNode
     if (index == GetSortedCount() - 1) {
       return false;
     } else {
-      auto child_node = GetChildNode(index + 1);
-      return (child_node->GetApproximateDataSize() + merged_node_size) < max_merged_node_size;
+      const auto data_size = GetChildNode(index + 1)->GetStatusWord().GetApproxDataSize();
+      return (merged_node_size + data_size) < max_merged_node_size;
     }
-  }
-
-  size_t
-  GetOccupiedSize()
-  {
-    return kHeaderLength + (GetSortedCount() * kWordLength) + GetBlockSize();
   }
 
   BaseNode *

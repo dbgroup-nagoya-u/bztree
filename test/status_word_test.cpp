@@ -58,6 +58,8 @@ TEST_F(StatusWordFixture, AddRecordInfo_InitialStatus_AddInfoWithoutSideEffect)
   EXPECT_EQ(record_count, updated_status.GetRecordCount());
   EXPECT_EQ(block_size, updated_status.GetBlockSize());
   EXPECT_EQ(deleted_size, updated_status.GetDeletedSize());
+  EXPECT_EQ(kHeaderLength + (kWordLength * 16) + block_size, updated_status.GetOccupiedSize());
+  EXPECT_EQ((kWordLength * 16) + block_size - deleted_size, updated_status.GetApproxDataSize());
 }
 
 TEST_F(StatusWordFixture, Union_DefaultConstructor_CorrectTypeInfomation)

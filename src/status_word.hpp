@@ -41,6 +41,19 @@ class alignas(kWordLength) StatusWord
   StatusWord &operator=(StatusWord &&) = default;
   ~StatusWord() = default;
 
+  constexpr bool
+  operator==(const StatusWord &comp) const
+  {
+    return record_count_ == comp.record_count_ && block_size_ == comp.block_size_
+           && deleted_size_ == comp.deleted_size_ && frozen_ == comp.frozen_;
+  }
+
+  constexpr bool
+  operator!=(const StatusWord &comp) const
+  {
+    return !(*this == comp);
+  }
+
   /*################################################################################################
    * Public getters/setters
    *##############################################################################################*/
@@ -73,6 +86,18 @@ class alignas(kWordLength) StatusWord
   GetDeletedSize() const
   {
     return deleted_size_;
+  }
+
+  constexpr size_t
+  GetOccupiedSize() const
+  {
+    return kHeaderLength + (kWordLength * record_count_) + block_size_;
+  }
+
+  constexpr size_t
+  GetApproxDataSize() const
+  {
+    return (kWordLength * record_count_) + block_size_ - deleted_size_;
   }
 
   /*################################################################################################

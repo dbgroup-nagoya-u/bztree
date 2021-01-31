@@ -19,6 +19,7 @@ static constexpr size_t kIndexEpoch = 0;
 /*##################################################################################################
  * CString unit tests
  *################################################################################################*/
+
 class LeafNodeCStringFixture : public testing::Test
 {
  protected:
@@ -36,6 +37,10 @@ class LeafNodeCStringFixture : public testing::Test
   const char* payload_2nd_ptr;
   size_t payload_length_1st;
   size_t payload_length_2nd;
+  const char* word;
+  const char* word_ptr;
+  const char* null_word;
+  const char* null_word_ptr;
 
   std::unique_ptr<pmwcas::DescriptorPool> pool;
   std::unique_ptr<LeafNode> node;
@@ -67,6 +72,10 @@ class LeafNodeCStringFixture : public testing::Test
     payload_2nd_ptr = payload_2nd;
     payload_length_1st = 5;
     payload_length_2nd = 6;
+    word = "1234567";
+    word_ptr = word;
+    null_word = "0000000";
+    null_word_ptr = null_word;
   }
 
   void
@@ -79,6 +88,14 @@ class LeafNodeCStringFixture : public testing::Test
   GetResult()
   {
     return BitCast<char*>(u_ptr.get());
+  }
+
+  void
+  FillNode()
+  {
+    for (size_t i = 0; i < 9; ++i) {
+      node->Write(null_word_ptr, kWordLength, null_word_ptr, kWordLength, kIndexEpoch, pool.get());
+    }
   }
 };
 
@@ -99,8 +116,9 @@ TEST_F(LeafNodeCStringFixture, Write_StringValues_MetadataCorrectlyUpdated)
   block_size = key_length_1st + payload_length_1st;
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(rec_count, node->GetRecordCount());
-  EXPECT_FALSE(node->IsFrozen());
+  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_1st, node->GetKeyLength(index));
@@ -117,8 +135,9 @@ TEST_F(LeafNodeCStringFixture, Write_StringValues_MetadataCorrectlyUpdated)
   block_size += key_length_2nd + payload_length_2nd;
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(rec_count, node->GetRecordCount());
-  EXPECT_FALSE(node->IsFrozen());
+  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_2nd, node->GetKeyLength(index));
@@ -153,6 +172,19 @@ TEST_F(LeafNodeCStringFixture, Write_StringValues_ReadWrittenValue)
   ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
+TEST_F(LeafNodeCStringFixture, Write_AlmostFilled_GetCorrectReturnCodes)
+{
+  FillNode();
+
+  std::tie(rc, status) =
+      node->Write(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+
+  std::tie(rc, status) = node->Write(key_1st_ptr, key_length_1st, payload_1st_ptr,
+                                     payload_length_1st, kIndexEpoch, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kNoSpace, rc);
+}
+
 /*##################################################################################################
  * Unsigned int 64 bits unit tests
  *################################################################################################*/
@@ -174,6 +206,10 @@ class LeafNodeUInt64Fixture : public testing::Test
   uint64_t* payload_2nd_ptr;
   size_t payload_length_1st;
   size_t payload_length_2nd;
+  uint64_t word;
+  uint64_t* word_ptr;
+  uint64_t null_word;
+  uint64_t* null_word_ptr;
 
   std::unique_ptr<pmwcas::DescriptorPool> pool;
   std::unique_ptr<LeafNode> node;
@@ -205,6 +241,10 @@ class LeafNodeUInt64Fixture : public testing::Test
     payload_2nd_ptr = &payload_2nd;
     payload_length_1st = kWordLength;
     payload_length_2nd = kWordLength;
+    word = 1;
+    word_ptr = &word;
+    null_word = 0;
+    null_word_ptr = &null_word;
   }
 
   void
@@ -217,6 +257,14 @@ class LeafNodeUInt64Fixture : public testing::Test
   GetResult()
   {
     return *BitCast<uint64_t*>(u_ptr.get());
+  }
+
+  void
+  FillNode()
+  {
+    for (size_t i = 0; i < 9; ++i) {
+      node->Write(null_word_ptr, kWordLength, null_word_ptr, kWordLength, kIndexEpoch, pool.get());
+    }
   }
 };
 
@@ -237,8 +285,9 @@ TEST_F(LeafNodeUInt64Fixture, Write_UIntValues_MetadataCorrectlyUpdated)
   block_size = key_length_1st + payload_length_1st;
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(rec_count, node->GetRecordCount());
-  EXPECT_FALSE(node->IsFrozen());
+  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_1st, node->GetKeyLength(index));
@@ -255,8 +304,9 @@ TEST_F(LeafNodeUInt64Fixture, Write_UIntValues_MetadataCorrectlyUpdated)
   block_size += key_length_2nd + payload_length_2nd;
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(rec_count, node->GetRecordCount());
-  EXPECT_FALSE(node->IsFrozen());
+  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_2nd, node->GetKeyLength(index));
@@ -289,6 +339,19 @@ TEST_F(LeafNodeUInt64Fixture, Write_UIntValues_ReadWrittenValue)
   // read not exist key
   std::tie(rc, u_ptr) = node->Read(key_unknown_ptr, CompareAsCString{});
   ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
+TEST_F(LeafNodeUInt64Fixture, Write_AlmostFilled_GetCorrectReturnCodes)
+{
+  FillNode();
+
+  std::tie(rc, status) =
+      node->Write(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+
+  std::tie(rc, status) = node->Write(key_1st_ptr, key_length_1st, payload_1st_ptr,
+                                     payload_length_1st, kIndexEpoch, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kNoSpace, rc);
 }
 
 }  // namespace bztree
