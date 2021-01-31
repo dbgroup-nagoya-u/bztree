@@ -122,8 +122,6 @@ TEST_F(LeafNodeCStringFixture, Write_StringValues_MetadataCorrectlyUpdated)
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   ASSERT_EQ(status, node->GetStatusWord());
-  EXPECT_EQ(rec_count, status.GetRecordCount());
-  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_1st, node->GetKeyLength(index));
@@ -141,8 +139,6 @@ TEST_F(LeafNodeCStringFixture, Write_StringValues_MetadataCorrectlyUpdated)
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   ASSERT_EQ(status, node->GetStatusWord());
-  EXPECT_EQ(rec_count, status.GetRecordCount());
-  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_2nd, node->GetKeyLength(index));
@@ -219,8 +215,6 @@ TEST_F(LeafNodeCStringFixture, Insert_StringValues_MetadataCorrectlyUpdated)
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   ASSERT_EQ(status, node->GetStatusWord());
-  EXPECT_EQ(rec_count, status.GetRecordCount());
-  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_1st, node->GetKeyLength(index));
@@ -238,8 +232,6 @@ TEST_F(LeafNodeCStringFixture, Insert_StringValues_MetadataCorrectlyUpdated)
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   ASSERT_EQ(status, node->GetStatusWord());
-  EXPECT_EQ(rec_count, status.GetRecordCount());
-  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_2nd, node->GetKeyLength(index));
@@ -435,8 +427,6 @@ TEST_F(LeafNodeUInt64Fixture, Write_UIntValues_MetadataCorrectlyUpdated)
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   ASSERT_EQ(status, node->GetStatusWord());
-  EXPECT_EQ(rec_count, status.GetRecordCount());
-  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_1st, node->GetKeyLength(index));
@@ -454,8 +444,6 @@ TEST_F(LeafNodeUInt64Fixture, Write_UIntValues_MetadataCorrectlyUpdated)
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   ASSERT_EQ(status, node->GetStatusWord());
-  EXPECT_EQ(rec_count, status.GetRecordCount());
-  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_2nd, node->GetKeyLength(index));
@@ -531,8 +519,6 @@ TEST_F(LeafNodeUInt64Fixture, Insert_UIntValues_MetadataCorrectlyUpdated)
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   ASSERT_EQ(status, node->GetStatusWord());
-  EXPECT_EQ(rec_count, status.GetRecordCount());
-  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_1st, node->GetKeyLength(index));
@@ -550,8 +536,6 @@ TEST_F(LeafNodeUInt64Fixture, Insert_UIntValues_MetadataCorrectlyUpdated)
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   ASSERT_EQ(status, node->GetStatusWord());
-  EXPECT_EQ(rec_count, status.GetRecordCount());
-  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_2nd, node->GetKeyLength(index));
