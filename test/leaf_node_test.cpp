@@ -378,6 +378,26 @@ TEST_F(LeafNodeCStringFixture, Delete_StringValues_MetadataCorrectlyUpdated)
   EXPECT_EQ(deleted_size, status.GetDeletedSize());
 }
 
+TEST_F(LeafNodeCStringFixture, Delete_StringValues_UnReadDeletedValue)
+{
+  // abort due to delete not exist keys
+  std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+
+  // insert and update value
+  node->Insert(key_1st_ptr, key_length_1st, payload_2nd_ptr, payload_length_2nd, kIndexEpoch, comp,
+               pool.get());
+  node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+
+  // read latest values
+  std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+
+  // check double-delete
+  std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
 /*##################################################################################################
  * Unsigned int 64 bits unit tests
  *################################################################################################*/
@@ -737,6 +757,29 @@ TEST_F(LeafNodeUInt64Fixture, Delete_UIntValues_MetadataCorrectlyUpdated)
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
   EXPECT_EQ(deleted_size, status.GetDeletedSize());
+}
+
+TEST_F(LeafNodeUInt64Fixture, Delete_UIntValues_UnReadDeletedValue)
+{
+  // abort due to delete not exist keys
+  std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+
+  // insert and update value
+  node->Insert(key_1st_ptr, key_length_1st, payload_2nd_ptr, payload_length_2nd, kIndexEpoch, comp,
+               pool.get());
+  node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+
+  // read latest values
+  std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+
+  // check double-delete
+  std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
+TEST_F(LeafNodeUInt64Fixture, Delete_AlmostFilled_GetCorrectReturnCodes)
 }
 
 }  // namespace bztree
