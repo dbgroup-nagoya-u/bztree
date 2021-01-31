@@ -333,6 +333,17 @@ TEST_F(LeafNodeCStringFixture, Update_StringValues_ReadWrittenValue)
   EXPECT_STREQ(payload_2nd, result);
 }
 
+TEST_F(LeafNodeCStringFixture, Update_DeletedValues_UpdateFailed)
+{
+  node->Insert(key_1st_ptr, key_length_1st, payload_2nd_ptr, payload_length_2nd, kIndexEpoch, comp,
+               pool.get());
+  node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+  std::tie(rc, status) = node->Update(key_1st_ptr, key_length_1st, payload_2nd_ptr,
+                                      payload_length_2nd, kIndexEpoch, comp, pool.get());
+
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
 TEST_F(LeafNodeCStringFixture, Update_AlmostFilled_GetCorrectReturnCodes)
 {
   FillNode();
@@ -730,6 +741,17 @@ TEST_F(LeafNodeUInt64Fixture, Update_UIntValues_ReadWrittenValue)
   result = GetResult();
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(payload_2nd, result);
+}
+
+TEST_F(LeafNodeUInt64Fixture, Update_DeletedValues_UpdateFailed)
+{
+  node->Insert(key_1st_ptr, key_length_1st, payload_2nd_ptr, payload_length_2nd, kIndexEpoch, comp,
+               pool.get());
+  node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+  std::tie(rc, status) = node->Update(key_1st_ptr, key_length_1st, payload_2nd_ptr,
+                                      payload_length_2nd, kIndexEpoch, comp, pool.get());
+
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 TEST_F(LeafNodeUInt64Fixture, Update_AlmostFilled_GetCorrectReturnCodes)
