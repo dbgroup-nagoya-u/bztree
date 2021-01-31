@@ -552,14 +552,14 @@ class LeafNode : public BaseNode
         return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
 
-      if (current_status.GetOccupiedSize() + kWordLength + total_length > GetNodeSize()) {
-        return {NodeReturnCode::kNoSpace, kInitStatusWord};
-      }
-
       record_count = current_status.GetRecordCount();
       const auto existence = SearchMetadataToRead(key, record_count, comp).first;
       if (existence == KeyExistence::kNotExist) {
         return {NodeReturnCode::kKeyNotExist, kInitStatusWord};
+      }
+
+      if (current_status.GetOccupiedSize() + kWordLength + total_length > GetNodeSize()) {
+        return {NodeReturnCode::kNoSpace, kInitStatusWord};
       }
 
       // prepare new status for MwCAS

@@ -122,8 +122,6 @@ TEST_F(LeafNodeCStringFixture, Write_StringValues_MetadataCorrectlyUpdated)
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   ASSERT_EQ(status, node->GetStatusWord());
-  EXPECT_EQ(rec_count, status.GetRecordCount());
-  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_1st, node->GetKeyLength(index));
@@ -141,8 +139,6 @@ TEST_F(LeafNodeCStringFixture, Write_StringValues_MetadataCorrectlyUpdated)
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   ASSERT_EQ(status, node->GetStatusWord());
-  EXPECT_EQ(rec_count, status.GetRecordCount());
-  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_2nd, node->GetKeyLength(index));
@@ -172,9 +168,19 @@ TEST_F(LeafNodeCStringFixture, Write_StringValues_ReadWrittenValue)
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_STREQ(payload_2nd, result);
 
-  // read not exist key
-  std::tie(rc, u_ptr) = node->Read(key_unknown_ptr, comp);
-  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+  // read latest values
+  node->Write(key_1st_ptr, key_length_1st, payload_2nd_ptr, payload_length_2nd, kIndexEpoch,
+              pool.get());
+  node->Write(key_2nd_ptr, key_length_2nd, payload_1st_ptr, payload_length_1st, kIndexEpoch,
+              pool.get());
+  std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
+  result = GetResult();
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_STREQ(payload_2nd, result);
+  std::tie(rc, u_ptr) = node->Read(key_2nd_ptr, comp);
+  result = GetResult();
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_STREQ(payload_1st, result);
 }
 
 TEST_F(LeafNodeCStringFixture, Write_AlmostFilled_GetCorrectReturnCodes)
@@ -205,8 +211,6 @@ TEST_F(LeafNodeCStringFixture, Insert_StringValues_MetadataCorrectlyUpdated)
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   ASSERT_EQ(status, node->GetStatusWord());
-  EXPECT_EQ(rec_count, status.GetRecordCount());
-  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_1st, node->GetKeyLength(index));
@@ -224,8 +228,6 @@ TEST_F(LeafNodeCStringFixture, Insert_StringValues_MetadataCorrectlyUpdated)
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   ASSERT_EQ(status, node->GetStatusWord());
-  EXPECT_EQ(rec_count, status.GetRecordCount());
-  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_2nd, node->GetKeyLength(index));
@@ -262,10 +264,6 @@ TEST_F(LeafNodeCStringFixture, Insert_StringValues_ReadWrittenValue)
   result = GetResult();
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_STREQ(payload_2nd, result);
-
-  // read not exist key
-  std::tie(rc, u_ptr) = node->Read(key_unknown_ptr, comp);
-  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 TEST_F(LeafNodeCStringFixture, Insert_AlmostFilled_GetCorrectReturnCodes)
@@ -284,6 +282,73 @@ TEST_F(LeafNodeCStringFixture, Insert_AlmostFilled_GetCorrectReturnCodes)
   std::tie(rc, status) =
       node->Insert(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, comp, pool.get());
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyExist, rc);
+}
+
+/*--------------------------------------------------------------------------------------------------
+ * Update operation
+ *------------------------------------------------------------------------------------------------*/
+
+TEST_F(LeafNodeCStringFixture, Update_StringValues_MetadataCorrectlyUpdated)
+{
+  std::tie(rc, status) = node->Insert(key_1st_ptr, key_length_1st, payload_1st_ptr,
+                                      payload_length_1st, kIndexEpoch, comp, pool.get());
+  rec_count = 1;
+  index = 0;
+  block_size = key_length_1st + payload_length_1st;
+
+  std::tie(rc, status) = node->Update(key_1st_ptr, key_length_1st, payload_2nd_ptr,
+                                      payload_length_2nd, kIndexEpoch, comp, pool.get());
+  ++rec_count;
+  ++index;
+  block_size += key_length_1st + payload_length_2nd;
+
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_TRUE(node->RecordIsVisible(index));
+  EXPECT_FALSE(node->RecordIsDeleted(index));
+  EXPECT_EQ(payload_length_2nd, node->GetPayloadLength(index));
+  EXPECT_FALSE(status.IsFrozen());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(0, status.GetDeletedSize());
+}
+
+TEST_F(LeafNodeCStringFixture, Update_StringValues_ReadWrittenValue)
+{
+  // abort due to update not exist keys
+  std::tie(rc, status) = node->Update(key_1st_ptr, key_length_1st, payload_1st_ptr,
+                                      payload_length_1st, kIndexEpoch, comp, pool.get());
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+
+  // insert and update value
+  node->Insert(key_1st_ptr, key_length_1st, payload_2nd_ptr, payload_length_2nd, kIndexEpoch, comp,
+               pool.get());
+  node->Update(key_1st_ptr, key_length_1st, payload_2nd_ptr, payload_length_2nd, kIndexEpoch, comp,
+               pool.get());
+
+  // read latest values
+  std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
+  result = GetResult();
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_STREQ(payload_2nd, result);
+}
+
+TEST_F(LeafNodeCStringFixture, Update_AlmostFilled_GetCorrectReturnCodes)
+{
+  FillNode();
+
+  std::tie(rc, status) = node->Update(null_word_ptr, kWordLength, word_ptr, kWordLength,
+                                      kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(kDefaultNodeSize, status.GetOccupiedSize());
+
+  std::tie(rc, status) = node->Update(null_word_ptr, kWordLength, payload_1st_ptr,
+                                      payload_length_1st, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kNoSpace, rc);
+
+  std::tie(rc, status) =
+      node->Update(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 /*##################################################################################################
@@ -392,8 +457,6 @@ TEST_F(LeafNodeUInt64Fixture, Write_UIntValues_MetadataCorrectlyUpdated)
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   ASSERT_EQ(status, node->GetStatusWord());
-  EXPECT_EQ(rec_count, status.GetRecordCount());
-  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_1st, node->GetKeyLength(index));
@@ -411,8 +474,6 @@ TEST_F(LeafNodeUInt64Fixture, Write_UIntValues_MetadataCorrectlyUpdated)
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   ASSERT_EQ(status, node->GetStatusWord());
-  EXPECT_EQ(rec_count, status.GetRecordCount());
-  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_2nd, node->GetKeyLength(index));
@@ -442,9 +503,19 @@ TEST_F(LeafNodeUInt64Fixture, Write_UIntValues_ReadWrittenValue)
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(payload_2nd, result);
 
-  // read not exist key
-  std::tie(rc, u_ptr) = node->Read(key_unknown_ptr, comp);
-  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+  // read latest values
+  node->Write(key_1st_ptr, key_length_1st, payload_2nd_ptr, payload_length_2nd, kIndexEpoch,
+              pool.get());
+  node->Write(key_2nd_ptr, key_length_2nd, payload_1st_ptr, payload_length_1st, kIndexEpoch,
+              pool.get());
+  std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
+  result = GetResult();
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(payload_2nd, result);
+  std::tie(rc, u_ptr) = node->Read(key_2nd_ptr, comp);
+  result = GetResult();
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(payload_1st, result);
 }
 
 TEST_F(LeafNodeUInt64Fixture, Write_AlmostFilled_GetCorrectReturnCodes)
@@ -474,8 +545,6 @@ TEST_F(LeafNodeUInt64Fixture, Insert_UIntValues_MetadataCorrectlyUpdated)
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   ASSERT_EQ(status, node->GetStatusWord());
-  EXPECT_EQ(rec_count, status.GetRecordCount());
-  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_1st, node->GetKeyLength(index));
@@ -493,8 +562,6 @@ TEST_F(LeafNodeUInt64Fixture, Insert_UIntValues_MetadataCorrectlyUpdated)
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   ASSERT_EQ(status, node->GetStatusWord());
-  EXPECT_EQ(rec_count, status.GetRecordCount());
-  EXPECT_FALSE(status.IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_2nd, node->GetKeyLength(index));
@@ -531,10 +598,6 @@ TEST_F(LeafNodeUInt64Fixture, Insert_UIntValues_ReadWrittenValue)
   result = GetResult();
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(payload_2nd, result);
-
-  // read not exist key
-  std::tie(rc, u_ptr) = node->Read(key_unknown_ptr, comp);
-  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 TEST_F(LeafNodeUInt64Fixture, Insert_AlmostFilled_GetCorrectReturnCodes)
@@ -553,6 +616,73 @@ TEST_F(LeafNodeUInt64Fixture, Insert_AlmostFilled_GetCorrectReturnCodes)
   std::tie(rc, status) =
       node->Insert(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, comp, pool.get());
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyExist, rc);
+}
+
+/*--------------------------------------------------------------------------------------------------
+ * Update operation
+ *------------------------------------------------------------------------------------------------*/
+
+TEST_F(LeafNodeUInt64Fixture, Update_UIntValues_MetadataCorrectlyUpdated)
+{
+  std::tie(rc, status) = node->Insert(key_1st_ptr, key_length_1st, payload_1st_ptr,
+                                      payload_length_1st, kIndexEpoch, comp, pool.get());
+  rec_count = 1;
+  index = 0;
+  block_size = key_length_1st + payload_length_1st;
+
+  std::tie(rc, status) = node->Update(key_1st_ptr, key_length_1st, payload_2nd_ptr,
+                                      payload_length_2nd, kIndexEpoch, comp, pool.get());
+  ++rec_count;
+  ++index;
+  block_size += key_length_1st + payload_length_2nd;
+
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_TRUE(node->RecordIsVisible(index));
+  EXPECT_FALSE(node->RecordIsDeleted(index));
+  EXPECT_EQ(payload_length_2nd, node->GetPayloadLength(index));
+  EXPECT_FALSE(status.IsFrozen());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(0, status.GetDeletedSize());
+}
+
+TEST_F(LeafNodeUInt64Fixture, Update_UIntValues_ReadWrittenValue)
+{
+  // abort due to update not exist keys
+  std::tie(rc, status) = node->Update(key_1st_ptr, key_length_1st, payload_1st_ptr,
+                                      payload_length_1st, kIndexEpoch, comp, pool.get());
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+
+  // insert and update value
+  node->Insert(key_1st_ptr, key_length_1st, payload_2nd_ptr, payload_length_2nd, kIndexEpoch, comp,
+               pool.get());
+  node->Update(key_1st_ptr, key_length_1st, payload_2nd_ptr, payload_length_2nd, kIndexEpoch, comp,
+               pool.get());
+
+  // read latest values
+  std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
+  result = GetResult();
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(payload_2nd, result);
+}
+
+TEST_F(LeafNodeUInt64Fixture, Update_AlmostFilled_GetCorrectReturnCodes)
+{
+  FillNode();
+
+  std::tie(rc, status) = node->Update(null_word_ptr, kWordLength, word_ptr, kWordLength,
+                                      kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(kDefaultNodeSize, status.GetOccupiedSize());
+
+  std::tie(rc, status) = node->Update(null_word_ptr, kWordLength, payload_1st_ptr,
+                                      payload_length_1st, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kNoSpace, rc);
+
+  std::tie(rc, status) =
+      node->Update(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 }  // namespace bztree
