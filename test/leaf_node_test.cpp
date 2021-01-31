@@ -333,6 +333,24 @@ TEST_F(LeafNodeCStringFixture, Update_StringValues_ReadWrittenValue)
   EXPECT_STREQ(payload_2nd, result);
 }
 
+TEST_F(LeafNodeCStringFixture, Update_AlmostFilled_GetCorrectReturnCodes)
+{
+  FillNode();
+
+  std::tie(rc, status) = node->Update(null_word_ptr, kWordLength, word_ptr, kWordLength,
+                                      kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(kDefaultNodeSize, status.GetOccupiedSize());
+
+  std::tie(rc, status) = node->Update(null_word_ptr, kWordLength, payload_1st_ptr,
+                                      payload_length_1st, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kNoSpace, rc);
+
+  std::tie(rc, status) =
+      node->Update(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
 /*##################################################################################################
  * Unsigned int 64 bits unit tests
  *################################################################################################*/
@@ -647,6 +665,24 @@ TEST_F(LeafNodeUInt64Fixture, Update_UIntValues_ReadWrittenValue)
   result = GetResult();
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(payload_2nd, result);
+}
+
+TEST_F(LeafNodeUInt64Fixture, Update_AlmostFilled_GetCorrectReturnCodes)
+{
+  FillNode();
+
+  std::tie(rc, status) = node->Update(null_word_ptr, kWordLength, word_ptr, kWordLength,
+                                      kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(kDefaultNodeSize, status.GetOccupiedSize());
+
+  std::tie(rc, status) = node->Update(null_word_ptr, kWordLength, payload_1st_ptr,
+                                      payload_length_1st, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kNoSpace, rc);
+
+  std::tie(rc, status) =
+      node->Update(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 }  // namespace bztree
