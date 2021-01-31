@@ -265,7 +265,7 @@ class BzTree
       if (trace.size() == 1) {
         // split a root node
         std::tie(left_node, right_node) = target_node->Split(left_record_count);
-        new_parent = InternalNode::NewRoot(left_node, right_node);
+        new_parent = BaseNode::NewRoot(left_node, right_node);
       } else {
         // check whether it is required to split a parent node
         trace.pop();  // remove a target node
