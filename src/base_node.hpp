@@ -44,19 +44,19 @@ class alignas(kWordLength) BaseNode
   uint64_t
   GetHeadAddrForTest(void)
   {
-    return reinterpret_cast<uint64_t>(reinterpret_cast<std::byte *>(this));
+    return reinterpret_cast<uint64_t>(reinterpret_cast<void *>(this));
   }
 
   uint64_t
   GetStatusWordAddrForTest(void)
   {
-    return reinterpret_cast<uint64_t>(reinterpret_cast<std::byte *>(&status_));
+    return reinterpret_cast<uint64_t>(reinterpret_cast<void *>(&status_));
   }
 
   uint64_t
   GetMetadataArrayAddrForTest(void)
   {
-    return reinterpret_cast<uint64_t>(reinterpret_cast<std::byte *>(meta_array_));
+    return reinterpret_cast<uint64_t>(reinterpret_cast<void *>(meta_array_));
   }
 
  protected:
@@ -92,14 +92,14 @@ class alignas(kWordLength) BaseNode
    * Internally inherited getters/setters
    *##############################################################################################*/
 
-  constexpr std::byte *
+  constexpr void *
   GetKeyPtr(const Metadata meta)
   {
     const auto offset = meta.GetOffset();
     return ShiftAddress(this, offset);
   }
 
-  constexpr std::byte *
+  constexpr void *
   GetPayloadPtr(const Metadata meta)
   {
     const auto offset = meta.GetOffset() + meta.GetKeyLength();
@@ -140,29 +140,29 @@ class alignas(kWordLength) BaseNode
 
   void
   SetKey(  //
-      const std::byte *key,
+      const void *key,
       const size_t key_length,
       const size_t offset)
   {
-    const auto key_ptr = ShiftAddress(reinterpret_cast<std::byte *>(this), offset);
+    const auto key_ptr = ShiftAddress(reinterpret_cast<void *>(this), offset);
     memcpy(key_ptr, key, key_length);
   }
 
   void
   SetPayload(  //
-      const std::byte *payload,
+      const void *payload,
       const size_t payload_length,
       const size_t offset)
   {
-    const auto payload_ptr = ShiftAddress(reinterpret_cast<std::byte *>(this), offset);
+    const auto payload_ptr = ShiftAddress(reinterpret_cast<void *>(this), offset);
     memcpy(payload_ptr, payload, payload_length);
   }
 
   size_t
   CopyRecord(  //
-      const std::byte *key,
+      const void *key,
       const size_t key_length,
-      const std::byte *payload,
+      const void *payload,
       const size_t payload_length,
       size_t offset)
   {
@@ -190,7 +190,7 @@ class alignas(kWordLength) BaseNode
   template <class Compare>
   std::pair<KeyExistence, size_t>
   SearchSortedMetadata(  //
-      const std::byte *key,
+      const void *key,
       const bool range_is_closed,
       Compare comp)
   {
@@ -199,7 +199,7 @@ class alignas(kWordLength) BaseNode
     size_t index;
     for (index = 0; index < sorted_count; index++) {
       const auto meta = GetMetadata(index);
-      const std::byte *index_key = GetKeyPtr(meta);
+      const void *index_key = GetKeyPtr(meta);
       if (IsEqual(key, index_key, comp)) {
         if (meta.IsVisible()) {
           return {KeyExistence::kExist, (range_is_closed) ? index : index + 1};
@@ -447,7 +447,7 @@ class alignas(kWordLength) BaseNode
   }
 
   static size_t
-  ComputeOccupiedSize(const std::vector<std::pair<std::byte *, Metadata>> &live_meta)
+  ComputeOccupiedSize(const std::vector<std::pair<void *, Metadata>> &live_meta)
   {
     size_t block_size = 0;
     for (auto &&[key, meta] : live_meta) {

@@ -51,7 +51,7 @@ CastToUint64(const std::byte *obj)
  */
 struct CompareAsCString {
   constexpr bool
-  operator()(const std::byte *a, const std::byte *b) const noexcept
+  operator()(const void *a, const void *b) const noexcept
   {
     return strcmp(static_cast<const char *>(static_cast<const void *>(a)),
                   static_cast<const char *>(static_cast<const void *>(b)))
@@ -65,7 +65,7 @@ struct CompareAsCString {
  */
 struct CompareAsUInt64 {
   constexpr bool
-  operator()(const std::byte *a, const std::byte *b) const noexcept
+  operator()(const void *a, const void *b) const noexcept
   {
     return *static_cast<const uint64_t *>(static_cast<const void *>(a))
            < *static_cast<const uint64_t *>(static_cast<const void *>(b));
@@ -78,7 +78,7 @@ struct CompareAsUInt64 {
  */
 struct CompareAsInt64 {
   constexpr bool
-  operator()(const std::byte *a, const std::byte *b) const noexcept
+  operator()(const void *a, const void *b) const noexcept
   {
     return *static_cast<const int64_t *>(static_cast<const void *>(a))
            < *static_cast<const int64_t *>(static_cast<const void *>(b));
@@ -95,20 +95,6 @@ constexpr size_t kWordLength = 8;
 // pointer's byte length
 constexpr size_t kPointerLength = kWordLength;
 
-template <class Compare>
-struct UniquePtrComparator {
-  Compare comp;
-
-  explicit UniquePtrComparator(Compare comp) : comp(comp) {}
-
-  bool
-  operator()(const std::unique_ptr<std::byte[]> &a,
-             const std::unique_ptr<std::byte[]> &b) const noexcept
-  {
-    return comp(a.get(), b.get());
-  }
-};
-
 /**
  * @brief
  *
@@ -121,7 +107,7 @@ struct UniquePtrComparator {
  */
 template <class Compare>
 bool
-IsEqual(const std::byte *obj_1, const std::byte *obj_2, Compare comp)
+IsEqual(const void *obj_1, const void *obj_2, Compare comp)
 {
   return !(comp(obj_1, obj_2) || comp(obj_2, obj_1));
 }
@@ -141,10 +127,10 @@ IsEqual(const std::byte *obj_1, const std::byte *obj_2, Compare comp)
  */
 template <class Compare>
 bool
-IsInRange(const std::byte *key,
-          const std::byte *begin_key,
+IsInRange(const void *key,
+          const void *begin_key,
           const bool begin_is_closed,
-          const std::byte *end_key,
+          const void *end_key,
           const bool end_is_closed,
           Compare comp)
 {
@@ -170,10 +156,10 @@ IsInRange(const std::byte *key,
  * @return byte* shifted address
  */
 template <typename T>
-constexpr std::byte *
+constexpr void *
 ShiftAddress(T *ptr, const size_t offset)
 {
-  return static_cast<std::byte *>(
+  return static_cast<void *>(
       static_cast<void *>(static_cast<std::byte *>(static_cast<void *>(ptr)) + offset));
 }
 
