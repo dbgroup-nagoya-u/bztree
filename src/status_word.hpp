@@ -41,6 +41,19 @@ class alignas(kWordLength) StatusWord
   StatusWord &operator=(StatusWord &&) = default;
   ~StatusWord() = default;
 
+  constexpr bool
+  operator==(const StatusWord &comp) const
+  {
+    return record_count_ == comp.record_count_ && block_size_ == comp.block_size_
+           && deleted_size_ == comp.deleted_size_ && frozen_ == comp.frozen_;
+  }
+
+  constexpr bool
+  operator!=(const StatusWord &comp) const
+  {
+    return !(*this == comp);
+  }
+
   /*################################################################################################
    * Public getters/setters
    *##############################################################################################*/
