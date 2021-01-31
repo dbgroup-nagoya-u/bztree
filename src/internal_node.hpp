@@ -195,14 +195,14 @@ class InternalNode : public BaseNode
         const auto last_meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
         const auto new_key = reinterpret_cast<InternalNode *>(left_child)->GetKeyPtr(last_meta);
         const auto new_key_length = last_meta.GetKeyLength();
-        const auto left_addr = reinterpret_cast<void *>(left_child);
+        const auto left_addr = static_cast<void *>(left_child);
         // insert a split left child
         offset = new_parent->CopyRecord(new_key, new_key_length, left_addr, kPointerLength, offset);
         const auto total_length = new_key_length + kPointerLength;
         const auto left_meta = kInitMetadata.SetRecordInfo(offset, new_key_length, total_length);
         new_parent->SetMetadata(new_idx++, left_meta);
         // insert a split right child
-        node_addr = reinterpret_cast<void *>(right_child);
+        node_addr = static_cast<void *>(right_child);
       }
       // copy a child node
       offset = new_parent->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
@@ -229,7 +229,7 @@ class InternalNode : public BaseNode
     auto meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
     auto key = reinterpret_cast<InternalNode *>(left_child)->GetKeyPtr(meta);
     auto key_length = meta.GetKeyLength();
-    auto node_addr = reinterpret_cast<void *>(left_child);
+    auto node_addr = static_cast<void *>(left_child);
     offset = new_root->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
     auto new_meta = kInitMetadata.SetRecordInfo(offset, key_length, key_length + kPointerLength);
     new_root->SetMetadata(0, new_meta);
@@ -238,7 +238,7 @@ class InternalNode : public BaseNode
     meta = right_child->GetMetadata(right_child->GetSortedCount() - 1);
     key = reinterpret_cast<InternalNode *>(right_child)->GetKeyPtr(meta);
     key_length = meta.GetKeyLength();
-    node_addr = reinterpret_cast<void *>(right_child);
+    node_addr = static_cast<void *>(right_child);
     offset = new_root->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
     new_meta = kInitMetadata.SetRecordInfo(offset, key_length, key_length + kPointerLength);
     new_root->SetMetadata(1, new_meta);
@@ -273,7 +273,7 @@ class InternalNode : public BaseNode
         meta = GetMetadata(++old_idx);
         key = GetKeyPtr(meta);
         key_length = meta.GetKeyLength();
-        node_addr = reinterpret_cast<void *>(merged_child);
+        node_addr = static_cast<void *>(merged_child);
       }
       // copy a child node
       offset = new_parent->CopyRecord(key, key_length, node_addr, kPointerLength, offset);

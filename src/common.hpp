@@ -41,9 +41,7 @@ struct CompareAsCString {
   constexpr bool
   operator()(const void *a, const void *b) const noexcept
   {
-    return strcmp(static_cast<const char *>(static_cast<const void *>(a)),
-                  static_cast<const char *>(static_cast<const void *>(b)))
-           < 0;
+    return strcmp(static_cast<const char *>(a), static_cast<const char *>(b)) < 0;
   }
 };
 
@@ -55,8 +53,7 @@ struct CompareAsUInt64 {
   constexpr bool
   operator()(const void *a, const void *b) const noexcept
   {
-    return *static_cast<const uint64_t *>(static_cast<const void *>(a))
-           < *static_cast<const uint64_t *>(static_cast<const void *>(b));
+    return *static_cast<const uint64_t *>(a) < *static_cast<const uint64_t *>(b);
   }
 };
 
@@ -68,8 +65,7 @@ struct CompareAsInt64 {
   constexpr bool
   operator()(const void *a, const void *b) const noexcept
   {
-    return *static_cast<const int64_t *>(static_cast<const void *>(a))
-           < *static_cast<const int64_t *>(static_cast<const void *>(b));
+    return *static_cast<const int64_t *>(a) < *static_cast<const int64_t *>(b);
   }
 };
 
@@ -143,19 +139,16 @@ IsInRange(const void *key,
  * @param offset
  * @return byte* shifted address
  */
-template <typename T>
 constexpr void *
-ShiftAddress(T *ptr, const size_t offset)
+ShiftAddress(void *ptr, const size_t offset)
 {
-  return static_cast<void *>(
-      static_cast<void *>(static_cast<std::byte *>(static_cast<void *>(ptr)) + offset));
+  return static_cast<void *>(static_cast<std::byte *>(ptr) + offset);
 }
 
-template <typename T1, typename T2>
 bool
-HaveSameAddress(const T1 *a, const T2 *b)
+HaveSameAddress(const void *a, const void *b)
 {
-  return static_cast<const void *>(a) == static_cast<const void *>(b);
+  return a == b;
 }
 
 }  // namespace bztree
