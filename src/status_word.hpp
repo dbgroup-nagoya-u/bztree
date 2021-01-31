@@ -114,7 +114,7 @@ class alignas(kWordLength) StatusWord
 
   constexpr StatusWord
   AddRecordInfo(  //
-      const size_t record_count,
+      const int64_t record_count,
       const size_t block_size,
       const size_t deleted_size) const
   {

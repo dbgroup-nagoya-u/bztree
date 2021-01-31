@@ -630,23 +630,23 @@ class LeafNode : public BaseNode
       }
 
       const auto record_count = current_status.GetRecordCount();
-      const auto existence = SearchMetadataToRead(key, record_count, comp).first;
+      const auto [existence, index] = SearchMetadataToRead(key, record_count, comp);
       if (existence == KeyExistence::kNotExist) {
         return {NodeReturnCode::kKeyNotExist, kInitStatusWord};
       }
 
       // delete payload infomation from metadata
-      const auto current_meta = GetMetadata(record_count);
+      const auto current_meta = GetMetadata(index);
       const auto deleted_meta = current_meta.DeleteRecordInfo();
 
       // prepare new status
       const auto total_length = key_length + current_meta.GetPayloadLength();
-      new_status = current_status.AddRecordInfo(0, 0, total_length);
+      new_status = current_status.AddRecordInfo(-1, 0, total_length);
 
       // perform MwCAS to reserve space
       pd = pmwcas_pool->AllocateDescriptor();
       SetStatusForMwCAS(current_status, new_status, pd);
-      SetMetadataForMwCAS(record_count, current_meta, deleted_meta, pd);
+      SetMetadataForMwCAS(index, current_meta, deleted_meta, pd);
     } while (!pd->MwCAS());
 
     return {NodeReturnCode::kSuccess, new_status};
