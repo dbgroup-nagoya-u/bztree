@@ -175,6 +175,20 @@ TEST_F(LeafNodeCStringFixture, Write_StringValues_ReadWrittenValue)
   // read not exist key
   std::tie(rc, u_ptr) = node->Read(key_unknown_ptr, comp);
   ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+
+  // read latest values
+  node->Write(key_1st_ptr, key_length_1st, payload_2nd_ptr, payload_length_2nd, kIndexEpoch,
+              pool.get());
+  node->Write(key_2nd_ptr, key_length_2nd, payload_1st_ptr, payload_length_1st, kIndexEpoch,
+              pool.get());
+  std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
+  result = GetResult();
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_STREQ(payload_2nd, result);
+  std::tie(rc, u_ptr) = node->Read(key_2nd_ptr, comp);
+  result = GetResult();
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_STREQ(payload_1st, result);
 }
 
 TEST_F(LeafNodeCStringFixture, Write_AlmostFilled_GetCorrectReturnCodes)
@@ -445,6 +459,20 @@ TEST_F(LeafNodeUInt64Fixture, Write_UIntValues_ReadWrittenValue)
   // read not exist key
   std::tie(rc, u_ptr) = node->Read(key_unknown_ptr, comp);
   ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+
+  // read latest values
+  node->Write(key_1st_ptr, key_length_1st, payload_2nd_ptr, payload_length_2nd, kIndexEpoch,
+              pool.get());
+  node->Write(key_2nd_ptr, key_length_2nd, payload_1st_ptr, payload_length_1st, kIndexEpoch,
+              pool.get());
+  std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
+  result = GetResult();
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(payload_2nd, result);
+  std::tie(rc, u_ptr) = node->Read(key_2nd_ptr, comp);
+  result = GetResult();
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(payload_1st, result);
 }
 
 TEST_F(LeafNodeUInt64Fixture, Write_AlmostFilled_GetCorrectReturnCodes)
