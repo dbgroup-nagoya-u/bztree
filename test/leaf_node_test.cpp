@@ -235,6 +235,38 @@ TEST_F(LeafNodeCStringFixture, Insert_StringValues_MetadataCorrectlyUpdated)
   EXPECT_EQ(0, status.GetDeletedSize());
 }
 
+TEST_F(LeafNodeCStringFixture, Insert_StringValues_ReadWrittenValue)
+{
+  node->Insert(key_1st_ptr, key_length_1st, payload_1st_ptr, payload_length_1st, kIndexEpoch, comp,
+               pool.get());
+  node->Insert(key_2nd_ptr, key_length_2nd, payload_2nd_ptr, payload_length_2nd, kIndexEpoch, comp,
+               pool.get());
+
+  // abort due to inserting duplicated values
+  std::tie(rc, status) = node->Insert(key_1st_ptr, key_length_1st, payload_1st_ptr,
+                                      payload_length_1st, kIndexEpoch, comp, pool.get());
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyExist, rc);
+  std::tie(rc, status) = node->Insert(key_2nd_ptr, key_length_2nd, payload_2nd_ptr,
+                                      payload_length_2nd, kIndexEpoch, comp, pool.get());
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyExist, rc);
+
+  // read 1st input value
+  std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
+  result = GetResult();
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_STREQ(payload_1st, result);
+
+  // read 2nd input value
+  std::tie(rc, u_ptr) = node->Read(key_2nd_ptr, comp);
+  result = GetResult();
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_STREQ(payload_2nd, result);
+
+  // read not exist key
+  std::tie(rc, u_ptr) = node->Read(key_unknown_ptr, comp);
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
 /*##################################################################################################
  * Unsigned int 64 bits unit tests
  *################################################################################################*/
@@ -413,7 +445,7 @@ TEST_F(LeafNodeUInt64Fixture, Write_AlmostFilled_GetCorrectReturnCodes)
  * Insert operation
  *------------------------------------------------------------------------------------------------*/
 
-TEST_F(LeafNodeUInt64Fixture, Insert_StringValues_MetadataCorrectlyUpdated)
+TEST_F(LeafNodeUInt64Fixture, Insert_UIntValues_MetadataCorrectlyUpdated)
 {
   std::tie(rc, status) = node->Insert(key_1st_ptr, key_length_1st, payload_1st_ptr,
                                       payload_length_1st, kIndexEpoch, comp, pool.get());
@@ -452,6 +484,38 @@ TEST_F(LeafNodeUInt64Fixture, Insert_StringValues_MetadataCorrectlyUpdated)
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
   EXPECT_EQ(0, status.GetDeletedSize());
+}
+
+TEST_F(LeafNodeUInt64Fixture, Insert_UIntValues_ReadWrittenValue)
+{
+  node->Insert(key_1st_ptr, key_length_1st, payload_1st_ptr, payload_length_1st, kIndexEpoch, comp,
+               pool.get());
+  node->Insert(key_2nd_ptr, key_length_2nd, payload_2nd_ptr, payload_length_2nd, kIndexEpoch, comp,
+               pool.get());
+
+  // abort due to inserting duplicated values
+  std::tie(rc, status) = node->Insert(key_1st_ptr, key_length_1st, payload_1st_ptr,
+                                      payload_length_1st, kIndexEpoch, comp, pool.get());
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyExist, rc);
+  std::tie(rc, status) = node->Insert(key_2nd_ptr, key_length_2nd, payload_2nd_ptr,
+                                      payload_length_2nd, kIndexEpoch, comp, pool.get());
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyExist, rc);
+
+  // read 1st input value
+  std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
+  result = GetResult();
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(payload_1st, result);
+
+  // read 2nd input value
+  std::tie(rc, u_ptr) = node->Read(key_2nd_ptr, comp);
+  result = GetResult();
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(payload_2nd, result);
+
+  // read not exist key
+  std::tie(rc, u_ptr) = node->Read(key_unknown_ptr, comp);
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 }  // namespace bztree
