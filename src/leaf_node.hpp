@@ -362,6 +362,10 @@ class LeafNode : public BaseNode
         return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
 
+      if (current_status.GetOccupiedSize() + kWordLength + total_length > GetNodeSize()) {
+        return {NodeReturnCode::kNoSpace, kInitStatusWord};
+      }
+
       // prepare for MwCAS
       record_count = current_status.GetRecordCount();
       const auto new_status = current_status.AddRecordInfo(1, total_length, 0);
@@ -441,6 +445,10 @@ class LeafNode : public BaseNode
       const auto current_status = GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, kInitStatusWord};
+      }
+
+      if (current_status.GetOccupiedSize() + kWordLength + total_length > GetNodeSize()) {
+        return {NodeReturnCode::kNoSpace, kInitStatusWord};
       }
 
       record_count = current_status.GetRecordCount();
@@ -542,6 +550,10 @@ class LeafNode : public BaseNode
       const auto current_status = GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, kInitStatusWord};
+      }
+
+      if (current_status.GetOccupiedSize() + kWordLength + total_length > GetNodeSize()) {
+        return {NodeReturnCode::kNoSpace, kInitStatusWord};
       }
 
       record_count = current_status.GetRecordCount();
