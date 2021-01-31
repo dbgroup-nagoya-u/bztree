@@ -90,13 +90,13 @@ class LeafNode : public BaseNode
   KeyExistence
   SearchUnsortedMetaToWrite(  //
       const void *key,
-      const size_t begin_index,
-      const size_t sorted_count,
+      const int64_t begin_index,
+      const int64_t sorted_count,
       const size_t index_epoch,
       Compare comp)
   {
     // perform a linear search in revese order
-    for (size_t index = begin_index; index >= sorted_count; --index) {
+    for (int64_t index = begin_index; index >= sorted_count; --index) {
       const auto meta = GetMetadataProtected(index);
       if (IsEqual(key, GetKeyPtr(meta), comp)) {
         if (meta.IsVisible()) {
@@ -117,7 +117,7 @@ class LeafNode : public BaseNode
   KeyExistence
   CheckUniqueness(  //
       const void *key,
-      const size_t record_count,
+      const int64_t record_count,
       const size_t index_epoch,
       Compare comp)
   {
@@ -136,7 +136,7 @@ class LeafNode : public BaseNode
   SearchUnsortedMetaToRead(  //
       const void *key,
       const int64_t end_index,
-      const size_t record_count,
+      const int64_t record_count,
       Compare comp)
   {
     for (int64_t index = record_count - 1; index >= end_index; --index) {
