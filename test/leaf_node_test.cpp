@@ -49,7 +49,7 @@ class LeafNodeCStringFixture : public testing::Test
   StatusWord status;
   std::unique_ptr<std::byte[]> u_ptr;
   char* result;
-  size_t rec_count, index, block_size;
+  size_t rec_count, index, block_size, deleted_size;
 
   void
   SetUp() override
@@ -333,6 +333,17 @@ TEST_F(LeafNodeCStringFixture, Update_StringValues_ReadWrittenValue)
   EXPECT_STREQ(payload_2nd, result);
 }
 
+TEST_F(LeafNodeCStringFixture, Update_DeletedValues_UpdateFailed)
+{
+  node->Insert(key_1st_ptr, key_length_1st, payload_2nd_ptr, payload_length_2nd, kIndexEpoch, comp,
+               pool.get());
+  node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+  std::tie(rc, status) = node->Update(key_1st_ptr, key_length_1st, payload_2nd_ptr,
+                                      payload_length_2nd, kIndexEpoch, comp, pool.get());
+
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
 TEST_F(LeafNodeCStringFixture, Update_AlmostFilled_GetCorrectReturnCodes)
 {
   FillNode();
@@ -349,6 +360,71 @@ TEST_F(LeafNodeCStringFixture, Update_AlmostFilled_GetCorrectReturnCodes)
   std::tie(rc, status) =
       node->Update(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, comp, pool.get());
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
+/*--------------------------------------------------------------------------------------------------
+ * Delete operation
+ *------------------------------------------------------------------------------------------------*/
+
+TEST_F(LeafNodeCStringFixture, Delete_StringValues_MetadataCorrectlyUpdated)
+{
+  std::tie(rc, status) = node->Insert(key_1st_ptr, key_length_1st, payload_1st_ptr,
+                                      payload_length_1st, kIndexEpoch, comp, pool.get());
+  std::tie(rc, status) = node->Insert(key_2nd_ptr, key_length_2nd, payload_2nd_ptr,
+                                      payload_length_2nd, kIndexEpoch, comp, pool.get());
+  std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+
+  rec_count = 2;
+  block_size = key_length_1st + payload_length_1st + key_length_2nd + payload_length_2nd;
+  deleted_size = key_length_1st + payload_length_1st;
+
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_FALSE(node->RecordIsVisible(0));
+  EXPECT_TRUE(node->RecordIsDeleted(0));
+  EXPECT_EQ(payload_length_2nd, node->GetPayloadLength(1));
+  EXPECT_FALSE(status.IsFrozen());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
+}
+
+TEST_F(LeafNodeCStringFixture, Delete_StringValues_UnReadDeletedValue)
+{
+  // abort due to delete not exist keys
+  std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+
+  // insert and update value
+  node->Insert(key_1st_ptr, key_length_1st, payload_2nd_ptr, payload_length_2nd, kIndexEpoch, comp,
+               pool.get());
+  node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+
+  // read latest values
+  std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+
+  // check double-delete
+  std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
+TEST_F(LeafNodeCStringFixture, Delete_AlmostFilled_GetCorrectReturnCodes)
+{
+  FillNode();
+
+  std::tie(rc, status) =
+      node->Write(null_word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, pool.get());
+
+  std::tie(rc, status) = node->Delete(null_word_ptr, kWordLength, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+
+  std::tie(rc, status) = node->Delete(null_word_ptr, kWordLength, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+
+  std::tie(rc, status) =
+      node->Insert(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kNoSpace, rc);
 }
 
 /*##################################################################################################
@@ -384,7 +460,7 @@ class LeafNodeUInt64Fixture : public testing::Test
   StatusWord status;
   std::unique_ptr<std::byte[]> u_ptr;
   uint64_t result;
-  size_t rec_count, index, block_size;
+  size_t rec_count, index, block_size, deleted_size;
 
   void
   SetUp() override
@@ -667,6 +743,17 @@ TEST_F(LeafNodeUInt64Fixture, Update_UIntValues_ReadWrittenValue)
   EXPECT_EQ(payload_2nd, result);
 }
 
+TEST_F(LeafNodeUInt64Fixture, Update_DeletedValues_UpdateFailed)
+{
+  node->Insert(key_1st_ptr, key_length_1st, payload_2nd_ptr, payload_length_2nd, kIndexEpoch, comp,
+               pool.get());
+  node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+  std::tie(rc, status) = node->Update(key_1st_ptr, key_length_1st, payload_2nd_ptr,
+                                      payload_length_2nd, kIndexEpoch, comp, pool.get());
+
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
 TEST_F(LeafNodeUInt64Fixture, Update_AlmostFilled_GetCorrectReturnCodes)
 {
   FillNode();
@@ -683,6 +770,71 @@ TEST_F(LeafNodeUInt64Fixture, Update_AlmostFilled_GetCorrectReturnCodes)
   std::tie(rc, status) =
       node->Update(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, comp, pool.get());
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
+/*--------------------------------------------------------------------------------------------------
+ * Delete operation
+ *------------------------------------------------------------------------------------------------*/
+
+TEST_F(LeafNodeUInt64Fixture, Delete_UIntValues_MetadataCorrectlyUpdated)
+{
+  std::tie(rc, status) = node->Insert(key_1st_ptr, key_length_1st, payload_1st_ptr,
+                                      payload_length_1st, kIndexEpoch, comp, pool.get());
+  std::tie(rc, status) = node->Insert(key_2nd_ptr, key_length_2nd, payload_2nd_ptr,
+                                      payload_length_2nd, kIndexEpoch, comp, pool.get());
+  std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+
+  rec_count = 2;
+  block_size = key_length_1st + payload_length_1st + key_length_2nd + payload_length_2nd;
+  deleted_size = key_length_1st + payload_length_1st;
+
+  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_FALSE(node->RecordIsVisible(0));
+  EXPECT_TRUE(node->RecordIsDeleted(0));
+  EXPECT_EQ(payload_length_2nd, node->GetPayloadLength(1));
+  EXPECT_FALSE(status.IsFrozen());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
+}
+
+TEST_F(LeafNodeUInt64Fixture, Delete_UIntValues_UnReadDeletedValue)
+{
+  // abort due to delete not exist keys
+  std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+
+  // insert and update value
+  node->Insert(key_1st_ptr, key_length_1st, payload_2nd_ptr, payload_length_2nd, kIndexEpoch, comp,
+               pool.get());
+  node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+
+  // read latest values
+  std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+
+  // check double-delete
+  std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
+TEST_F(LeafNodeUInt64Fixture, Delete_AlmostFilled_GetCorrectReturnCodes)
+{
+  FillNode();
+
+  std::tie(rc, status) =
+      node->Write(null_word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, pool.get());
+
+  std::tie(rc, status) = node->Delete(null_word_ptr, kWordLength, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+
+  std::tie(rc, status) = node->Delete(null_word_ptr, kWordLength, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+
+  std::tie(rc, status) =
+      node->Insert(word_ptr, kWordLength, word_ptr, kWordLength, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kNoSpace, rc);
 }
 
 }  // namespace bztree
