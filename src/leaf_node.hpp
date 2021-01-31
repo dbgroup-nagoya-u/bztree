@@ -30,8 +30,8 @@ class LeafNode : public BaseNode
 
     bool
     operator()(  //
-        std::pair<std::byte *, Metadata> a,
-        std::pair<std::byte *, Metadata> b) const noexcept
+        std::pair<void *, Metadata> a,
+        std::pair<void *, Metadata> b) const noexcept
     {
       return comp(a.first, b.first);
     }
@@ -45,8 +45,8 @@ class LeafNode : public BaseNode
 
     bool
     operator()(  //
-        std::pair<std::byte *, Metadata> a,
-        std::pair<std::byte *, Metadata> b) const noexcept
+        std::pair<void *, Metadata> a,
+        std::pair<void *, Metadata> b) const noexcept
     {
       return IsEqual(a.first, b.first, comp);
     }
@@ -89,7 +89,7 @@ class LeafNode : public BaseNode
   template <class Compare>
   KeyExistence
   SearchUnsortedMetaToWrite(  //
-      const std::byte *key,
+      const void *key,
       const size_t begin_index,
       const size_t sorted_count,
       const size_t index_epoch,
@@ -116,7 +116,7 @@ class LeafNode : public BaseNode
   template <class Compare>
   KeyExistence
   CheckUniqueness(  //
-      const std::byte *key,
+      const void *key,
       const size_t record_count,
       const size_t index_epoch,
       Compare comp)
@@ -134,7 +134,7 @@ class LeafNode : public BaseNode
   template <class Compare>
   std::pair<KeyExistence, size_t>
   SearchUnsortedMetaToRead(  //
-      const std::byte *key,
+      const void *key,
       const int64_t end_index,
       const size_t record_count,
       Compare comp)
@@ -156,7 +156,7 @@ class LeafNode : public BaseNode
   template <class Compare>
   std::pair<KeyExistence, size_t>
   SearchMetadataToRead(  //
-      const std::byte *key,
+      const void *key,
       const size_t record_count,
       Compare comp)
   {
@@ -169,10 +169,10 @@ class LeafNode : public BaseNode
     }
   }
 
-  std::vector<std::pair<std::byte *, Metadata>>::const_iterator
+  std::vector<std::pair<void *, Metadata>>::const_iterator
   CopyRecordsViaMetadata(  //
       LeafNode *original_node,
-      std::vector<std::pair<std::byte *, Metadata>>::const_iterator meta_iter,
+      std::vector<std::pair<void *, Metadata>>::const_iterator meta_iter,
       const size_t record_count)
   {
     auto offset = GetNodeSize();
@@ -237,7 +237,7 @@ class LeafNode : public BaseNode
   template <class Compare>
   std::pair<NodeReturnCode, std::unique_ptr<std::byte[]>>
   Read(  //
-      const std::byte *key,
+      const void *key,
       Compare comp)
   {
     const auto status = GetStatusWord();
@@ -266,9 +266,9 @@ class LeafNode : public BaseNode
   std::pair<NodeReturnCode,
             std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>>>
   Scan(  //
-      const std::byte *begin_key,
+      const void *begin_key,
       const bool begin_is_closed,
-      const std::byte *end_key,
+      const void *end_key,
       const bool end_is_closed,
       Compare comp)
   {
@@ -277,7 +277,7 @@ class LeafNode : public BaseNode
     const auto sorted_count = GetSortedCount();
 
     // gather valid (live or deleted) records
-    std::vector<std::pair<std::byte *, Metadata>> meta_arr;
+    std::vector<std::pair<void *, Metadata>> meta_arr;
     meta_arr.reserve(record_count);
 
     // search unsorted metadata in reverse order
@@ -339,9 +339,9 @@ class LeafNode : public BaseNode
    */
   std::pair<NodeReturnCode, StatusWord>
   Write(  //
-      const std::byte *key,
+      const void *key,
       const size_t key_length,
-      const std::byte *payload,
+      const void *payload,
       const size_t payload_length,
       const size_t index_epoch,
       pmwcas::DescriptorPool *pmwcas_pool)
@@ -415,9 +415,9 @@ class LeafNode : public BaseNode
   template <class Compare>
   std::pair<NodeReturnCode, StatusWord>
   Insert(  //
-      const std::byte *key,
+      const void *key,
       const size_t key_length,
-      const std::byte *payload,
+      const void *payload,
       const size_t payload_length,
       const size_t index_epoch,
       Compare comp,
@@ -520,9 +520,9 @@ class LeafNode : public BaseNode
   template <class Compare>
   std::pair<NodeReturnCode, StatusWord>
   Update(  //
-      const std::byte *key,
+      const void *key,
       const size_t key_length,
-      const std::byte *payload,
+      const void *payload,
       const size_t payload_length,
       const size_t index_epoch,
       Compare comp,
@@ -602,7 +602,7 @@ class LeafNode : public BaseNode
   template <class Compare>
   std::pair<NodeReturnCode, StatusWord>
   Delete(  //
-      const std::byte *key,
+      const void *key,
       const size_t key_length,
       Compare comp,
       pmwcas::DescriptorPool *pmwcas_pool)
@@ -645,7 +645,7 @@ class LeafNode : public BaseNode
    *##############################################################################################*/
 
   LeafNode *
-  Consolidate(const std::vector<std::pair<std::byte *, Metadata>> &live_meta)
+  Consolidate(const std::vector<std::pair<void *, Metadata>> &live_meta)
   {
     assert(IsFrozen());  // a consolidating node must be locked
 
@@ -658,7 +658,7 @@ class LeafNode : public BaseNode
 
   std::pair<BaseNode *, BaseNode *>
   Split(  //
-      const std::vector<std::pair<std::byte *, Metadata>> &sorted_meta,
+      const std::vector<std::pair<void *, Metadata>> &sorted_meta,
       const size_t left_record_count)
   {
     const auto node_size = GetNodeSize();
@@ -681,9 +681,9 @@ class LeafNode : public BaseNode
 
   BaseNode *
   Merge(  //
-      const std::vector<std::pair<std::byte *, Metadata>> &this_meta,
+      const std::vector<std::pair<void *, Metadata>> &this_meta,
       LeafNode *sibling_node,
-      const std::vector<std::pair<std::byte *, Metadata>> &sibling_meta,
+      const std::vector<std::pair<void *, Metadata>> &sibling_meta,
       const bool sibling_is_left)
   {
     // create a merged node
@@ -704,14 +704,14 @@ class LeafNode : public BaseNode
    *##############################################################################################*/
 
   template <class Compare>
-  std::vector<std::pair<std::byte *, Metadata>>
+  std::vector<std::pair<void *, Metadata>>
   GatherSortedLiveMetadata(Compare comp)
   {
     const auto record_count = GetStatusWord().GetRecordCount();
     const auto sorted_count = GetSortedCount();
 
     // gather valid (live or deleted) records
-    std::vector<std::pair<std::byte *, Metadata>> meta_arr;
+    std::vector<std::pair<void *, Metadata>> meta_arr;
     meta_arr.reserve(record_count);
 
     // search unsorted metadata in reverse order

@@ -44,19 +44,19 @@ class alignas(kWordLength) BaseNode
   uint64_t
   GetHeadAddrForTest(void)
   {
-    return reinterpret_cast<uint64_t>(reinterpret_cast<std::byte *>(this));
+    return reinterpret_cast<uint64_t>(this);
   }
 
   uint64_t
   GetStatusWordAddrForTest(void)
   {
-    return reinterpret_cast<uint64_t>(reinterpret_cast<std::byte *>(&status_));
+    return reinterpret_cast<uint64_t>(&status_);
   }
 
   uint64_t
   GetMetadataArrayAddrForTest(void)
   {
-    return reinterpret_cast<uint64_t>(reinterpret_cast<std::byte *>(meta_array_));
+    return reinterpret_cast<uint64_t>(meta_array_);
   }
 
  protected:
@@ -92,14 +92,14 @@ class alignas(kWordLength) BaseNode
    * Internally inherited getters/setters
    *##############################################################################################*/
 
-  constexpr std::byte *
+  constexpr void *
   GetKeyPtr(const Metadata meta)
   {
     const auto offset = meta.GetOffset();
     return ShiftAddress(this, offset);
   }
 
-  constexpr std::byte *
+  constexpr void *
   GetPayloadPtr(const Metadata meta)
   {
     const auto offset = meta.GetOffset() + meta.GetKeyLength();
@@ -140,29 +140,29 @@ class alignas(kWordLength) BaseNode
 
   void
   SetKey(  //
-      const std::byte *key,
+      const void *key,
       const size_t key_length,
       const size_t offset)
   {
-    const auto key_ptr = ShiftAddress(reinterpret_cast<std::byte *>(this), offset);
+    const auto key_ptr = ShiftAddress(this, offset);
     memcpy(key_ptr, key, key_length);
   }
 
   void
   SetPayload(  //
-      const std::byte *payload,
+      const void *payload,
       const size_t payload_length,
       const size_t offset)
   {
-    const auto payload_ptr = ShiftAddress(reinterpret_cast<std::byte *>(this), offset);
+    const auto payload_ptr = ShiftAddress(this, offset);
     memcpy(payload_ptr, payload, payload_length);
   }
 
   size_t
   CopyRecord(  //
-      const std::byte *key,
+      const void *key,
       const size_t key_length,
-      const std::byte *payload,
+      const void *payload,
       const size_t payload_length,
       size_t offset)
   {
@@ -190,7 +190,7 @@ class alignas(kWordLength) BaseNode
   template <class Compare>
   std::pair<KeyExistence, size_t>
   SearchSortedMetadata(  //
-      const std::byte *key,
+      const void *key,
       const bool range_is_closed,
       Compare comp)
   {
@@ -199,7 +199,7 @@ class alignas(kWordLength) BaseNode
     size_t index;
     for (index = 0; index < sorted_count; index++) {
       const auto meta = GetMetadata(index);
-      const std::byte *index_key = GetKeyPtr(meta);
+      const void *index_key = GetKeyPtr(meta);
       if (IsEqual(key, index_key, comp)) {
         if (meta.IsVisible()) {
           return {KeyExistence::kExist, (range_is_closed) ? index : index + 1};
@@ -302,9 +302,7 @@ class alignas(kWordLength) BaseNode
   StatusWord
   GetStatusWordProtected()
   {
-    auto status_addr = &status_.int_word;
-    const auto protected_status =
-        reinterpret_cast<pmwcas::MwcTargetField<uint64_t> *>(status_addr)->GetValueProtected();
+    const auto protected_status = status_.target_field.GetValueProtected();
     return StatusUnion{protected_status}.word;
   }
 
@@ -348,9 +346,7 @@ class alignas(kWordLength) BaseNode
   Metadata
   GetMetadataProtected(const size_t index)
   {
-    auto meta_addr = &((meta_array_ + index)->int_meta);
-    auto protected_meta =
-        reinterpret_cast<pmwcas::MwcTargetField<uint64_t> *>(meta_addr)->GetValueProtected();
+    const auto protected_meta = (meta_array_ + index)->target_field.GetValueProtected();
     return MetaUnion{protected_meta}.meta;
   }
 
@@ -372,9 +368,9 @@ class alignas(kWordLength) BaseNode
       StatusWord new_status,
       pmwcas::Descriptor *descriptor)
   {
-    auto status_addr = reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&status_));
-    auto old_stat_int = *reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&old_status));
-    auto new_stat_int = *reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&new_status));
+    auto status_addr = &status_.int_word;
+    auto old_stat_int = StatusUnion{old_status}.int_word;
+    auto new_stat_int = StatusUnion{new_status}.int_word;
     return descriptor->AddEntry(status_addr, old_stat_int, new_stat_int);
   }
 
@@ -385,10 +381,9 @@ class alignas(kWordLength) BaseNode
       Metadata new_meta,
       pmwcas::Descriptor *descriptor)
   {
-    auto meta_addr =
-        reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(meta_array_ + index));
-    auto old_meta_int = *reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&old_meta));
-    auto new_meta_int = *reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&new_meta));
+    auto meta_addr = &((meta_array_ + index)->int_meta);
+    auto old_meta_int = MetaUnion{old_meta}.int_meta;
+    auto new_meta_int = MetaUnion{new_meta}.int_meta;
     return descriptor->AddEntry(meta_addr, old_meta_int, new_meta_int);
   }
 
@@ -400,9 +395,9 @@ class alignas(kWordLength) BaseNode
       const T *new_payload,
       pmwcas::Descriptor *descriptor)
   {
-    return descriptor->AddEntry(reinterpret_cast<uint64_t *>(GetPayloadPtr(GetMetadata(index))),
-                                reinterpret_cast<uint64_t>(old_payload),
-                                reinterpret_cast<uint64_t>(new_payload));
+    return descriptor->AddEntry(static_cast<uint64_t *>(GetPayloadPtr(GetMetadata(index))),
+                                PayloadUnion{old_payload}.int_payload,
+                                PayloadUnion{new_payload}.int_payload);
   }
 
   /*################################################################################################
@@ -452,7 +447,7 @@ class alignas(kWordLength) BaseNode
   }
 
   static size_t
-  ComputeOccupiedSize(const std::vector<std::pair<std::byte *, Metadata>> &live_meta)
+  ComputeOccupiedSize(const std::vector<std::pair<void *, Metadata>> &live_meta)
   {
     size_t block_size = 0;
     for (auto &&[key, meta] : live_meta) {
@@ -461,6 +456,121 @@ class alignas(kWordLength) BaseNode
     block_size += kHeaderLength + (kWordLength * live_meta.size());
 
     return block_size;
+  }
+
+  static BaseNode *
+  NewRoot(  //
+      BaseNode *left_child,
+      BaseNode *right_child)
+  {
+    auto offset = left_child->GetNodeSize();
+    auto new_root = new BaseNode{offset, false};
+
+    // insert a left child node
+    auto meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
+    auto key = left_child->GetKeyPtr(meta);
+    auto key_length = meta.GetKeyLength();
+    auto node_addr = static_cast<void *>(left_child);
+    offset = new_root->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
+    auto new_meta = kInitMetadata.SetRecordInfo(offset, key_length, key_length + kPointerLength);
+    new_root->SetMetadata(0, new_meta);
+
+    // insert a right child node
+    meta = right_child->GetMetadata(right_child->GetSortedCount() - 1);
+    key = right_child->GetKeyPtr(meta);
+    key_length = meta.GetKeyLength();
+    node_addr = static_cast<void *>(right_child);
+    offset = new_root->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
+    new_meta = kInitMetadata.SetRecordInfo(offset, key_length, key_length + kPointerLength);
+    new_root->SetMetadata(1, new_meta);
+
+    // set a new header
+    new_root->SetSortedCount(2);
+    new_root->SetStatusWord(kInitStatusWord.AddRecordInfo(2, offset, 0));
+
+    return new_root;
+  }
+
+  BaseNode *
+  NewParentForSplit(  //
+      BaseNode *left_child,
+      BaseNode *right_child,
+      const size_t split_index)
+  {
+    auto offset = GetNodeSize();
+    auto new_parent = new BaseNode{offset, false};
+
+    // copy child nodes with inserting new split ones
+    auto record_count = GetSortedCount();
+    for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
+      // prepare copying record and metadata
+      const auto meta = GetMetadata(old_idx);
+      const auto key = GetKeyPtr(meta);
+      const auto key_length = meta.GetKeyLength();
+      auto node_addr = GetPayloadPtr(meta);
+      if (old_idx == split_index) {
+        // prepare left child information
+        const auto last_meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
+        const auto new_key = left_child->GetKeyPtr(last_meta);
+        const auto new_key_length = last_meta.GetKeyLength();
+        const auto left_addr = static_cast<void *>(left_child);
+        // insert a split left child
+        offset = new_parent->CopyRecord(new_key, new_key_length, left_addr, kPointerLength, offset);
+        const auto total_length = new_key_length + kPointerLength;
+        const auto left_meta = kInitMetadata.SetRecordInfo(offset, new_key_length, total_length);
+        new_parent->SetMetadata(new_idx++, left_meta);
+        // insert a split right child
+        node_addr = static_cast<void *>(right_child);
+      }
+      // copy a child node
+      offset = new_parent->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
+      const auto new_meta = meta.UpdateOffset(offset);
+      new_parent->SetMetadata(new_idx, new_meta);
+    }
+
+    // set a new header
+    SetSortedCount(++record_count);
+    SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, offset, 0));
+
+    return new_parent;
+  }
+
+  template <class Compare>
+  BaseNode *
+  NewParentForMerge(  //
+      BaseNode *merged_child,
+      const size_t deleted_index,
+      Compare comp)
+  {
+    auto offset = GetNodeSize();
+    auto new_parent = new BaseNode{offset, false};
+
+    // copy child nodes with deleting a merging target node
+    auto record_count = GetSortedCount();
+    for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
+      // prepare copying record and metadata
+      auto meta = GetMetadata(old_idx);
+      auto key = GetKeyPtr(meta);
+      auto key_length = meta.GetKeyLength();
+      auto node_addr = GetPayloadPtr(meta);
+      if (old_idx == deleted_index) {
+        // skip a deleted node and insert a merged node
+        meta = GetMetadata(++old_idx);
+        key = GetKeyPtr(meta);
+        key_length = meta.GetKeyLength();
+        node_addr = static_cast<void *>(merged_child);
+      }
+      // copy a child node
+      offset = new_parent->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
+      const auto new_meta = meta.UpdateOffset(offset);
+      new_parent->SetMetadata(new_idx, new_meta);
+    }
+
+    // set a new header
+    new_parent->SetSortedCount(--record_count);
+    new_parent->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, offset, 0));
+
+    return new_parent;
   }
 };
 

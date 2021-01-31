@@ -39,36 +39,42 @@ class BzTree
   const size_t index_epoch_;
   // a comparator to compare input keys
   const Compare comparator_;
-  BaseNode *root_;
+  PayloadUnion root_;
   std::unique_ptr<pmwcas::DescriptorPool> descriptor_pool_;
 
   /*################################################################################################
    * Internal utility functions
    *##############################################################################################*/
 
+  BaseNode *
+  GetRootAsNode()
+  {
+    return static_cast<BaseNode *>(reinterpret_cast<void *>(root_.payload.value));
+  }
+
   LeafNode *
   SearchLeafNode(  //
-      const std::byte *key,
+      const void *key,
       const bool range_is_closed)
   {
-    assert(!root_->IsLeaf());  // a root node must be an internal node
+    assert(!GetRootAsNode()->IsLeaf());  // a root node must be an internal node
 
-    auto current_node = root_;
+    auto current_node = GetRootAsNode();
     do {
-      current_node = reinterpret_cast<InternalNode *>(current_node)
+      current_node = dynamic_cast<InternalNode *>(current_node)
                          ->SearchChildNode(key, range_is_closed, comparator_)
                          .first;
     } while (!current_node->IsLeaf());
-    return reinterpret_cast<LeafNode *>(current_node);
+    return dynamic_cast<LeafNode *>(current_node);
   }
 
   std::stack<std::pair<BaseNode *, size_t>>
-  SearchLeafNodeWithTrace(const std::byte *key)
+  SearchLeafNodeWithTrace(const void *key)
   {
-    assert(!root_->IsLeaf());  // a root node must be an internal node
+    assert(!GetRootAsNode()->IsLeaf());  // a root node must be an internal node
 
     // set a root node
-    auto current_node = root_;
+    auto current_node = GetRootAsNode();
     size_t index = 0;
 
     // trace nodes to a target leaf node
@@ -85,13 +91,13 @@ class BzTree
 
   std::stack<std::pair<BaseNode *, size_t>>
   SearchInternalNodeWithTrace(  //
-      const std::byte *key,
+      const void *key,
       InternalNode *target_node)
   {
-    assert(!root_->IsLeaf());  // a root node must be an internal node
+    assert(!GetRootAsNode()->IsLeaf());  // a root node must be an internal node
 
     // set a root node
-    auto current_node = root_;
+    auto current_node = GetRootAsNode();
     size_t index = 0;
 
     // trace nodes to a target internal node
@@ -123,14 +129,14 @@ class BzTree
       BaseNode *new_root_node,
       pmwcas::Descriptor *descriptor)
   {
-    return descriptor->AddEntry(reinterpret_cast<uint64_t *>(&root_),
-                                reinterpret_cast<uint64_t>(old_root_node),
-                                reinterpret_cast<uint64_t>(new_root_node));
+    return descriptor->AddEntry(&(root_.int_payload),
+                                PayloadUnion{PtrPayload{old_root_node}}.int_payload,
+                                PayloadUnion{PtrPayload{new_root_node}}.int_payload);
   }
 
-  std::pair<const std::byte *, size_t>
+  std::pair<const void *, size_t>
   SearchSeparatorKey(  //
-      std::map<const std::byte *, Metadata>::iterator meta_iter,
+      std::map<const void *, Metadata>::iterator meta_iter,
       const size_t half_cout)
   {
     for (size_t index = 0; index < half_cout; ++index) {
@@ -146,7 +152,7 @@ class BzTree
   void
   ConsolidateLeafNode(  //
       LeafNode *target_leaf,
-      const std::byte *target_key,
+      const void *target_key,
       const size_t target_key_length)
   {
     // freeze a target node and perform consolidation
@@ -195,8 +201,8 @@ class BzTree
   void
   SplitLeafNode(  //
       LeafNode *target_leaf,
-      const std::byte *target_key,
-      const std::vector<std::pair<std::byte *, Metadata>> &sorted_meta)
+      const void *target_key,
+      const std::vector<std::pair<void *, Metadata>> &sorted_meta)
   {
     assert(target_leaf->IsFrozen());  // a splitting node must be locked
 
@@ -242,7 +248,7 @@ class BzTree
   void
   SplitInternalNode(  //
       InternalNode *target_node,
-      const std::byte *target_key)
+      const void *target_key)
   {
     assert(target_node->IsFrozen());  // a splitting node must be locked
 
@@ -265,7 +271,7 @@ class BzTree
       if (trace.size() == 1) {
         // split a root node
         std::tie(left_node, right_node) = target_node->Split(left_record_count);
-        new_parent = InternalNode::NewRoot(left_node, right_node);
+        new_parent = BaseNode::NewRoot(left_node, right_node);
       } else {
         // check whether it is required to split a parent node
         trace.pop();  // remove a target node
@@ -294,10 +300,10 @@ class BzTree
   void
   MergeLeafNodes(  //
       LeafNode *target_node,
-      const std::byte *target_key,
+      const void *target_key,
       const size_t target_key_length,
       const size_t target_size,
-      const std::vector<std::pair<std::byte *, Metadata>> &sorted_meta)
+      const std::vector<std::pair<void *, Metadata>> &sorted_meta)
   {
     assert(target_node->IsFrozen());  // a merging node must be locked
 
@@ -353,7 +359,7 @@ class BzTree
   void
   MergeInternalNodes(  //
       InternalNode *target_node,
-      const std::byte *target_key,
+      const void *target_key,
       const size_t target_key_length)
   {
     assert(target_node->IsFrozen());  // a merging node must be locked
@@ -371,7 +377,7 @@ class BzTree
       // check whether it is required to merge a parent node
       trace.pop();  // remove a target node
       auto parent = reinterpret_cast<InternalNode *>(trace.top().first);
-      if (!HaveSameAddress(parent, root_)
+      if (!HaveSameAddress(parent, GetRootAsNode())
           && parent->NeedMerge(target_key_length, kPointerLength, node_size_min_threshold_)) {
         // invoke a parent (internal) node merging
         MergeInternalNodes(parent, target_key, target_key_length);
@@ -505,7 +511,7 @@ class BzTree
    *##############################################################################################*/
 
   std::pair<ReturnCode, std::unique_ptr<std::byte[]>>
-  Read(const std::byte *key)
+  Read(const void *key)
   {
     auto leaf_node = SearchLeafNode(key, true);
     const auto [return_code, payload] = leaf_node->Read(key, comparator_);
@@ -519,9 +525,9 @@ class BzTree
   std::pair<ReturnCode,
             std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>>>
   Scan(  //
-      std::byte *begin_key,
+      void *begin_key,
       bool begin_is_closed,
-      const std::byte *end_key,
+      const void *end_key,
       const bool end_is_closed)
   {
     std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>> all_results;
@@ -544,9 +550,9 @@ class BzTree
   std::pair<ReturnCode,
             std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>>>
   ScanPerLeaf(  //
-      const std::byte *begin_key,
+      const void *begin_key,
       const bool begin_is_closed,
-      const std::byte *end_key,
+      const void *end_key,
       const bool end_is_closed)
   {
     auto leaf_node = SearchLeafNode(begin_key, begin_is_closed);
@@ -565,9 +571,9 @@ class BzTree
 
   ReturnCode
   Write(  //
-      const std::byte *key,
+      const void *key,
       const size_t key_length,
-      const std::byte *payload,
+      const void *payload,
       const size_t payload_length)
   {
     LeafNode *leaf_node;
@@ -597,9 +603,9 @@ class BzTree
 
   ReturnCode
   Insert(  //
-      const std::byte *key,
+      const void *key,
       const size_t key_length,
-      const std::byte *payload,
+      const void *payload,
       const size_t payload_length)
   {
     LeafNode *leaf_node;
@@ -632,9 +638,9 @@ class BzTree
 
   ReturnCode
   Update(  //
-      const std::byte *key,
+      const void *key,
       const size_t key_length,
-      const std::byte *payload,
+      const void *payload,
       const size_t payload_length)
   {
     LeafNode *leaf_node;
@@ -667,7 +673,7 @@ class BzTree
 
   ReturnCode
   Delete(  //
-      const std::byte *key,
+      const void *key,
       const size_t key_length)
   {
     LeafNode *leaf_node;

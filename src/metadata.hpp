@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <mwcas/mwcas.h>
+
 #include <string>
 
 #include "common.hpp"
@@ -164,9 +166,11 @@ constexpr Metadata kInitMetadata = Metadata{};
 union MetaUnion {
   Metadata meta;
   uint64_t int_meta;
+  pmwcas::MwcTargetField<uint64_t> target_field;
 
   constexpr explicit MetaUnion() : int_meta{0} {}
   constexpr explicit MetaUnion(const uint64_t m_int) : int_meta{m_int} {}
+  constexpr explicit MetaUnion(const Metadata meta) : meta{meta} {}
 };
 
 }  // namespace bztree

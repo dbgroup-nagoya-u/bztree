@@ -16,11 +16,34 @@ static constexpr size_t kDefaultBlockSizeThreshold = 256;
 static constexpr size_t kDefaultDeletedSizeThreshold = 256;
 static constexpr size_t kIndexEpoch = 0;
 
-class LeafNodeFixture : public testing::Test
+/*##################################################################################################
+ * CString unit tests
+ *################################################################################################*/
+class LeafNodeCStringFixture : public testing::Test
 {
  protected:
+  const char* key_1st;
+  const char* key_2nd;
+  const char* key_unknown;
+  const char* key_1st_ptr;
+  const char* key_2nd_ptr;
+  const char* key_unknown_ptr;
+  size_t key_length_1st;
+  size_t key_length_2nd;
+  const char* payload_1st;
+  const char* payload_2nd;
+  const char* payload_1st_ptr;
+  const char* payload_2nd_ptr;
+  size_t payload_length_1st;
+  size_t payload_length_2nd;
+
   std::unique_ptr<pmwcas::DescriptorPool> pool;
   std::unique_ptr<LeafNode> node;
+  BaseNode::NodeReturnCode rc;
+  StatusWord status;
+  std::unique_ptr<std::byte[]> u_ptr;
+  char* result;
+  size_t rec_count, index, block_size;
 
   void
   SetUp() override
@@ -29,6 +52,21 @@ class LeafNodeFixture : public testing::Test
                         pmwcas::LinuxEnvironment::Create, pmwcas::LinuxEnvironment::Destroy);
     pool.reset(new pmwcas::DescriptorPool{1000, 1, false});
     node.reset(LeafNode::CreateEmptyNode(kDefaultNodeSize));
+
+    key_1st = "123";
+    key_2nd = "test";
+    key_unknown = "unknown";
+    key_1st_ptr = key_1st;
+    key_2nd_ptr = key_2nd;
+    key_unknown_ptr = key_unknown;
+    key_length_1st = 4;
+    key_length_2nd = 5;
+    payload_1st = "4567";
+    payload_2nd = "value";
+    payload_1st_ptr = payload_1st;
+    payload_2nd_ptr = payload_2nd;
+    payload_length_1st = 5;
+    payload_length_2nd = 6;
   }
 
   void
@@ -36,9 +74,15 @@ class LeafNodeFixture : public testing::Test
   {
     pmwcas::Thread::ClearRegistry();
   }
+
+  char*
+  GetResult()
+  {
+    return BitCast<char*>(u_ptr.get());
+  }
 };
 
-TEST_F(LeafNodeFixture, New_EmptyNode_CorrectlyInitialized)
+TEST_F(LeafNodeCStringFixture, New_EmptyNode_CorrectlyInitialized)
 {
   EXPECT_EQ(kWordLength, node->GetStatusWordOffsetForTest());
   EXPECT_EQ(kWordLength, node->GetMetadataOffsetForTest());
@@ -46,142 +90,204 @@ TEST_F(LeafNodeFixture, New_EmptyNode_CorrectlyInitialized)
   EXPECT_EQ(0, node->GetSortedCount());
 }
 
-TEST_F(LeafNodeFixture, Write_StringValues_MetadataCorrectlyUpdated)
+TEST_F(LeafNodeCStringFixture, Write_StringValues_MetadataCorrectlyUpdated)
 {
-  auto key = "123", payload = "4567";
-  auto key_length = 4, payload_length = 5;
-  auto [rc, status] = node->Write(CastToBytePtr(key), key_length, CastToBytePtr(payload),
-                                  payload_length, kIndexEpoch, pool.get());
-  auto rec_count = 1, index = 0, block_size = key_length + payload_length;
+  std::tie(rc, status) = node->Write(key_1st_ptr, key_length_1st, payload_1st_ptr,
+                                     payload_length_1st, kIndexEpoch, pool.get());
+  rec_count = 1;
+  index = 0;
+  block_size = key_length_1st + payload_length_1st;
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(rec_count, node->GetRecordCount());
   EXPECT_FALSE(node->IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
-  EXPECT_EQ(key_length, node->GetKeyLength(index));
-  EXPECT_EQ(payload_length, node->GetPayloadLength(index));
+  EXPECT_EQ(key_length_1st, node->GetKeyLength(index));
+  EXPECT_EQ(payload_length_1st, node->GetPayloadLength(index));
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
   EXPECT_EQ(0, status.GetDeletedSize());
 
-  key = "test", payload = "value";
-  key_length = 6, payload_length = 6;
-  std::tie(rc, status) = node->Write(CastToBytePtr(key), key_length, CastToBytePtr(payload),
-                                     payload_length, kIndexEpoch, pool.get());
+  std::tie(rc, status) = node->Write(key_2nd_ptr, key_length_2nd, payload_2nd_ptr,
+                                     payload_length_2nd, kIndexEpoch, pool.get());
   ++rec_count;
   ++index;
-  block_size += key_length + payload_length;
+  block_size += key_length_2nd + payload_length_2nd;
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(rec_count, node->GetRecordCount());
   EXPECT_FALSE(node->IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
-  EXPECT_EQ(key_length, node->GetKeyLength(index));
-  EXPECT_EQ(payload_length, node->GetPayloadLength(index));
+  EXPECT_EQ(key_length_2nd, node->GetKeyLength(index));
+  EXPECT_EQ(payload_length_2nd, node->GetPayloadLength(index));
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
   EXPECT_EQ(0, status.GetDeletedSize());
 }
 
-TEST_F(LeafNodeFixture, Write_StringValues_ReadWrittenValue)
+TEST_F(LeafNodeCStringFixture, Write_StringValues_ReadWrittenValue)
 {
-  const auto first_key = "123", first_payload = "4567";
-  const auto first_key_length = 4, first_payload_length = 5;
-  const auto second_key = "test", second_payload = "value";
-  const auto second_key_length = 6, second_payload_length = 6;
+  node->Write(key_1st_ptr, key_length_1st, payload_1st_ptr, payload_length_1st, kIndexEpoch,
+              pool.get());
+  node->Write(key_2nd_ptr, key_length_2nd, payload_2nd_ptr, payload_length_2nd, kIndexEpoch,
+              pool.get());
 
-  node->Write(CastToBytePtr(first_key), first_key_length, CastToBytePtr(first_payload),
-              first_payload_length, kIndexEpoch, pool.get());
-  node->Write(CastToBytePtr(second_key), second_key_length, CastToBytePtr(second_payload),
-              second_payload_length, kIndexEpoch, pool.get());
-
-  auto [rc, u_ptr] = node->Read(CastToBytePtr(first_key), CompareAsCString{});
-  auto result = CastToCString(u_ptr.get());
-
+  // read 1st input value
+  std::tie(rc, u_ptr) = node->Read(key_1st_ptr, CompareAsCString{});
+  result = GetResult();
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  EXPECT_STREQ(first_payload, result);
+  EXPECT_STREQ(payload_1st, result);
 
-  std::tie(rc, u_ptr) = node->Read(CastToBytePtr(second_key), CompareAsCString{});
-  result = CastToCString(u_ptr.get());
-
+  // read 2nd input value
+  std::tie(rc, u_ptr) = node->Read(key_2nd_ptr, CompareAsCString{});
+  result = GetResult();
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  EXPECT_STREQ(second_payload, result);
+  EXPECT_STREQ(payload_2nd, result);
 
-  std::tie(rc, u_ptr) = node->Read(CastToBytePtr("unknown"), CompareAsCString{});
-
+  // read not exist key
+  std::tie(rc, u_ptr) = node->Read(key_unknown_ptr, CompareAsCString{});
   ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
-TEST_F(LeafNodeFixture, Write_UIntValues_MetadataCorrectlyUpdated)
+/*##################################################################################################
+ * Unsigned int 64 bits unit tests
+ *################################################################################################*/
+
+class LeafNodeUInt64Fixture : public testing::Test
 {
-  auto key = 123UL, payload = 4567UL;
-  auto key_length = kWordLength, payload_length = kWordLength;
-  auto [rc, status] = node->Write(CastToBytePtr(&key), key_length, CastToBytePtr(&payload),
-                                  payload_length, kIndexEpoch, pool.get());
-  auto rec_count = 1UL, index = 0UL, block_size = key_length + payload_length;
+ protected:
+  uint64_t key_1st;
+  uint64_t key_2nd;
+  uint64_t key_unknown;
+  uint64_t* key_1st_ptr;
+  uint64_t* key_2nd_ptr;
+  uint64_t* key_unknown_ptr;
+  size_t key_length_1st;
+  size_t key_length_2nd;
+  uint64_t payload_1st;
+  uint64_t payload_2nd;
+  uint64_t* payload_1st_ptr;
+  uint64_t* payload_2nd_ptr;
+  size_t payload_length_1st;
+  size_t payload_length_2nd;
+
+  std::unique_ptr<pmwcas::DescriptorPool> pool;
+  std::unique_ptr<LeafNode> node;
+  BaseNode::NodeReturnCode rc;
+  StatusWord status;
+  std::unique_ptr<std::byte[]> u_ptr;
+  uint64_t result;
+  size_t rec_count, index, block_size;
+
+  void
+  SetUp() override
+  {
+    pmwcas::InitLibrary(pmwcas::DefaultAllocator::Create, pmwcas::DefaultAllocator::Destroy,
+                        pmwcas::LinuxEnvironment::Create, pmwcas::LinuxEnvironment::Destroy);
+    pool.reset(new pmwcas::DescriptorPool{1000, 1, false});
+    node.reset(LeafNode::CreateEmptyNode(kDefaultNodeSize));
+
+    key_1st = 123;
+    key_2nd = 890;
+    key_unknown = 0;
+    key_1st_ptr = &key_1st;
+    key_2nd_ptr = &key_2nd;
+    key_unknown_ptr = &key_unknown;
+    key_length_1st = kWordLength;
+    key_length_2nd = kWordLength;
+    payload_1st = 4567;
+    payload_2nd = 1234;
+    payload_1st_ptr = &payload_1st;
+    payload_2nd_ptr = &payload_2nd;
+    payload_length_1st = kWordLength;
+    payload_length_2nd = kWordLength;
+  }
+
+  void
+  TearDown() override
+  {
+    pmwcas::Thread::ClearRegistry();
+  }
+
+  uint64_t
+  GetResult()
+  {
+    return *BitCast<uint64_t*>(u_ptr.get());
+  }
+};
+
+TEST_F(LeafNodeUInt64Fixture, New_EmptyNode_CorrectlyInitialized)
+{
+  EXPECT_EQ(kWordLength, node->GetStatusWordOffsetForTest());
+  EXPECT_EQ(kWordLength, node->GetMetadataOffsetForTest());
+  EXPECT_EQ(kDefaultNodeSize, node->GetNodeSize());
+  EXPECT_EQ(0, node->GetSortedCount());
+}
+
+TEST_F(LeafNodeUInt64Fixture, Write_UIntValues_MetadataCorrectlyUpdated)
+{
+  std::tie(rc, status) = node->Write(key_1st_ptr, key_length_1st, payload_1st_ptr,
+                                     payload_length_1st, kIndexEpoch, pool.get());
+  rec_count = 1;
+  index = 0;
+  block_size = key_length_1st + payload_length_1st;
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(rec_count, node->GetRecordCount());
   EXPECT_FALSE(node->IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
-  EXPECT_EQ(key_length, node->GetKeyLength(index));
-  EXPECT_EQ(payload_length, node->GetPayloadLength(index));
+  EXPECT_EQ(key_length_1st, node->GetKeyLength(index));
+  EXPECT_EQ(payload_length_1st, node->GetPayloadLength(index));
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
   EXPECT_EQ(0, status.GetDeletedSize());
 
-  key = 890UL, payload = 1234UL;
-  std::tie(rc, status) = node->Write(CastToBytePtr(&key), key_length, CastToBytePtr(&payload),
-                                     payload_length, kIndexEpoch, pool.get());
+  std::tie(rc, status) = node->Write(key_2nd_ptr, key_length_2nd, payload_2nd_ptr,
+                                     payload_length_2nd, kIndexEpoch, pool.get());
   ++rec_count;
   ++index;
-  block_size += key_length + payload_length;
+  block_size += key_length_2nd + payload_length_2nd;
 
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(rec_count, node->GetRecordCount());
   EXPECT_FALSE(node->IsFrozen());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
-  EXPECT_EQ(key_length, node->GetKeyLength(index));
-  EXPECT_EQ(payload_length, node->GetPayloadLength(index));
+  EXPECT_EQ(key_length_2nd, node->GetKeyLength(index));
+  EXPECT_EQ(payload_length_2nd, node->GetPayloadLength(index));
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
   EXPECT_EQ(0, status.GetDeletedSize());
 }
 
-TEST_F(LeafNodeFixture, Write_UIntValues_ReadWrittenValue)
+TEST_F(LeafNodeUInt64Fixture, Write_UIntValues_ReadWrittenValue)
 {
-  const auto first_key = 123UL, first_payload = 4567UL;
-  const auto key_length = kWordLength, payload_length = kWordLength;
-  const auto second_key = 890UL, second_payload = 1234UL;
+  node->Write(key_1st_ptr, key_length_1st, payload_1st_ptr, payload_length_1st, kIndexEpoch,
+              pool.get());
+  node->Write(key_2nd_ptr, key_length_2nd, payload_2nd_ptr, payload_length_2nd, kIndexEpoch,
+              pool.get());
 
-  node->Write(CastToBytePtr(&first_key), key_length, CastToBytePtr(&first_payload), payload_length,
-              kIndexEpoch, pool.get());
-  node->Write(CastToBytePtr(&second_key), key_length, CastToBytePtr(&second_payload),
-              payload_length, kIndexEpoch, pool.get());
-
-  auto [rc, u_ptr] = node->Read(CastToBytePtr(&first_key), CompareAsCString{});
-  auto result = CastToUint64(u_ptr.get());
-
+  // read 1st input value
+  std::tie(rc, u_ptr) = node->Read(key_1st_ptr, CompareAsCString{});
+  result = GetResult();
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(first_payload, result);
+  EXPECT_EQ(payload_1st, result);
 
-  std::tie(rc, u_ptr) = node->Read(CastToBytePtr(&second_key), CompareAsCString{});
-  result = CastToUint64(u_ptr.get());
-
+  // read 2nd input value
+  std::tie(rc, u_ptr) = node->Read(key_2nd_ptr, CompareAsCString{});
+  result = GetResult();
   ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(second_payload, result);
+  EXPECT_EQ(payload_2nd, result);
 
-  const auto unkown_key = 999UL;
-  std::tie(rc, u_ptr) = node->Read(CastToBytePtr(&unkown_key), CompareAsCString{});
-
+  // read not exist key
+  std::tie(rc, u_ptr) = node->Read(key_unknown_ptr, CompareAsCString{});
   ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
