@@ -346,9 +346,7 @@ class alignas(kWordLength) BaseNode
   Metadata
   GetMetadataProtected(const size_t index)
   {
-    auto meta_addr = &((meta_array_ + index)->int_meta);
-    auto protected_meta =
-        reinterpret_cast<pmwcas::MwcTargetField<uint64_t> *>(meta_addr)->GetValueProtected();
+    const auto protected_meta = (meta_array_ + index)->target_field.GetValueProtected();
     return MetaUnion{protected_meta}.meta;
   }
 
@@ -383,10 +381,9 @@ class alignas(kWordLength) BaseNode
       Metadata new_meta,
       pmwcas::Descriptor *descriptor)
   {
-    auto meta_addr =
-        reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(meta_array_ + index));
-    auto old_meta_int = *reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&old_meta));
-    auto new_meta_int = *reinterpret_cast<uint64_t *>(reinterpret_cast<std::byte *>(&new_meta));
+    auto meta_addr = &((meta_array_ + index)->int_meta);
+    auto old_meta_int = MetaUnion{old_meta}.int_meta;
+    auto new_meta_int = MetaUnion{new_meta}.int_meta;
     return descriptor->AddEntry(meta_addr, old_meta_int, new_meta_int);
   }
 
