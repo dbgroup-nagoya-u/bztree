@@ -106,31 +106,37 @@ class LeafNodeCStringFixture : public testing::Test
 
 class LeafNodeUInt64Fixture : public testing::Test
 {
- protected:
-  uint64_t key_1st;
-  uint64_t key_2nd;
-  uint64_t key_11th;
-  uint64_t key_null;
-  uint64_t* key_1st_ptr;
-  uint64_t* key_2nd_ptr;
-  uint64_t* key_11th_ptr;
-  uint64_t* key_null_ptr;
-  size_t key_length_1st;
-  size_t key_length_2nd;
-  size_t key_length_11th;
-  size_t key_length_null;
-  uint64_t payload_1st;
-  uint64_t payload_2nd;
-  uint64_t payload_11th;
-  uint64_t payload_null;
-  uint64_t* payload_1st_ptr;
-  uint64_t* payload_2nd_ptr;
-  uint64_t* payload_11th_ptr;
-  uint64_t* payload_null_ptr;
-  size_t payload_length_1st;
-  size_t payload_length_2nd;
-  size_t payload_length_11th;
-  size_t payload_length_null;
+ public:
+  uint64_t key_1st = 1;
+  uint64_t key_2nd = 2;
+  uint64_t key_7th = 7;
+  uint64_t key_11th = 11;
+  uint64_t key_null = 0;  // null key must have 8 bytes to fill a node
+  uint64_t* key_1st_ptr = &key_1st;
+  uint64_t* key_2nd_ptr = &key_2nd;
+  uint64_t* key_7th_ptr = &key_7th;
+  uint64_t* key_11th_ptr = &key_11th;
+  uint64_t* key_null_ptr = &key_null;
+  size_t key_length_1st = kWordLength;
+  size_t key_length_2nd = kWordLength;
+  size_t key_length_7th = kWordLength;
+  size_t key_length_11th = kWordLength;
+  size_t key_length_null = kWordLength;  // null key must have 8 bytes to fill a node
+  uint64_t payload_1st = 1;
+  uint64_t payload_2nd = 2;
+  uint64_t payload_7th = 7;
+  uint64_t payload_11th = 11;
+  uint64_t payload_null = 0;  // null payload must have 8 bytes to fill a node
+  uint64_t* payload_1st_ptr = &payload_1st;
+  uint64_t* payload_2nd_ptr = &payload_2nd;
+  uint64_t* payload_7th_ptr = &payload_7th;
+  uint64_t* payload_11th_ptr = &payload_11th;
+  uint64_t* payload_null_ptr = &payload_null;
+  size_t payload_length_1st = kWordLength;
+  size_t payload_length_2nd = kWordLength;
+  size_t payload_length_7th = kWordLength;
+  size_t payload_length_11th = kWordLength;
+  size_t payload_length_null = kWordLength;  // null payload must have 8 bytes to fill a node
 
   std::unique_ptr<pmwcas::DescriptorPool> pool;
   std::unique_ptr<LeafNode> node;
@@ -141,6 +147,7 @@ class LeafNodeUInt64Fixture : public testing::Test
   uint64_t result;
   size_t rec_count, index, block_size, deleted_size;
 
+ protected:
   void
   SetUp() override
   {
@@ -148,31 +155,6 @@ class LeafNodeUInt64Fixture : public testing::Test
                         pmwcas::LinuxEnvironment::Create, pmwcas::LinuxEnvironment::Destroy);
     pool.reset(new pmwcas::DescriptorPool{1000, 1, false});
     node.reset(LeafNode::CreateEmptyNode(kDefaultNodeSize));
-
-    key_1st = 1;
-    key_2nd = 2;
-    key_11th = 11;
-    key_null = 0;  // null key must have 8 bytes to fill a node
-    key_1st_ptr = &key_1st;
-    key_2nd_ptr = &key_2nd;
-    key_11th_ptr = &key_11th;
-    key_null_ptr = &key_null;
-    key_length_1st = kWordLength;
-    key_length_2nd = kWordLength;
-    key_length_11th = kWordLength;
-    key_length_null = kWordLength;  // null key must have 8 bytes to fill a node
-    payload_1st = 1;
-    payload_2nd = 2;
-    payload_11th = 11;
-    payload_null = 0;  // null payload must have 8 bytes to fill a node
-    payload_1st_ptr = &payload_1st;
-    payload_2nd_ptr = &payload_2nd;
-    payload_11th_ptr = &payload_11th;
-    payload_null_ptr = &payload_null;
-    payload_length_1st = kWordLength;
-    payload_length_2nd = kWordLength;
-    payload_length_11th = kWordLength;
-    payload_length_null = kWordLength;  // null payload must have 8 bytes to fill a node
   }
 
   void
@@ -187,6 +169,12 @@ class LeafNodeUInt64Fixture : public testing::Test
     return *BitCast<uint64_t*>(u_ptr.get());
   }
 
+  constexpr uint64_t
+  CastKey(const void* key)
+  {
+    return *BitCast<uint64_t*>(key);
+  }
+
   void
   WriteNullKey(const size_t write_num)
   {
@@ -196,12 +184,13 @@ class LeafNodeUInt64Fixture : public testing::Test
     }
   }
 
-  void
+  std::vector<uint64_t>
   WriteOrderedKeys(  //
       const size_t begin_index,
       const size_t end_index)
   {
-    for (size_t index = begin_index; index < end_index; ++index) {
+    std::vector<uint64_t> written_keys;
+    for (size_t index = begin_index; index <= end_index; ++index) {
       auto key = index;
       auto key_ptr = &key;
       auto key_length = kWordLength;
@@ -209,7 +198,10 @@ class LeafNodeUInt64Fixture : public testing::Test
       auto value_ptr = &value;
       auto value_length = kWordLength;
       node->Write(key_ptr, key_length, value_ptr, value_length, kIndexEpoch, pool.get());
+
+      written_keys.emplace_back(index);
     }
+    return written_keys;
   }
 };
 
@@ -575,9 +567,70 @@ TEST_F(LeafNodeUInt64Fixture, Delete_FilledNode_GetCorrectReturnCodes)
  * Consolide operation
  *------------------------------------------------------------------------------------------------*/
 
-TEST_F(LeafNodeUInt64Fixture, Consolidate_TenKeys_GatherSortedLiveMetadata)
+TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeys_GatherSortedLiveMetadata)
 {
-  //
+  // fill a node with ordered keys
+  auto written_keys = WriteOrderedKeys(1, 10);
+
+  // gather live metadata and check equality
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+
+  ASSERT_EQ(10, meta_vec.size());
+
+  for (size_t index = 0; index < meta_vec.size(); index++) {
+    EXPECT_EQ(written_keys[index], CastKey(meta_vec[index].first));
+  }
+}
+
+TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithDelete_GatherSortedLiveMetadata)
+{
+  // fill a node with ordered keys
+  auto written_keys = WriteOrderedKeys(1, 10);
+  node->Delete(key_2nd_ptr, key_length_2nd, comp, pool.get());
+  written_keys.erase(++(written_keys.begin()));
+
+  // gather live metadata and check equality
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+
+  ASSERT_EQ(9, meta_vec.size());
+
+  for (size_t index = 0; index < meta_vec.size(); index++) {
+    EXPECT_EQ(written_keys[index], CastKey(meta_vec[index].first));
+  }
+}
+
+TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithUpdate_GatherSortedLiveMetadata)
+{
+  // fill a node with ordered keys
+  auto written_keys = WriteOrderedKeys(1, 9);
+  node->Update(key_2nd_ptr, key_length_2nd, payload_null_ptr, payload_length_null, kIndexEpoch,
+               comp, pool.get());
+
+  // gather live metadata and check equality
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+
+  ASSERT_EQ(9, meta_vec.size());
+
+  for (size_t index = 0; index < meta_vec.size(); index++) {
+    EXPECT_EQ(written_keys[index], CastKey(meta_vec[index].first));
+  }
+}
+
+TEST_F(LeafNodeUInt64Fixture, Consolidate_UnsortedTenKeys_GatherSortedLiveMetadata)
+{
+  // fill a node with ordered keys
+  auto tmp_keys = WriteOrderedKeys(5, 10);
+  auto written_keys = WriteOrderedKeys(1, 4);
+  written_keys.insert(written_keys.end(), tmp_keys.begin(), tmp_keys.end());
+
+  // gather live metadata and check equality
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+
+  ASSERT_EQ(10, meta_vec.size());
+
+  for (size_t index = 0; index < meta_vec.size(); index++) {
+    EXPECT_EQ(written_keys[index], CastKey(meta_vec[index].first));
+  }
 }
 
 }  // namespace bztree

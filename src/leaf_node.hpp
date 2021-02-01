@@ -718,14 +718,14 @@ class LeafNode : public BaseNode
   GatherSortedLiveMetadata(Compare comp)
   {
     const auto record_count = GetStatusWord().GetRecordCount();
-    const auto sorted_count = GetSortedCount();
+    const int64_t sorted_count = GetSortedCount();
 
     // gather valid (live or deleted) records
     std::vector<std::pair<void *, Metadata>> meta_arr;
     meta_arr.reserve(record_count);
 
     // search unsorted metadata in reverse order
-    for (size_t index = record_count - 1; index >= sorted_count; --index) {
+    for (int64_t index = record_count - 1; index >= sorted_count; --index) {
       const auto meta = GetMetadata(index);
       if (meta.IsVisible() || meta.IsDeleted()) {
         meta_arr.emplace_back(GetKeyPtr(meta), meta);
@@ -736,7 +736,7 @@ class LeafNode : public BaseNode
     }
 
     // search sorted metadata
-    for (size_t index = 0; index < sorted_count; ++index) {
+    for (int64_t index = 0; index < sorted_count; ++index) {
       const auto meta = GetMetadata(index);
       meta_arr.emplace_back(GetKeyPtr(meta), meta);
     }
