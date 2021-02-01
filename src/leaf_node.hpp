@@ -273,15 +273,15 @@ class LeafNode : public BaseNode
       Compare comp)
   {
     const auto status = GetStatusWord();
-    const auto record_count = GetStatusWord().GetRecordCount();
-    const auto sorted_count = GetSortedCount();
+    const int64_t record_count = GetStatusWord().GetRecordCount();
+    const int64_t sorted_count = GetSortedCount();
 
     // gather valid (live or deleted) records
     std::vector<std::pair<void *, Metadata>> meta_arr;
     meta_arr.reserve(record_count);
 
     // search unsorted metadata in reverse order
-    for (size_t index = record_count - 1; index >= sorted_count; --index) {
+    for (int64_t index = record_count - 1; index >= sorted_count; --index) {
       const auto meta = GetMetadata(index);
       if (IsInRange(GetKeyPtr(meta), begin_key, begin_is_closed, end_key, end_is_closed, comp)
           && (meta.IsVisible() || meta.IsDeleted())) {
@@ -294,7 +294,7 @@ class LeafNode : public BaseNode
     // search sorted metadata
     auto return_code = NodeReturnCode::kScanInProgress;
     const auto begin_index = SearchSortedMetadata(begin_key, begin_is_closed, comp).second;
-    for (size_t index = begin_index; index < sorted_count; ++index) {
+    for (int64_t index = begin_index; index < sorted_count; ++index) {
       const auto meta = GetMetadata(index);
       if (IsInRange(GetKeyPtr(meta), begin_key, begin_is_closed, end_key, end_is_closed, comp)) {
         meta_arr.emplace_back(GetKeyPtr(meta), meta);
@@ -312,14 +312,18 @@ class LeafNode : public BaseNode
 
     // copy live records for return
     std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>> scan_results;
-    scan_results.reserve(meta_arr.size());
-    for (auto &&[key, meta] : meta_arr) {
-      if (meta.IsVisible()) {
-        scan_results.emplace_back(GetCopiedKey(meta), GetCopiedPayload(meta));
+    if (meta_arr.empty()) {
+      return {NodeReturnCode::kSuccess, std::move(scan_results)};
+    } else {
+      scan_results.reserve(meta_arr.size());
+      for (auto &&[key, meta] : meta_arr) {
+        if (meta.IsVisible()) {
+          scan_results.emplace_back(GetCopiedKey(meta), GetCopiedPayload(meta));
+        }
       }
-    }
 
-    return {return_code, scan_results};
+      return {return_code, std::move(scan_results)};
+    }
   }
 
   /*################################################################################################

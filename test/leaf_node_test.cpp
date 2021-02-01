@@ -131,6 +131,18 @@ TEST_F(LeafNodeUInt64Fixture, Read_NotPresentKey_ReadFailed)
 }
 
 /*--------------------------------------------------------------------------------------------------
+ * Scan operation
+ *------------------------------------------------------------------------------------------------*/
+
+TEST_F(LeafNodeUInt64Fixture, Scan_EmptyNode_NoResult)
+{
+  auto [rc, scan_results] = node->Scan(key_ptrs[1], true, key_ptrs[10], true, comp);
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(0, scan_results.size());
+}
+
+/*--------------------------------------------------------------------------------------------------
  * Write operation
  *------------------------------------------------------------------------------------------------*/
 
