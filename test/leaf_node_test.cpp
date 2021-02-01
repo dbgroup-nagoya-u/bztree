@@ -17,90 +17,6 @@ static constexpr size_t kDefaultDeletedSizeThreshold = 256;
 static constexpr size_t kIndexEpoch = 0;
 
 /*##################################################################################################
- * CString unit tests
- *################################################################################################*/
-
-class LeafNodeCStringFixture : public testing::Test
-{
- protected:
-  const char* key_1st;
-  const char* key_2nd;
-  const char* key_unknown;
-  const char* key_1st_ptr;
-  const char* key_2nd_ptr;
-  const char* key_unknown_ptr;
-  size_t key_length_1st;
-  size_t key_length_2nd;
-  const char* payload_1st;
-  const char* payload_2nd;
-  const char* payload_1st_ptr;
-  const char* payload_2nd_ptr;
-  size_t payload_length_1st;
-  size_t payload_length_2nd;
-  const char* word;
-  const char* word_ptr;
-  const char* null_word;
-  const char* null_word_ptr;
-
-  std::unique_ptr<pmwcas::DescriptorPool> pool;
-  std::unique_ptr<LeafNode> node;
-  CompareAsCString comp{};
-  BaseNode::NodeReturnCode rc;
-  StatusWord status;
-  std::unique_ptr<std::byte[]> u_ptr;
-  char* result;
-  size_t rec_count, index, block_size, deleted_size;
-
-  void
-  SetUp() override
-  {
-    pmwcas::InitLibrary(pmwcas::DefaultAllocator::Create, pmwcas::DefaultAllocator::Destroy,
-                        pmwcas::LinuxEnvironment::Create, pmwcas::LinuxEnvironment::Destroy);
-    pool.reset(new pmwcas::DescriptorPool{1000, 1, false});
-    node.reset(LeafNode::CreateEmptyNode(kDefaultNodeSize));
-
-    key_1st = "123";
-    key_2nd = "test";
-    key_unknown = "unknown";
-    key_1st_ptr = key_1st;
-    key_2nd_ptr = key_2nd;
-    key_unknown_ptr = key_unknown;
-    key_length_1st = 4;
-    key_length_2nd = 5;
-    payload_1st = "4567";
-    payload_2nd = "value";
-    payload_1st_ptr = payload_1st;
-    payload_2nd_ptr = payload_2nd;
-    payload_length_1st = 5;
-    payload_length_2nd = 6;
-    word = "1234567";
-    word_ptr = word;
-    null_word = "0000000";
-    null_word_ptr = null_word;
-  }
-
-  void
-  TearDown() override
-  {
-    pmwcas::Thread::ClearRegistry();
-  }
-
-  char*
-  GetResult()
-  {
-    return BitCast<char*>(u_ptr.get());
-  }
-
-  void
-  FillNode()
-  {
-    for (size_t i = 0; i < 9; ++i) {
-      node->Write(null_word_ptr, kWordLength, null_word_ptr, kWordLength, kIndexEpoch, pool.get());
-    }
-  }
-};
-
-/*##################################################################################################
  * Unsigned int 64 bits unit tests
  *################################################################################################*/
 
@@ -145,7 +61,10 @@ class LeafNodeUInt64Fixture : public testing::Test
   StatusWord status;
   std::unique_ptr<std::byte[]> u_ptr;
   uint64_t result;
-  size_t rec_count, index, block_size, deleted_size;
+  size_t rec_count = 0;
+  size_t index = 0;
+  size_t block_size = 0;
+  size_t deleted_size = 0;
 
  protected:
   void
@@ -181,6 +100,8 @@ class LeafNodeUInt64Fixture : public testing::Test
     for (size_t index = 0; index < write_num; ++index) {
       node->Write(key_null_ptr, key_length_null, payload_null_ptr, payload_length_null, kIndexEpoch,
                   pool.get());
+      ++rec_count;
+      block_size += key_length_null + payload_length_null;
     }
   }
 
@@ -195,11 +116,13 @@ class LeafNodeUInt64Fixture : public testing::Test
       auto key_ptr = &key;
       auto key_length = kWordLength;
       auto value = index;
-      auto value_ptr = &value;
-      auto value_length = kWordLength;
-      node->Write(key_ptr, key_length, value_ptr, value_length, kIndexEpoch, pool.get());
+      auto payload_ptr = &value;
+      auto payload_length = kWordLength;
+      node->Write(key_ptr, key_length, payload_ptr, payload_length, kIndexEpoch, pool.get());
 
       written_keys.emplace_back(index);
+      ++rec_count;
+      block_size += key_length + payload_length;
     }
     return written_keys;
   }
@@ -575,7 +498,7 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeys_GatherSortedLiveMetadata
   // gather live metadata and check equality
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
 
-  ASSERT_EQ(10, meta_vec.size());
+  ASSERT_EQ(rec_count, meta_vec.size());
 
   for (size_t index = 0; index < meta_vec.size(); index++) {
     EXPECT_EQ(written_keys[index], CastKey(meta_vec[index].first));
@@ -588,11 +511,12 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithDelete_GatherSortedLi
   auto written_keys = WriteOrderedKeys(1, 10);
   node->Delete(key_2nd_ptr, key_length_2nd, comp, pool.get());
   written_keys.erase(++(written_keys.begin()));
+  --rec_count;
 
   // gather live metadata and check equality
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
 
-  ASSERT_EQ(9, meta_vec.size());
+  ASSERT_EQ(rec_count, meta_vec.size());
 
   for (size_t index = 0; index < meta_vec.size(); index++) {
     EXPECT_EQ(written_keys[index], CastKey(meta_vec[index].first));
@@ -609,7 +533,7 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithUpdate_GatherSortedLi
   // gather live metadata and check equality
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
 
-  ASSERT_EQ(9, meta_vec.size());
+  ASSERT_EQ(rec_count, meta_vec.size());
 
   for (size_t index = 0; index < meta_vec.size(); index++) {
     EXPECT_EQ(written_keys[index], CastKey(meta_vec[index].first));
@@ -626,11 +550,81 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_UnsortedTenKeys_GatherSortedLiveMetada
   // gather live metadata and check equality
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
 
-  ASSERT_EQ(10, meta_vec.size());
+  ASSERT_EQ(rec_count, meta_vec.size());
 
   for (size_t index = 0; index < meta_vec.size(); index++) {
     EXPECT_EQ(written_keys[index], CastKey(meta_vec[index].first));
   }
+}
+
+TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeys_NodeHasCorrectStatus)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(1, 10);
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  auto consolidated_node = std::unique_ptr<LeafNode>(node->Consolidate(meta_vec));
+
+  status = consolidated_node->GetStatusWord();
+
+  EXPECT_EQ(rec_count, consolidated_node->GetSortedCount());
+  EXPECT_FALSE(status.IsFrozen());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
+}
+
+TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithDelete_NodeHasCorrectStatus)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(1, 10);
+  node->Delete(key_2nd_ptr, key_length_2nd, comp, pool.get());
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  auto consolidated_node = std::unique_ptr<LeafNode>(node->Consolidate(meta_vec));
+
+  status = consolidated_node->GetStatusWord();
+  --rec_count;
+  block_size -= key_length_2nd + payload_length_2nd;
+
+  EXPECT_EQ(rec_count, consolidated_node->GetSortedCount());
+  EXPECT_FALSE(status.IsFrozen());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
+}
+
+TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithUpdate_NodeHasCorrectStatus)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(1, 9);
+  node->Update(key_2nd_ptr, key_length_2nd, payload_null_ptr, payload_length_null, kIndexEpoch,
+               comp, pool.get());
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  auto consolidated_node = std::unique_ptr<LeafNode>(node->Consolidate(meta_vec));
+
+  status = consolidated_node->GetStatusWord();
+
+  EXPECT_EQ(rec_count, consolidated_node->GetSortedCount());
+  EXPECT_FALSE(status.IsFrozen());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
+}
+
+TEST_F(LeafNodeUInt64Fixture, Consolidate_UnsortedTenKeys_NodeHasCorrectStatus)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(5, 10);
+  WriteOrderedKeys(1, 4);
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  auto consolidated_node = std::unique_ptr<LeafNode>(node->Consolidate(meta_vec));
+
+  status = consolidated_node->GetStatusWord();
+
+  EXPECT_EQ(rec_count, consolidated_node->GetSortedCount());
+  EXPECT_FALSE(status.IsFrozen());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
 }
 
 }  // namespace bztree
