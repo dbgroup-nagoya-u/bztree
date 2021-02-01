@@ -279,25 +279,35 @@ class LeafNode : public BaseNode
     // gather valid (live or deleted) records
     std::vector<std::pair<void *, Metadata>> meta_arr;
     meta_arr.reserve(record_count);
+    auto return_code = NodeReturnCode::kScanInProgress;
 
     // search unsorted metadata in reverse order
     for (int64_t index = record_count - 1; index >= sorted_count; --index) {
       const auto meta = GetMetadata(index);
-      if (IsInRange(GetKeyPtr(meta), begin_key, begin_is_closed, end_key, end_is_closed, comp)
+      const auto key = GetKeyPtr(meta);
+      if (IsInRange(key, begin_key, begin_is_closed, end_key, end_is_closed, comp)
           && (meta.IsVisible() || meta.IsDeleted())) {
-        meta_arr.emplace_back(GetKeyPtr(meta), meta);
-      } else {
-        // there is a key, but it is in inserting or corrupted.
+        meta_arr.emplace_back(key, meta);
+      }
+      if (return_code != NodeReturnCode::kSuccess
+          && (comp(end_key, key) || IsEqual(key, end_key, comp))) {
+        // a current key is out/end of range condition
+        return_code = NodeReturnCode::kSuccess;
       }
     }
 
     // search sorted metadata
-    auto return_code = NodeReturnCode::kScanInProgress;
     const auto begin_index = SearchSortedMetadata(begin_key, begin_is_closed, comp).second;
     for (int64_t index = begin_index; index < sorted_count; ++index) {
       const auto meta = GetMetadata(index);
-      if (IsInRange(GetKeyPtr(meta), begin_key, begin_is_closed, end_key, end_is_closed, comp)) {
-        meta_arr.emplace_back(GetKeyPtr(meta), meta);
+      const auto key = GetKeyPtr(meta);
+      if (IsInRange(key, begin_key, begin_is_closed, end_key, end_is_closed, comp)) {
+        meta_arr.emplace_back(key, meta);
+        if (end_is_closed && IsEqual(key, end_key, comp)) {
+          // a current key is end of range condition
+          return_code = NodeReturnCode::kSuccess;
+          break;
+        }
       } else {
         // a current key is out of range condition
         return_code = NodeReturnCode::kSuccess;
