@@ -142,7 +142,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_EmptyNode_NoResult)
   EXPECT_EQ(0, scan_results.size());
 }
 
-TEST_F(LeafNodeUInt64Fixture, Scan_BothClosed_ScanWrittenValues)
+TEST_F(LeafNodeUInt64Fixture, Scan_BothClosed_ScanTargetValues)
 {
   WriteOrderedKeys(5, 10);
   WriteOrderedKeys(1, 4);
@@ -159,7 +159,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_BothClosed_ScanWrittenValues)
   EXPECT_EQ(payloads[6], CastToValue(scan_results[2].second.get()));
 }
 
-TEST_F(LeafNodeUInt64Fixture, Scan_LeftClosed_ScanWrittenValues)
+TEST_F(LeafNodeUInt64Fixture, Scan_LeftClosed_ScanTargetValues)
 {
   WriteOrderedKeys(5, 10);
   WriteOrderedKeys(1, 4);
@@ -174,7 +174,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_LeftClosed_ScanWrittenValues)
   EXPECT_EQ(payloads[9], CastToValue(scan_results[1].second.get()));
 }
 
-TEST_F(LeafNodeUInt64Fixture, Scan_RightClosed_ScanWrittenValues)
+TEST_F(LeafNodeUInt64Fixture, Scan_RightClosed_ScanTargetValues)
 {
   WriteOrderedKeys(5, 10);
   WriteOrderedKeys(1, 4);
@@ -189,7 +189,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_RightClosed_ScanWrittenValues)
   EXPECT_EQ(payloads[10], CastToValue(scan_results[1].second.get()));
 }
 
-TEST_F(LeafNodeUInt64Fixture, Scan_BothOpened_ScanWrittenValues)
+TEST_F(LeafNodeUInt64Fixture, Scan_BothOpened_ScanTargetValues)
 {
   WriteOrderedKeys(5, 10);
   WriteOrderedKeys(1, 4);
@@ -202,7 +202,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_BothOpened_ScanWrittenValues)
   EXPECT_EQ(payloads[9], CastToValue(scan_results[0].second.get()));
 }
 
-TEST_F(LeafNodeUInt64Fixture, Scan_LeftInfinity_ScanWrittenValues)
+TEST_F(LeafNodeUInt64Fixture, Scan_LeftInfinity_ScanTargetValues)
 {
   WriteOrderedKeys(5, 10);
   WriteOrderedKeys(1, 4);
@@ -217,7 +217,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_LeftInfinity_ScanWrittenValues)
   EXPECT_EQ(payloads[2], CastToValue(scan_results[1].second.get()));
 }
 
-TEST_F(LeafNodeUInt64Fixture, Scan_RightInfinity_ScanWrittenValues)
+TEST_F(LeafNodeUInt64Fixture, Scan_RightInfinity_ScanTargetValues)
 {
   WriteOrderedKeys(5, 10);
   WriteOrderedKeys(1, 4);
@@ -230,6 +230,43 @@ TEST_F(LeafNodeUInt64Fixture, Scan_RightInfinity_ScanWrittenValues)
   EXPECT_EQ(payloads[9], CastToValue(scan_results[0].second.get()));
   EXPECT_EQ(keys[10], CastToValue(scan_results[1].first.get()));
   EXPECT_EQ(payloads[10], CastToValue(scan_results[1].second.get()));
+}
+
+TEST_F(LeafNodeUInt64Fixture, Scan_LeftOutsideRange_NoResults)
+{
+  WriteOrderedKeys(5, 10);
+
+  auto [rc, scan_results] = node->Scan(nullptr, false, key_ptrs[3], false, comp);
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(0, scan_results.size());
+}
+
+TEST_F(LeafNodeUInt64Fixture, Scan_RightOutsideRange_NoResults)
+{
+  WriteOrderedKeys(1, 4);
+
+  auto [rc, scan_results] = node->Scan(key_ptrs[5], false, nullptr, false, comp);
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(0, scan_results.size());
+}
+
+TEST_F(LeafNodeUInt64Fixture, Scan_WithUpdateDelete_ScanLatestValues)
+{
+  WriteOrderedKeys(1, 5);
+  node->Update(key_ptrs[2], key_lengths[2], payload_ptrs[0], payload_lengths[0], kIndexEpoch, comp,
+               pool.get());
+  node->Delete(key_ptrs[3], key_lengths[3], comp, pool.get());
+
+  auto [rc, scan_results] = node->Scan(key_ptrs[2], true, key_ptrs[4], true, comp);
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(2, scan_results.size());
+  EXPECT_EQ(keys[2], CastToValue(scan_results[0].first.get()));
+  EXPECT_EQ(payloads[0], CastToValue(scan_results[0].second.get()));
+  EXPECT_EQ(keys[4], CastToValue(scan_results[1].first.get()));
+  EXPECT_EQ(payloads[4], CastToValue(scan_results[1].second.get()));
 }
 
 /*--------------------------------------------------------------------------------------------------
