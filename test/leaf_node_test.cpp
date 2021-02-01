@@ -339,6 +339,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_DuplicateKey_InsertionFailed)
 
   std::tie(rc, status) = node->Insert(key_1st_ptr, key_length_1st, payload_1st_ptr,
                                       payload_length_1st, kIndexEpoch, comp, pool.get());
+
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyExist, rc);
 }
 
@@ -416,6 +417,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_ConsolidatedNodeWithDuplicateKey_InsertionF
 
   std::tie(rc, status) = node->Insert(key_1st_ptr, key_length_1st, payload_1st_ptr,
                                       payload_length_1st, kIndexEpoch, comp, pool.get());
+
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyExist, rc);
 }
 
@@ -555,6 +557,7 @@ TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNodeWithNotPresentKey_UpdatedFa
 
   std::tie(rc, status) = node->Update(key_null_ptr, key_length_null, payload_null_ptr,
                                       payload_length_null, kIndexEpoch, comp, pool.get());
+
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
@@ -568,6 +571,7 @@ TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNodeWithDeletedKey_UpdatedFaile
 
   std::tie(rc, status) = node->Update(key_1st_ptr, key_length_1st, payload_1st_ptr,
                                       payload_length_1st, kIndexEpoch, comp, pool.get());
+
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
@@ -782,11 +786,11 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeys_NodeHasCorrectStatus)
   // prepare a consolidated node
   WriteOrderedKeys(1, 10);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  auto consolidated_node = std::unique_ptr<LeafNode>(node->Consolidate(meta_vec));
+  node.reset(node->Consolidate(meta_vec));
 
-  status = consolidated_node->GetStatusWord();
+  status = node->GetStatusWord();
 
-  EXPECT_EQ(rec_count, consolidated_node->GetSortedCount());
+  EXPECT_EQ(rec_count, node->GetSortedCount());
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
@@ -799,13 +803,13 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithDelete_NodeHasCorrect
   WriteOrderedKeys(1, 10);
   node->Delete(key_2nd_ptr, key_length_2nd, comp, pool.get());
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  auto consolidated_node = std::unique_ptr<LeafNode>(node->Consolidate(meta_vec));
+  node.reset(node->Consolidate(meta_vec));
 
-  status = consolidated_node->GetStatusWord();
+  status = node->GetStatusWord();
   --rec_count;
   block_size -= key_length_2nd + payload_length_2nd;
 
-  EXPECT_EQ(rec_count, consolidated_node->GetSortedCount());
+  EXPECT_EQ(rec_count, node->GetSortedCount());
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
@@ -819,11 +823,11 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithUpdate_NodeHasCorrect
   node->Update(key_2nd_ptr, key_length_2nd, payload_null_ptr, payload_length_null, kIndexEpoch,
                comp, pool.get());
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  auto consolidated_node = std::unique_ptr<LeafNode>(node->Consolidate(meta_vec));
+  node.reset(node->Consolidate(meta_vec));
 
-  status = consolidated_node->GetStatusWord();
+  status = node->GetStatusWord();
 
-  EXPECT_EQ(rec_count, consolidated_node->GetSortedCount());
+  EXPECT_EQ(rec_count, node->GetSortedCount());
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
@@ -836,11 +840,11 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_UnsortedTenKeys_NodeHasCorrectStatus)
   WriteOrderedKeys(5, 10);
   WriteOrderedKeys(1, 4);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  auto consolidated_node = std::unique_ptr<LeafNode>(node->Consolidate(meta_vec));
+  node.reset(node->Consolidate(meta_vec));
 
-  status = consolidated_node->GetStatusWord();
+  status = node->GetStatusWord();
 
-  EXPECT_EQ(rec_count, consolidated_node->GetSortedCount());
+  EXPECT_EQ(rec_count, node->GetSortedCount());
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
