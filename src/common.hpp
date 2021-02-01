@@ -43,7 +43,13 @@ struct CompareAsCString {
   constexpr bool
   operator()(const void *a, const void *b) const noexcept
   {
-    return strcmp(static_cast<const char *>(a), static_cast<const char *>(b)) < 0;
+    if (a == nullptr) {
+      return false;
+    } else if (b == nullptr) {
+      return true;
+    } else {
+      return strcmp(static_cast<const char *>(a), static_cast<const char *>(b)) < 0;
+    }
   }
 };
 
@@ -55,7 +61,13 @@ struct CompareAsUInt64 {
   constexpr bool
   operator()(const void *a, const void *b) const noexcept
   {
-    return *static_cast<const uint64_t *>(a) < *static_cast<const uint64_t *>(b);
+    if (a == nullptr) {
+      return false;
+    } else if (b == nullptr) {
+      return true;
+    } else {
+      return *static_cast<const uint64_t *>(a) < *static_cast<const uint64_t *>(b);
+    }
   }
 };
 
@@ -67,7 +79,13 @@ struct CompareAsInt64 {
   constexpr bool
   operator()(const void *a, const void *b) const noexcept
   {
-    return *static_cast<const int64_t *>(a) < *static_cast<const int64_t *>(b);
+    if (a == nullptr) {
+      return false;
+    } else if (b == nullptr) {
+      return true;
+    } else {
+      return *static_cast<const int64_t *>(a) < *static_cast<const int64_t *>(b);
+    }
   }
 };
 
@@ -123,16 +141,12 @@ IsInRange(const void *key,
           const bool end_is_closed,
           Compare comp)
 {
-  if (begin_key != nullptr && end_key != nullptr) {
+  if (begin_key != nullptr) {
     return (comp(begin_key, key) && comp(key, end_key))
            || (begin_is_closed && IsEqual(key, begin_key, comp))
            || (end_is_closed && IsEqual(key, end_key, comp));
-  } else if (begin_key == nullptr) {
-    return comp(key, end_key) || (end_is_closed && IsEqual(key, end_key, comp));
-  } else if (end_key == nullptr) {
-    return comp(begin_key, key) || (begin_is_closed && IsEqual(key, begin_key, comp));
   } else {
-    return true;
+    return comp(key, end_key) || (end_is_closed && IsEqual(key, end_key, comp));
   }
 }
 

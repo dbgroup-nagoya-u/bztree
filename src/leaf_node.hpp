@@ -240,6 +240,8 @@ class LeafNode : public BaseNode
       const void *key,
       Compare comp)
   {
+    assert(key != nullptr);
+
     const auto status = GetStatusWord();
     const auto [existence, index] = SearchMetadataToRead(key, status.GetRecordCount(), comp);
     if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
@@ -273,31 +275,42 @@ class LeafNode : public BaseNode
       Compare comp)
   {
     const auto status = GetStatusWord();
-    const auto record_count = GetStatusWord().GetRecordCount();
-    const auto sorted_count = GetSortedCount();
+    const int64_t record_count = GetStatusWord().GetRecordCount();
+    const int64_t sorted_count = GetSortedCount();
 
     // gather valid (live or deleted) records
     std::vector<std::pair<void *, Metadata>> meta_arr;
     meta_arr.reserve(record_count);
+    auto return_code = NodeReturnCode::kScanInProgress;
 
     // search unsorted metadata in reverse order
-    for (size_t index = record_count - 1; index >= sorted_count; --index) {
+    for (int64_t index = record_count - 1; index >= sorted_count; --index) {
       const auto meta = GetMetadata(index);
-      if (IsInRange(GetKeyPtr(meta), begin_key, begin_is_closed, end_key, end_is_closed, comp)
+      const auto key = GetKeyPtr(meta);
+      if (IsInRange(key, begin_key, begin_is_closed, end_key, end_is_closed, comp)
           && (meta.IsVisible() || meta.IsDeleted())) {
-        meta_arr.emplace_back(GetKeyPtr(meta), meta);
-      } else {
-        // there is a key, but it is in inserting or corrupted.
+        meta_arr.emplace_back(key, meta);
+      }
+      if (return_code != NodeReturnCode::kSuccess
+          && (comp(end_key, key) || IsEqual(key, end_key, comp))) {
+        // a current key is out/end of range condition
+        return_code = NodeReturnCode::kSuccess;
       }
     }
 
     // search sorted metadata
-    auto return_code = NodeReturnCode::kScanInProgress;
-    const auto begin_index = SearchSortedMetadata(begin_key, begin_is_closed, comp).second;
-    for (size_t index = begin_index; index < sorted_count; ++index) {
+    const auto begin_index =
+        (begin_key == nullptr) ? 0 : SearchSortedMetadata(begin_key, begin_is_closed, comp).second;
+    for (int64_t index = begin_index; index < sorted_count; ++index) {
       const auto meta = GetMetadata(index);
-      if (IsInRange(GetKeyPtr(meta), begin_key, begin_is_closed, end_key, end_is_closed, comp)) {
-        meta_arr.emplace_back(GetKeyPtr(meta), meta);
+      const auto key = GetKeyPtr(meta);
+      if (IsInRange(key, begin_key, begin_is_closed, end_key, end_is_closed, comp)) {
+        meta_arr.emplace_back(key, meta);
+        if (end_is_closed && IsEqual(key, end_key, comp)) {
+          // a current key is end of range condition
+          return_code = NodeReturnCode::kSuccess;
+          break;
+        }
       } else {
         // a current key is out of range condition
         return_code = NodeReturnCode::kSuccess;
@@ -312,14 +325,18 @@ class LeafNode : public BaseNode
 
     // copy live records for return
     std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>> scan_results;
-    scan_results.reserve(meta_arr.size());
-    for (auto &&[key, meta] : meta_arr) {
-      if (meta.IsVisible()) {
-        scan_results.emplace_back(GetCopiedKey(meta), GetCopiedPayload(meta));
+    if (meta_arr.empty()) {
+      return {NodeReturnCode::kSuccess, std::move(scan_results)};
+    } else {
+      scan_results.reserve(meta_arr.size());
+      for (auto &&[key, meta] : meta_arr) {
+        if (meta.IsVisible()) {
+          scan_results.emplace_back(GetCopiedKey(meta), GetCopiedPayload(meta));
+        }
       }
-    }
 
-    return {return_code, scan_results};
+      return {return_code, std::move(scan_results)};
+    }
   }
 
   /*################################################################################################
@@ -346,6 +363,8 @@ class LeafNode : public BaseNode
       const size_t index_epoch,
       pmwcas::DescriptorPool *pmwcas_pool)
   {
+    assert(key != nullptr);
+
     // variables and constants shared in Phase 1 & 2
     StatusWord current_status;
     size_t record_count;
@@ -427,6 +446,8 @@ class LeafNode : public BaseNode
       Compare comp,
       pmwcas::DescriptorPool *pmwcas_pool)
   {
+    assert(key != nullptr);
+
     // variables and constants shared in Phase 1 & 2
     StatusWord current_status;
     size_t record_count;
@@ -536,6 +557,8 @@ class LeafNode : public BaseNode
       Compare comp,
       pmwcas::DescriptorPool *pmwcas_pool)
   {
+    assert(key != nullptr);
+
     // variables and constants shared in Phase 1 & 2
     StatusWord current_status;
     size_t record_count;
@@ -619,6 +642,8 @@ class LeafNode : public BaseNode
       Compare comp,
       pmwcas::DescriptorPool *pmwcas_pool)
   {
+    assert(key != nullptr);
+
     // variables and constants
     pmwcas::Descriptor *pd;
     StatusWord new_status;
