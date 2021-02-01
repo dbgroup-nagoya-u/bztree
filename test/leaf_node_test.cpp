@@ -148,8 +148,8 @@ TEST_F(LeafNodeUInt64Fixture, Write_TwoKeys_MetadataCorrectlyUpdated)
   index = 0;
   block_size = key_length_1st + payload_length_1st;
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(status, node->GetStatusWord());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_1st, node->GetKeyLength(index));
@@ -165,8 +165,8 @@ TEST_F(LeafNodeUInt64Fixture, Write_TwoKeys_MetadataCorrectlyUpdated)
   ++index;
   block_size += key_length_2nd + payload_length_2nd;
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(status, node->GetStatusWord());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_2nd, node->GetKeyLength(index));
@@ -188,14 +188,14 @@ TEST_F(LeafNodeUInt64Fixture, Write_TwoKeys_ReadWrittenValues)
   std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
   result = GetResult();
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(payload_1st, result);
 
   // read 2nd input value
   std::tie(rc, u_ptr) = node->Read(key_2nd_ptr, comp);
   result = GetResult();
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(payload_2nd, result);
 }
 
@@ -209,7 +209,7 @@ TEST_F(LeafNodeUInt64Fixture, Write_DuplicateKey_ReadLatestValue)
   std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
   result = GetResult();
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(payload_2nd, result);
 }
 
@@ -228,6 +228,47 @@ TEST_F(LeafNodeUInt64Fixture, Write_FilledNode_GetCorrectReturnCodes)
   EXPECT_EQ(BaseNode::NodeReturnCode::kNoSpace, rc);
 }
 
+TEST_F(LeafNodeUInt64Fixture, Write_ConsolidatedNode_MetadataCorrectlyUpdated)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(1, 5);
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  node.reset(node->Consolidate(meta_vec));
+
+  std::tie(rc, status) = node->Write(key_11th_ptr, key_length_11th, payload_11th_ptr,
+                                     payload_length_11th, kIndexEpoch, pool.get());
+  ++rec_count;
+  block_size += key_length_11th + payload_length_11th;
+  index = rec_count - 1;
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(status, node->GetStatusWord());
+  EXPECT_TRUE(node->RecordIsVisible(index));
+  EXPECT_FALSE(node->RecordIsDeleted(index));
+  EXPECT_EQ(key_length_11th, node->GetKeyLength(index));
+  EXPECT_EQ(payload_length_11th, node->GetPayloadLength(index));
+  EXPECT_FALSE(status.IsFrozen());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(0, status.GetDeletedSize());
+}
+
+TEST_F(LeafNodeUInt64Fixture, Write_ConsolidatedNode_ReadWrittenValue)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(1, 5);
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  node.reset(node->Consolidate(meta_vec));
+
+  node->Write(key_11th_ptr, key_length_11th, payload_11th_ptr, payload_length_11th, kIndexEpoch,
+              pool.get());
+  std::tie(rc, u_ptr) = node->Read(key_11th_ptr, comp);
+  result = GetResult();
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(payload_11th, result);
+}
+
 /*--------------------------------------------------------------------------------------------------
  * Insert operation
  *------------------------------------------------------------------------------------------------*/
@@ -240,8 +281,8 @@ TEST_F(LeafNodeUInt64Fixture, Insert_TwoKeys_MetadataCorrectlyUpdated)
   index = 0;
   block_size = key_length_1st + payload_length_1st;
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(status, node->GetStatusWord());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_1st, node->GetKeyLength(index));
@@ -257,8 +298,8 @@ TEST_F(LeafNodeUInt64Fixture, Insert_TwoKeys_MetadataCorrectlyUpdated)
   ++index;
   block_size += key_length_2nd + payload_length_2nd;
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(status, node->GetStatusWord());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(key_length_2nd, node->GetKeyLength(index));
@@ -280,14 +321,14 @@ TEST_F(LeafNodeUInt64Fixture, Insert_TwoKeys_ReadWrittenValues)
   std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
   result = GetResult();
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(payload_1st, result);
 
   // read 2nd input value
   std::tie(rc, u_ptr) = node->Read(key_2nd_ptr, comp);
   result = GetResult();
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(payload_2nd, result);
 }
 
@@ -298,7 +339,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_DuplicateKey_InsertionFailed)
 
   std::tie(rc, status) = node->Insert(key_1st_ptr, key_length_1st, payload_1st_ptr,
                                       payload_length_1st, kIndexEpoch, comp, pool.get());
-  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyExist, rc);
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyExist, rc);
 }
 
 TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
@@ -343,8 +384,8 @@ TEST_F(LeafNodeUInt64Fixture, Update_SingleKey_MetadataCorrectlyUpdated)
   ++index;
   block_size += key_length_1st + payload_length_2nd;
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(status, node->GetStatusWord());
   EXPECT_TRUE(node->RecordIsVisible(index));
   EXPECT_FALSE(node->RecordIsDeleted(index));
   EXPECT_EQ(payload_length_2nd, node->GetPayloadLength(index));
@@ -364,7 +405,7 @@ TEST_F(LeafNodeUInt64Fixture, Update_SingleKey_ReadUpdatedValue)
   std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
   result = GetResult();
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(payload_2nd, result);
 }
 
@@ -373,7 +414,7 @@ TEST_F(LeafNodeUInt64Fixture, Update_NotPresentKey_UpdatedFailed)
   std::tie(rc, status) = node->Update(key_1st_ptr, key_length_1st, payload_1st_ptr,
                                       payload_length_1st, kIndexEpoch, comp, pool.get());
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 TEST_F(LeafNodeUInt64Fixture, Update_DeletedKey_UpdateFailed)
@@ -384,7 +425,7 @@ TEST_F(LeafNodeUInt64Fixture, Update_DeletedKey_UpdateFailed)
   std::tie(rc, status) = node->Update(key_1st_ptr, key_length_1st, payload_2nd_ptr,
                                       payload_length_2nd, kIndexEpoch, comp, pool.get());
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 TEST_F(LeafNodeUInt64Fixture, Update_FilledNode_GetCorrectReturnCodes)
@@ -427,8 +468,8 @@ TEST_F(LeafNodeUInt64Fixture, Delete_TwoKeys_MetadataCorrectlyUpdated)
   std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
   deleted_size = key_length_1st + payload_length_1st;
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(status, node->GetStatusWord());
   EXPECT_FALSE(node->RecordIsVisible(0));
   EXPECT_TRUE(node->RecordIsDeleted(0));
   EXPECT_FALSE(status.IsFrozen());
@@ -439,8 +480,8 @@ TEST_F(LeafNodeUInt64Fixture, Delete_TwoKeys_MetadataCorrectlyUpdated)
   std::tie(rc, status) = node->Delete(key_2nd_ptr, key_length_2nd, comp, pool.get());
   deleted_size += key_length_2nd + payload_length_2nd;
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  ASSERT_EQ(status, node->GetStatusWord());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(status, node->GetStatusWord());
   EXPECT_FALSE(node->RecordIsVisible(1));
   EXPECT_TRUE(node->RecordIsDeleted(1));
   EXPECT_FALSE(status.IsFrozen());
@@ -456,14 +497,14 @@ TEST_F(LeafNodeUInt64Fixture, Delete_PresentKey_DeletionSucceed)
 
   std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
 }
 
 TEST_F(LeafNodeUInt64Fixture, Delete_NotPresentKey_DeletionFailed)
 {
   std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 TEST_F(LeafNodeUInt64Fixture, Delete_DeletedKey_DeletionFailed)
@@ -474,7 +515,7 @@ TEST_F(LeafNodeUInt64Fixture, Delete_DeletedKey_DeletionFailed)
 
   std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
 
-  ASSERT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 TEST_F(LeafNodeUInt64Fixture, Delete_FilledNode_GetCorrectReturnCodes)
@@ -498,7 +539,7 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeys_GatherSortedLiveMetadata
   // gather live metadata and check equality
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
 
-  ASSERT_EQ(rec_count, meta_vec.size());
+  EXPECT_EQ(rec_count, meta_vec.size());
 
   for (size_t index = 0; index < meta_vec.size(); index++) {
     EXPECT_EQ(written_keys[index], CastKey(meta_vec[index].first));
@@ -516,7 +557,7 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithDelete_GatherSortedLi
   // gather live metadata and check equality
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
 
-  ASSERT_EQ(rec_count, meta_vec.size());
+  EXPECT_EQ(rec_count, meta_vec.size());
 
   for (size_t index = 0; index < meta_vec.size(); index++) {
     EXPECT_EQ(written_keys[index], CastKey(meta_vec[index].first));
@@ -533,7 +574,7 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithUpdate_GatherSortedLi
   // gather live metadata and check equality
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
 
-  ASSERT_EQ(rec_count, meta_vec.size());
+  EXPECT_EQ(rec_count, meta_vec.size());
 
   for (size_t index = 0; index < meta_vec.size(); index++) {
     EXPECT_EQ(written_keys[index], CastKey(meta_vec[index].first));
@@ -550,7 +591,7 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_UnsortedTenKeys_GatherSortedLiveMetada
   // gather live metadata and check equality
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
 
-  ASSERT_EQ(rec_count, meta_vec.size());
+  EXPECT_EQ(rec_count, meta_vec.size());
 
   for (size_t index = 0; index < meta_vec.size(); index++) {
     EXPECT_EQ(written_keys[index], CastKey(meta_vec[index].first));
