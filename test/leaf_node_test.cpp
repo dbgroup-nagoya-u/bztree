@@ -137,6 +137,18 @@ TEST_F(LeafNodeUInt64Fixture, New_EmptyNode_CorrectlyInitialized)
 }
 
 /*--------------------------------------------------------------------------------------------------
+ * Read operation
+ *------------------------------------------------------------------------------------------------*/
+
+TEST_F(LeafNodeUInt64Fixture, Read_NotPresentKey_ReadFailed)
+{
+  // prepare a consolidated node
+  std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
+/*--------------------------------------------------------------------------------------------------
  * Write operation
  *------------------------------------------------------------------------------------------------*/
 
@@ -621,6 +633,17 @@ TEST_F(LeafNodeUInt64Fixture, Delete_PresentKey_DeletionSucceed)
   std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+}
+
+TEST_F(LeafNodeUInt64Fixture, Delete_PresentKey_ReadFailed)
+{
+  node->Insert(key_1st_ptr, key_length_1st, payload_1st_ptr, payload_length_1st, kIndexEpoch, comp,
+               pool.get());
+  node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+
+  std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 TEST_F(LeafNodeUInt64Fixture, Delete_NotPresentKey_DeletionFailed)
