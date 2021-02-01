@@ -505,6 +505,72 @@ TEST_F(LeafNodeUInt64Fixture, Update_FilledNode_GetCorrectReturnCodes)
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
+TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNode_MetadataCorrectlyUpdated)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(1, 5);
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  node.reset(node->Consolidate(meta_vec));
+
+  std::tie(rc, status) = node->Update(key_1st_ptr, key_length_1st, payload_1st_ptr,
+                                      payload_length_1st, kIndexEpoch, comp, pool.get());
+  ++rec_count;
+  block_size += key_length_11th + payload_length_11th;
+  index = rec_count - 1;
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(status, node->GetStatusWord());
+  EXPECT_TRUE(node->RecordIsVisible(index));
+  EXPECT_FALSE(node->RecordIsDeleted(index));
+  EXPECT_EQ(key_length_11th, node->GetKeyLength(index));
+  EXPECT_EQ(payload_length_11th, node->GetPayloadLength(index));
+  EXPECT_FALSE(status.IsFrozen());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(0, status.GetDeletedSize());
+}
+
+TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNode_ReadUpdatedValue)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(1, 5);
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  node.reset(node->Consolidate(meta_vec));
+
+  node->Update(key_1st_ptr, key_length_1st, payload_11th_ptr, payload_length_11th, kIndexEpoch,
+               comp, pool.get());
+  std::tie(rc, u_ptr) = node->Read(key_1st_ptr, comp);
+  result = GetResult();
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(payload_11th, result);
+}
+
+TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNodeWithNotPresentKey_UpdatedFailed)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(1, 5);
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  node.reset(node->Consolidate(meta_vec));
+
+  std::tie(rc, status) = node->Update(key_null_ptr, key_length_null, payload_null_ptr,
+                                      payload_length_null, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
+TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNodeWithDeletedKey_UpdatedFailed)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(1, 5);
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  node.reset(node->Consolidate(meta_vec));
+  node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+
+  std::tie(rc, status) = node->Update(key_1st_ptr, key_length_1st, payload_1st_ptr,
+                                      payload_length_1st, kIndexEpoch, comp, pool.get());
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
 /*--------------------------------------------------------------------------------------------------
  * Delete operation
  *------------------------------------------------------------------------------------------------*/
