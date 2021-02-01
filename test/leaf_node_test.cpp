@@ -269,6 +269,75 @@ TEST_F(LeafNodeUInt64Fixture, Scan_WithUpdateDelete_ScanLatestValues)
   EXPECT_EQ(payloads[4], CastToValue(scan_results[1].second.get()));
 }
 
+TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithinRange_ScanTargetValues)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(3, 7);
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  node.reset(node->Consolidate(meta_vec));
+
+  auto [rc, scan_results] = node->Scan(key_ptrs[4], true, key_ptrs[6], true, comp);
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(3, scan_results.size());
+  EXPECT_EQ(keys[4], CastToValue(scan_results[0].first.get()));
+  EXPECT_EQ(payloads[4], CastToValue(scan_results[0].second.get()));
+  EXPECT_EQ(keys[5], CastToValue(scan_results[1].first.get()));
+  EXPECT_EQ(payloads[5], CastToValue(scan_results[1].second.get()));
+  EXPECT_EQ(keys[6], CastToValue(scan_results[2].first.get()));
+  EXPECT_EQ(payloads[6], CastToValue(scan_results[2].second.get()));
+}
+
+TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithLeftInfinity_ScanTargetValues)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(3, 7);
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  node.reset(node->Consolidate(meta_vec));
+
+  auto [rc, scan_results] = node->Scan(nullptr, true, key_ptrs[3], true, comp);
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(1, scan_results.size());
+  EXPECT_EQ(keys[3], CastToValue(scan_results[0].first.get()));
+  EXPECT_EQ(payloads[3], CastToValue(scan_results[0].second.get()));
+}
+
+TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithRightInfinity_ScanTargetValues)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(3, 7);
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  node.reset(node->Consolidate(meta_vec));
+
+  auto [rc, scan_results] = node->Scan(key_ptrs[7], true, nullptr, true, comp);
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kScanInProgress, rc);
+  EXPECT_EQ(1, scan_results.size());
+  EXPECT_EQ(keys[7], CastToValue(scan_results[0].first.get()));
+  EXPECT_EQ(payloads[7], CastToValue(scan_results[0].second.get()));
+}
+
+TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithUpdateDelete_ScanLatestValues)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(3, 7);
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  node.reset(node->Consolidate(meta_vec));
+  node->Update(key_ptrs[5], key_lengths[5], payload_ptrs[0], payload_lengths[0], kIndexEpoch, comp,
+               pool.get());
+  node->Delete(key_ptrs[7], key_lengths[7], comp, pool.get());
+
+  auto [rc, scan_results] = node->Scan(key_ptrs[5], true, key_ptrs[7], true, comp);
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(2, scan_results.size());
+  EXPECT_EQ(keys[5], CastToValue(scan_results[0].first.get()));
+  EXPECT_EQ(payloads[0], CastToValue(scan_results[0].second.get()));
+  EXPECT_EQ(keys[6], CastToValue(scan_results[1].first.get()));
+  EXPECT_EQ(payloads[6], CastToValue(scan_results[1].second.get()));
+}
+
 /*--------------------------------------------------------------------------------------------------
  * Write operation
  *------------------------------------------------------------------------------------------------*/

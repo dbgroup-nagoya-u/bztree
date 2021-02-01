@@ -240,6 +240,8 @@ class LeafNode : public BaseNode
       const void *key,
       Compare comp)
   {
+    assert(key != nullptr);
+
     const auto status = GetStatusWord();
     const auto [existence, index] = SearchMetadataToRead(key, status.GetRecordCount(), comp);
     if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
@@ -297,7 +299,8 @@ class LeafNode : public BaseNode
     }
 
     // search sorted metadata
-    const auto begin_index = SearchSortedMetadata(begin_key, begin_is_closed, comp).second;
+    const auto begin_index =
+        (begin_key == nullptr) ? 0 : SearchSortedMetadata(begin_key, begin_is_closed, comp).second;
     for (int64_t index = begin_index; index < sorted_count; ++index) {
       const auto meta = GetMetadata(index);
       const auto key = GetKeyPtr(meta);
@@ -360,6 +363,8 @@ class LeafNode : public BaseNode
       const size_t index_epoch,
       pmwcas::DescriptorPool *pmwcas_pool)
   {
+    assert(key != nullptr);
+
     // variables and constants shared in Phase 1 & 2
     StatusWord current_status;
     size_t record_count;
@@ -441,6 +446,8 @@ class LeafNode : public BaseNode
       Compare comp,
       pmwcas::DescriptorPool *pmwcas_pool)
   {
+    assert(key != nullptr);
+
     // variables and constants shared in Phase 1 & 2
     StatusWord current_status;
     size_t record_count;
@@ -550,6 +557,8 @@ class LeafNode : public BaseNode
       Compare comp,
       pmwcas::DescriptorPool *pmwcas_pool)
   {
+    assert(key != nullptr);
+
     // variables and constants shared in Phase 1 & 2
     StatusWord current_status;
     size_t record_count;
@@ -633,6 +642,8 @@ class LeafNode : public BaseNode
       Compare comp,
       pmwcas::DescriptorPool *pmwcas_pool)
   {
+    assert(key != nullptr);
+
     // variables and constants
     pmwcas::Descriptor *pd;
     StatusWord new_status;
