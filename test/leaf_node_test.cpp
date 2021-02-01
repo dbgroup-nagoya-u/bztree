@@ -157,7 +157,7 @@ TEST_F(LeafNodeUInt64Fixture, Write_TwoKeys_MetadataCorrectlyUpdated)
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
-  EXPECT_EQ(0, status.GetDeletedSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
 
   std::tie(rc, status) = node->Write(key_2nd_ptr, key_length_2nd, payload_2nd_ptr,
                                      payload_length_2nd, kIndexEpoch, pool.get());
@@ -174,7 +174,7 @@ TEST_F(LeafNodeUInt64Fixture, Write_TwoKeys_MetadataCorrectlyUpdated)
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
-  EXPECT_EQ(0, status.GetDeletedSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
 }
 
 TEST_F(LeafNodeUInt64Fixture, Write_TwoKeys_ReadWrittenValues)
@@ -250,7 +250,7 @@ TEST_F(LeafNodeUInt64Fixture, Write_ConsolidatedNode_MetadataCorrectlyUpdated)
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
-  EXPECT_EQ(0, status.GetDeletedSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
 }
 
 TEST_F(LeafNodeUInt64Fixture, Write_ConsolidatedNode_ReadWrittenValue)
@@ -290,7 +290,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_TwoKeys_MetadataCorrectlyUpdated)
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
-  EXPECT_EQ(0, status.GetDeletedSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
 
   std::tie(rc, status) = node->Insert(key_2nd_ptr, key_length_2nd, payload_2nd_ptr,
                                       payload_length_2nd, kIndexEpoch, comp, pool.get());
@@ -307,7 +307,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_TwoKeys_MetadataCorrectlyUpdated)
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
-  EXPECT_EQ(0, status.GetDeletedSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
 }
 
 TEST_F(LeafNodeUInt64Fixture, Insert_TwoKeys_ReadInsertedValues)
@@ -388,7 +388,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_ConsolidatedNode_MetadataCorrectlyUpdated)
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
-  EXPECT_EQ(0, status.GetDeletedSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
 }
 
 TEST_F(LeafNodeUInt64Fixture, Insert_ConsolidatedNode_ReadInsertedValue)
@@ -445,7 +445,7 @@ TEST_F(LeafNodeUInt64Fixture, Update_SingleKey_MetadataCorrectlyUpdated)
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
-  EXPECT_EQ(0, status.GetDeletedSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
 }
 
 TEST_F(LeafNodeUInt64Fixture, Update_SingleKey_ReadUpdatedValue)
@@ -527,7 +527,7 @@ TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNode_MetadataCorrectlyUpdated)
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(rec_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
-  EXPECT_EQ(0, status.GetDeletedSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
 }
 
 TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNode_ReadUpdatedValue)
@@ -644,6 +644,66 @@ TEST_F(LeafNodeUInt64Fixture, Delete_FilledNode_GetCorrectReturnCodes)
   std::tie(rc, status) = node->Delete(key_null_ptr, key_length_null, comp, pool.get());
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+}
+
+TEST_F(LeafNodeUInt64Fixture, Delete_ConsolidatedNode_MetadataCorrectlyUpdated)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(1, 5);
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  node.reset(node->Consolidate(meta_vec));
+
+  std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+  deleted_size = key_length_1st + payload_length_1st;
+  index = rec_count - 1;
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(status, node->GetStatusWord());
+  EXPECT_TRUE(node->RecordIsVisible(index));
+  EXPECT_FALSE(node->RecordIsDeleted(index));
+  EXPECT_EQ(key_length_11th, node->GetKeyLength(index));
+  EXPECT_EQ(payload_length_11th, node->GetPayloadLength(index));
+  EXPECT_FALSE(status.IsFrozen());
+  EXPECT_EQ(rec_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
+}
+
+TEST_F(LeafNodeUInt64Fixture, Delete_ConsolidatedNode_DeletionSucceed)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(1, 5);
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  node.reset(node->Consolidate(meta_vec));
+
+  std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+}
+
+TEST_F(LeafNodeUInt64Fixture, Delete_ConsolidatedNodeWithNotPresentKey_DeletionFailed)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(1, 5);
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  node.reset(node->Consolidate(meta_vec));
+
+  std::tie(rc, status) = node->Delete(key_null_ptr, key_length_null, comp, pool.get());
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
+}
+
+TEST_F(LeafNodeUInt64Fixture, Delete_ConsolidatedNodeWithDeletedKey_DeletionFailed)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(1, 5);
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  node.reset(node->Consolidate(meta_vec));
+  node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+
+  std::tie(rc, status) = node->Delete(key_1st_ptr, key_length_1st, comp, pool.get());
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 /*--------------------------------------------------------------------------------------------------
