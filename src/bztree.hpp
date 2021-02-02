@@ -321,8 +321,8 @@ class BzTree
       }
 
       // create new nodes
-      BaseNode *merged_node, *new_parent;
-      LeafNode *sibling_node;
+      BaseNode *new_parent;
+      LeafNode *sibling_node, *merged_node;
       size_t deleted_index;
       if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
         deleted_index = target_index - 1;
@@ -338,7 +338,8 @@ class BzTree
       } else {
         return;  // there is no space to perform merge operation
       }
-      new_parent = parent->NewParentForMerge(merged_node, deleted_index, comparator_);
+      new_parent = parent->NewParentForMerge(dynamic_cast<BaseNode *>(merged_node), deleted_index,
+                                             comparator_);
 
       // try installation of new nodes
       install_success = InstallNewInternalNode(trace, new_parent);

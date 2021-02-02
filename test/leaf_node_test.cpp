@@ -1103,7 +1103,6 @@ TEST_F(LeafNodeUInt64Fixture, Split_EquallyDivided_NodesHaveCorrectKeyPayloads)
   // prepare split nodes
   WriteOrderedKeys(1, 10);
   const auto left_record_count = 5;
-  const auto right_record_count = record_count - left_record_count;
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
   auto [left_node, right_node] = node->Split(meta_vec, left_record_count);
 
@@ -1128,5 +1127,91 @@ TEST_F(LeafNodeUInt64Fixture, Split_EquallyDivided_NodesHaveCorrectKeyPayloads)
 /*--------------------------------------------------------------------------------------------------
  * Merge operation
  *------------------------------------------------------------------------------------------------*/
+
+TEST_F(LeafNodeUInt64Fixture, Merge_LeftSiblingNode_NodeHasCorrectStatus)
+{
+  // prepare a merged node
+  WriteOrderedKeys(4, 6);
+  auto this_meta = node->GatherSortedLiveMetadata(comp);
+  auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kDefaultNodeSize));
+  sibling_node->Write(key_ptrs[3], key_lengths[3], payload_ptrs[3], payload_lengths[3], kIndexEpoch,
+                      pool.get());
+  auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
+  auto merged_node = node->Merge(this_meta, sibling_node.get(), sibling_meta, true);
+
+  auto merged_status = merged_node->GetStatusWord();
+  auto merged_record_count = record_count + 1;
+  auto merged_block_size = block_size + key_lengths[3] + payload_lengths[3];
+  auto merged_deleted_size = 0;
+
+  EXPECT_EQ(merged_record_count, merged_node->GetSortedCount());
+  EXPECT_FALSE(merged_status.IsFrozen());
+  EXPECT_EQ(merged_record_count, merged_status.GetRecordCount());
+  EXPECT_EQ(merged_block_size, merged_status.GetBlockSize());
+  EXPECT_EQ(merged_deleted_size, merged_status.GetDeletedSize());
+}
+
+TEST_F(LeafNodeUInt64Fixture, Merge_RightSiblingNode_NodeHasCorrectStatus)
+{
+  // prepare a merged node
+  WriteOrderedKeys(4, 6);
+  auto this_meta = node->GatherSortedLiveMetadata(comp);
+  auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kDefaultNodeSize));
+  sibling_node->Write(key_ptrs[7], key_lengths[7], payload_ptrs[7], payload_lengths[7], kIndexEpoch,
+                      pool.get());
+  auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
+  auto merged_node = node->Merge(this_meta, sibling_node.get(), sibling_meta, false);
+
+  auto merged_status = merged_node->GetStatusWord();
+  auto merged_record_count = record_count + 1;
+  auto merged_block_size = block_size + key_lengths[7] + payload_lengths[7];
+  auto merged_deleted_size = 0;
+
+  EXPECT_EQ(merged_record_count, merged_node->GetSortedCount());
+  EXPECT_FALSE(merged_status.IsFrozen());
+  EXPECT_EQ(merged_record_count, merged_status.GetRecordCount());
+  EXPECT_EQ(merged_block_size, merged_status.GetBlockSize());
+  EXPECT_EQ(merged_deleted_size, merged_status.GetDeletedSize());
+}
+
+TEST_F(LeafNodeUInt64Fixture, Merge_LeftSiblingNode_NodeHasCorrectKeyPayloads)
+{
+  // prepare a merged node
+  WriteOrderedKeys(4, 6);
+  auto this_meta = node->GatherSortedLiveMetadata(comp);
+  auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kDefaultNodeSize));
+  sibling_node->Write(key_ptrs[3], key_lengths[3], payload_ptrs[3], payload_lengths[3], kIndexEpoch,
+                      pool.get());
+  auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
+  auto merged_node = node->Merge(this_meta, sibling_node.get(), sibling_meta, true);
+
+  // check keys and payloads
+  for (size_t index = 3; index <= 6; ++index) {
+    auto [rc, u_ptr] = merged_node->Read(key_ptrs[index], comp);
+
+    EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+    EXPECT_EQ(payloads[index], CastToValue(u_ptr.get()));
+  }
+}
+
+TEST_F(LeafNodeUInt64Fixture, Merge_RightSiblingNode_NodeHasCorrectKeyPayloads)
+{
+  // prepare a merged node
+  WriteOrderedKeys(4, 6);
+  auto this_meta = node->GatherSortedLiveMetadata(comp);
+  auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kDefaultNodeSize));
+  sibling_node->Write(key_ptrs[7], key_lengths[7], payload_ptrs[7], payload_lengths[7], kIndexEpoch,
+                      pool.get());
+  auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
+  auto merged_node = node->Merge(this_meta, sibling_node.get(), sibling_meta, false);
+
+  // check keys and payloads
+  for (size_t index = 4; index <= 7; ++index) {
+    auto [rc, u_ptr] = merged_node->Read(key_ptrs[index], comp);
+
+    EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+    EXPECT_EQ(payloads[index], CastToValue(u_ptr.get()));
+  }
+}
 
 }  // namespace bztree
