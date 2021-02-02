@@ -274,7 +274,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithinRange_ScanTargetValues)
   // prepare a consolidated node
   WriteOrderedKeys(3, 7);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto [rc, scan_results] = node->Scan(key_ptrs[4], true, key_ptrs[6], true, comp);
 
@@ -293,7 +293,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithLeftInfinity_ScanTargetVa
   // prepare a consolidated node
   WriteOrderedKeys(3, 7);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto [rc, scan_results] = node->Scan(nullptr, true, key_ptrs[3], true, comp);
 
@@ -308,7 +308,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithRightInfinity_ScanTargetV
   // prepare a consolidated node
   WriteOrderedKeys(3, 7);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto [rc, scan_results] = node->Scan(key_ptrs[7], true, nullptr, true, comp);
 
@@ -323,7 +323,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithUpdateDelete_ScanLatestVa
   // prepare a consolidated node
   WriteOrderedKeys(3, 7);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
   node->Update(key_ptrs[5], key_lengths[5], payload_ptrs[0], payload_lengths[0], kIndexEpoch, comp,
                pool.get());
   node->Delete(key_ptrs[7], key_lengths[7], comp, pool.get());
@@ -435,7 +435,7 @@ TEST_F(LeafNodeUInt64Fixture, Write_ConsolidatedNode_MetadataCorrectlyUpdated)
   // prepare a consolidated node
   WriteOrderedKeys(1, 5);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto [rc, status] = node->Write(key_ptrs[11], key_lengths[11], payload_ptrs[11],
                                   payload_lengths[11], kIndexEpoch, pool.get());
@@ -460,7 +460,7 @@ TEST_F(LeafNodeUInt64Fixture, Write_ConsolidatedNode_ReadWrittenValue)
   // prepare a consolidated node
   WriteOrderedKeys(1, 5);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   node->Write(key_ptrs[11], key_lengths[11], payload_ptrs[11], payload_lengths[11], kIndexEpoch,
               pool.get());
@@ -574,7 +574,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_ConsolidatedNode_MetadataCorrectlyUpdated)
   // prepare a consolidated node
   WriteOrderedKeys(1, 5);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto [rc, status] = node->Insert(key_ptrs[11], key_lengths[11], payload_ptrs[11],
                                    payload_lengths[11], kIndexEpoch, comp, pool.get());
@@ -599,7 +599,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_ConsolidatedNode_ReadInsertedValue)
   // prepare a consolidated node
   WriteOrderedKeys(1, 5);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   node->Insert(key_ptrs[11], key_lengths[11], payload_ptrs[11], payload_lengths[11], kIndexEpoch,
                comp, pool.get());
@@ -615,7 +615,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_ConsolidatedNodeWithDuplicateKey_InsertionF
   // prepare a consolidated node
   WriteOrderedKeys(1, 5);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto [rc, status] = node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1],
                                    kIndexEpoch, comp, pool.get());
@@ -714,7 +714,7 @@ TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNode_MetadataCorrectlyUpdated)
   // prepare a consolidated node
   WriteOrderedKeys(1, 5);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto [rc, status] = node->Update(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1],
                                    kIndexEpoch, comp, pool.get());
@@ -739,7 +739,7 @@ TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNode_ReadUpdatedValue)
   // prepare a consolidated node
   WriteOrderedKeys(1, 5);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   node->Update(key_ptrs[1], key_lengths[1], payload_ptrs[11], payload_lengths[11], kIndexEpoch,
                comp, pool.get());
@@ -755,7 +755,7 @@ TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNodeWithNotPresentKey_UpdatedFa
   // prepare a consolidated node
   WriteOrderedKeys(1, 5);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto [rc, status] = node->Update(key_null_ptr, key_length_null, payload_null_ptr,
                                    payload_length_null, kIndexEpoch, comp, pool.get());
@@ -768,7 +768,7 @@ TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNodeWithDeletedKey_UpdatedFaile
   // prepare a consolidated node
   WriteOrderedKeys(1, 5);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
   node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
 
   auto [rc, status] = node->Update(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1],
@@ -868,7 +868,7 @@ TEST_F(LeafNodeUInt64Fixture, Delete_ConsolidatedNode_MetadataCorrectlyUpdated)
   // prepare a consolidated node
   WriteOrderedKeys(1, 5);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
   deleted_size = key_lengths[1] + payload_lengths[1];
@@ -891,7 +891,7 @@ TEST_F(LeafNodeUInt64Fixture, Delete_ConsolidatedNode_DeletionSucceed)
   // prepare a consolidated node
   WriteOrderedKeys(1, 5);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
 
@@ -903,7 +903,7 @@ TEST_F(LeafNodeUInt64Fixture, Delete_ConsolidatedNodeWithNotPresentKey_DeletionF
   // prepare a consolidated node
   WriteOrderedKeys(1, 5);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto [rc, status] = node->Delete(key_null_ptr, key_length_null, comp, pool.get());
 
@@ -915,7 +915,7 @@ TEST_F(LeafNodeUInt64Fixture, Delete_ConsolidatedNodeWithDeletedKey_DeletionFail
   // prepare a consolidated node
   WriteOrderedKeys(1, 5);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
   node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
 
   auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
@@ -999,7 +999,7 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeys_NodeHasCorrectStatus)
   // prepare a consolidated node
   WriteOrderedKeys(1, 10);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto status = node->GetStatusWord();
 
@@ -1016,7 +1016,7 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithDelete_NodeHasCorrect
   WriteOrderedKeys(1, 10);
   node->Delete(key_ptrs[2], key_lengths[2], comp, pool.get());
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto status = node->GetStatusWord();
   --record_count;
@@ -1036,7 +1036,7 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithUpdate_NodeHasCorrect
   node->Update(key_ptrs[2], key_lengths[2], payload_null_ptr, payload_length_null, kIndexEpoch,
                comp, pool.get());
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto status = node->GetStatusWord();
 
@@ -1053,7 +1053,7 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_UnsortedTenKeys_NodeHasCorrectStatus)
   WriteOrderedKeys(5, 10);
   WriteOrderedKeys(1, 4);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  node.reset(node->Consolidate(meta_vec));
+  node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto status = node->GetStatusWord();
 
@@ -1074,7 +1074,7 @@ TEST_F(LeafNodeUInt64Fixture, Split_EquallyDivided_NodesHaveCorrectStatus)
   WriteOrderedKeys(1, 10);
   auto left_record_count = 5;
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  auto [left_node, right_node] = node->Split(meta_vec, left_record_count);
+  auto [left_node, right_node] = LeafNode::Split(node.get(), meta_vec, left_record_count);
 
   auto left_status = left_node->GetStatusWord();
   auto left_block_size = block_size / 2;
@@ -1104,7 +1104,7 @@ TEST_F(LeafNodeUInt64Fixture, Split_EquallyDivided_NodesHaveCorrectKeyPayloads)
   WriteOrderedKeys(1, 10);
   const auto left_record_count = 5;
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-  auto [left_node, right_node] = node->Split(meta_vec, left_record_count);
+  auto [left_node, right_node] = LeafNode::Split(node.get(), meta_vec, left_record_count);
 
   // check a split left node
   size_t index = 1;
@@ -1137,7 +1137,7 @@ TEST_F(LeafNodeUInt64Fixture, Merge_LeftSiblingNode_NodeHasCorrectStatus)
   sibling_node->Write(key_ptrs[3], key_lengths[3], payload_ptrs[3], payload_lengths[3], kIndexEpoch,
                       pool.get());
   auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
-  auto merged_node = node->Merge(this_meta, sibling_node.get(), sibling_meta, true);
+  auto merged_node = LeafNode::Merge(node.get(), this_meta, sibling_node.get(), sibling_meta, true);
 
   auto merged_status = merged_node->GetStatusWord();
   auto merged_record_count = record_count + 1;
@@ -1160,7 +1160,8 @@ TEST_F(LeafNodeUInt64Fixture, Merge_RightSiblingNode_NodeHasCorrectStatus)
   sibling_node->Write(key_ptrs[7], key_lengths[7], payload_ptrs[7], payload_lengths[7], kIndexEpoch,
                       pool.get());
   auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
-  auto merged_node = node->Merge(this_meta, sibling_node.get(), sibling_meta, false);
+  auto merged_node =
+      LeafNode::Merge(node.get(), this_meta, sibling_node.get(), sibling_meta, false);
 
   auto merged_status = merged_node->GetStatusWord();
   auto merged_record_count = record_count + 1;
@@ -1183,7 +1184,7 @@ TEST_F(LeafNodeUInt64Fixture, Merge_LeftSiblingNode_NodeHasCorrectKeyPayloads)
   sibling_node->Write(key_ptrs[3], key_lengths[3], payload_ptrs[3], payload_lengths[3], kIndexEpoch,
                       pool.get());
   auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
-  auto merged_node = node->Merge(this_meta, sibling_node.get(), sibling_meta, true);
+  auto merged_node = LeafNode::Merge(node.get(), this_meta, sibling_node.get(), sibling_meta, true);
 
   // check keys and payloads
   for (size_t index = 3; index <= 6; ++index) {
@@ -1203,7 +1204,8 @@ TEST_F(LeafNodeUInt64Fixture, Merge_RightSiblingNode_NodeHasCorrectKeyPayloads)
   sibling_node->Write(key_ptrs[7], key_lengths[7], payload_ptrs[7], payload_lengths[7], kIndexEpoch,
                       pool.get());
   auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
-  auto merged_node = node->Merge(this_meta, sibling_node.get(), sibling_meta, false);
+  auto merged_node =
+      LeafNode::Merge(node.get(), this_meta, sibling_node.get(), sibling_meta, false);
 
   // check keys and payloads
   for (size_t index = 4; index <= 7; ++index) {

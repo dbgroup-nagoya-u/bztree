@@ -228,7 +228,7 @@ class BzTree
       }
 
       // create new nodes
-      auto [left_leaf, right_leaf] = target_leaf->Split(sorted_meta, left_record_count);
+      auto [left_leaf, right_leaf] = LeafNode::Split(target_leaf, sorted_meta, left_record_count);
       auto new_parent = parent->NewParentForSplit(
           dynamic_cast<BaseNode *>(left_leaf), dynamic_cast<BaseNode *>(right_leaf), target_index);
 
@@ -328,13 +328,13 @@ class BzTree
         deleted_index = target_index - 1;
         sibling_node = reinterpret_cast<LeafNode *>(parent->GetChildNode(deleted_index));
         const auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comparator_);
-        merged_node = target_node->Merge(sorted_meta, sibling_node, sibling_meta, true);
+        merged_node = LeafNode::Merge(target_node, sorted_meta, sibling_node, sibling_meta, true);
       } else if (parent->CanMergeRightSibling(target_index, target_size, max_merged_size_)) {
         const auto right_index = target_index + 1;
         deleted_index = target_index;
         sibling_node = reinterpret_cast<LeafNode *>(parent->GetChildNode(right_index));
         const auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comparator_);
-        merged_node = target_node->Merge(sorted_meta, sibling_node, sibling_meta, false);
+        merged_node = LeafNode::Merge(target_node, sorted_meta, sibling_node, sibling_meta, false);
       } else {
         return;  // there is no space to perform merge operation
       }
