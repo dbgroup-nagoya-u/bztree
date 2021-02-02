@@ -113,10 +113,11 @@ class LeafNodeUInt64Fixture : public testing::Test
 
 TEST_F(LeafNodeUInt64Fixture, New_EmptyNode_CorrectlyInitialized)
 {
-  EXPECT_EQ(kWordLength, node->GetStatusWordOffsetForTest());
-  EXPECT_EQ(kWordLength, node->GetMetadataOffsetForTest());
+  auto status = *BitCast<StatusWord*>(ShiftAddress(node.get(), kWordLength));
+
   EXPECT_EQ(kDefaultNodeSize, node->GetNodeSize());
   EXPECT_EQ(0, node->GetSortedCount());
+  EXPECT_EQ(status, node->GetStatusWord());
 }
 
 /*--------------------------------------------------------------------------------------------------

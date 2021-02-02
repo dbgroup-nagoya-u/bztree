@@ -37,28 +37,6 @@ class alignas(kWordLength) BaseNode
 
   MetaUnion meta_array_[0];
 
-  /*################################################################################################
-   * Internal getter/setter for test use
-   *##############################################################################################*/
-
-  uint64_t
-  GetHeadAddrForTest(void)
-  {
-    return reinterpret_cast<uint64_t>(this);
-  }
-
-  uint64_t
-  GetStatusWordAddrForTest(void)
-  {
-    return reinterpret_cast<uint64_t>(&status_);
-  }
-
-  uint64_t
-  GetMetadataArrayAddrForTest(void)
-  {
-    return reinterpret_cast<uint64_t>(meta_array_);
-  }
-
  protected:
   /*################################################################################################
    * Internally inherited enum and constants
@@ -320,22 +298,6 @@ class alignas(kWordLength) BaseNode
     return descriptor->AddEntry(static_cast<uint64_t *>(GetPayloadAddr(GetMetadata(index))),
                                 PayloadUnion{old_payload}.int_payload,
                                 PayloadUnion{new_payload}.int_payload);
-  }
-
-  /*################################################################################################
-   * Public getter/setter for test use
-   *##############################################################################################*/
-
-  size_t
-  GetStatusWordOffsetForTest(void)
-  {
-    return GetStatusWordAddrForTest() - GetHeadAddrForTest();
-  }
-
-  size_t
-  GetMetadataOffsetForTest(void)
-  {
-    return GetMetadataArrayAddrForTest() - GetStatusWordAddrForTest();
   }
 
   /*################################################################################################
