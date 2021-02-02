@@ -26,14 +26,15 @@ class InternalNode : public BaseNode
    * Internal utility functions
    *##############################################################################################*/
 
-  void
+  static void
   CopySortedRecords(  //
+      InternalNode *target_node,
       const InternalNode *original_node,
       const size_t begin_index,
       const size_t end_index)
   {
-    auto sorted_count = GetSortedCount();
-    auto offset = GetNodeSize() - GetStatusWord().GetBlockSize();
+    auto sorted_count = target_node->GetSortedCount();
+    auto offset = target_node->GetNodeSize() - target_node->GetStatusWord().GetBlockSize();
     for (size_t index = begin_index; index < end_index; ++index) {
       const auto meta = original_node->GetMetadata(index);
       // copy a record
@@ -41,13 +42,13 @@ class InternalNode : public BaseNode
       const auto key_length = meta.GetKeyLength();
       const auto payload = original_node->GetPayloadAddr(meta);
       const auto payload_length = meta.GetPayloadLength();
-      offset = CopyRecord(key, key_length, payload, payload_length, offset);
+      offset = target_node->CopyRecord(key, key_length, payload, payload_length, offset);
       // copy metadata
       const auto new_meta = meta.UpdateOffset(offset);
-      SetMetadata(sorted_count++, new_meta);
+      target_node->SetMetadata(sorted_count++, new_meta);
     }
-    SetStatusWord(kInitStatusWord.AddRecordInfo(sorted_count, offset, 0));
-    SetSortedCount(sorted_count);
+    target_node->SetStatusWord(kInitStatusWord.AddRecordInfo(sorted_count, offset, 0));
+    target_node->SetSortedCount(sorted_count);
   }
 
  public:
