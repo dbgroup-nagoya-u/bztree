@@ -691,7 +691,7 @@ class LeafNode : public BaseNode
     return new_node;
   }
 
-  std::pair<BaseNode *, BaseNode *>
+  std::pair<LeafNode *, LeafNode *>
   Split(  //
       const std::vector<std::pair<void *, Metadata>> &sorted_meta,
       const size_t left_record_count)
@@ -711,7 +711,7 @@ class LeafNode : public BaseNode
     // all the records must be copied
     assert(meta_iter == sorted_meta.end());
 
-    return {dynamic_cast<BaseNode *>(left_node), dynamic_cast<BaseNode *>(right_node)};
+    return {left_node, right_node};
   }
 
   BaseNode *

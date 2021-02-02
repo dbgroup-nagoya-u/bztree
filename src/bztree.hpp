@@ -229,7 +229,8 @@ class BzTree
 
       // create new nodes
       auto [left_leaf, right_leaf] = target_leaf->Split(sorted_meta, left_record_count);
-      auto new_parent = parent->NewParentForSplit(left_leaf, right_leaf, target_index);
+      auto new_parent = parent->NewParentForSplit(
+          dynamic_cast<BaseNode *>(left_leaf), dynamic_cast<BaseNode *>(right_leaf), target_index);
 
       // try installation of new nodes
       install_success = InstallNewInternalNode(trace, new_parent);

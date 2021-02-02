@@ -1064,4 +1064,65 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_UnsortedTenKeys_NodeHasCorrectStatus)
   EXPECT_EQ(deleted_size, status.GetDeletedSize());
 }
 
+TEST_F(LeafNodeUInt64Fixture, Split_EquallyDivided_NodesHaveCorrectStatus)
+{
+  // prepare split nodes
+  WriteOrderedKeys(1, 10);
+  auto left_record_count = 5;
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  auto [left_node, right_node] = node->Split(meta_vec, left_record_count);
+
+  auto left_status = left_node->GetStatusWord();
+  auto left_block_size = block_size / 2;
+  auto left_deleted_size = 0;
+
+  EXPECT_EQ(left_record_count, left_node->GetSortedCount());
+  EXPECT_FALSE(left_status.IsFrozen());
+  EXPECT_EQ(left_record_count, left_status.GetRecordCount());
+  EXPECT_EQ(left_block_size, left_status.GetBlockSize());
+  EXPECT_EQ(left_deleted_size, left_status.GetDeletedSize());
+
+  auto right_status = right_node->GetStatusWord();
+  auto right_record_count = rec_count - left_record_count;
+  auto right_block_size = block_size / 2;
+  auto right_deleted_size = 0;
+
+  EXPECT_EQ(right_record_count, right_node->GetSortedCount());
+  EXPECT_FALSE(right_status.IsFrozen());
+  EXPECT_EQ(right_record_count, right_status.GetRecordCount());
+  EXPECT_EQ(right_block_size, right_status.GetBlockSize());
+  EXPECT_EQ(right_deleted_size, right_status.GetDeletedSize());
+}
+
+TEST_F(LeafNodeUInt64Fixture, Split_EquallyDivided_NodesHaveCorrectKeyPayloads)
+{
+  // prepare split nodes
+  WriteOrderedKeys(1, 10);
+  const auto left_record_count = 5;
+  const auto right_record_count = rec_count - left_record_count;
+  auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  auto [left_node, right_node] = node->Split(meta_vec, left_record_count);
+
+  auto left_status = left_node->GetStatusWord();
+  auto left_block_size = block_size / 2;
+  auto left_deleted_size = 0;
+
+  // check a split left node
+  size_t index = 1;
+  for (; index <= left_record_count; ++index) {
+    auto [rc, u_ptr] = left_node->Read(key_ptrs[index], comp);
+
+    EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+    EXPECT_EQ(payloads[index], CastToValue(u_ptr.get()));
+  }
+
+  // check a split right node
+  for (; index <= rec_count; ++index) {
+    auto [rc, u_ptr] = right_node->Read(key_ptrs[index], comp);
+
+    EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+    EXPECT_EQ(payloads[index], CastToValue(u_ptr.get()));
+  }
+}
+
 }  // namespace bztree
