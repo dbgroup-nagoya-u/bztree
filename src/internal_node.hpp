@@ -182,6 +182,118 @@ class InternalNode : public BaseNode
 
     return merged_node;
   }
+
+  static InternalNode *
+  CreateNewRoot(  //
+      const InternalNode *left_child,
+      const InternalNode *right_child)
+  {
+    auto offset = left_child->GetNodeSize();
+    auto new_root = CreateEmptyNode(offset);
+
+    // insert a left child node
+    auto meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
+    auto key = left_child->GetKeyAddr(meta);
+    auto key_length = meta.GetKeyLength();
+    auto node_addr = GetAddr(left_child);
+    offset = new_root->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
+    auto new_meta = kInitMetadata.SetRecordInfo(offset, key_length, key_length + kPointerLength);
+    new_root->SetMetadata(0, new_meta);
+
+    // insert a right child node
+    meta = right_child->GetMetadata(right_child->GetSortedCount() - 1);
+    key = right_child->GetKeyAddr(meta);
+    key_length = meta.GetKeyLength();
+    node_addr = GetAddr(right_child);
+    offset = new_root->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
+    new_meta = kInitMetadata.SetRecordInfo(offset, key_length, key_length + kPointerLength);
+    new_root->SetMetadata(1, new_meta);
+
+    // set a new header
+    new_root->SetSortedCount(2);
+    new_root->SetStatusWord(kInitStatusWord.AddRecordInfo(2, offset, 0));
+
+    return new_root;
+  }
+
+  static InternalNode *
+  NewParentForSplit(  //
+      const InternalNode *old_parent,
+      const void *new_key,
+      const size_t new_key_length,
+      const void *left_addr,
+      const void *right_addr,
+      const size_t split_index)
+  {
+    auto offset = old_parent->GetNodeSize();
+    auto new_parent = CreateEmptyNode(offset);
+
+    // copy child nodes with inserting new split ones
+    auto record_count = old_parent->GetSortedCount();
+    for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
+      // prepare copying record and metadata
+      const auto meta = old_parent->GetMetadata(old_idx);
+      const auto key = old_parent->GetKeyAddr(meta);
+      const auto key_length = meta.GetKeyLength();
+      auto node_addr = old_parent->GetPayloadAddr(meta);
+      if (old_idx == split_index) {
+        // insert a split left child
+        offset = new_parent->CopyRecord(new_key, new_key_length, left_addr, kPointerLength, offset);
+        const auto total_length = new_key_length + kPointerLength;
+        const auto left_meta = kInitMetadata.SetRecordInfo(offset, new_key_length, total_length);
+        new_parent->SetMetadata(new_idx++, left_meta);
+        // continue with a split right child
+        node_addr = const_cast<void *>(right_addr);
+      }
+      // copy a child node
+      offset = new_parent->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
+      const auto new_meta = meta.UpdateOffset(offset);
+      new_parent->SetMetadata(new_idx, new_meta);
+    }
+
+    // set a new header
+    new_parent->SetSortedCount(++record_count);
+    new_parent->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, offset, 0));
+
+    return new_parent;
+  }
+
+  static InternalNode *
+  NewParentForMerge(  //
+      const InternalNode *old_parent,
+      const void *merged_child_addr,
+      const size_t deleted_index)
+  {
+    auto offset = old_parent->GetNodeSize();
+    auto new_parent = CreateEmptyNode(offset);
+
+    // copy child nodes with deleting a merging target node
+    auto record_count = old_parent->GetSortedCount();
+    for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
+      // prepare copying record and metadata
+      auto meta = old_parent->GetMetadata(old_idx);
+      auto key = old_parent->GetKeyAddr(meta);
+      auto key_length = meta.GetKeyLength();
+      auto node_addr = old_parent->GetPayloadAddr(meta);
+      if (old_idx == deleted_index) {
+        // skip a deleted node and insert a merged node
+        meta = old_parent->GetMetadata(++old_idx);
+        key = old_parent->GetKeyAddr(meta);
+        key_length = meta.GetKeyLength();
+        node_addr = const_cast<void *>(merged_child_addr);
+      }
+      // copy a child node
+      offset = new_parent->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
+      const auto new_meta = meta.UpdateOffset(offset);
+      new_parent->SetMetadata(new_idx, new_meta);
+    }
+
+    // set a new header
+    new_parent->SetSortedCount(--record_count);
+    new_parent->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, offset, 0));
+
+    return new_parent;
+  }
 };
 
 }  // namespace bztree

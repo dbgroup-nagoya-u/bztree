@@ -278,6 +278,13 @@ class alignas(kWordLength) BaseNode
     return GetPayloadAddr(GetMetadata(index));
   }
 
+  std::pair<void *, size_t>
+  GetKeyAndItsLength(const size_t index) const
+  {
+    const auto meta = GetMetadata(index);
+    return {GetKeyAddr(meta), meta.GetKeyLength()};
+  }
+
   constexpr size_t
   GetKeyLength(const size_t index) const
   {
@@ -315,12 +322,11 @@ class alignas(kWordLength) BaseNode
     return descriptor->AddEntry(meta_addr, old_meta_int, new_meta_int);
   }
 
-  template <typename T>
   uint32_t
   SetPayloadForMwCAS(  //
       const size_t index,
-      const T *old_payload,
-      const T *new_payload,
+      const void *old_payload,
+      const void *new_payload,
       pmwcas::Descriptor *descriptor)
   {
     return descriptor->AddEntry(static_cast<uint64_t *>(GetPayloadAddr(GetMetadata(index))),
@@ -409,121 +415,6 @@ class alignas(kWordLength) BaseNode
       }
     }
     return {KeyExistence::kNotExist, index};
-  }
-
-  static BaseNode *
-  CreateNewRoot(  //
-      const BaseNode *left_child,
-      const BaseNode *right_child)
-  {
-    auto offset = left_child->GetNodeSize();
-    auto new_root = new BaseNode{offset, false};
-
-    // insert a left child node
-    auto meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
-    auto key = left_child->GetKeyAddr(meta);
-    auto key_length = meta.GetKeyLength();
-    auto node_addr = GetAddr(left_child);
-    offset = new_root->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
-    auto new_meta = kInitMetadata.SetRecordInfo(offset, key_length, key_length + kPointerLength);
-    new_root->SetMetadata(0, new_meta);
-
-    // insert a right child node
-    meta = right_child->GetMetadata(right_child->GetSortedCount() - 1);
-    key = right_child->GetKeyAddr(meta);
-    key_length = meta.GetKeyLength();
-    node_addr = GetAddr(right_child);
-    offset = new_root->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
-    new_meta = kInitMetadata.SetRecordInfo(offset, key_length, key_length + kPointerLength);
-    new_root->SetMetadata(1, new_meta);
-
-    // set a new header
-    new_root->SetSortedCount(2);
-    new_root->SetStatusWord(kInitStatusWord.AddRecordInfo(2, offset, 0));
-
-    return new_root;
-  }
-
-  BaseNode *
-  NewParentForSplit(  //
-      const BaseNode *left_child,
-      const BaseNode *right_child,
-      const size_t split_index)
-  {
-    auto offset = left_child->GetNodeSize();
-    auto new_parent = new BaseNode{offset, false};
-
-    // copy child nodes with inserting new split ones
-    auto record_count = GetSortedCount();
-    for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
-      // prepare copying record and metadata
-      const auto meta = GetMetadata(old_idx);
-      const auto key = GetKeyAddr(meta);
-      const auto key_length = meta.GetKeyLength();
-      auto node_addr = GetPayloadAddr(meta);
-      if (old_idx == split_index) {
-        // prepare left child information
-        const auto last_meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
-        const auto new_key = left_child->GetKeyAddr(last_meta);
-        const auto new_key_length = last_meta.GetKeyLength();
-        const auto left_addr = GetAddr(left_child);
-        // insert a split left child
-        offset = new_parent->CopyRecord(new_key, new_key_length, left_addr, kPointerLength, offset);
-        const auto total_length = new_key_length + kPointerLength;
-        const auto left_meta = kInitMetadata.SetRecordInfo(offset, new_key_length, total_length);
-        new_parent->SetMetadata(new_idx++, left_meta);
-        // insert a split right child
-        node_addr = GetAddr(right_child);
-      }
-      // copy a child node
-      offset = new_parent->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
-      const auto new_meta = meta.UpdateOffset(offset);
-      new_parent->SetMetadata(new_idx, new_meta);
-    }
-
-    // set a new header
-    SetSortedCount(++record_count);
-    SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, offset, 0));
-
-    return new_parent;
-  }
-
-  template <class Compare>
-  BaseNode *
-  NewParentForMerge(  //
-      const BaseNode *merged_child,
-      const size_t deleted_index,
-      const Compare &comp)
-  {
-    auto offset = GetNodeSize();
-    auto new_parent = new BaseNode{offset, false};
-
-    // copy child nodes with deleting a merging target node
-    auto record_count = GetSortedCount();
-    for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
-      // prepare copying record and metadata
-      auto meta = GetMetadata(old_idx);
-      auto key = GetKeyAddr(meta);
-      auto key_length = meta.GetKeyLength();
-      auto node_addr = GetPayloadAddr(meta);
-      if (old_idx == deleted_index) {
-        // skip a deleted node and insert a merged node
-        meta = GetMetadata(++old_idx);
-        key = GetKeyAddr(meta);
-        key_length = meta.GetKeyLength();
-        node_addr = GetAddr(merged_child);
-      }
-      // copy a child node
-      offset = new_parent->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
-      const auto new_meta = meta.UpdateOffset(offset);
-      new_parent->SetMetadata(new_idx, new_meta);
-    }
-
-    // set a new header
-    new_parent->SetSortedCount(--record_count);
-    new_parent->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, offset, 0));
-
-    return new_parent;
   }
 };
 

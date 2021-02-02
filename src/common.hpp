@@ -194,6 +194,7 @@ union PayloadUnion {
   constexpr explicit PayloadUnion() : int_payload{0} {}
   constexpr explicit PayloadUnion(const uint64_t int_payload) : int_payload{int_payload} {}
   constexpr explicit PayloadUnion(const PtrPayload payload) : payload{payload} {}
+  constexpr explicit PayloadUnion(const void *ptr) : payload{PtrPayload{ptr}} {}
 };
 
 }  // namespace bztree
