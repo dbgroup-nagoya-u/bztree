@@ -285,18 +285,6 @@ class alignas(kWordLength) BaseNode
     return {GetKeyAddr(meta), meta.GetKeyLength()};
   }
 
-  constexpr size_t
-  GetKeyLength(const size_t index) const
-  {
-    return GetMetadata(index).GetKeyLength();
-  }
-
-  constexpr size_t
-  GetPayloadLength(const size_t index) const
-  {
-    return GetMetadata(index).GetPayloadLength();
-  }
-
   uint32_t
   SetStatusForMwCAS(  //
       const StatusWord old_status,
