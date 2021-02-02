@@ -65,7 +65,7 @@ class LeafNode : public BaseNode
   std::unique_ptr<std::byte[]>
   GetCopiedKey(const Metadata meta) const
   {
-    const auto key_ptr = GetKeyPtr(meta);
+    const auto key_ptr = GetKeyAddr(meta);
     const auto key_length = meta.GetKeyLength();
     auto copied_key_ptr = std::make_unique<std::byte[]>(key_length);
     memcpy(copied_key_ptr.get(), key_ptr, key_length);
@@ -75,7 +75,7 @@ class LeafNode : public BaseNode
   std::unique_ptr<std::byte[]>
   GetCopiedPayload(const Metadata meta) const
   {
-    const auto payload_ptr = GetPayloadPtr(meta);
+    const auto payload_ptr = GetPayloadAddr(meta);
     const auto payload_length = meta.GetPayloadLength();
     auto copied_payload_ptr = std::make_unique<std::byte[]>(payload_length);
     memcpy(copied_payload_ptr.get(), payload_ptr, payload_length);
@@ -98,7 +98,7 @@ class LeafNode : public BaseNode
     // perform a linear search in revese order
     for (int64_t index = begin_index; index >= sorted_count; --index) {
       const auto meta = GetMetadata(index);
-      if (IsEqual(key, GetKeyPtr(meta), comp)) {
+      if (IsEqual(key, GetKeyAddr(meta), comp)) {
         if (meta.IsVisible()) {
           return KeyExistence::kExist;
         } else if (meta.IsDeleted()) {
@@ -141,7 +141,7 @@ class LeafNode : public BaseNode
   {
     for (int64_t index = record_count - 1; index >= end_index; --index) {
       const auto meta = GetMetadata(index);
-      if (IsEqual(key, GetKeyPtr(meta), comp)) {
+      if (IsEqual(key, GetKeyAddr(meta), comp)) {
         if (meta.IsVisible()) {
           return {KeyExistence::kExist, index};
         } else if (meta.IsDeleted()) {
@@ -186,7 +186,7 @@ class LeafNode : public BaseNode
       // copy a record
       const auto [key, meta] = *iter;
       const auto key_length = meta.GetKeyLength();
-      const auto payload = original_node->GetPayloadPtr(meta);
+      const auto payload = original_node->GetPayloadAddr(meta);
       const auto payload_length = meta.GetPayloadLength();
       offset = copied_node->CopyRecord(key, key_length, payload, payload_length, offset);
       // copy metadata
@@ -288,7 +288,7 @@ class LeafNode : public BaseNode
     // search unsorted metadata in reverse order
     for (int64_t index = record_count - 1; index >= sorted_count; --index) {
       const auto meta = GetMetadata(index);
-      const auto key = GetKeyPtr(meta);
+      const auto key = GetKeyAddr(meta);
       if (IsInRange(key, begin_key, begin_is_closed, end_key, end_is_closed, comp)
           && (meta.IsVisible() || meta.IsDeleted())) {
         meta_arr.emplace_back(key, meta);
@@ -305,7 +305,7 @@ class LeafNode : public BaseNode
         (begin_key == nullptr) ? 0 : SearchSortedMetadata(begin_key, begin_is_closed, comp).second;
     for (int64_t index = begin_index; index < sorted_count; ++index) {
       const auto meta = GetMetadata(index);
-      const auto key = GetKeyPtr(meta);
+      const auto key = GetKeyAddr(meta);
       if (IsInRange(key, begin_key, begin_is_closed, end_key, end_is_closed, comp)) {
         meta_arr.emplace_back(key, meta);
         if (end_is_closed && IsEqual(key, end_key, comp)) {
@@ -758,7 +758,7 @@ class LeafNode : public BaseNode
     for (int64_t index = record_count - 1; index >= sorted_count; --index) {
       const auto meta = GetMetadata(index);
       if (meta.IsVisible() || meta.IsDeleted()) {
-        meta_arr.emplace_back(GetKeyPtr(meta), meta);
+        meta_arr.emplace_back(GetKeyAddr(meta), meta);
       } else {
         // there is a key, but it is in inserting or corrupted.
         // NOTE: we can ignore inserting records because concurrent writes are aborted due to SMOs.
@@ -768,7 +768,7 @@ class LeafNode : public BaseNode
     // search sorted metadata
     for (int64_t index = 0; index < sorted_count; ++index) {
       const auto meta = GetMetadata(index);
-      meta_arr.emplace_back(GetKeyPtr(meta), meta);
+      meta_arr.emplace_back(GetKeyAddr(meta), meta);
     }
 
     // make unique with keeping the order of writes

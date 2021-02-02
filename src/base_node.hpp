@@ -89,20 +89,6 @@ class alignas(kWordLength) BaseNode
    * Internally inherited getters/setters
    *##############################################################################################*/
 
-  constexpr void *
-  GetKeyPtr(const Metadata meta) const
-  {
-    const auto offset = meta.GetOffset();
-    return ShiftAddress(this, offset);
-  }
-
-  constexpr void *
-  GetPayloadPtr(const Metadata meta) const
-  {
-    const auto offset = meta.GetOffset() + meta.GetKeyLength();
-    return ShiftAddress(this, offset);
-  }
-
   void
   SetNodeSize(const size_t size)
   {
@@ -133,6 +119,20 @@ class alignas(kWordLength) BaseNode
       const Metadata new_meta)
   {
     (meta_array_ + index)->meta = new_meta;
+  }
+
+  constexpr void *
+  GetKeyAddr(const Metadata meta) const
+  {
+    const auto offset = meta.GetOffset();
+    return ShiftAddress(this, offset);
+  }
+
+  constexpr void *
+  GetPayloadAddr(const Metadata meta) const
+  {
+    const auto offset = meta.GetOffset() + meta.GetKeyLength();
+    return ShiftAddress(this, offset);
   }
 
   void
@@ -173,43 +173,6 @@ class alignas(kWordLength) BaseNode
   /*################################################################################################
    * Internally inherited utility functions
    *##############################################################################################*/
-
-  /**
-   * @brief Get an index of the specified key by using binary search. If there is no
-   * specified key, this returns the minimum metadata index that is greater than the
-   * specified key
-   *
-   * @tparam Compare
-   * @param key
-   * @param comp
-   * @return std::pair<KeyExistence, size_t>
-   */
-  template <class Compare>
-  std::pair<KeyExistence, size_t>
-  SearchSortedMetadata(  //
-      const void *key,
-      const bool range_is_closed,
-      const Compare &comp) const
-  {
-    // TODO(anyone) implement binary search
-    const auto sorted_count = GetSortedCount();
-    size_t index;
-    for (index = 0; index < sorted_count; index++) {
-      const auto meta = GetMetadata(index);
-      const void *index_key = GetKeyPtr(meta);
-      if (IsEqual(key, index_key, comp)) {
-        if (meta.IsVisible()) {
-          return {KeyExistence::kExist, (range_is_closed) ? index : index + 1};
-        } else {
-          // there is no inserting nor corrupted record in a sorted region
-          return {KeyExistence::kDeleted, index};
-        }
-      } else if (comp(key, index_key)) {
-        break;
-      }
-    }
-    return {KeyExistence::kNotExist, index};
-  }
 
  public:
   /*################################################################################################
@@ -309,6 +272,12 @@ class alignas(kWordLength) BaseNode
     return (meta_array_ + index)->meta;
   }
 
+  constexpr void *
+  GetPayloadAddr(const size_t index) const
+  {
+    return GetPayloadAddr(GetMetadata(index));
+  }
+
   constexpr size_t
   GetKeyLength(const size_t index) const
   {
@@ -354,7 +323,7 @@ class alignas(kWordLength) BaseNode
       const T *new_payload,
       pmwcas::Descriptor *descriptor)
   {
-    return descriptor->AddEntry(static_cast<uint64_t *>(GetPayloadPtr(GetMetadata(index))),
+    return descriptor->AddEntry(static_cast<uint64_t *>(GetPayloadAddr(GetMetadata(index))),
                                 PayloadUnion{old_payload}.int_payload,
                                 PayloadUnion{new_payload}.int_payload);
   }
@@ -405,20 +374,45 @@ class alignas(kWordLength) BaseNode
     return NodeReturnCode::kSuccess;
   }
 
-  static size_t
-  ComputeOccupiedSize(const std::vector<std::pair<void *, Metadata>> &live_meta)
+  /**
+   * @brief Get an index of the specified key by using binary search. If there is no
+   * specified key, this returns the minimum metadata index that is greater than the
+   * specified key
+   *
+   * @tparam Compare
+   * @param key
+   * @param comp
+   * @return std::pair<KeyExistence, size_t>
+   */
+  template <class Compare>
+  std::pair<KeyExistence, size_t>
+  SearchSortedMetadata(  //
+      const void *key,
+      const bool range_is_closed,
+      const Compare &comp) const
   {
-    size_t block_size = 0;
-    for (auto &&[key, meta] : live_meta) {
-      block_size += meta.GetTotalLength();
+    // TODO(anyone) implement binary search
+    const auto sorted_count = GetSortedCount();
+    size_t index;
+    for (index = 0; index < sorted_count; index++) {
+      const auto meta = GetMetadata(index);
+      const void *index_key = GetKeyAddr(meta);
+      if (IsEqual(key, index_key, comp)) {
+        if (meta.IsVisible()) {
+          return {KeyExistence::kExist, (range_is_closed) ? index : index + 1};
+        } else {
+          // there is no inserting nor corrupted record in a sorted region
+          return {KeyExistence::kDeleted, index};
+        }
+      } else if (comp(key, index_key)) {
+        break;
+      }
     }
-    block_size += kHeaderLength + (kWordLength * live_meta.size());
-
-    return block_size;
+    return {KeyExistence::kNotExist, index};
   }
 
   static BaseNode *
-  NewRoot(  //
+  CreateNewRoot(  //
       const BaseNode *left_child,
       const BaseNode *right_child)
   {
@@ -427,7 +421,7 @@ class alignas(kWordLength) BaseNode
 
     // insert a left child node
     auto meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
-    auto key = left_child->GetKeyPtr(meta);
+    auto key = left_child->GetKeyAddr(meta);
     auto key_length = meta.GetKeyLength();
     auto node_addr = GetAddr(left_child);
     offset = new_root->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
@@ -436,7 +430,7 @@ class alignas(kWordLength) BaseNode
 
     // insert a right child node
     meta = right_child->GetMetadata(right_child->GetSortedCount() - 1);
-    key = right_child->GetKeyPtr(meta);
+    key = right_child->GetKeyAddr(meta);
     key_length = meta.GetKeyLength();
     node_addr = GetAddr(right_child);
     offset = new_root->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
@@ -456,7 +450,7 @@ class alignas(kWordLength) BaseNode
       const BaseNode *right_child,
       const size_t split_index)
   {
-    auto offset = GetNodeSize();
+    auto offset = left_child->GetNodeSize();
     auto new_parent = new BaseNode{offset, false};
 
     // copy child nodes with inserting new split ones
@@ -464,13 +458,13 @@ class alignas(kWordLength) BaseNode
     for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
       // prepare copying record and metadata
       const auto meta = GetMetadata(old_idx);
-      const auto key = GetKeyPtr(meta);
+      const auto key = GetKeyAddr(meta);
       const auto key_length = meta.GetKeyLength();
-      auto node_addr = GetPayloadPtr(meta);
+      auto node_addr = GetPayloadAddr(meta);
       if (old_idx == split_index) {
         // prepare left child information
         const auto last_meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
-        const auto new_key = left_child->GetKeyPtr(last_meta);
+        const auto new_key = left_child->GetKeyAddr(last_meta);
         const auto new_key_length = last_meta.GetKeyLength();
         const auto left_addr = GetAddr(left_child);
         // insert a split left child
@@ -509,13 +503,13 @@ class alignas(kWordLength) BaseNode
     for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
       // prepare copying record and metadata
       auto meta = GetMetadata(old_idx);
-      auto key = GetKeyPtr(meta);
+      auto key = GetKeyAddr(meta);
       auto key_length = meta.GetKeyLength();
-      auto node_addr = GetPayloadPtr(meta);
+      auto node_addr = GetPayloadAddr(meta);
       if (old_idx == deleted_index) {
         // skip a deleted node and insert a merged node
         meta = GetMetadata(++old_idx);
-        key = GetKeyPtr(meta);
+        key = GetKeyAddr(meta);
         key_length = meta.GetKeyLength();
         node_addr = GetAddr(merged_child);
       }

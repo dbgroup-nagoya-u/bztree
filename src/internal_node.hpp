@@ -13,6 +13,16 @@ class InternalNode : public BaseNode
 {
  private:
   /*################################################################################################
+   * Internal getters/setters
+   *##############################################################################################*/
+
+  constexpr BaseNode *
+  GetChildNode(const size_t index) const
+  {
+    return BitCast<BaseNode *>(GetPayloadAddr(index));
+  }
+
+  /*################################################################################################
    * Internal utility functions
    *##############################################################################################*/
 
@@ -27,9 +37,9 @@ class InternalNode : public BaseNode
     for (size_t index = begin_index; index < end_index; ++index) {
       const auto meta = original_node->GetMetadata(index);
       // copy a record
-      const auto key = original_node->GetKeyPtr(meta);
+      const auto key = original_node->GetKeyAddr(meta);
       const auto key_length = meta.GetKeyLength();
-      const auto payload = original_node->GetPayloadPtr(meta);
+      const auto payload = original_node->GetPayloadAddr(meta);
       const auto payload_length = meta.GetPayloadLength();
       offset = CopyRecord(key, key_length, payload, payload_length, offset);
       // copy metadata
@@ -57,7 +67,7 @@ class InternalNode : public BaseNode
    * Public getters/setters
    *##############################################################################################*/
 
-  bool
+  constexpr bool
   NeedSplit(  //
       const size_t key_length,
       const size_t payload_length) const
@@ -67,7 +77,7 @@ class InternalNode : public BaseNode
     return new_block_size > GetNodeSize();
   }
 
-  bool
+  constexpr bool
   NeedMerge(  //
       const size_t key_length,
       const size_t payload_length,
@@ -78,7 +88,7 @@ class InternalNode : public BaseNode
     return new_block_size < min_node_size;
   }
 
-  bool
+  constexpr bool
   CanMergeLeftSibling(  //
       const size_t index,
       const size_t merged_node_size,
@@ -94,7 +104,7 @@ class InternalNode : public BaseNode
     }
   }
 
-  bool
+  constexpr bool
   CanMergeRightSibling(  //
       const size_t index,
       const size_t merged_node_size,
@@ -108,23 +118,6 @@ class InternalNode : public BaseNode
       const auto data_size = GetChildNode(index + 1)->GetStatusWord().GetApproxDataSize();
       return (merged_node_size + data_size) < max_merged_node_size;
     }
-  }
-
-  BaseNode *
-  GetChildNode(const size_t index) const
-  {
-    return BitCast<BaseNode *>(GetPayloadPtr(GetMetadata(index)));
-  }
-
-  template <class Compare>
-  std::pair<BaseNode *, size_t>
-  SearchChildNode(  //
-      const void *key,
-      const bool range_is_closed,
-      const Compare &comp) const
-  {
-    const auto index = SearchSortedMetadata(key, range_is_closed, comp).second;
-    return {GetChildNode(index), index};
   }
 
   /*################################################################################################
