@@ -13,39 +13,54 @@ class InternalNode : public BaseNode
 {
  private:
   /*################################################################################################
+   * Internal constructor/destructor
+   *##############################################################################################*/
+
+  explicit InternalNode(const size_t node_size) : BaseNode{node_size, false} {}
+
+  /*################################################################################################
+   * Internal getters/setters
+   *##############################################################################################*/
+
+  constexpr BaseNode *
+  GetChildNode(const size_t index) const
+  {
+    return BitCast<BaseNode *>(GetPayloadAddr(index));
+  }
+
+  /*################################################################################################
    * Internal utility functions
    *##############################################################################################*/
 
-  void
+  static void
   CopySortedRecords(  //
-      InternalNode *original_node,
+      InternalNode *target_node,
+      const InternalNode *original_node,
       const size_t begin_index,
       const size_t end_index)
   {
-    auto sorted_count = GetSortedCount();
-    auto offset = GetNodeSize() - GetStatusWord().GetBlockSize();
+    auto sorted_count = target_node->GetSortedCount();
+    auto offset = target_node->GetNodeSize() - target_node->GetStatusWord().GetBlockSize();
     for (size_t index = begin_index; index < end_index; ++index) {
       const auto meta = original_node->GetMetadata(index);
       // copy a record
-      const auto key = original_node->GetKeyPtr(meta);
+      const auto key = original_node->GetKeyAddr(meta);
       const auto key_length = meta.GetKeyLength();
-      const auto payload = original_node->GetPayloadPtr(meta);
+      const auto payload = original_node->GetPayloadAddr(meta);
       const auto payload_length = meta.GetPayloadLength();
-      offset = CopyRecord(key, key_length, payload, payload_length, offset);
+      offset = target_node->CopyRecord(key, key_length, payload, payload_length, offset);
       // copy metadata
       const auto new_meta = meta.UpdateOffset(offset);
-      SetMetadata(sorted_count++, new_meta);
+      target_node->SetMetadata(sorted_count++, new_meta);
     }
-    SetStatusWord(kInitStatusWord.AddRecordInfo(sorted_count, offset, 0));
-    SetSortedCount(sorted_count);
+    target_node->SetStatusWord(kInitStatusWord.AddRecordInfo(sorted_count, offset, 0));
+    target_node->SetSortedCount(sorted_count);
   }
 
  public:
   /*################################################################################################
    * Public constructor/destructor
    *##############################################################################################*/
-
-  explicit InternalNode(const size_t node_size) : BaseNode{node_size, false} {}
 
   InternalNode(const InternalNode &) = delete;
   InternalNode &operator=(const InternalNode &) = delete;
@@ -54,35 +69,49 @@ class InternalNode : public BaseNode
   ~InternalNode() = default;
 
   /*################################################################################################
+   * Public builders
+   *##############################################################################################*/
+
+  static InternalNode *
+  CreateEmptyNode(const size_t node_size)
+  {
+    assert((node_size % kWordLength) == 0);
+
+    auto aligned_page = aligned_alloc(kWordLength, node_size);
+    auto new_node = new (aligned_page) InternalNode{node_size};
+    return new_node;
+  }
+
+  /*################################################################################################
    * Public getters/setters
    *##############################################################################################*/
 
-  bool
+  constexpr bool
   NeedSplit(  //
       const size_t key_length,
-      const size_t payload_length)
+      const size_t payload_length) const
   {
     const auto new_block_size =
         GetStatusWord().GetOccupiedSize() + kWordLength + key_length + payload_length;
     return new_block_size > GetNodeSize();
   }
 
-  bool
+  constexpr bool
   NeedMerge(  //
       const size_t key_length,
       const size_t payload_length,
-      const size_t min_node_size)
+      const size_t min_node_size) const
   {
     const auto new_block_size =
         GetStatusWord().GetOccupiedSize() - kWordLength - (key_length + payload_length);
     return new_block_size < min_node_size;
   }
 
-  bool
+  constexpr bool
   CanMergeLeftSibling(  //
       const size_t index,
       const size_t merged_node_size,
-      const size_t max_merged_node_size)
+      const size_t max_merged_node_size) const
   {
     assert(index < GetSortedCount());  // an input index must be within range
 
@@ -94,11 +123,11 @@ class InternalNode : public BaseNode
     }
   }
 
-  bool
+  constexpr bool
   CanMergeRightSibling(  //
       const size_t index,
       const size_t merged_node_size,
-      const size_t max_merged_node_size)
+      const size_t max_merged_node_size) const
   {
     assert(index < GetSortedCount());  // an input index must be within range
 
@@ -110,61 +139,160 @@ class InternalNode : public BaseNode
     }
   }
 
-  BaseNode *
-  GetChildNode(const size_t index)
-  {
-    return reinterpret_cast<BaseNode *>(GetPayloadPtr(GetMetadata(index)));
-  }
-
-  template <class Compare>
-  std::pair<BaseNode *, size_t>
-  SearchChildNode(  //
-      const void *key,
-      const bool range_is_closed,
-      Compare comp)
-  {
-    const auto index = SearchSortedMetadata(key, range_is_closed, comp).second;
-    return {GetChildNode(index), index};
-  }
-
   /*################################################################################################
    * Public structure modification operations
    *##############################################################################################*/
 
-  std::pair<BaseNode *, BaseNode *>
-  Split(const size_t left_record_count)
+  static std::pair<InternalNode *, InternalNode *>
+  Split(  //
+      const InternalNode *target_node,
+      const size_t left_record_count)
   {
-    const auto node_size = GetNodeSize();
+    const auto node_size = target_node->GetNodeSize();
 
     // create a split left node
-    auto left_node = new InternalNode{node_size};
-    left_node->CopySortedRecords(this, 0, left_record_count);
+    auto left_node = CreateEmptyNode(node_size);
+    left_node->CopySortedRecords(left_node, target_node, 0, left_record_count);
 
     // create a split right node
-    auto right_node = new InternalNode{node_size};
-    right_node->CopySortedRecords(this, left_record_count, GetSortedCount());
+    auto right_node = CreateEmptyNode(node_size);
+    right_node->CopySortedRecords(right_node, target_node, left_record_count,
+                                  target_node->GetSortedCount());
 
-    return {reinterpret_cast<BaseNode *>(left_node), reinterpret_cast<BaseNode *>(right_node)};
+    return {left_node, right_node};
   }
 
-  BaseNode *
+  static InternalNode *
   Merge(  //
-      InternalNode *sibling_node,
+      const InternalNode *target_node,
+      const InternalNode *sibling_node,
       const bool sibling_is_left)
   {
-    const auto node_size = GetNodeSize();
+    const auto node_size = target_node->GetNodeSize();
 
     // create a merged node
-    auto merged_node = new InternalNode{node_size};
+    auto merged_node = CreateEmptyNode(node_size);
     if (sibling_is_left) {
-      merged_node->CopySortedRecords(sibling_node, 0, sibling_node->GetSortedCount());
-      merged_node->CopySortedRecords(this, 0, GetSortedCount());
+      merged_node->CopySortedRecords(merged_node, sibling_node, 0, sibling_node->GetSortedCount());
+      merged_node->CopySortedRecords(merged_node, target_node, 0, target_node->GetSortedCount());
     } else {
-      merged_node->CopySortedRecords(this, 0, GetSortedCount());
-      merged_node->CopySortedRecords(sibling_node, 0, sibling_node->GetSortedCount());
+      merged_node->CopySortedRecords(merged_node, target_node, 0, target_node->GetSortedCount());
+      merged_node->CopySortedRecords(merged_node, sibling_node, 0, sibling_node->GetSortedCount());
     }
 
-    return reinterpret_cast<BaseNode *>(merged_node);
+    return merged_node;
+  }
+
+  static InternalNode *
+  CreateNewRoot(  //
+      const InternalNode *left_child,
+      const InternalNode *right_child)
+  {
+    auto offset = left_child->GetNodeSize();
+    auto new_root = CreateEmptyNode(offset);
+
+    // insert a left child node
+    auto meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
+    auto key = left_child->GetKeyAddr(meta);
+    auto key_length = meta.GetKeyLength();
+    auto node_addr = GetAddr(left_child);
+    offset = new_root->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
+    auto new_meta = kInitMetadata.SetRecordInfo(offset, key_length, key_length + kPointerLength);
+    new_root->SetMetadata(0, new_meta);
+
+    // insert a right child node
+    meta = right_child->GetMetadata(right_child->GetSortedCount() - 1);
+    key = right_child->GetKeyAddr(meta);
+    key_length = meta.GetKeyLength();
+    node_addr = GetAddr(right_child);
+    offset = new_root->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
+    new_meta = kInitMetadata.SetRecordInfo(offset, key_length, key_length + kPointerLength);
+    new_root->SetMetadata(1, new_meta);
+
+    // set a new header
+    new_root->SetSortedCount(2);
+    new_root->SetStatusWord(kInitStatusWord.AddRecordInfo(2, offset, 0));
+
+    return new_root;
+  }
+
+  static InternalNode *
+  NewParentForSplit(  //
+      const InternalNode *old_parent,
+      const void *new_key,
+      const size_t new_key_length,
+      const void *left_addr,
+      const void *right_addr,
+      const size_t split_index)
+  {
+    auto offset = old_parent->GetNodeSize();
+    auto new_parent = CreateEmptyNode(offset);
+
+    // copy child nodes with inserting new split ones
+    auto record_count = old_parent->GetSortedCount();
+    for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
+      // prepare copying record and metadata
+      const auto meta = old_parent->GetMetadata(old_idx);
+      const auto key = old_parent->GetKeyAddr(meta);
+      const auto key_length = meta.GetKeyLength();
+      auto node_addr = old_parent->GetPayloadAddr(meta);
+      if (old_idx == split_index) {
+        // insert a split left child
+        offset = new_parent->CopyRecord(new_key, new_key_length, left_addr, kPointerLength, offset);
+        const auto total_length = new_key_length + kPointerLength;
+        const auto left_meta = kInitMetadata.SetRecordInfo(offset, new_key_length, total_length);
+        new_parent->SetMetadata(new_idx++, left_meta);
+        // continue with a split right child
+        node_addr = const_cast<void *>(right_addr);
+      }
+      // copy a child node
+      offset = new_parent->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
+      const auto new_meta = meta.UpdateOffset(offset);
+      new_parent->SetMetadata(new_idx, new_meta);
+    }
+
+    // set a new header
+    new_parent->SetSortedCount(++record_count);
+    new_parent->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, offset, 0));
+
+    return new_parent;
+  }
+
+  static InternalNode *
+  NewParentForMerge(  //
+      const InternalNode *old_parent,
+      const void *merged_child_addr,
+      const size_t deleted_index)
+  {
+    auto offset = old_parent->GetNodeSize();
+    auto new_parent = CreateEmptyNode(offset);
+
+    // copy child nodes with deleting a merging target node
+    auto record_count = old_parent->GetSortedCount();
+    for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
+      // prepare copying record and metadata
+      auto meta = old_parent->GetMetadata(old_idx);
+      auto key = old_parent->GetKeyAddr(meta);
+      auto key_length = meta.GetKeyLength();
+      auto node_addr = old_parent->GetPayloadAddr(meta);
+      if (old_idx == deleted_index) {
+        // skip a deleted node and insert a merged node
+        meta = old_parent->GetMetadata(++old_idx);
+        key = old_parent->GetKeyAddr(meta);
+        key_length = meta.GetKeyLength();
+        node_addr = const_cast<void *>(merged_child_addr);
+      }
+      // copy a child node
+      offset = new_parent->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
+      const auto new_meta = meta.UpdateOffset(offset);
+      new_parent->SetMetadata(new_idx, new_meta);
+    }
+
+    // set a new header
+    new_parent->SetSortedCount(--record_count);
+    new_parent->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, offset, 0));
+
+    return new_parent;
   }
 };
 

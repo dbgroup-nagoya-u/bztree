@@ -28,6 +28,13 @@ enum ReturnCode
   kKeyExist
 };
 
+template <class T>
+constexpr void *
+GetAddr(const T *obj)
+{
+  return static_cast<void *>(const_cast<T *>(obj));
+}
+
 template <class To, class From>
 constexpr To
 BitCast(const From *obj)
@@ -114,7 +121,7 @@ constexpr size_t kHeaderLength = 2 * kWordLength;
  */
 template <class Compare>
 constexpr bool
-IsEqual(const void *obj_1, const void *obj_2, Compare comp)
+IsEqual(const void *obj_1, const void *obj_2, const Compare &comp)
 {
   return !(comp(obj_1, obj_2) || comp(obj_2, obj_1));
 }
@@ -139,7 +146,7 @@ IsInRange(const void *key,
           const bool begin_is_closed,
           const void *end_key,
           const bool end_is_closed,
-          Compare comp)
+          const Compare &comp)
 {
   if (begin_key != nullptr) {
     return (comp(begin_key, key) && comp(key, end_key))
@@ -159,9 +166,9 @@ IsInRange(const void *key,
  * @return byte* shifted address
  */
 constexpr void *
-ShiftAddress(void *ptr, const size_t offset)
+ShiftAddress(const void *ptr, const size_t offset)
 {
-  return static_cast<void *>(static_cast<std::byte *>(ptr) + offset);
+  return static_cast<void *>(static_cast<std::byte *>(const_cast<void *>(ptr)) + offset);
 }
 
 constexpr bool
@@ -187,6 +194,7 @@ union PayloadUnion {
   constexpr explicit PayloadUnion() : int_payload{0} {}
   constexpr explicit PayloadUnion(const uint64_t int_payload) : int_payload{int_payload} {}
   constexpr explicit PayloadUnion(const PtrPayload payload) : payload{payload} {}
+  constexpr explicit PayloadUnion(const void *ptr) : payload{PtrPayload{ptr}} {}
 };
 
 }  // namespace bztree
