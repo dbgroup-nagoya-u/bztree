@@ -229,7 +229,8 @@ class BzTree
 
       // create new nodes
       auto [left_leaf, right_leaf] = target_leaf->Split(sorted_meta, left_record_count);
-      auto new_parent = parent->NewParentForSplit(left_leaf, right_leaf, target_index);
+      auto new_parent = parent->NewParentForSplit(
+          dynamic_cast<BaseNode *>(left_leaf), dynamic_cast<BaseNode *>(right_leaf), target_index);
 
       // try installation of new nodes
       install_success = InstallNewInternalNode(trace, new_parent);
@@ -320,8 +321,8 @@ class BzTree
       }
 
       // create new nodes
-      BaseNode *merged_node, *new_parent;
-      LeafNode *sibling_node;
+      BaseNode *new_parent;
+      LeafNode *sibling_node, *merged_node;
       size_t deleted_index;
       if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
         deleted_index = target_index - 1;
@@ -337,7 +338,8 @@ class BzTree
       } else {
         return;  // there is no space to perform merge operation
       }
-      new_parent = parent->NewParentForMerge(merged_node, deleted_index, comparator_);
+      new_parent = parent->NewParentForMerge(dynamic_cast<BaseNode *>(merged_node), deleted_index,
+                                             comparator_);
 
       // try installation of new nodes
       install_success = InstallNewInternalNode(trace, new_parent);
