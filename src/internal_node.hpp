@@ -18,7 +18,7 @@ class InternalNode : public BaseNode
 
   void
   CopySortedRecords(  //
-      InternalNode *original_node,
+      const InternalNode *original_node,
       const size_t begin_index,
       const size_t end_index)
   {
@@ -60,7 +60,7 @@ class InternalNode : public BaseNode
   bool
   NeedSplit(  //
       const size_t key_length,
-      const size_t payload_length)
+      const size_t payload_length) const
   {
     const auto new_block_size =
         GetStatusWord().GetOccupiedSize() + kWordLength + key_length + payload_length;
@@ -71,7 +71,7 @@ class InternalNode : public BaseNode
   NeedMerge(  //
       const size_t key_length,
       const size_t payload_length,
-      const size_t min_node_size)
+      const size_t min_node_size) const
   {
     const auto new_block_size =
         GetStatusWord().GetOccupiedSize() - kWordLength - (key_length + payload_length);
@@ -82,7 +82,7 @@ class InternalNode : public BaseNode
   CanMergeLeftSibling(  //
       const size_t index,
       const size_t merged_node_size,
-      const size_t max_merged_node_size)
+      const size_t max_merged_node_size) const
   {
     assert(index < GetSortedCount());  // an input index must be within range
 
@@ -98,7 +98,7 @@ class InternalNode : public BaseNode
   CanMergeRightSibling(  //
       const size_t index,
       const size_t merged_node_size,
-      const size_t max_merged_node_size)
+      const size_t max_merged_node_size) const
   {
     assert(index < GetSortedCount());  // an input index must be within range
 
@@ -111,9 +111,9 @@ class InternalNode : public BaseNode
   }
 
   BaseNode *
-  GetChildNode(const size_t index)
+  GetChildNode(const size_t index) const
   {
-    return reinterpret_cast<BaseNode *>(GetPayloadPtr(GetMetadata(index)));
+    return BitCast<BaseNode *>(GetPayloadPtr(GetMetadata(index)));
   }
 
   template <class Compare>
@@ -121,7 +121,7 @@ class InternalNode : public BaseNode
   SearchChildNode(  //
       const void *key,
       const bool range_is_closed,
-      Compare comp)
+      const Compare &comp) const
   {
     const auto index = SearchSortedMetadata(key, range_is_closed, comp).second;
     return {GetChildNode(index), index};
@@ -149,7 +149,7 @@ class InternalNode : public BaseNode
 
   BaseNode *
   Merge(  //
-      InternalNode *sibling_node,
+      const InternalNode *sibling_node,
       const bool sibling_is_left)
   {
     const auto node_size = GetNodeSize();

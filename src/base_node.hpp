@@ -90,14 +90,14 @@ class alignas(kWordLength) BaseNode
    *##############################################################################################*/
 
   constexpr void *
-  GetKeyPtr(const Metadata meta)
+  GetKeyPtr(const Metadata meta) const
   {
     const auto offset = meta.GetOffset();
     return ShiftAddress(this, offset);
   }
 
   constexpr void *
-  GetPayloadPtr(const Metadata meta)
+  GetPayloadPtr(const Metadata meta) const
   {
     const auto offset = meta.GetOffset() + meta.GetKeyLength();
     return ShiftAddress(this, offset);
@@ -189,7 +189,7 @@ class alignas(kWordLength) BaseNode
   SearchSortedMetadata(  //
       const void *key,
       const bool range_is_closed,
-      Compare comp)
+      const Compare &comp) const
   {
     // TODO(anyone) implement binary search
     const auto sorted_count = GetSortedCount();
@@ -309,13 +309,6 @@ class alignas(kWordLength) BaseNode
     return (meta_array_ + index)->meta;
   }
 
-  Metadata
-  GetMetadataProtected(const size_t index)
-  {
-    const auto protected_meta = (meta_array_ + index)->target_field.GetValueProtected();
-    return MetaUnion{protected_meta}.meta;
-  }
-
   constexpr size_t
   GetKeyLength(const size_t index) const
   {
@@ -330,8 +323,8 @@ class alignas(kWordLength) BaseNode
 
   uint32_t
   SetStatusForMwCAS(  //
-      StatusWord old_status,
-      StatusWord new_status,
+      const StatusWord old_status,
+      const StatusWord new_status,
       pmwcas::Descriptor *descriptor)
   {
     auto status_addr = &status_.int_word;
@@ -343,8 +336,8 @@ class alignas(kWordLength) BaseNode
   uint32_t
   SetMetadataForMwCAS(  //
       const size_t index,
-      Metadata old_meta,
-      Metadata new_meta,
+      const Metadata old_meta,
+      const Metadata new_meta,
       pmwcas::Descriptor *descriptor)
   {
     auto meta_addr = &((meta_array_ + index)->int_meta);
@@ -426,8 +419,8 @@ class alignas(kWordLength) BaseNode
 
   static BaseNode *
   NewRoot(  //
-      BaseNode *left_child,
-      BaseNode *right_child)
+      const BaseNode *left_child,
+      const BaseNode *right_child)
   {
     auto offset = left_child->GetNodeSize();
     auto new_root = new BaseNode{offset, false};
@@ -436,7 +429,7 @@ class alignas(kWordLength) BaseNode
     auto meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
     auto key = left_child->GetKeyPtr(meta);
     auto key_length = meta.GetKeyLength();
-    auto node_addr = static_cast<void *>(left_child);
+    auto node_addr = GetAddr(left_child);
     offset = new_root->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
     auto new_meta = kInitMetadata.SetRecordInfo(offset, key_length, key_length + kPointerLength);
     new_root->SetMetadata(0, new_meta);
@@ -445,7 +438,7 @@ class alignas(kWordLength) BaseNode
     meta = right_child->GetMetadata(right_child->GetSortedCount() - 1);
     key = right_child->GetKeyPtr(meta);
     key_length = meta.GetKeyLength();
-    node_addr = static_cast<void *>(right_child);
+    node_addr = GetAddr(right_child);
     offset = new_root->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
     new_meta = kInitMetadata.SetRecordInfo(offset, key_length, key_length + kPointerLength);
     new_root->SetMetadata(1, new_meta);
@@ -459,8 +452,8 @@ class alignas(kWordLength) BaseNode
 
   BaseNode *
   NewParentForSplit(  //
-      BaseNode *left_child,
-      BaseNode *right_child,
+      const BaseNode *left_child,
+      const BaseNode *right_child,
       const size_t split_index)
   {
     auto offset = GetNodeSize();
@@ -479,14 +472,14 @@ class alignas(kWordLength) BaseNode
         const auto last_meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
         const auto new_key = left_child->GetKeyPtr(last_meta);
         const auto new_key_length = last_meta.GetKeyLength();
-        const auto left_addr = static_cast<void *>(left_child);
+        const auto left_addr = GetAddr(left_child);
         // insert a split left child
         offset = new_parent->CopyRecord(new_key, new_key_length, left_addr, kPointerLength, offset);
         const auto total_length = new_key_length + kPointerLength;
         const auto left_meta = kInitMetadata.SetRecordInfo(offset, new_key_length, total_length);
         new_parent->SetMetadata(new_idx++, left_meta);
         // insert a split right child
-        node_addr = static_cast<void *>(right_child);
+        node_addr = GetAddr(right_child);
       }
       // copy a child node
       offset = new_parent->CopyRecord(key, key_length, node_addr, kPointerLength, offset);
@@ -504,9 +497,9 @@ class alignas(kWordLength) BaseNode
   template <class Compare>
   BaseNode *
   NewParentForMerge(  //
-      BaseNode *merged_child,
+      const BaseNode *merged_child,
       const size_t deleted_index,
-      Compare comp)
+      const Compare &comp)
   {
     auto offset = GetNodeSize();
     auto new_parent = new BaseNode{offset, false};
@@ -524,7 +517,7 @@ class alignas(kWordLength) BaseNode
         meta = GetMetadata(++old_idx);
         key = GetKeyPtr(meta);
         key_length = meta.GetKeyLength();
-        node_addr = static_cast<void *>(merged_child);
+        node_addr = GetAddr(merged_child);
       }
       // copy a child node
       offset = new_parent->CopyRecord(key, key_length, node_addr, kPointerLength, offset);

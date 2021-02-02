@@ -26,12 +26,12 @@ class LeafNode : public BaseNode
   struct PairComp {
     Compare comp;
 
-    explicit PairComp(Compare comparator) : comp{comparator} {}
+    explicit PairComp(const Compare &comparator) : comp{comparator} {}
 
     bool
     operator()(  //
-        std::pair<void *, Metadata> a,
-        std::pair<void *, Metadata> b) const noexcept
+        const std::pair<void *, Metadata> &a,
+        const std::pair<void *, Metadata> &b) const noexcept
     {
       return comp(a.first, b.first);
     }
@@ -41,12 +41,12 @@ class LeafNode : public BaseNode
   struct PairEqual {
     Compare comp;
 
-    explicit PairEqual(Compare comparator) : comp{comparator} {}
+    explicit PairEqual(const Compare &comparator) : comp{comparator} {}
 
     bool
     operator()(  //
-        std::pair<void *, Metadata> a,
-        std::pair<void *, Metadata> b) const noexcept
+        const std::pair<void *, Metadata> &a,
+        const std::pair<void *, Metadata> &b) const noexcept
     {
       return IsEqual(a.first, b.first, comp);
     }
@@ -63,7 +63,7 @@ class LeafNode : public BaseNode
    *##############################################################################################*/
 
   std::unique_ptr<std::byte[]>
-  GetCopiedKey(const Metadata meta)
+  GetCopiedKey(const Metadata meta) const
   {
     const auto key_ptr = GetKeyPtr(meta);
     const auto key_length = meta.GetKeyLength();
@@ -73,7 +73,7 @@ class LeafNode : public BaseNode
   }
 
   std::unique_ptr<std::byte[]>
-  GetCopiedPayload(const Metadata meta)
+  GetCopiedPayload(const Metadata meta) const
   {
     const auto payload_ptr = GetPayloadPtr(meta);
     const auto payload_length = meta.GetPayloadLength();
@@ -93,11 +93,11 @@ class LeafNode : public BaseNode
       const int64_t begin_index,
       const int64_t sorted_count,
       const size_t index_epoch,
-      Compare comp)
+      const Compare &comp) const
   {
     // perform a linear search in revese order
     for (int64_t index = begin_index; index >= sorted_count; --index) {
-      const auto meta = GetMetadataProtected(index);
+      const auto meta = GetMetadata(index);
       if (IsEqual(key, GetKeyPtr(meta), comp)) {
         if (meta.IsVisible()) {
           return KeyExistence::kExist;
@@ -119,7 +119,7 @@ class LeafNode : public BaseNode
       const void *key,
       const int64_t record_count,
       const size_t index_epoch,
-      Compare comp)
+      const Compare &comp) const
   {
     const auto existence =
         SearchUnsortedMetaToWrite(key, record_count - 1, GetSortedCount(), index_epoch, comp);
@@ -137,7 +137,7 @@ class LeafNode : public BaseNode
       const void *key,
       const int64_t end_index,
       const int64_t record_count,
-      Compare comp)
+      const Compare &comp) const
   {
     for (int64_t index = record_count - 1; index >= end_index; --index) {
       const auto meta = GetMetadata(index);
@@ -158,7 +158,7 @@ class LeafNode : public BaseNode
   SearchMetadataToRead(  //
       const void *key,
       const size_t record_count,
-      Compare comp)
+      const Compare &comp) const
   {
     const auto [existence, index] =
         SearchUnsortedMetaToRead(key, GetSortedCount(), record_count, comp);
@@ -172,7 +172,7 @@ class LeafNode : public BaseNode
   void
   CopyRecordsViaMetadata(  //
       const size_t begin_index,
-      LeafNode *original_node,
+      const LeafNode *original_node,
       const std::vector<std::pair<void *, Metadata>>::const_iterator begin_iter,
       const std::vector<std::pair<void *, Metadata>>::const_iterator end_iter)
   {
@@ -239,11 +239,11 @@ class LeafNode : public BaseNode
   std::pair<NodeReturnCode, std::unique_ptr<std::byte[]>>
   Read(  //
       const void *key,
-      Compare comp)
+      const Compare &comp)
   {
     assert(key != nullptr);
 
-    const auto status = GetStatusWord();
+    const auto status = GetStatusWordProtected();
     const auto [existence, index] = SearchMetadataToRead(key, status.GetRecordCount(), comp);
     if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
       return {NodeReturnCode::kKeyNotExist, nullptr};
@@ -273,10 +273,10 @@ class LeafNode : public BaseNode
       const bool begin_is_closed,
       const void *end_key,
       const bool end_is_closed,
-      Compare comp)
+      const Compare &comp)
   {
-    const auto status = GetStatusWord();
-    const int64_t record_count = GetStatusWord().GetRecordCount();
+    const auto status = GetStatusWordProtected();
+    const int64_t record_count = status.GetRecordCount();
     const int64_t sorted_count = GetSortedCount();
 
     // gather valid (live or deleted) records
@@ -444,7 +444,7 @@ class LeafNode : public BaseNode
       const void *payload,
       const size_t payload_length,
       const size_t index_epoch,
-      Compare comp,
+      const Compare &comp,
       pmwcas::DescriptorPool *pmwcas_pool)
   {
     assert(key != nullptr);
@@ -555,7 +555,7 @@ class LeafNode : public BaseNode
       const void *payload,
       const size_t payload_length,
       const size_t index_epoch,
-      Compare comp,
+      const Compare &comp,
       pmwcas::DescriptorPool *pmwcas_pool)
   {
     assert(key != nullptr);
@@ -640,7 +640,7 @@ class LeafNode : public BaseNode
   Delete(  //
       const void *key,
       const size_t key_length,
-      Compare comp,
+      const Compare &comp,
       pmwcas::DescriptorPool *pmwcas_pool)
   {
     assert(key != nullptr);
@@ -714,7 +714,7 @@ class LeafNode : public BaseNode
   LeafNode *
   Merge(  //
       const std::vector<std::pair<void *, Metadata>> &this_meta,
-      LeafNode *sibling_node,
+      const LeafNode *sibling_node,
       const std::vector<std::pair<void *, Metadata>> &sibling_meta,
       const bool sibling_is_left)
   {
@@ -740,7 +740,7 @@ class LeafNode : public BaseNode
 
   template <class Compare>
   std::vector<std::pair<void *, Metadata>>
-  GatherSortedLiveMetadata(Compare comp)
+  GatherSortedLiveMetadata(const Compare &comp) const
   {
     const auto record_count = GetStatusWord().GetRecordCount();
     const int64_t sorted_count = GetSortedCount();
