@@ -13,6 +13,12 @@ class InternalNode : public BaseNode
 {
  private:
   /*################################################################################################
+   * Internal constructor/destructor
+   *##############################################################################################*/
+
+  explicit InternalNode(const size_t node_size) : BaseNode{node_size, false} {}
+
+  /*################################################################################################
    * Internal getters/setters
    *##############################################################################################*/
 
@@ -56,13 +62,25 @@ class InternalNode : public BaseNode
    * Public constructor/destructor
    *##############################################################################################*/
 
-  explicit InternalNode(const size_t node_size) : BaseNode{node_size, false} {}
-
   InternalNode(const InternalNode &) = delete;
   InternalNode &operator=(const InternalNode &) = delete;
   InternalNode(InternalNode &&) = default;
   InternalNode &operator=(InternalNode &&) = default;
   ~InternalNode() = default;
+
+  /*################################################################################################
+   * Public builders
+   *##############################################################################################*/
+
+  static InternalNode *
+  CreateEmptyNode(const size_t node_size)
+  {
+    assert((node_size % kWordLength) == 0);
+
+    auto aligned_page = aligned_alloc(kWordLength, node_size);
+    auto new_node = new (aligned_page) InternalNode{node_size};
+    return new_node;
+  }
 
   /*################################################################################################
    * Public getters/setters
@@ -125,40 +143,44 @@ class InternalNode : public BaseNode
    * Public structure modification operations
    *##############################################################################################*/
 
-  std::pair<BaseNode *, BaseNode *>
-  Split(const size_t left_record_count)
+  static std::pair<InternalNode *, InternalNode *>
+  Split(  //
+      const InternalNode *target_node,
+      const size_t left_record_count)
   {
-    const auto node_size = GetNodeSize();
+    const auto node_size = target_node->GetNodeSize();
 
     // create a split left node
-    auto left_node = new InternalNode{node_size};
-    left_node->CopySortedRecords(this, 0, left_record_count);
+    auto left_node = CreateEmptyNode(node_size);
+    left_node->CopySortedRecords(left_node, target_node, 0, left_record_count);
 
     // create a split right node
-    auto right_node = new InternalNode{node_size};
-    right_node->CopySortedRecords(this, left_record_count, GetSortedCount());
+    auto right_node = CreateEmptyNode(node_size);
+    right_node->CopySortedRecords(right_node, target_node, left_record_count,
+                                  target_node->GetSortedCount());
 
-    return {reinterpret_cast<BaseNode *>(left_node), reinterpret_cast<BaseNode *>(right_node)};
+    return {left_node, right_node};
   }
 
-  BaseNode *
+  static InternalNode *
   Merge(  //
+      const InternalNode *target_node,
       const InternalNode *sibling_node,
       const bool sibling_is_left)
   {
-    const auto node_size = GetNodeSize();
+    const auto node_size = target_node->GetNodeSize();
 
     // create a merged node
-    auto merged_node = new InternalNode{node_size};
+    auto merged_node = CreateEmptyNode(node_size);
     if (sibling_is_left) {
-      merged_node->CopySortedRecords(sibling_node, 0, sibling_node->GetSortedCount());
-      merged_node->CopySortedRecords(this, 0, GetSortedCount());
+      merged_node->CopySortedRecords(merged_node, sibling_node, 0, sibling_node->GetSortedCount());
+      merged_node->CopySortedRecords(merged_node, target_node, 0, target_node->GetSortedCount());
     } else {
-      merged_node->CopySortedRecords(this, 0, GetSortedCount());
-      merged_node->CopySortedRecords(sibling_node, 0, sibling_node->GetSortedCount());
+      merged_node->CopySortedRecords(merged_node, target_node, 0, target_node->GetSortedCount());
+      merged_node->CopySortedRecords(merged_node, sibling_node, 0, sibling_node->GetSortedCount());
     }
 
-    return reinterpret_cast<BaseNode *>(merged_node);
+    return merged_node;
   }
 };
 
