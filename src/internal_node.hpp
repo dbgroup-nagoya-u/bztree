@@ -227,7 +227,8 @@ class InternalNode : public BaseNode
       const void *right_addr,
       const size_t split_index)
   {
-    auto offset = old_parent->GetNodeSize();
+    const auto node_size = old_parent->GetNodeSize();
+    auto offset = node_size;
     auto new_parent = CreateEmptyNode(offset);
 
     // copy child nodes with inserting new split ones
@@ -240,12 +241,12 @@ class InternalNode : public BaseNode
       auto node_addr = old_parent->GetPayloadAddr(meta);
       if (old_idx == split_index) {
         // insert a split left child
-        offset = new_parent->CopyRecord(new_key, new_key_length, left_addr, kWordLength, offset);
+        offset = new_parent->CopyRecord(new_key, new_key_length, &left_addr, kWordLength, offset);
         const auto total_length = new_key_length + kWordLength;
         const auto left_meta = kInitMetadata.SetRecordInfo(offset, new_key_length, total_length);
         new_parent->SetMetadata(new_idx++, left_meta);
         // continue with a split right child
-        node_addr = const_cast<void *>(right_addr);
+        node_addr = &right_addr;
       }
       // copy a child node
       offset = new_parent->CopyRecord(key, key_length, node_addr, kWordLength, offset);
@@ -255,7 +256,7 @@ class InternalNode : public BaseNode
 
     // set a new header
     new_parent->SetSortedCount(++record_count);
-    new_parent->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, offset, 0));
+    new_parent->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, node_size - offset, 0));
 
     return new_parent;
   }

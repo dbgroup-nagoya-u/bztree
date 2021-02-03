@@ -317,20 +317,72 @@ TEST_F(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectPointersToChildren)
   EXPECT_EQ(right_addr, read_right_addr);
 }
 
-  auto merged_node = std::unique_ptr<LeafNode>(
-      BitCast<LeafNode*>(InternalNode::CreateNewRoot(left_node.get(), right_node.get())));
+TEST_F(InternalNodeFixture, NewParent_AfterSplit_HasCorrectStatus)
+{
+  // prepare an old parent
+  auto left_node = CreateInternalNodeWithOrderedKeys(1, 6);
+  auto right_node = CreateInternalNodeWithOrderedKeys(7, 9);
+  auto old_parent =
+      std::unique_ptr<InternalNode>(InternalNode::CreateNewRoot(left_node.get(), right_node.get()));
 
-  auto left_addr = reinterpret_cast<uintptr_t>(left_node.get());
-  auto [rc, u_ptr] = merged_node->Read(key_ptrs[5], comp);
-  auto read_left_addr = PayloadToPtr(u_ptr.get());
+  // prepare a split node
+  auto [tmp_left, tmp_right] = InternalNode::Split(left_node.get(), 3);
+  auto split_left = std::unique_ptr<InternalNode>(tmp_left);
+  auto split_right = std::unique_ptr<InternalNode>(tmp_right);
+  auto new_key = key_ptrs[3];
+  auto new_key_length = key_lengths[3];
+  auto split_index = 1;
 
-  EXPECT_EQ(left_addr, read_left_addr);
+  // create a new parent node
+  auto new_parent = std::unique_ptr<InternalNode>(InternalNode::NewParentForSplit(
+      old_parent.get(), new_key, new_key_length, split_left.get(), split_right.get(), split_index));
+
+  auto status = new_parent->GetStatusWord();
+  auto record_count = 3;
+  auto block_size = (kWordLength * 2) * record_count;
+  auto deleted_size = 0;
+
+  EXPECT_EQ(kDefaultNodeSize, new_parent->GetNodeSize());
+  EXPECT_EQ(record_count, new_parent->GetSortedCount());
+  EXPECT_EQ(record_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
+}
+
+TEST_F(InternalNodeFixture, NewParent_AfterSplit_HasCorrectPointersToChildren)
+{
+  // prepare an old parent
+  auto left_node = CreateInternalNodeWithOrderedKeys(1, 6);
+  auto right_node = CreateInternalNodeWithOrderedKeys(7, 9);
+  auto old_parent =
+      std::unique_ptr<InternalNode>(InternalNode::CreateNewRoot(left_node.get(), right_node.get()));
+
+  auto [tmp_left, tmp_right] = InternalNode::Split(left_node.get(), 3);
+  auto split_left = std::unique_ptr<InternalNode>(tmp_left);
+  auto split_right = std::unique_ptr<InternalNode>(tmp_right);
+  auto new_key = key_ptrs[3];
+  auto new_key_length = key_lengths[3];
+  auto split_index = 0;
+
+  // create a new parent node
+  auto new_parent = std::unique_ptr<LeafNode>(BitCast<LeafNode*>(
+      InternalNode::NewParentForSplit(old_parent.get(), new_key, new_key_length, split_left.get(),
+                                      split_right.get(), split_index)));
+
+  auto left_addr = reinterpret_cast<uintptr_t>(split_left.get());
+  auto [rc, u_ptr] = new_parent->Read(key_ptrs[3], comp);
+
+  EXPECT_EQ(left_addr, PayloadToPtr(u_ptr.get()));
+
+  auto split_addr = reinterpret_cast<uintptr_t>(split_right.get());
+  std::tie(rc, u_ptr) = new_parent->Read(key_ptrs[6], comp);
+
+  EXPECT_EQ(split_addr, PayloadToPtr(u_ptr.get()));
 
   auto right_addr = reinterpret_cast<uintptr_t>(right_node.get());
-  std::tie(rc, u_ptr) = merged_node->Read(key_ptrs[10], comp);
-  auto read_right_addr = PayloadToPtr(u_ptr.get());
+  std::tie(rc, u_ptr) = new_parent->Read(key_ptrs[9], comp);
 
-  EXPECT_EQ(right_addr, read_right_addr);
+  EXPECT_EQ(right_addr, PayloadToPtr(u_ptr.get()));
 }
 
 }  // namespace bztree
