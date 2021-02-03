@@ -82,7 +82,7 @@ class BzTree
     auto current_node = GetRootAsNode();
     do {
       const auto index = current_node->SearchSortedMetadata(key, range_is_closed, comparator_);
-      current_node = BitCast<BaseNode *>(current_node->GetPayloadAddr(index));
+      current_node = CastPayload<BaseNode>(current_node->GetPayloadAddr(index));
     } while (!current_node->IsLeaf());
 
     return BitCast<LeafNode *>(current_node);
@@ -99,7 +99,7 @@ class BzTree
     trace.emplace(current_node, 0);
     do {
       const auto index = current_node->SearchSortedMetadata(key, true, comparator_);
-      current_node = BitCast<BaseNode *>(current_node->GetPayloadAddr(index));
+      current_node = CastPayload<BaseNode *>(current_node->GetPayloadAddr(index));
       trace.emplace(current_node, index);
     } while (!current_node->IsLeaf());
 
@@ -123,7 +123,7 @@ class BzTree
         return trace;
       }
       const auto index = current_node->SearchSortedMetadata(key, true, comparator_);
-      current_node = BitCast<BaseNode *>(current_node->GetPayloadAddr(index));
+      current_node = CastPayload<BaseNode *>(current_node->GetPayloadAddr(index));
       trace.emplace(current_node, index);
     } while (!current_node->IsLeaf());
 

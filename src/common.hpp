@@ -34,6 +34,13 @@ PayloadToPtr(const void *payload)
   return static_cast<uintptr_t>(*static_cast<uint64_t *>(const_cast<void *>(payload)));
 }
 
+template <class T>
+constexpr T *
+CastPayload(const void *payload)
+{
+  return static_cast<T *>(reinterpret_cast<void *>(PayloadToPtr(payload)));
+}
+
 template <class To, class From>
 constexpr To
 BitCast(const From *obj)

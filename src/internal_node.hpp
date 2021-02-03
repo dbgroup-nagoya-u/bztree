@@ -25,7 +25,7 @@ class InternalNode : public BaseNode
   constexpr BaseNode *
   GetChildNode(const size_t index) const
   {
-    return static_cast<BaseNode *>(reinterpret_cast<void *>(PayloadToPtr(GetPayloadAddr(index))));
+    return CastPayload<BaseNode>(GetPayloadAddr(index));
   }
 
   static constexpr size_t
