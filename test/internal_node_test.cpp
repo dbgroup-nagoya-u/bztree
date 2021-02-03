@@ -202,4 +202,78 @@ TEST_F(InternalNodeFixture, NeedMerge_FilledNode_MergeNotRequired)
   EXPECT_FALSE(merge_required);
 }
 
+TEST_F(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectStatus)
+{
+  auto target_node = CreateInternalNodeWithOrderedKeys(4, 6);
+  auto sibling_node = CreateInternalNodeWithOrderedKeys(2, 3);
+
+  auto merged_node = std::unique_ptr<InternalNode>(
+      InternalNode::Merge(target_node.get(), sibling_node.get(), true));
+
+  auto status = merged_node->GetStatusWord();
+  auto record_count = 5;
+  auto block_size = (kWordLength * 2) * record_count;
+  auto deleted_size = 0;
+
+  EXPECT_EQ(kDefaultNodeSize, merged_node->GetNodeSize());
+  EXPECT_EQ(record_count, merged_node->GetSortedCount());
+  EXPECT_EQ(record_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
+}
+
+TEST_F(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectStatus)
+{
+  auto target_node = CreateInternalNodeWithOrderedKeys(4, 6);
+  auto sibling_node = CreateInternalNodeWithOrderedKeys(7, 8);
+
+  auto merged_node = std::unique_ptr<InternalNode>(
+      InternalNode::Merge(target_node.get(), sibling_node.get(), false));
+
+  auto status = merged_node->GetStatusWord();
+  auto record_count = 5;
+  auto block_size = (kWordLength * 2) * record_count;
+  auto deleted_size = 0;
+
+  EXPECT_EQ(kDefaultNodeSize, merged_node->GetNodeSize());
+  EXPECT_EQ(record_count, merged_node->GetSortedCount());
+  EXPECT_EQ(record_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
+}
+
+TEST_F(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectKeysAndPayloads)
+{
+  auto target_node = CreateInternalNodeWithOrderedKeys(4, 6);
+  auto sibling_node = CreateInternalNodeWithOrderedKeys(2, 3);
+
+  auto merged_node = std::unique_ptr<LeafNode>(
+      BitCast<LeafNode*>(InternalNode::Merge(target_node.get(), sibling_node.get(), true)));
+
+  auto [rc, scan_results] = merged_node->Scan(key_ptrs[3], true, key_ptrs[5], false, comp);
+
+  ASSERT_EQ(2, scan_results.size());
+  EXPECT_EQ(keys[3], CastToValue(scan_results[0].first.get()));
+  EXPECT_EQ(payloads[3], CastToValue(scan_results[0].second.get()));
+  EXPECT_EQ(keys[4], CastToValue(scan_results[1].first.get()));
+  EXPECT_EQ(payloads[4], CastToValue(scan_results[1].second.get()));
+}
+
+TEST_F(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectKeysAndPayloads)
+{
+  auto target_node = CreateInternalNodeWithOrderedKeys(4, 6);
+  auto sibling_node = CreateInternalNodeWithOrderedKeys(7, 8);
+
+  auto merged_node = std::unique_ptr<LeafNode>(
+      BitCast<LeafNode*>(InternalNode::Merge(target_node.get(), sibling_node.get(), false)));
+
+  auto [rc, scan_results] = merged_node->Scan(key_ptrs[5], false, key_ptrs[7], true, comp);
+
+  ASSERT_EQ(2, scan_results.size());
+  EXPECT_EQ(keys[6], CastToValue(scan_results[0].first.get()));
+  EXPECT_EQ(payloads[6], CastToValue(scan_results[0].second.get()));
+  EXPECT_EQ(keys[7], CastToValue(scan_results[1].first.get()));
+  EXPECT_EQ(payloads[7], CastToValue(scan_results[1].second.get()));
+}
+
 }  // namespace bztree
