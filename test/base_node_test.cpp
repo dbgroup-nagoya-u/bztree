@@ -95,8 +95,8 @@ class BaseNodeFixture : public testing::Test
     }
   }
 
-  std::unique_ptr<InternalNode>
-  CreateInternalNodeWithOrderedKeys(  //
+  std::unique_ptr<LeafNode>
+  CreateSortedLeafNodeWithOrderedKeys(  //
       const size_t begin_index,
       const size_t end_index)
   {
@@ -104,7 +104,7 @@ class BaseNodeFixture : public testing::Test
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
     auto tmp_meta = tmp_leaf_node->GatherSortedLiveMetadata(comp);
     tmp_leaf_node = LeafNode::Consolidate(tmp_leaf_node, tmp_meta);
-    return std::unique_ptr<InternalNode>(BitCast<InternalNode*>(tmp_leaf_node));
+    return std::unique_ptr<LeafNode>(tmp_leaf_node);
   }
 };
 
@@ -139,6 +139,127 @@ TEST_F(BaseNodeFixture, Freeze_FrozenNode_FreezeFailed)
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kFrozen, rc);
   EXPECT_TRUE(status.IsFrozen());
+}
+
+TEST_F(BaseNodeFixture, SearchSortedMeta_SearchPresentKeyWithClosedRange_FindKeyIndex)
+{
+  auto node = CreateSortedLeafNodeWithOrderedKeys(1, 10);
+  auto target_index = 7;
+  auto target_key = key_ptrs[target_index + 1];
+
+  auto [rc, index] = node->SearchSortedMetadata(target_key, true, comp);
+
+  EXPECT_EQ(BaseNode::KeyExistence::kExist, rc);
+  EXPECT_EQ(target_index, index);
+
+  target_index = 3;
+  target_key = key_ptrs[target_index + 1];
+
+  std::tie(rc, index) = node->SearchSortedMetadata(target_key, true, comp);
+
+  EXPECT_EQ(BaseNode::KeyExistence::kExist, rc);
+  EXPECT_EQ(target_index, index);
+}
+
+TEST_F(BaseNodeFixture, SearchSortedMeta_SearchPresentKeyWithOpenedRange_FindNextIndex)
+{
+  auto node = CreateSortedLeafNodeWithOrderedKeys(1, 10);
+  auto target_index = 7;
+  auto target_key = key_ptrs[target_index];
+
+  auto [rc, index] = node->SearchSortedMetadata(target_key, false, comp);
+
+  EXPECT_EQ(BaseNode::KeyExistence::kExist, rc);
+  EXPECT_EQ(target_index, index);
+
+  target_index = 3;
+  target_key = key_ptrs[target_index];
+
+  std::tie(rc, index) = node->SearchSortedMetadata(target_key, false, comp);
+
+  EXPECT_EQ(BaseNode::KeyExistence::kExist, rc);
+  EXPECT_EQ(target_index, index);
+}
+
+TEST_F(BaseNodeFixture, SearchSortedMeta_SearchNotPresentKey_FindNextIndex)
+{
+  // prepare a target node
+  auto tmp_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kDefaultNodeSize));
+  tmp_node->Write(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch,
+                  pool.get());
+  tmp_node->Write(key_ptrs[2], key_lengths[2], payload_ptrs[2], payload_lengths[2], kIndexEpoch,
+                  pool.get());
+  tmp_node->Write(key_ptrs[4], key_lengths[4], payload_ptrs[4], payload_lengths[4], kIndexEpoch,
+                  pool.get());
+  tmp_node->Write(key_ptrs[5], key_lengths[5], payload_ptrs[5], payload_lengths[5], kIndexEpoch,
+                  pool.get());
+  tmp_node->Write(key_ptrs[7], key_lengths[7], payload_ptrs[7], payload_lengths[7], kIndexEpoch,
+                  pool.get());
+  tmp_node->Write(key_ptrs[8], key_lengths[8], payload_ptrs[8], payload_lengths[8], kIndexEpoch,
+                  pool.get());
+  auto tmp_meta = tmp_node->GatherSortedLiveMetadata(comp);
+  auto node = std::unique_ptr<LeafNode>(LeafNode::Consolidate(tmp_node.get(), tmp_meta));
+
+  // perform tests
+  auto target_index = 2;
+  auto target_key = key_ptrs[3];
+
+  auto [rc, index] = node->SearchSortedMetadata(target_key, true, comp);
+
+  EXPECT_EQ(BaseNode::KeyExistence::kNotExist, rc);
+  EXPECT_EQ(target_index, index);
+
+  target_index = 4;
+  target_key = key_ptrs[6];
+
+  std::tie(rc, index) = node->SearchSortedMetadata(target_key, false, comp);
+
+  EXPECT_EQ(BaseNode::KeyExistence::kNotExist, rc);
+  EXPECT_EQ(target_index, index);
+}
+
+TEST_F(BaseNodeFixture, SearchSortedMeta_SearchDeletedKey_FindKeyIndex)
+{
+  auto node = CreateSortedLeafNodeWithOrderedKeys(1, 10);
+  auto target_index = 7;
+  auto target_key = key_ptrs[target_index + 1];
+  auto target_key_length = key_lengths[target_index + 1];
+  node->Delete(target_key, target_key_length, comp, pool.get());
+
+  auto [rc, index] = node->SearchSortedMetadata(target_key, true, comp);
+
+  EXPECT_EQ(BaseNode::KeyExistence::kDeleted, rc);
+  EXPECT_EQ(target_index, index);
+
+  target_index = 3;
+  target_key = key_ptrs[target_index + 1];
+  target_key_length = key_lengths[target_index + 1];
+  node->Delete(target_key, target_key_length, comp, pool.get());
+
+  std::tie(rc, index) = node->SearchSortedMetadata(target_key, false, comp);
+
+  EXPECT_EQ(BaseNode::KeyExistence::kDeleted, rc);
+  EXPECT_EQ(target_index, index);
+}
+
+TEST_F(BaseNodeFixture, SearchSortedMeta_SearchOutOfNodeKey_FindBorderIndex)
+{
+  auto node = CreateSortedLeafNodeWithOrderedKeys(1, 10);
+  auto target_index = 0;
+  auto target_key = key_ptrs[target_index];
+
+  auto [rc, index] = node->SearchSortedMetadata(target_key, true, comp);
+
+  EXPECT_EQ(BaseNode::KeyExistence::kNotExist, rc);
+  EXPECT_EQ(target_index, index);
+
+  target_index = 10;
+  target_key = key_ptrs[target_index + 1];
+
+  std::tie(rc, index) = node->SearchSortedMetadata(target_key, false, comp);
+
+  EXPECT_EQ(BaseNode::KeyExistence::kNotExist, rc);
+  EXPECT_EQ(target_index, index);
 }
 
 }  // namespace bztree

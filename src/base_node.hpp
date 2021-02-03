@@ -39,18 +39,6 @@ class alignas(kWordLength) BaseNode
 
  protected:
   /*################################################################################################
-   * Internally inherited enum and constants
-   *##############################################################################################*/
-
-  enum KeyExistence
-  {
-    kExist = 0,
-    kNotExist,
-    kDeleted,
-    kUncertain
-  };
-
-  /*################################################################################################
    * Internally inherited constructors
    *##############################################################################################*/
 
@@ -165,6 +153,14 @@ class alignas(kWordLength) BaseNode
     kScanInProgress,
     kFrozen,
     kNoSpace
+  };
+
+  enum KeyExistence
+  {
+    kExist = 0,
+    kNotExist,
+    kDeleted,
+    kUncertain
   };
 
   /*################################################################################################
