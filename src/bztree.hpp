@@ -83,7 +83,7 @@ class BzTree
       trace.emplace(current_node, index);
     } while (!current_node->IsLeaf());
 
-    return std::move(trace);
+    return trace;
   }
 
   std::stack<std::pair<BaseNode *, size_t>>
@@ -107,7 +107,7 @@ class BzTree
       trace.emplace(current_node, index);
     } while (!current_node->IsLeaf());
 
-    return std::move(trace);
+    return trace;
   }
 
   constexpr bool
