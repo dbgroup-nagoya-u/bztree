@@ -327,24 +327,35 @@ class alignas(kWordLength) BaseNode
       const bool range_is_closed,
       const Compare &comp) const
   {
-    // TODO(anyone) implement binary search
-    const auto sorted_count = GetSortedCount();
-    size_t index;
-    for (index = 0; index < sorted_count; index++) {
+    int64_t end_index = GetSortedCount();
+    if (end_index == 0) {
+      return {KeyExistence::kNotExist, 0};
+    }
+
+    int64_t begin_index = 0;
+    int64_t index = end_index / 2;
+
+    while (begin_index <= end_index) {
       const auto meta = GetMetadata(index);
-      const void *index_key = GetKeyAddr(meta);
-      if (IsEqual(key, index_key, comp)) {
+      const auto *index_key = GetKeyAddr(meta);
+      if (IsEqual(index_key, key, comp)) {
         if (meta.IsVisible()) {
           return {KeyExistence::kExist, (range_is_closed) ? index : index + 1};
         } else {
           // there is no inserting nor corrupted record in a sorted region
           return {KeyExistence::kDeleted, index};
         }
-      } else if (comp(key, index_key)) {
-        break;
+      } else if (comp(index_key, key)) {
+        // a target key is in a right side
+        begin_index = index + 1;
+      } else {
+        // a target key is in a left side
+        end_index = index - 1;
       }
+      index = (begin_index + end_index) / 2;
     }
-    return {KeyExistence::kNotExist, index};
+
+    return {KeyExistence::kNotExist, begin_index};
   }
 };
 
