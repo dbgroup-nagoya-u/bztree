@@ -354,8 +354,8 @@ TEST_F(LeafNodeUInt64Fixture, Write_TwoKeys_MetadataCorrectlyUpdated)
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(status, node->GetStatusWord());
-  EXPECT_TRUE(node->RecordIsVisible(index));
-  EXPECT_FALSE(node->RecordIsDeleted(index));
+  EXPECT_TRUE(meta.IsVisible());
+  EXPECT_FALSE(meta.IsDeleted());
   EXPECT_EQ(key_lengths[1], meta.GetKeyLength());
   EXPECT_EQ(payload_lengths[1], meta.GetPayloadLength());
   EXPECT_FALSE(status.IsFrozen());
@@ -371,8 +371,8 @@ TEST_F(LeafNodeUInt64Fixture, Write_TwoKeys_MetadataCorrectlyUpdated)
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(status, node->GetStatusWord());
-  EXPECT_TRUE(node->RecordIsVisible(index));
-  EXPECT_FALSE(node->RecordIsDeleted(index));
+  EXPECT_TRUE(meta.IsVisible());
+  EXPECT_FALSE(meta.IsDeleted());
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(record_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
@@ -442,11 +442,12 @@ TEST_F(LeafNodeUInt64Fixture, Write_ConsolidatedNode_MetadataCorrectlyUpdated)
   ++record_count;
   block_size += key_lengths[11] + payload_lengths[11];
   index = record_count - 1;
+  auto meta = node->GetMetadata(index);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(status, node->GetStatusWord());
-  EXPECT_TRUE(node->RecordIsVisible(index));
-  EXPECT_FALSE(node->RecordIsDeleted(index));
+  EXPECT_TRUE(meta.IsVisible());
+  EXPECT_FALSE(meta.IsDeleted());
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(record_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
@@ -484,8 +485,8 @@ TEST_F(LeafNodeUInt64Fixture, Insert_TwoKeys_MetadataCorrectlyUpdated)
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(status, node->GetStatusWord());
-  EXPECT_TRUE(node->RecordIsVisible(index));
-  EXPECT_FALSE(node->RecordIsDeleted(index));
+  EXPECT_TRUE(meta.IsVisible());
+  EXPECT_FALSE(meta.IsDeleted());
   EXPECT_EQ(key_lengths[1], meta.GetKeyLength());
   EXPECT_EQ(payload_lengths[1], meta.GetPayloadLength());
   EXPECT_FALSE(status.IsFrozen());
@@ -501,8 +502,8 @@ TEST_F(LeafNodeUInt64Fixture, Insert_TwoKeys_MetadataCorrectlyUpdated)
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(status, node->GetStatusWord());
-  EXPECT_TRUE(node->RecordIsVisible(index));
-  EXPECT_FALSE(node->RecordIsDeleted(index));
+  EXPECT_TRUE(meta.IsVisible());
+  EXPECT_FALSE(meta.IsDeleted());
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(record_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
@@ -578,11 +579,12 @@ TEST_F(LeafNodeUInt64Fixture, Insert_ConsolidatedNode_MetadataCorrectlyUpdated)
   ++record_count;
   block_size += key_lengths[11] + payload_lengths[11];
   index = record_count - 1;
+  auto meta = node->GetMetadata(index);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(status, node->GetStatusWord());
-  EXPECT_TRUE(node->RecordIsVisible(index));
-  EXPECT_FALSE(node->RecordIsDeleted(index));
+  EXPECT_TRUE(meta.IsVisible());
+  EXPECT_FALSE(meta.IsDeleted());
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(record_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
@@ -639,8 +641,8 @@ TEST_F(LeafNodeUInt64Fixture, Update_SingleKey_MetadataCorrectlyUpdated)
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(status, node->GetStatusWord());
-  EXPECT_TRUE(node->RecordIsVisible(index));
-  EXPECT_FALSE(node->RecordIsDeleted(index));
+  EXPECT_TRUE(meta.IsVisible());
+  EXPECT_FALSE(meta.IsDeleted());
   EXPECT_EQ(key_lengths[1], meta.GetKeyLength());
   EXPECT_EQ(payload_lengths[1], meta.GetPayloadLength());
   EXPECT_FALSE(status.IsFrozen());
@@ -718,11 +720,12 @@ TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNode_MetadataCorrectlyUpdated)
   ++record_count;
   block_size += key_lengths[11] + payload_lengths[11];
   index = record_count - 1;
+  auto meta = node->GetMetadata(index);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(status, node->GetStatusWord());
-  EXPECT_TRUE(node->RecordIsVisible(index));
-  EXPECT_FALSE(node->RecordIsDeleted(index));
+  EXPECT_TRUE(meta.IsVisible());
+  EXPECT_FALSE(meta.IsDeleted());
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(record_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
@@ -787,11 +790,12 @@ TEST_F(LeafNodeUInt64Fixture, Delete_TwoKeys_MetadataCorrectlyUpdated)
 
   auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
   deleted_size = key_lengths[1] + payload_lengths[1];
+  auto first_meta = node->GetMetadata(0);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(status, node->GetStatusWord());
-  EXPECT_FALSE(node->RecordIsVisible(0));
-  EXPECT_TRUE(node->RecordIsDeleted(0));
+  EXPECT_FALSE(first_meta.IsVisible());
+  EXPECT_TRUE(first_meta.IsDeleted());
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(record_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
@@ -799,11 +803,12 @@ TEST_F(LeafNodeUInt64Fixture, Delete_TwoKeys_MetadataCorrectlyUpdated)
 
   std::tie(rc, status) = node->Delete(key_ptrs[2], key_lengths[2], comp, pool.get());
   deleted_size += key_lengths[2] + payload_lengths[2];
+  auto second_meta = node->GetMetadata(1);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(status, node->GetStatusWord());
-  EXPECT_FALSE(node->RecordIsVisible(1));
-  EXPECT_TRUE(node->RecordIsDeleted(1));
+  EXPECT_FALSE(second_meta.IsVisible());
+  EXPECT_TRUE(second_meta.IsDeleted());
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(record_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
@@ -868,11 +873,12 @@ TEST_F(LeafNodeUInt64Fixture, Delete_ConsolidatedNode_MetadataCorrectlyUpdated)
   auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
   deleted_size = key_lengths[1] + payload_lengths[1];
   index = record_count - 1;
+  auto meta = node->GetMetadata(index);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(status, node->GetStatusWord());
-  EXPECT_TRUE(node->RecordIsVisible(index));
-  EXPECT_FALSE(node->RecordIsDeleted(index));
+  EXPECT_TRUE(meta.IsVisible());
+  EXPECT_FALSE(meta.IsDeleted());
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(record_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());

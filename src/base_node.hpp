@@ -148,10 +148,6 @@ class alignas(kWordLength) BaseNode
     return offset;
   }
 
-  /*################################################################################################
-   * Internally inherited utility functions
-   *##############################################################################################*/
-
  public:
   /*################################################################################################
    * Public enum and constants
@@ -207,22 +203,16 @@ class alignas(kWordLength) BaseNode
     return is_leaf_;
   }
 
-  constexpr bool
-  RecordIsVisible(const size_t index) const
-  {
-    return GetMetadata(index).IsVisible();
-  }
-
-  constexpr bool
-  RecordIsDeleted(const size_t index) const
-  {
-    return GetMetadata(index).IsDeleted();
-  }
-
   constexpr size_t
   GetNodeSize() const
   {
     return node_size_;
+  }
+
+  constexpr size_t
+  GetSortedCount() const
+  {
+    return sorted_count_;
   }
 
   constexpr StatusWord
@@ -236,12 +226,6 @@ class alignas(kWordLength) BaseNode
   {
     const auto protected_status = status_.target_field.GetValueProtected();
     return StatusUnion{protected_status}.word;
-  }
-
-  constexpr size_t
-  GetSortedCount() const
-  {
-    return sorted_count_;
   }
 
   constexpr Metadata
