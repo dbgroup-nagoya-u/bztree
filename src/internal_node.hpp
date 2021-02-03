@@ -267,7 +267,8 @@ class InternalNode : public BaseNode
       const void *merged_child_addr,
       const size_t deleted_index)
   {
-    auto offset = old_parent->GetNodeSize();
+    const auto node_size = old_parent->GetNodeSize();
+    auto offset = node_size;
     auto new_parent = CreateEmptyNode(offset);
 
     // copy child nodes with deleting a merging target node
@@ -283,7 +284,7 @@ class InternalNode : public BaseNode
         meta = old_parent->GetMetadata(++old_idx);
         key = old_parent->GetKeyAddr(meta);
         key_length = meta.GetKeyLength();
-        node_addr = const_cast<void *>(merged_child_addr);
+        node_addr = &merged_child_addr;
       }
       // copy a child node
       offset = new_parent->CopyRecord(key, key_length, node_addr, kWordLength, offset);
@@ -293,7 +294,7 @@ class InternalNode : public BaseNode
 
     // set a new header
     new_parent->SetSortedCount(--record_count);
-    new_parent->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, offset, 0));
+    new_parent->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, node_size - offset, 0));
 
     return new_parent;
   }

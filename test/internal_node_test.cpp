@@ -385,4 +385,54 @@ TEST_F(InternalNodeFixture, NewParent_AfterSplit_HasCorrectPointersToChildren)
   EXPECT_EQ(right_addr, PayloadToPtr(u_ptr.get()));
 }
 
+TEST_F(InternalNodeFixture, NewParent_AfterMerge_HasCorrectStatus)
+{
+  // prepare an old parent
+  auto left_node = CreateInternalNodeWithOrderedKeys(1, 6);
+  auto right_node = CreateInternalNodeWithOrderedKeys(7, 9);
+  auto old_parent =
+      std::unique_ptr<InternalNode>(InternalNode::CreateNewRoot(left_node.get(), right_node.get()));
+
+  // prepare a merged node
+  auto merged_node = CreateInternalNodeWithOrderedKeys(1, 9);
+  auto deleted_index = 0;
+
+  // create a new parent node
+  auto new_parent = std::unique_ptr<InternalNode>(
+      InternalNode::NewParentForMerge(old_parent.get(), merged_node.get(), deleted_index));
+
+  auto status = new_parent->GetStatusWord();
+  auto record_count = 1;
+  auto block_size = (kWordLength * 2) * record_count;
+  auto deleted_size = 0;
+
+  EXPECT_EQ(kDefaultNodeSize, new_parent->GetNodeSize());
+  EXPECT_EQ(record_count, new_parent->GetSortedCount());
+  EXPECT_EQ(record_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
+}
+
+TEST_F(InternalNodeFixture, NewParent_AfterMerge_HasCorrectPointersToChildren)
+{
+  // prepare an old parent
+  auto left_node = CreateInternalNodeWithOrderedKeys(1, 6);
+  auto right_node = CreateInternalNodeWithOrderedKeys(7, 9);
+  auto old_parent =
+      std::unique_ptr<InternalNode>(InternalNode::CreateNewRoot(left_node.get(), right_node.get()));
+
+  // prepare a merged node
+  auto merged_node = CreateInternalNodeWithOrderedKeys(1, 9);
+  auto deleted_index = 0;
+
+  // create a new parent node
+  auto new_parent = std::unique_ptr<LeafNode>(BitCast<LeafNode*>(
+      InternalNode::NewParentForMerge(old_parent.get(), merged_node.get(), deleted_index)));
+
+  auto merged_addr = reinterpret_cast<uintptr_t>(merged_node.get());
+  auto [rc, u_ptr] = new_parent->Read(key_ptrs[9], comp);
+
+  EXPECT_EQ(merged_addr, PayloadToPtr(u_ptr.get()));
+}
+
 }  // namespace bztree
