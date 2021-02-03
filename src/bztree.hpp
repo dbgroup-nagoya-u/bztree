@@ -227,7 +227,10 @@ class BzTree
       parent_node->SetStatusForMwCAS(parent_status, parent_status, pd);
       parent_node->SetPayloadForMwCAS(target_index, target_leaf, new_leaf, pd);
     } while (!pd->MwCAS());
-    // ...WIP...: delete target node
+
+    // Temporal implementation of garbage collection
+    const auto reserved_index = ReserveGabageRegion(1);
+    garbage_nodes[reserved_index] = target_leaf;
   }
 
   void
@@ -268,7 +271,10 @@ class BzTree
       // try installation of new nodes
       install_success = InstallNewInternalNode(trace, new_parent);
       if (install_success) {
-        // ...WIP...: delete old nodes
+        // Temporal implementation of garbage collection
+        const auto reserved_index = ReserveGabageRegion(2);
+        garbage_nodes[reserved_index] = target_leaf;
+        garbage_nodes[reserved_index + 1] = parent;
       } else {
         delete left_leaf;
         delete right_leaf;
@@ -298,15 +304,17 @@ class BzTree
       }
 
       // create new nodes
-      InternalNode *left_node, *right_node, *new_parent;
+      InternalNode *left_node, *right_node, *parent, *new_parent;
       if (trace.size() == 1) {
         // split a root node
         std::tie(left_node, right_node) = InternalNode::Split(target_node, left_record_count);
         new_parent = InternalNode::CreateNewRoot(left_node, right_node);
+        // retain an old root node for garbage collection
+        parent = GetRootAsNode();
       } else {
         // check whether it is required to split a parent node
         trace.pop();  // remove a target node
-        const auto parent = BitCast<InternalNode *>(trace.top().first);
+        parent = BitCast<InternalNode *>(trace.top().first);
         if (parent->NeedSplit(split_key_length, kWordLength)) {
           // invoke a parent (internal) node splitting
           SplitInternalNode(parent, target_key);
@@ -320,7 +328,10 @@ class BzTree
       // try installation of new nodes
       install_success = InstallNewInternalNode(trace, new_parent);
       if (install_success) {
-        // ...WIP...: delete old nodes
+        // Temporal implementation of garbage collection
+        const auto reserved_index = ReserveGabageRegion(2);
+        garbage_nodes[reserved_index] = target_node;
+        garbage_nodes[reserved_index + 1] = parent;
       } else {
         delete left_node;
         delete right_node;
@@ -378,7 +389,11 @@ class BzTree
       // try installation of new nodes
       install_success = InstallNewInternalNode(trace, new_parent);
       if (install_success) {
-        // ...WIP...: delete old nodes
+        // Temporal implementation of garbage collection
+        const auto reserved_index = ReserveGabageRegion(3);
+        garbage_nodes[reserved_index] = target_node;
+        garbage_nodes[reserved_index + 1] = sibling_node;
+        garbage_nodes[reserved_index + 2] = parent;
       } else {
         delete merged_node;
         delete new_parent;
@@ -438,7 +453,11 @@ class BzTree
       // try installation of new nodes
       install_success = InstallNewInternalNode(trace, new_parent);
       if (install_success) {
-        // ...WIP...: delete old nodes
+        // Temporal implementation of garbage collection
+        const auto reserved_index = ReserveGabageRegion(3);
+        garbage_nodes[reserved_index] = target_node;
+        garbage_nodes[reserved_index + 1] = sibling_node;
+        garbage_nodes[reserved_index + 2] = parent;
       } else {
         delete merged_node;
         delete new_parent;
