@@ -327,15 +327,16 @@ class alignas(kWordLength) BaseNode
       const bool range_is_closed,
       const Compare &comp) const
   {
-    int64_t end_index = GetSortedCount();
-    if (end_index == 0) {
+    const int64_t sorted_count = GetSortedCount();
+    if (sorted_count == 0) {
       return {KeyExistence::kNotExist, 0};
     }
 
     int64_t begin_index = 0;
+    int64_t end_index = sorted_count;
     int64_t index = end_index / 2;
 
-    while (begin_index <= end_index) {
+    while (begin_index <= end_index && index < sorted_count) {
       const auto meta = GetMetadata(index);
       const auto *index_key = GetKeyAddr(meta);
       if (IsEqual(index_key, key, comp)) {
