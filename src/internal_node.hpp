@@ -19,7 +19,7 @@ class InternalNode : public BaseNode
   explicit InternalNode(const size_t node_size) : BaseNode{node_size, false} {}
 
   /*################################################################################################
-   * Internal getters/setters
+   * Internal utility functions
    *##############################################################################################*/
 
   constexpr BaseNode *
@@ -28,9 +28,12 @@ class InternalNode : public BaseNode
     return static_cast<BaseNode *>(reinterpret_cast<void *>(PayloadToPtr(GetPayloadAddr(index))));
   }
 
-  /*################################################################################################
-   * Internal utility functions
-   *##############################################################################################*/
+  static constexpr size_t
+  AlignKeyLengthToWord(const size_t key_length)
+  {
+    const auto pad_length = key_length % kWordLength;
+    return (pad_length == 0) ? key_length : key_length + (kWordLength - pad_length);
+  }
 
   static void
   CopySortedRecords(  //
@@ -241,9 +244,10 @@ class InternalNode : public BaseNode
       auto node_addr = old_parent->GetPayloadAddr(meta);
       if (old_idx == split_index) {
         // insert a split left child
-        offset = new_parent->CopyRecord(new_key, new_key_length, &left_addr, kWordLength, offset);
-        const auto total_length = new_key_length + kWordLength;
-        const auto left_meta = kInitMetadata.SetRecordInfo(offset, new_key_length, total_length);
+        const auto aligned_length = AlignKeyLengthToWord(new_key_length);
+        offset = new_parent->CopyRecord(new_key, aligned_length, &left_addr, kWordLength, offset);
+        const auto total_length = aligned_length + kWordLength;
+        const auto left_meta = kInitMetadata.SetRecordInfo(offset, aligned_length, total_length);
         new_parent->SetMetadata(new_idx++, left_meta);
         // continue with a split right child
         node_addr = &right_addr;
