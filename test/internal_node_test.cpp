@@ -435,4 +435,115 @@ TEST_F(InternalNodeFixture, NewParent_AfterMerge_HasCorrectPointersToChildren)
   EXPECT_EQ(merged_addr, PayloadToPtr(u_ptr.get()));
 }
 
+TEST_F(InternalNodeFixture, CanMergeLeftSibling_SiblingHasSufficentSpace_CanBeMerged)
+{
+  // prepare an old parent
+  auto left_node = CreateInternalNodeWithOrderedKeys(1, 3);  // a data block has 72 bytes
+  auto right_node = CreateInternalNodeWithOrderedKeys(4, 9);
+  auto parent =
+      std::unique_ptr<InternalNode>(InternalNode::CreateNewRoot(left_node.get(), right_node.get()));
+
+  // prepare merging information
+  auto target_index = 1;
+  auto target_node_size = kHeaderLength + kWordLength + key_lengths[0] + payload_lengths[0];  // 40B
+  auto max_merged_size = 128;
+
+  auto can_be_merged = parent->CanMergeLeftSibling(target_index, target_node_size, max_merged_size);
+
+  EXPECT_TRUE(can_be_merged);
+}
+
+TEST_F(InternalNodeFixture, CanMergeLeftSibling_SiblingHasSmallSpace_CannotBeMerged)
+{
+  // prepare an old parent
+  auto left_node = CreateInternalNodeWithOrderedKeys(1, 6);  // a data block has 144 bytes
+  auto right_node = CreateInternalNodeWithOrderedKeys(7, 9);
+  auto parent =
+      std::unique_ptr<InternalNode>(InternalNode::CreateNewRoot(left_node.get(), right_node.get()));
+
+  // prepare merging information
+  auto target_index = 1;
+  auto target_node_size = kHeaderLength + kWordLength + key_lengths[0] + payload_lengths[0];  // 40B
+  auto max_merged_size = 128;
+
+  auto can_be_merged = parent->CanMergeLeftSibling(target_index, target_node_size, max_merged_size);
+
+  EXPECT_FALSE(can_be_merged);
+}
+
+TEST_F(InternalNodeFixture, CanMergeLeftSibling_NoSibling_CannotBeMerged)
+{
+  // prepare an old parent
+  auto left_node = CreateInternalNodeWithOrderedKeys(1, 6);  // a data block has 144 bytes
+  auto right_node = CreateInternalNodeWithOrderedKeys(7, 9);
+  auto parent =
+      std::unique_ptr<InternalNode>(InternalNode::CreateNewRoot(left_node.get(), right_node.get()));
+
+  // prepare merging information
+  auto target_index = 0;
+  auto target_node_size = kHeaderLength + kWordLength + key_lengths[0] + payload_lengths[0];  // 40B
+  auto max_merged_size = 128;
+
+  auto can_be_merged = parent->CanMergeLeftSibling(target_index, target_node_size, max_merged_size);
+
+  EXPECT_FALSE(can_be_merged);
+}
+
+TEST_F(InternalNodeFixture, CanMergeRightSibling_SiblingHasSufficentSpace_CanBeMerged)
+{
+  // prepare an old parent
+  auto left_node = CreateInternalNodeWithOrderedKeys(1, 6);
+  auto right_node = CreateInternalNodeWithOrderedKeys(7, 9);  // a data block has 72 bytes
+  auto parent =
+      std::unique_ptr<InternalNode>(InternalNode::CreateNewRoot(left_node.get(), right_node.get()));
+
+  // prepare merging information
+  auto target_index = 0;
+  auto target_node_size = kHeaderLength + kWordLength + key_lengths[0] + payload_lengths[0];  // 40B
+  auto max_merged_size = 128;
+
+  auto can_be_merged =
+      parent->CanMergeRightSibling(target_index, target_node_size, max_merged_size);
+
+  EXPECT_TRUE(can_be_merged);
+}
+
+TEST_F(InternalNodeFixture, CanMergeRightSibling_SiblingHasSmallSpace_CannotBeMerged)
+{
+  // prepare an old parent
+  auto left_node = CreateInternalNodeWithOrderedKeys(1, 3);
+  auto right_node = CreateInternalNodeWithOrderedKeys(4, 9);  // a data block has 144 bytes
+  auto parent =
+      std::unique_ptr<InternalNode>(InternalNode::CreateNewRoot(left_node.get(), right_node.get()));
+
+  // prepare merging information
+  auto target_index = 0;
+  auto target_node_size = kHeaderLength + kWordLength + key_lengths[0] + payload_lengths[0];  // 40B
+  auto max_merged_size = 128;
+
+  auto can_be_merged =
+      parent->CanMergeRightSibling(target_index, target_node_size, max_merged_size);
+
+  EXPECT_FALSE(can_be_merged);
+}
+
+TEST_F(InternalNodeFixture, CanMergeRightSibling_NoSibling_CannotBeMerged)
+{
+  // prepare an old parent
+  auto left_node = CreateInternalNodeWithOrderedKeys(1, 3);
+  auto right_node = CreateInternalNodeWithOrderedKeys(4, 9);  // a data block has 144 bytes
+  auto parent =
+      std::unique_ptr<InternalNode>(InternalNode::CreateNewRoot(left_node.get(), right_node.get()));
+
+  // prepare merging information
+  auto target_index = 0;
+  auto target_node_size = kHeaderLength + kWordLength + key_lengths[0] + payload_lengths[0];  // 40B
+  auto max_merged_size = 128;
+
+  auto can_be_merged =
+      parent->CanMergeRightSibling(target_index, target_node_size, max_merged_size);
+
+  EXPECT_FALSE(can_be_merged);
+}
+
 }  // namespace bztree
