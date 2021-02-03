@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <common/epoch.h>
 #include <mwcas/mwcas.h>
 #include <pmwcas.h>
 
@@ -38,18 +39,6 @@ class alignas(kWordLength) BaseNode
   MetaUnion meta_array_[0];
 
  protected:
-  /*################################################################################################
-   * Internally inherited enum and constants
-   *##############################################################################################*/
-
-  enum KeyExistence
-  {
-    kExist = 0,
-    kNotExist,
-    kDeleted,
-    kUncertain
-  };
-
   /*################################################################################################
    * Internally inherited constructors
    *##############################################################################################*/
@@ -148,10 +137,6 @@ class alignas(kWordLength) BaseNode
     return offset;
   }
 
-  /*################################################################################################
-   * Internally inherited utility functions
-   *##############################################################################################*/
-
  public:
   /*################################################################################################
    * Public enum and constants
@@ -169,6 +154,14 @@ class alignas(kWordLength) BaseNode
     kScanInProgress,
     kFrozen,
     kNoSpace
+  };
+
+  enum KeyExistence
+  {
+    kExist = 0,
+    kNotExist,
+    kDeleted,
+    kUncertain
   };
 
   /*################################################################################################
@@ -207,22 +200,16 @@ class alignas(kWordLength) BaseNode
     return is_leaf_;
   }
 
-  constexpr bool
-  RecordIsVisible(const size_t index) const
-  {
-    return GetMetadata(index).IsVisible();
-  }
-
-  constexpr bool
-  RecordIsDeleted(const size_t index) const
-  {
-    return GetMetadata(index).IsDeleted();
-  }
-
   constexpr size_t
   GetNodeSize() const
   {
     return node_size_;
+  }
+
+  constexpr size_t
+  GetSortedCount() const
+  {
+    return sorted_count_;
   }
 
   constexpr StatusWord
@@ -232,16 +219,10 @@ class alignas(kWordLength) BaseNode
   }
 
   StatusWord
-  GetStatusWordProtected()
+  GetStatusWordProtected(pmwcas::EpochManager *epoch)
   {
-    const auto protected_status = status_.target_field.GetValueProtected();
+    const auto protected_status = status_.target_field.GetValue(epoch);
     return StatusUnion{protected_status}.word;
-  }
-
-  constexpr size_t
-  GetSortedCount() const
-  {
-    return sorted_count_;
   }
 
   constexpr Metadata
@@ -316,8 +297,9 @@ class alignas(kWordLength) BaseNode
   Freeze(pmwcas::DescriptorPool *pmwcas_pool)
   {
     pmwcas::Descriptor *pd;
+    auto epoch_manager = pmwcas_pool->GetEpoch();
     do {
-      const auto current_status = GetStatusWordProtected();
+      const auto current_status = GetStatusWordProtected(epoch_manager);
       if (current_status.IsFrozen()) {
         return NodeReturnCode::kFrozen;
       }
@@ -325,7 +307,7 @@ class alignas(kWordLength) BaseNode
       const auto new_status = current_status.Freeze();
       pd = pmwcas_pool->AllocateDescriptor();
       SetStatusForMwCAS(current_status, new_status, pd);
-    } while (pd->MwCAS());
+    } while (!pd->MwCAS());
 
     return NodeReturnCode::kSuccess;
   }
@@ -347,24 +329,36 @@ class alignas(kWordLength) BaseNode
       const bool range_is_closed,
       const Compare &comp) const
   {
-    // TODO(anyone) implement binary search
-    const auto sorted_count = GetSortedCount();
-    size_t index;
-    for (index = 0; index < sorted_count; index++) {
+    const int64_t sorted_count = GetSortedCount();
+    if (sorted_count == 0) {
+      return {KeyExistence::kNotExist, 0};
+    }
+
+    int64_t begin_index = 0;
+    int64_t end_index = sorted_count;
+    int64_t index = end_index / 2;
+
+    while (begin_index <= end_index && index < sorted_count) {
       const auto meta = GetMetadata(index);
-      const void *index_key = GetKeyAddr(meta);
-      if (IsEqual(key, index_key, comp)) {
+      const auto *index_key = GetKeyAddr(meta);
+      if (IsEqual(index_key, key, comp)) {
         if (meta.IsVisible()) {
           return {KeyExistence::kExist, (range_is_closed) ? index : index + 1};
         } else {
           // there is no inserting nor corrupted record in a sorted region
           return {KeyExistence::kDeleted, index};
         }
-      } else if (comp(key, index_key)) {
-        break;
+      } else if (comp(index_key, key)) {
+        // a target key is in a right side
+        begin_index = index + 1;
+      } else {
+        // a target key is in a left side
+        end_index = index - 1;
       }
+      index = (begin_index + end_index) / 2;
     }
-    return {KeyExistence::kNotExist, index};
+
+    return {KeyExistence::kNotExist, begin_index};
   }
 };
 

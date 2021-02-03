@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <array>
+#include <atomic>
 #include <map>
 #include <memory>
 #include <stack>
@@ -39,8 +41,26 @@ class BzTree
   const size_t index_epoch_;
   // a comparator to compare input keys
   const Compare comparator_;
+
+  // a root node of BzTree
   PayloadUnion root_;
+
+  // a pool of descriptors for MwCAS
   std::unique_ptr<pmwcas::DescriptorPool> descriptor_pool_;
+
+  /*------------------------------------------------------------------------------------------------
+   * Temporal garbage collector
+   *----------------------------------------------------------------------------------------------*/
+
+  /// The number of the maximum garbages
+  static constexpr size_t kMaxGarbage = 1E6;
+
+  /// A list of garbage nodes
+  std::array<void *, kMaxGarbage> garbage_nodes;
+
+  /// The number of garbage nodes. This count is utilized to reserve a garbage region in
+  /// multi-thread environment.
+  std::atomic<size_t> garbage_count{0};
 
   /*################################################################################################
    * Internal utility functions
@@ -62,7 +82,7 @@ class BzTree
     auto current_node = GetRootAsNode();
     do {
       const auto index = current_node->SearchSortedMetadata(key, range_is_closed, comparator_);
-      current_node = BitCast<BaseNode *>(current_node->GetPayloadAddr(index));
+      current_node = CastPayload<BaseNode>(current_node->GetPayloadAddr(index));
     } while (!current_node->IsLeaf());
 
     return BitCast<LeafNode *>(current_node);
@@ -79,7 +99,7 @@ class BzTree
     trace.emplace(current_node, 0);
     do {
       const auto index = current_node->SearchSortedMetadata(key, true, comparator_);
-      current_node = BitCast<BaseNode *>(current_node->GetPayloadAddr(index));
+      current_node = CastPayload<BaseNode *>(current_node->GetPayloadAddr(index));
       trace.emplace(current_node, index);
     } while (!current_node->IsLeaf());
 
@@ -103,7 +123,7 @@ class BzTree
         return trace;
       }
       const auto index = current_node->SearchSortedMetadata(key, true, comparator_);
-      current_node = BitCast<BaseNode *>(current_node->GetPayloadAddr(index));
+      current_node = CastPayload<BaseNode *>(current_node->GetPayloadAddr(index));
       trace.emplace(current_node, index);
     } while (!current_node->IsLeaf());
 
@@ -139,6 +159,23 @@ class BzTree
                                 PayloadUnion{new_root_node}.int_payload);
   }
 
+  /*------------------------------------------------------------------------------------------------
+   * Temporal utilities for garbage collect
+   *----------------------------------------------------------------------------------------------*/
+
+  size_t
+  ReserveGabageRegion(const size_t num_garbage)
+  {
+    size_t expected = garbage_count.load();
+    size_t reserved_count;
+
+    do {
+      reserved_count = expected + num_garbage;
+    } while (!garbage_count.compare_exchange_weak(expected, reserved_count));
+
+    return expected;
+  }
+
   /*################################################################################################
    * Internal structure modification functoins
    *##############################################################################################*/
@@ -166,6 +203,7 @@ class BzTree
     // install a new node
     auto new_leaf = LeafNode::Consolidate(target_leaf, live_meta);
     pmwcas::Descriptor *pd;
+    auto epoch_manager = descriptor_pool_->GetEpoch();
     do {
       // check whether a target node remains
       auto trace = SearchLeafNodeWithTrace(target_key);
@@ -179,7 +217,7 @@ class BzTree
       // check a parent status
       trace.pop();  // remove a leaf node
       auto [parent_node, target_index] = trace.top();
-      const auto parent_status = parent_node->GetStatusWordProtected();
+      const auto parent_status = parent_node->GetStatusWordProtected(epoch_manager);
       if (StatusWord::IsFrozen(parent_status)) {
         continue;
       }
@@ -189,7 +227,10 @@ class BzTree
       parent_node->SetStatusForMwCAS(parent_status, parent_status, pd);
       parent_node->SetPayloadForMwCAS(target_index, target_leaf, new_leaf, pd);
     } while (!pd->MwCAS());
-    // ...WIP...: delete target node
+
+    // Temporal implementation of garbage collection
+    const auto reserved_index = ReserveGabageRegion(1);
+    garbage_nodes[reserved_index] = target_leaf;
   }
 
   void
@@ -230,7 +271,10 @@ class BzTree
       // try installation of new nodes
       install_success = InstallNewInternalNode(trace, new_parent);
       if (install_success) {
-        // ...WIP...: delete old nodes
+        // Temporal implementation of garbage collection
+        const auto reserved_index = ReserveGabageRegion(2);
+        garbage_nodes[reserved_index] = target_leaf;
+        garbage_nodes[reserved_index + 1] = parent;
       } else {
         delete left_leaf;
         delete right_leaf;
@@ -260,15 +304,17 @@ class BzTree
       }
 
       // create new nodes
-      InternalNode *left_node, *right_node, *new_parent;
+      InternalNode *left_node, *right_node, *parent, *new_parent;
       if (trace.size() == 1) {
         // split a root node
         std::tie(left_node, right_node) = InternalNode::Split(target_node, left_record_count);
         new_parent = InternalNode::CreateNewRoot(left_node, right_node);
+        // retain an old root node for garbage collection
+        parent = GetRootAsNode();
       } else {
         // check whether it is required to split a parent node
         trace.pop();  // remove a target node
-        const auto parent = BitCast<InternalNode *>(trace.top().first);
+        parent = BitCast<InternalNode *>(trace.top().first);
         if (parent->NeedSplit(split_key_length, kWordLength)) {
           // invoke a parent (internal) node splitting
           SplitInternalNode(parent, target_key);
@@ -282,7 +328,10 @@ class BzTree
       // try installation of new nodes
       install_success = InstallNewInternalNode(trace, new_parent);
       if (install_success) {
-        // ...WIP...: delete old nodes
+        // Temporal implementation of garbage collection
+        const auto reserved_index = ReserveGabageRegion(2);
+        garbage_nodes[reserved_index] = target_node;
+        garbage_nodes[reserved_index + 1] = parent;
       } else {
         delete left_node;
         delete right_node;
@@ -340,7 +389,11 @@ class BzTree
       // try installation of new nodes
       install_success = InstallNewInternalNode(trace, new_parent);
       if (install_success) {
-        // ...WIP...: delete old nodes
+        // Temporal implementation of garbage collection
+        const auto reserved_index = ReserveGabageRegion(3);
+        garbage_nodes[reserved_index] = target_node;
+        garbage_nodes[reserved_index + 1] = sibling_node;
+        garbage_nodes[reserved_index + 2] = parent;
       } else {
         delete merged_node;
         delete new_parent;
@@ -400,7 +453,11 @@ class BzTree
       // try installation of new nodes
       install_success = InstallNewInternalNode(trace, new_parent);
       if (install_success) {
-        // ...WIP...: delete old nodes
+        // Temporal implementation of garbage collection
+        const auto reserved_index = ReserveGabageRegion(3);
+        garbage_nodes[reserved_index] = target_node;
+        garbage_nodes[reserved_index + 1] = sibling_node;
+        garbage_nodes[reserved_index + 2] = parent;
       } else {
         delete merged_node;
         delete new_parent;
@@ -414,6 +471,7 @@ class BzTree
       const InternalNode *new_internal_node)
   {
     auto *pd = descriptor_pool_->AllocateDescriptor();
+    auto epoch_manager = descriptor_pool_->GetEpoch();
 
     if (trace->size() > 1) {
       /*--------------------------------------------------------------------------------------------
@@ -426,8 +484,8 @@ class BzTree
       auto parent_node = trace->top().first;
 
       // check wether related nodes are frozen
-      const auto status = old_internal_node->GetStatusWordProtected();
-      const auto parent_status = parent_node->GetStatusWordProtected();
+      const auto status = old_internal_node->GetStatusWordProtected(epoch_manager);
+      const auto parent_status = parent_node->GetStatusWordProtected(epoch_manager);
       if (status.IsFrozen() || parent_status.IsFrozen()) {
         return false;
       }
@@ -447,7 +505,7 @@ class BzTree
       auto old_root_node = trace->top().first;
 
       // check wether an old root node is frozen
-      const auto status = old_root_node->GetStatusWordProtected();
+      const auto status = old_root_node->GetStatusWordProtected(epoch_manager);
       if (status.IsFrozen()) {
         return false;
       }

@@ -237,11 +237,12 @@ class LeafNode : public BaseNode
   std::pair<NodeReturnCode, std::unique_ptr<std::byte[]>>
   Read(  //
       const void *key,
-      const Compare &comp)
+      const Compare &comp,
+      pmwcas::EpochManager *epoch_manager)
   {
     assert(key != nullptr);
 
-    const auto status = GetStatusWordProtected();
+    const auto status = GetStatusWordProtected(epoch_manager);
     const auto [existence, index] = SearchMetadataToRead(key, status.GetRecordCount(), comp);
     if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
       return {NodeReturnCode::kKeyNotExist, nullptr};
@@ -271,9 +272,10 @@ class LeafNode : public BaseNode
       const bool begin_is_closed,
       const void *end_key,
       const bool end_is_closed,
-      const Compare &comp)
+      const Compare &comp,
+      pmwcas::EpochManager *epoch_manager)
   {
-    const auto status = GetStatusWordProtected();
+    const auto status = GetStatusWordProtected(epoch_manager);
     const int64_t record_count = status.GetRecordCount();
     const int64_t sorted_count = GetSortedCount();
 
@@ -350,7 +352,7 @@ class LeafNode : public BaseNode
    * @param key_length
    * @param payload
    * @param payload_length
-   * @param pmwcas_pool
+   * @param descriptor_pool
    * @return NodeReturnCode
    */
   std::pair<NodeReturnCode, StatusWord>
@@ -360,7 +362,7 @@ class LeafNode : public BaseNode
       const void *payload,
       const size_t payload_length,
       const size_t index_epoch,
-      pmwcas::DescriptorPool *pmwcas_pool)
+      pmwcas::DescriptorPool *descriptor_pool)
   {
     assert(key != nullptr);
 
@@ -369,13 +371,14 @@ class LeafNode : public BaseNode
     size_t record_count;
     const auto total_length = key_length + payload_length;
     const auto inserting_meta = kInitMetadata.InitForInsert(index_epoch);
-    pmwcas::Descriptor *pd;
+    pmwcas::Descriptor *desc;
+    auto epoch_manager = descriptor_pool->GetEpoch();
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: reserve free space to write a record
      *--------------------------------------------------------------------------------------------*/
     do {
-      current_status = GetStatusWordProtected();
+      current_status = GetStatusWordProtected(epoch_manager);
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
@@ -390,10 +393,10 @@ class LeafNode : public BaseNode
       const auto current_meta = GetMetadata(record_count);
 
       // perform MwCAS to reserve space
-      pd = pmwcas_pool->AllocateDescriptor();
-      SetStatusForMwCAS(current_status, new_status, pd);
-      SetMetadataForMwCAS(record_count, current_meta, inserting_meta, pd);
-    } while (!pd->MwCAS());
+      desc = descriptor_pool->AllocateDescriptor();
+      SetStatusForMwCAS(current_status, new_status, desc);
+      SetMetadataForMwCAS(record_count, current_meta, inserting_meta, desc);
+    } while (!desc->MwCAS());
 
     /*----------------------------------------------------------------------------------------------
      * Phase 2: write a record and check conflicts
@@ -408,16 +411,16 @@ class LeafNode : public BaseNode
 
     // check conflicts (concurrent SMOs)
     do {
-      current_status = GetStatusWordProtected();
+      current_status = GetStatusWordProtected(epoch_manager);
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
 
       // perform MwCAS to complete a write
-      pd = pmwcas_pool->AllocateDescriptor();
-      SetStatusForMwCAS(current_status, current_status, pd);
-      SetMetadataForMwCAS(record_count, inserting_meta, inserted_meta, pd);
-    } while (!pd->MwCAS());
+      desc = descriptor_pool->AllocateDescriptor();
+      SetStatusForMwCAS(current_status, current_status, desc);
+      SetMetadataForMwCAS(record_count, inserting_meta, inserted_meta, desc);
+    } while (!desc->MwCAS());
 
     return {NodeReturnCode::kSuccess, current_status};
   }
@@ -431,7 +434,7 @@ class LeafNode : public BaseNode
    * @param payload
    * @param payload_length
    * @param comp
-   * @param pmwcas_pool
+   * @param descriptor_pool
    * @return NodeReturnCode
    */
   template <class Compare>
@@ -443,7 +446,7 @@ class LeafNode : public BaseNode
       const size_t payload_length,
       const size_t index_epoch,
       const Compare &comp,
-      pmwcas::DescriptorPool *pmwcas_pool)
+      pmwcas::DescriptorPool *descriptor_pool)
   {
     assert(key != nullptr);
 
@@ -452,7 +455,8 @@ class LeafNode : public BaseNode
     size_t record_count;
     const auto total_length = key_length + payload_length;
     const auto inserting_meta = kInitMetadata.InitForInsert(index_epoch);
-    pmwcas::Descriptor *pd;
+    pmwcas::Descriptor *desc;
+    auto epoch_manager = descriptor_pool->GetEpoch();
     bool cas_failed;
 
     // local flags for insertion
@@ -462,7 +466,7 @@ class LeafNode : public BaseNode
      * Phase 1: reserve free space to insert a record
      *--------------------------------------------------------------------------------------------*/
     do {
-      current_status = GetStatusWordProtected();
+      current_status = GetStatusWordProtected(epoch_manager);
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
@@ -486,10 +490,10 @@ class LeafNode : public BaseNode
       const auto current_meta = GetMetadata(record_count);
 
       // perform MwCAS to reserve space
-      pd = pmwcas_pool->AllocateDescriptor();
-      SetStatusForMwCAS(current_status, new_status, pd);
-      SetMetadataForMwCAS(record_count, current_meta, inserting_meta, pd);
-      cas_failed = !pd->MwCAS();
+      desc = descriptor_pool->AllocateDescriptor();
+      SetStatusForMwCAS(current_status, new_status, desc);
+      SetMetadataForMwCAS(record_count, current_meta, inserting_meta, desc);
+      cas_failed = !desc->MwCAS();
 
       if (cas_failed) {
         uniqueness = KeyExistence::kUncertain;
@@ -519,16 +523,16 @@ class LeafNode : public BaseNode
         continue;  // recheck
       }
 
-      current_status = GetStatusWordProtected();
+      current_status = GetStatusWordProtected(epoch_manager);
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
 
       // perform MwCAS to complete an insert
-      pd = pmwcas_pool->AllocateDescriptor();
-      SetStatusForMwCAS(current_status, current_status, pd);
-      SetMetadataForMwCAS(record_count, inserting_meta, inserted_meta, pd);
-    } while (!pd->MwCAS());
+      desc = descriptor_pool->AllocateDescriptor();
+      SetStatusForMwCAS(current_status, current_status, desc);
+      SetMetadataForMwCAS(record_count, inserting_meta, inserted_meta, desc);
+    } while (!desc->MwCAS());
 
     return {NodeReturnCode::kSuccess, current_status};
   }
@@ -542,7 +546,7 @@ class LeafNode : public BaseNode
    * @param payload
    * @param payload_length
    * @param comp
-   * @param pmwcas_pool
+   * @param descriptor_pool
    * @return NodeReturnCode
    */
   template <class Compare>
@@ -554,7 +558,7 @@ class LeafNode : public BaseNode
       const size_t payload_length,
       const size_t index_epoch,
       const Compare &comp,
-      pmwcas::DescriptorPool *pmwcas_pool)
+      pmwcas::DescriptorPool *descriptor_pool)
   {
     assert(key != nullptr);
 
@@ -563,13 +567,14 @@ class LeafNode : public BaseNode
     size_t record_count;
     const auto total_length = key_length + payload_length;
     const auto inserting_meta = kInitMetadata.InitForInsert(index_epoch);
-    pmwcas::Descriptor *pd;
+    pmwcas::Descriptor *desc;
+    auto epoch_manager = descriptor_pool->GetEpoch();
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: reserve free space to insert a record
      *--------------------------------------------------------------------------------------------*/
     do {
-      current_status = GetStatusWordProtected();
+      current_status = GetStatusWordProtected(epoch_manager);
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
@@ -591,10 +596,10 @@ class LeafNode : public BaseNode
       const auto current_meta = GetMetadata(record_count);
 
       // perform MwCAS to reserve space
-      pd = pmwcas_pool->AllocateDescriptor();
-      SetStatusForMwCAS(current_status, new_status, pd);
-      SetMetadataForMwCAS(record_count, current_meta, inserting_meta, pd);
-    } while (!pd->MwCAS());
+      desc = descriptor_pool->AllocateDescriptor();
+      SetStatusForMwCAS(current_status, new_status, desc);
+      SetMetadataForMwCAS(record_count, current_meta, inserting_meta, desc);
+    } while (!desc->MwCAS());
 
     /*----------------------------------------------------------------------------------------------
      * Phase 2: insert a record and check conflicts
@@ -609,16 +614,16 @@ class LeafNode : public BaseNode
 
     // check conflicts (concurrent SMOs)
     do {
-      current_status = GetStatusWordProtected();
+      current_status = GetStatusWordProtected(epoch_manager);
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
 
       // perform MwCAS to complete an update
-      pd = pmwcas_pool->AllocateDescriptor();
-      SetStatusForMwCAS(current_status, current_status, pd);
-      SetMetadataForMwCAS(record_count, inserting_meta, inserted_meta, pd);
-    } while (!pd->MwCAS());
+      desc = descriptor_pool->AllocateDescriptor();
+      SetStatusForMwCAS(current_status, current_status, desc);
+      SetMetadataForMwCAS(record_count, inserting_meta, inserted_meta, desc);
+    } while (!desc->MwCAS());
 
     return {NodeReturnCode::kSuccess, current_status};
   }
@@ -630,7 +635,7 @@ class LeafNode : public BaseNode
    * @param key
    * @param key_length
    * @param comp
-   * @param pmwcas_pool
+   * @param descriptor_pool
    * @return NodeReturnCode
    */
   template <class Compare>
@@ -639,16 +644,17 @@ class LeafNode : public BaseNode
       const void *key,
       const size_t key_length,
       const Compare &comp,
-      pmwcas::DescriptorPool *pmwcas_pool)
+      pmwcas::DescriptorPool *descriptor_pool)
   {
     assert(key != nullptr);
 
     // variables and constants
-    pmwcas::Descriptor *pd;
+    pmwcas::Descriptor *desc;
+    auto epoch_manager = descriptor_pool->GetEpoch();
     StatusWord new_status;
 
     do {
-      const auto current_status = GetStatusWordProtected();
+      const auto current_status = GetStatusWordProtected(epoch_manager);
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
@@ -668,10 +674,10 @@ class LeafNode : public BaseNode
       new_status = current_status.AddRecordInfo(0, 0, total_length);
 
       // perform MwCAS to reserve space
-      pd = pmwcas_pool->AllocateDescriptor();
-      SetStatusForMwCAS(current_status, new_status, pd);
-      SetMetadataForMwCAS(index, current_meta, deleted_meta, pd);
-    } while (!pd->MwCAS());
+      desc = descriptor_pool->AllocateDescriptor();
+      SetStatusForMwCAS(current_status, new_status, desc);
+      SetMetadataForMwCAS(index, current_meta, deleted_meta, desc);
+    } while (!desc->MwCAS());
 
     return {NodeReturnCode::kSuccess, new_status};
   }
