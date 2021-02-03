@@ -172,17 +172,15 @@ class LeafNode : public BaseNode
   static void
   CopyRecordsViaMetadata(  //
       LeafNode *copied_node,
-      const size_t begin_index,
       const LeafNode *original_node,
       const std::vector<std::pair<void *, Metadata>>::const_iterator begin_iter,
       const std::vector<std::pair<void *, Metadata>>::const_iterator end_iter)
   {
-    const auto status = copied_node->GetStatusWord();
-    const auto initial_offset = copied_node->GetNodeSize() - status.GetBlockSize();
+    const auto node_size = original_node->GetNodeSize();
 
-    auto index = begin_index;
-    auto offset = initial_offset;
-    for (auto iter = begin_iter; iter != end_iter; ++index, ++iter) {
+    auto sorted_count = copied_node->GetSortedCount();
+    auto offset = node_size - copied_node->GetStatusWord().GetBlockSize();
+    for (auto iter = begin_iter; iter != end_iter; ++sorted_count, ++iter) {
       // copy a record
       const auto [key, meta] = *iter;
       const auto key_length = meta.GetKeyLength();
@@ -191,11 +189,10 @@ class LeafNode : public BaseNode
       offset = copied_node->CopyRecord(key, key_length, payload, payload_length, offset);
       // copy metadata
       const auto new_meta = meta.UpdateOffset(offset);
-      copied_node->SetMetadata(index, new_meta);
+      copied_node->SetMetadata(sorted_count, new_meta);
     }
-    const auto copied_count = index - begin_index;
-    copied_node->SetStatusWord(status.AddRecordInfo(copied_count, initial_offset - offset, 0));
-    copied_node->SetSortedCount(copied_node->GetSortedCount() + copied_count);
+    copied_node->SetStatusWord(kInitStatusWord.AddRecordInfo(sorted_count, node_size - offset, 0));
+    copied_node->SetSortedCount(sorted_count);
   }
 
  public:
@@ -690,7 +687,7 @@ class LeafNode : public BaseNode
   {
     // create a new node and copy records
     auto new_node = CreateEmptyNode(target_node->GetNodeSize());
-    CopyRecordsViaMetadata(new_node, 0, target_node, live_meta.begin(), live_meta.end());
+    CopyRecordsViaMetadata(new_node, target_node, live_meta.begin(), live_meta.end());
 
     return new_node;
   }
@@ -706,11 +703,11 @@ class LeafNode : public BaseNode
 
     // create a split left node
     auto left_node = CreateEmptyNode(node_size);
-    CopyRecordsViaMetadata(left_node, 0, target_node, sorted_meta.begin(), split_iter);
+    CopyRecordsViaMetadata(left_node, target_node, sorted_meta.begin(), split_iter);
 
     // create a split right node
     auto right_node = CreateEmptyNode(node_size);
-    CopyRecordsViaMetadata(right_node, 0, target_node, split_iter, sorted_meta.end());
+    CopyRecordsViaMetadata(right_node, target_node, split_iter, sorted_meta.end());
 
     return {left_node, right_node};
   }
@@ -726,14 +723,11 @@ class LeafNode : public BaseNode
     // create a merged node
     auto merged_node = CreateEmptyNode(target_node->GetNodeSize());
     if (sibling_is_left) {
-      CopyRecordsViaMetadata(merged_node, 0, sibling_node, sibling_meta.begin(),
-                             sibling_meta.end());
-      CopyRecordsViaMetadata(merged_node, sibling_meta.size(), target_node, this_meta.begin(),
-                             this_meta.end());
+      CopyRecordsViaMetadata(merged_node, sibling_node, sibling_meta.begin(), sibling_meta.end());
+      CopyRecordsViaMetadata(merged_node, target_node, this_meta.begin(), this_meta.end());
     } else {
-      CopyRecordsViaMetadata(merged_node, 0, target_node, this_meta.begin(), this_meta.end());
-      CopyRecordsViaMetadata(merged_node, this_meta.size(), sibling_node, sibling_meta.begin(),
-                             sibling_meta.end());
+      CopyRecordsViaMetadata(merged_node, target_node, this_meta.begin(), this_meta.end());
+      CopyRecordsViaMetadata(merged_node, sibling_node, sibling_meta.begin(), sibling_meta.end());
     }
 
     return merged_node;
