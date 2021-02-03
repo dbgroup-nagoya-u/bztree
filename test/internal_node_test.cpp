@@ -276,4 +276,61 @@ TEST_F(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectKeysAndPayloa
   EXPECT_EQ(payloads[7], CastToValue(scan_results[1].second.get()));
 }
 
+TEST_F(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectStatus)
+{
+  auto left_node = CreateInternalNodeWithOrderedKeys(1, 5);
+  auto right_node = CreateInternalNodeWithOrderedKeys(6, 10);
+
+  auto new_root = std::unique_ptr<LeafNode>(
+      BitCast<LeafNode*>(InternalNode::CreateNewRoot(left_node.get(), right_node.get())));
+
+  auto status = new_root->GetStatusWord();
+  auto record_count = 2;
+  auto block_size = (kWordLength * 2) * record_count;
+  auto deleted_size = 0;
+
+  EXPECT_EQ(kDefaultNodeSize, new_root->GetNodeSize());
+  EXPECT_EQ(record_count, new_root->GetSortedCount());
+  EXPECT_EQ(record_count, status.GetRecordCount());
+  EXPECT_EQ(block_size, status.GetBlockSize());
+  EXPECT_EQ(deleted_size, status.GetDeletedSize());
+}
+
+TEST_F(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectPointersToChildren)
+{
+  auto left_node = CreateInternalNodeWithOrderedKeys(1, 5);
+  auto right_node = CreateInternalNodeWithOrderedKeys(6, 10);
+
+  auto new_root = std::unique_ptr<LeafNode>(
+      BitCast<LeafNode*>(InternalNode::CreateNewRoot(left_node.get(), right_node.get())));
+
+  auto left_addr = reinterpret_cast<uintptr_t>(left_node.get());
+  auto [rc, u_ptr] = new_root->Read(key_ptrs[5], comp);
+  auto read_left_addr = PayloadToPtr(u_ptr.get());
+
+  EXPECT_EQ(left_addr, read_left_addr);
+
+  auto right_addr = reinterpret_cast<uintptr_t>(right_node.get());
+  std::tie(rc, u_ptr) = new_root->Read(key_ptrs[10], comp);
+  auto read_right_addr = PayloadToPtr(u_ptr.get());
+
+  EXPECT_EQ(right_addr, read_right_addr);
+}
+
+  auto merged_node = std::unique_ptr<LeafNode>(
+      BitCast<LeafNode*>(InternalNode::CreateNewRoot(left_node.get(), right_node.get())));
+
+  auto left_addr = reinterpret_cast<uintptr_t>(left_node.get());
+  auto [rc, u_ptr] = merged_node->Read(key_ptrs[5], comp);
+  auto read_left_addr = PayloadToPtr(u_ptr.get());
+
+  EXPECT_EQ(left_addr, read_left_addr);
+
+  auto right_addr = reinterpret_cast<uintptr_t>(right_node.get());
+  std::tie(rc, u_ptr) = merged_node->Read(key_ptrs[10], comp);
+  auto read_right_addr = PayloadToPtr(u_ptr.get());
+
+  EXPECT_EQ(right_addr, read_right_addr);
+}
+
 }  // namespace bztree

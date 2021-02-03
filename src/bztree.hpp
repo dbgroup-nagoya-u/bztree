@@ -215,7 +215,7 @@ class BzTree
       // check whether it is required to split a parent node
       trace.pop();  // remove a leaf node
       const auto parent = BitCast<InternalNode *>(trace.top().first);
-      if (parent->NeedSplit(split_key_length, kPointerLength)) {
+      if (parent->NeedSplit(split_key_length, kWordLength)) {
         // invoke a parent (internal) node splitting
         SplitInternalNode(parent, target_key);
         continue;
@@ -269,7 +269,7 @@ class BzTree
         // check whether it is required to split a parent node
         trace.pop();  // remove a target node
         const auto parent = BitCast<InternalNode *>(trace.top().first);
-        if (parent->NeedSplit(split_key_length, kPointerLength)) {
+        if (parent->NeedSplit(split_key_length, kWordLength)) {
           // invoke a parent (internal) node splitting
           SplitInternalNode(parent, target_key);
           continue;
@@ -311,7 +311,7 @@ class BzTree
       // check whether it is required to merge a parent node
       trace.pop();  // remove a leaf node
       const auto parent = BitCast<InternalNode *>(trace.top().first);
-      if (parent->NeedMerge(target_key_length, kPointerLength, node_size_min_threshold_)) {
+      if (parent->NeedMerge(target_key_length, kWordLength, node_size_min_threshold_)) {
         // invoke a parent (internal) node merging
         MergeInternalNodes(parent, target_key, target_key_length);
         continue;
@@ -368,7 +368,7 @@ class BzTree
       trace.pop();  // remove a target node
       const auto parent = BitCast<InternalNode *>(trace.top().first);
       if (!HaveSameAddress(parent, GetRootAsNode())
-          && parent->NeedMerge(target_key_length, kPointerLength, node_size_min_threshold_)) {
+          && parent->NeedMerge(target_key_length, kWordLength, node_size_min_threshold_)) {
         // invoke a parent (internal) node merging
         MergeInternalNodes(parent, target_key, target_key_length);
         continue;

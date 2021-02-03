@@ -28,11 +28,10 @@ enum ReturnCode
   kKeyExist
 };
 
-template <class T>
-constexpr void *
-GetAddr(const T *obj)
+constexpr uintptr_t
+PayloadToPtr(const void *payload)
 {
-  return static_cast<void *>(const_cast<T *>(obj));
+  return static_cast<uintptr_t>(*static_cast<uint64_t *>(const_cast<void *>(payload)));
 }
 
 template <class To, class From>
@@ -102,9 +101,6 @@ struct CompareAsInt64 {
 
 // this code assumes that one word is represented by 8 bytes.
 constexpr size_t kWordLength = 8;
-
-// pointer's byte length
-constexpr size_t kPointerLength = kWordLength;
 
 // header length in bytes
 constexpr size_t kHeaderLength = 2 * kWordLength;
