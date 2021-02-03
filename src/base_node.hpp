@@ -309,7 +309,7 @@ class alignas(kWordLength) BaseNode
       const auto new_status = current_status.Freeze();
       pd = pmwcas_pool->AllocateDescriptor();
       SetStatusForMwCAS(current_status, new_status, pd);
-    } while (pd->MwCAS());
+    } while (!pd->MwCAS());
 
     return NodeReturnCode::kSuccess;
   }
