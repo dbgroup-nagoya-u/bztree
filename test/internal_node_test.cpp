@@ -14,6 +14,7 @@ namespace bztree
 static constexpr size_t kDefaultNodeSize = 256;
 static constexpr size_t kDefaultBlockSizeThreshold = 256;
 static constexpr size_t kDefaultDeletedSizeThreshold = 256;
+static constexpr size_t kDefaultMinNodeSizeThreshold = 128;
 static constexpr size_t kIndexEpoch = 0;
 static constexpr size_t kKeyNumForTest = 100;
 
@@ -179,6 +180,26 @@ TEST_F(InternalNodeFixture, Split_TenKeys_SplitNodesHaveCorrectKeysAndPayloads)
   }
   return_code = right_node->Read(key_ptrs[left_record_count - 1], comp).first;
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, return_code);
+}
+
+TEST_F(InternalNodeFixture, NeedMerge_EmptyNode_MergeRequired)
+{
+  auto target_node = std::unique_ptr<InternalNode>(InternalNode::CreateEmptyNode(kDefaultNodeSize));
+
+  auto merge_required =
+      target_node->NeedMerge(key_lengths[1], payload_lengths[1], kDefaultMinNodeSizeThreshold);
+
+  EXPECT_TRUE(merge_required);
+}
+
+TEST_F(InternalNodeFixture, NeedMerge_FilledNode_MergeNotRequired)
+{
+  auto target_node = CreateInternalNodeWithOrderedKeys(1, 10);
+
+  auto merge_required =
+      target_node->NeedMerge(key_lengths[1], payload_lengths[1], kDefaultMinNodeSizeThreshold);
+
+  EXPECT_FALSE(merge_required);
 }
 
 }  // namespace bztree

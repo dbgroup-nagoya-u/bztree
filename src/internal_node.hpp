@@ -103,9 +103,9 @@ class InternalNode : public BaseNode
       const size_t payload_length,
       const size_t min_node_size) const
   {
-    const auto new_block_size =
+    const int64_t new_block_size =
         GetStatusWord().GetOccupiedSize() - kWordLength - (key_length + payload_length);
-    return new_block_size < min_node_size;
+    return new_block_size < static_cast<int64_t>(min_node_size);
   }
 
   constexpr bool
