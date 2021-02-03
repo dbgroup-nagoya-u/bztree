@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <common/epoch.h>
 #include <mwcas/mwcas.h>
 #include <pmwcas.h>
 
@@ -218,9 +219,9 @@ class alignas(kWordLength) BaseNode
   }
 
   StatusWord
-  GetStatusWordProtected()
+  GetStatusWordProtected(pmwcas::EpochManager *epoch)
   {
-    const auto protected_status = status_.target_field.GetValueProtected();
+    const auto protected_status = status_.target_field.GetValue(epoch);
     return StatusUnion{protected_status}.word;
   }
 
@@ -296,8 +297,9 @@ class alignas(kWordLength) BaseNode
   Freeze(pmwcas::DescriptorPool *pmwcas_pool)
   {
     pmwcas::Descriptor *pd;
+    auto epoch_manager = pmwcas_pool->GetEpoch();
     do {
-      const auto current_status = GetStatusWordProtected();
+      const auto current_status = GetStatusWordProtected(epoch_manager);
       if (current_status.IsFrozen()) {
         return NodeReturnCode::kFrozen;
       }

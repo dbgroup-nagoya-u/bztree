@@ -166,6 +166,7 @@ class BzTree
     // install a new node
     auto new_leaf = LeafNode::Consolidate(target_leaf, live_meta);
     pmwcas::Descriptor *pd;
+    auto epoch_manager = descriptor_pool_->GetEpoch();
     do {
       // check whether a target node remains
       auto trace = SearchLeafNodeWithTrace(target_key);
@@ -179,7 +180,7 @@ class BzTree
       // check a parent status
       trace.pop();  // remove a leaf node
       auto [parent_node, target_index] = trace.top();
-      const auto parent_status = parent_node->GetStatusWordProtected();
+      const auto parent_status = parent_node->GetStatusWordProtected(epoch_manager);
       if (StatusWord::IsFrozen(parent_status)) {
         continue;
       }
@@ -414,6 +415,7 @@ class BzTree
       const InternalNode *new_internal_node)
   {
     auto *pd = descriptor_pool_->AllocateDescriptor();
+    auto epoch_manager = descriptor_pool_->GetEpoch();
 
     if (trace->size() > 1) {
       /*--------------------------------------------------------------------------------------------
@@ -426,8 +428,8 @@ class BzTree
       auto parent_node = trace->top().first;
 
       // check wether related nodes are frozen
-      const auto status = old_internal_node->GetStatusWordProtected();
-      const auto parent_status = parent_node->GetStatusWordProtected();
+      const auto status = old_internal_node->GetStatusWordProtected(epoch_manager);
+      const auto parent_status = parent_node->GetStatusWordProtected(epoch_manager);
       if (status.IsFrozen() || parent_status.IsFrozen()) {
         return false;
       }
@@ -447,7 +449,7 @@ class BzTree
       auto old_root_node = trace->top().first;
 
       // check wether an old root node is frozen
-      const auto status = old_root_node->GetStatusWordProtected();
+      const auto status = old_root_node->GetStatusWordProtected(epoch_manager);
       if (status.IsFrozen()) {
         return false;
       }
