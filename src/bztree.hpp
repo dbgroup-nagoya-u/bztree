@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <array>
+#include <atomic>
 #include <map>
 #include <memory>
 #include <stack>
@@ -39,8 +41,26 @@ class BzTree
   const size_t index_epoch_;
   // a comparator to compare input keys
   const Compare comparator_;
+
+  // a root node of BzTree
   PayloadUnion root_;
+
+  // a pool of descriptors for MwCAS
   std::unique_ptr<pmwcas::DescriptorPool> descriptor_pool_;
+
+  /*------------------------------------------------------------------------------------------------
+   * Temporal garbage collector
+   *----------------------------------------------------------------------------------------------*/
+
+  /// The number of the maximum garbages
+  static constexpr size_t kMaxGarbage = 1E6;
+
+  /// A list of garbage nodes
+  std::array<void *, kMaxGarbage> garbage_nodes;
+
+  /// The number of garbage nodes. This count is utilized to reserve a garbage region in
+  /// multi-thread environment.
+  std::atomic<size_t> garbage_count{0};
 
   /*################################################################################################
    * Internal utility functions
@@ -137,6 +157,23 @@ class BzTree
   {
     return descriptor->AddEntry(&(root_.int_payload), PayloadUnion{old_root_node}.int_payload,
                                 PayloadUnion{new_root_node}.int_payload);
+  }
+
+  /*------------------------------------------------------------------------------------------------
+   * Temporal utilities for garbage collect
+   *----------------------------------------------------------------------------------------------*/
+
+  size_t
+  ReserveGabageRegion(const size_t num_garbage)
+  {
+    size_t expected = garbage_count.load();
+    size_t reserved_count;
+
+    do {
+      reserved_count = expected + num_garbage;
+    } while (!garbage_count.compare_exchange_weak(expected, reserved_count));
+
+    return expected;
   }
 
   /*################################################################################################
