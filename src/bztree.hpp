@@ -93,42 +93,22 @@ class BzTree
     return BitCast<LeafNode *>(current_node);
   }
 
-  std::stack<std::pair<BaseNode *, size_t>>
-  SearchLeafNodeWithTrace(const void *key) const
-  {
-    // trace nodes to a target leaf node
-    auto current_node = GetRoot();
-    std::stack<std::pair<BaseNode *, size_t>> trace;
-    trace.emplace(current_node, 0);
-    do {
-      const auto index = current_node->SearchSortedMetadata(key, true, comparator_).second;
-      current_node = BitCast<InternalNode *>(current_node)->GetChildNode(index);
-      trace.emplace(current_node, index);
-    } while (!current_node->IsLeaf());
-
-    return trace;
-  }
-
-  std::stack<std::pair<BaseNode *, size_t>>
-  SearchInternalNodeWithTrace(  //
+  std::tuple<BaseNode *, size_t, std::stack<std::pair<BaseNode *, size_t>>>
+  TraceTargetNode(  //
       const void *key,
-      const InternalNode *target_node) const
+      const void *target_node) const
   {
     // trace nodes to a target internal node
-    auto current_node = GetRoot();
     std::stack<std::pair<BaseNode *, size_t>> trace;
-    trace.emplace(current_node, 0);
+    auto index = 0UL;
+    auto current_node = GetRoot();
     do {
-      if (HaveSameAddress(current_node, target_node)) {
-        // find a target node
-        return trace;
-      }
-      const auto index = current_node->SearchSortedMetadata(key, true, comparator_).second;
-      current_node = BitCast<InternalNode *>(current_node)->GetChildNode(index);
       trace.emplace(current_node, index);
-    } while (!current_node->IsLeaf());
+      index = current_node->SearchSortedMetadata(key, true, comparator_).second;
+      current_node = BitCast<InternalNode *>(current_node)->GetChildNode(index);
+    } while (!current_node->IsLeaf() && !HaveSameAddress(current_node, target_node));
 
-    return trace;
+    return {current_node, index, trace};
   }
 
   constexpr bool
@@ -207,8 +187,7 @@ class BzTree
     auto epoch_manager = descriptor_pool_->GetEpoch();
     do {
       // check whether a target node remains
-      auto trace = SearchLeafNodeWithTrace(target_key);
-      const auto current_leaf_node = trace.top().first;
+      auto [current_leaf_node, unused, trace] = TraceTargetNode(target_key, target_leaf);
       if (!HaveSameAddress(target_leaf, current_leaf_node)) {
         // other threads have already performed consolidation
         delete new_leaf;
@@ -216,7 +195,6 @@ class BzTree
       }
 
       // check a parent status
-      trace.pop();  // remove a leaf node
       auto [parent_node, target_index] = trace.top();
       const auto parent_status = parent_node->GetStatusWordProtected(epoch_manager);
       if (parent_status.IsFrozen()) {
@@ -248,14 +226,12 @@ class BzTree
     bool install_success;
     do {
       // check whether a target node remains
-      auto trace = SearchLeafNodeWithTrace(target_key);
-      const auto [current_leaf, target_index] = trace.top();
+      auto [current_leaf, target_index, trace] = TraceTargetNode(target_key, target_leaf);
       if (!HaveSameAddress(target_leaf, current_leaf)) {
         return;  // other threads have already performed splitting
       }
 
       // check whether it is required to split a parent node
-      trace.pop();  // remove a leaf node
       const auto parent = BitCast<InternalNode *>(trace.top().first);
       if (parent->NeedSplit(split_key_length, kWordLength)) {
         // invoke a parent (internal) node splitting
@@ -286,9 +262,22 @@ class BzTree
 
   void
   SplitInternalNode(  //
-      const InternalNode *target_node,
+      InternalNode *target_node,
       const void *target_key)
   {
+    /*----------------------------------------------------------------------------------------------
+     * Phase 1: preparation
+     *--------------------------------------------------------------------------------------------*/
+
+    // freeze a target node
+    if (target_node->Freeze(descriptor_pool_.get()) == BaseNode::NodeReturnCode::kFrozen) {
+      return;  // a target node is modified by concurrent SMOs
+    }
+
+    /*----------------------------------------------------------------------------------------------
+     * Phase 2: installation
+     *--------------------------------------------------------------------------------------------*/
+
     // get a split index and a corresponding key length
     const auto left_record_count = (target_node->GetSortedCount() / 2);
     const auto [split_key, split_key_length] =
@@ -297,11 +286,9 @@ class BzTree
     bool install_success;
     do {
       // check whether a target node remains
-      auto trace = SearchInternalNodeWithTrace(target_key, target_node);
-      const auto [current_node, target_index] = trace.top();
+      auto [current_node, target_index, trace] = TraceTargetNode(target_key, target_node);
       if (current_node->IsLeaf()) {
-        // there is no target node, because other threads have already performed SMOs
-        return;
+        return;  // other threads have already performed SMOs
       }
 
       // create new nodes
@@ -314,7 +301,6 @@ class BzTree
         parent = BitCast<InternalNode *>(GetRoot());
       } else {
         // check whether it is required to split a parent node
-        trace.pop();  // remove a target node
         parent = BitCast<InternalNode *>(trace.top().first);
         if (parent->NeedSplit(split_key_length, kWordLength)) {
           // invoke a parent (internal) node splitting
@@ -349,18 +335,57 @@ class BzTree
       const size_t target_size,
       const std::vector<std::pair<void *, Metadata>> &sorted_meta)
   {
+    /*----------------------------------------------------------------------------------------------
+     * Phase 1: preparation
+     *--------------------------------------------------------------------------------------------*/
+    // check a target node remians
+    auto [current_leaf, target_index, trace] = TraceTargetNode(target_key, target_node);
+    if (!HaveSameAddress(target_node, current_leaf)) {
+      return;  // other threads have already performed merging
+    }
+
+    // check a left/right sibling node is not frozen
+    auto parent = BitCast<InternalNode *>(trace.top().first);
+    size_t deleted_index;
+    LeafNode *sibling_node;
+    bool sibling_is_left;
+
+    if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
+      sibling_node = BitCast<LeafNode *>(parent->GetChildNode(target_index - 1));
+      if (sibling_node->Freeze(descriptor_pool_.get()) == BaseNode::NodeReturnCode::kSuccess) {
+        deleted_index = target_index - 1;
+        sibling_is_left = true;
+      } else {
+        sibling_node = nullptr;
+      }
+    }
+    if (sibling_node == nullptr
+        && parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
+      sibling_node = BitCast<LeafNode *>(parent->GetChildNode(target_index + 1));
+      if (sibling_node->Freeze(descriptor_pool_.get()) == BaseNode::NodeReturnCode::kSuccess) {
+        deleted_index = target_index;
+        sibling_is_left = false;
+      } else {
+        sibling_node = nullptr;
+      }
+    }
+    if (sibling_node == nullptr) {
+      return;  // there is no live sibling node
+    }
+
+    /*----------------------------------------------------------------------------------------------
+     * Phase 2: installation
+     *--------------------------------------------------------------------------------------------*/
     bool install_success;
     do {
       // check whether a target node remains
-      auto trace = SearchLeafNodeWithTrace(target_key);
-      const auto [current_leaf, target_index] = trace.top();
+      std::tie(current_leaf, target_index, trace) = TraceTargetNode(target_key, target_node);
       if (!HaveSameAddress(target_node, current_leaf)) {
         return;  // other threads have already performed merging
       }
 
       // check whether it is required to merge a parent node
-      trace.pop();  // remove a leaf node
-      const auto parent = BitCast<InternalNode *>(trace.top().first);
+      parent = BitCast<InternalNode *>(trace.top().first);
       if (parent->NeedMerge(target_key_length, kWordLength, node_size_min_threshold_)) {
         // invoke a parent (internal) node merging
         MergeInternalNodes(parent, target_key, target_key_length);
@@ -368,24 +393,10 @@ class BzTree
       }
 
       // create new nodes
-      InternalNode *new_parent;
-      LeafNode *sibling_node, *merged_node;
-      size_t deleted_index;
-      if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
-        deleted_index = target_index - 1;
-        sibling_node = BitCast<LeafNode *>(parent->GetChildNode(deleted_index));
-        const auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comparator_);
-        merged_node = LeafNode::Merge(target_node, sorted_meta, sibling_node, sibling_meta, true);
-      } else if (parent->CanMergeRightSibling(target_index, target_size, max_merged_size_)) {
-        const auto right_index = target_index + 1;
-        deleted_index = target_index;
-        sibling_node = BitCast<LeafNode *>(parent->GetChildNode(right_index));
-        const auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comparator_);
-        merged_node = LeafNode::Merge(target_node, sorted_meta, sibling_node, sibling_meta, false);
-      } else {
-        return;  // there is no space to perform merge operation
-      }
-      new_parent = InternalNode::NewParentForMerge(parent, merged_node, deleted_index);
+      const auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comparator_);
+      const auto merged_node =
+          LeafNode::Merge(target_node, sorted_meta, sibling_node, sibling_meta, sibling_is_left);
+      const auto new_parent = InternalNode::NewParentForMerge(parent, merged_node, deleted_index);
 
       // try installation of new nodes
       install_success = InstallNewInternalNode(&trace, new_parent);
@@ -404,22 +415,19 @@ class BzTree
 
   void
   MergeInternalNodes(  //
-      const InternalNode *target_node,
+      InternalNode *target_node,
       const void *target_key,
       const size_t target_key_length)
   {
     bool install_success;
     do {
       // check whether a target node remains
-      auto trace = SearchInternalNodeWithTrace(target_key, target_node);
-      const auto [current_node, target_index] = trace.top();
+      auto [current_node, target_index, trace] = TraceTargetNode(target_key, target_node);
       if (current_node->IsLeaf()) {
-        // there is no target node, because other threads have already performed SMOs
-        return;
+        return;  // other threads have already performed SMOs
       }
 
       // check whether it is required to merge a parent node
-      trace.pop();  // remove a target node
       const auto parent = BitCast<InternalNode *>(trace.top().first);
       if (!HaveSameAddress(parent, GetRoot())
           && parent->NeedMerge(target_key_length, kWordLength, node_size_min_threshold_)) {
