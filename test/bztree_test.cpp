@@ -115,14 +115,14 @@ TEST_F(BzTreeUInt64Fixture, Write_TwoKeys_ReadWrittenValues)
   auto [rc, u_ptr] = bztree->Read(key_ptrs[1]);
   auto read_result = CastToValue(u_ptr.get());
 
-  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
   EXPECT_EQ(payloads[1], read_result);
 
   // read 2nd input value
   std::tie(rc, u_ptr) = bztree->Read(key_ptrs[2]);
   read_result = CastToValue(u_ptr.get());
 
-  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
   EXPECT_EQ(payloads[2], read_result);
 }
 
@@ -134,8 +134,41 @@ TEST_F(BzTreeUInt64Fixture, Write_DuplicateKey_ReadLatestValue)
   auto [rc, u_ptr] = bztree->Read(key_ptrs[1]);
   auto read_result = CastToValue(u_ptr.get());
 
-  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
   EXPECT_EQ(payloads[2], read_result);
+}
+
+/*--------------------------------------------------------------------------------------------------
+ * Insert operation
+ *------------------------------------------------------------------------------------------------*/
+
+TEST_F(BzTreeUInt64Fixture, Insert_TwoKeys_ReadInsertedValues)
+{
+  bztree->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1]);
+  bztree->Insert(key_ptrs[2], key_lengths[2], payload_ptrs[2], payload_lengths[2]);
+
+  // read 1st input value
+  auto [rc, u_ptr] = bztree->Read(key_ptrs[1]);
+  auto read_result = CastToValue(u_ptr.get());
+
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  EXPECT_EQ(payloads[1], read_result);
+
+  // read 2nd input value
+  std::tie(rc, u_ptr) = bztree->Read(key_ptrs[2]);
+  read_result = CastToValue(u_ptr.get());
+
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  EXPECT_EQ(payloads[2], read_result);
+}
+
+TEST_F(BzTreeUInt64Fixture, Insert_DuplicateKey_InsertionFailed)
+{
+  bztree->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1]);
+
+  auto rc = bztree->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1]);
+
+  EXPECT_EQ(ReturnCode::kKeyExist, rc);
 }
 
 }  // namespace bztree
