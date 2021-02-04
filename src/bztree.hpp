@@ -583,25 +583,26 @@ class BzTree
             std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>>>
   Scan(  //
       const void *begin_key,
-      const bool begin_is_closed,
+      bool begin_is_closed,
       const void *end_key,
       const bool end_is_closed)
   {
     std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>> all_results;
-    BaseNode::NodeReturnCode scan_in_progress;
-    do {
-      const auto [return_code, leaf_results] =
+    while (true) {
+      auto [return_code, leaf_results] =
           ScanPerLeaf(begin_key, begin_is_closed, end_key, end_is_closed);
       // concatanate scan results for each leaf node
       all_results.reserve(all_results.size() + leaf_results.size());
-      all_results.insert(all_results.end(), leaf_results.begin(), leaf_results.end());
-      // continue until searching all target leaf nodes
-      scan_in_progress = return_code;
-      begin_key = all_results.back().first.get();
-      begin_is_closed = false;
-    } while (scan_in_progress == BaseNode::NodeReturnCode::kScanInProgress);
-
-    return {ReturnCode::kSuccess, all_results};
+      all_results.insert(all_results.end(), std::make_move_iterator(leaf_results.begin()),
+                         std::make_move_iterator(leaf_results.end()));
+      if (return_code == ReturnCode::kScanInProgress) {
+        begin_key = all_results.back().first.get();
+        begin_is_closed = false;
+      } else {
+        break;
+      }
+    }
+    return {ReturnCode::kSuccess, std::move(all_results)};
   }
 
   std::pair<ReturnCode,
@@ -613,12 +614,13 @@ class BzTree
       const bool end_is_closed)
   {
     auto leaf_node = SearchLeafNode(begin_key, begin_is_closed);
-    const auto [return_code, scan_results] =
-        leaf_node->Scan(begin_key, begin_is_closed, end_key, end_is_closed, comparator_);
+    auto [return_code, scan_results] =
+        leaf_node->Scan(begin_key, begin_is_closed, end_key, end_is_closed, comparator_,
+                        descriptor_pool_->GetEpoch());
     if (return_code == BaseNode::NodeReturnCode::kScanInProgress) {
-      return {ReturnCode::kScanInProgress, scan_results};
+      return {ReturnCode::kScanInProgress, std::move(scan_results)};
     } else {
-      return {ReturnCode::kSuccess, scan_results};
+      return {ReturnCode::kSuccess, std::move(scan_results)};
     }
   }
 
