@@ -132,8 +132,10 @@ class alignas(kWordLength) BaseNode
   {
     offset -= payload_length;
     SetPayload(payload, payload_length, offset);
-    offset -= key_length;
-    SetKey(key, key_length, offset);
+    if (key_length > 0) {
+      offset -= key_length;
+      SetKey(key, key_length, offset);
+    }
     return offset;
   }
 
@@ -231,17 +233,17 @@ class alignas(kWordLength) BaseNode
     return (meta_array_ + index)->meta;
   }
 
-  constexpr void *
-  GetPayloadAddr(const size_t index) const
-  {
-    return GetPayloadAddr(GetMetadata(index));
-  }
-
   std::pair<void *, size_t>
   GetKeyAndItsLength(const size_t index) const
   {
     const auto meta = GetMetadata(index);
     return {GetKeyAddr(meta), meta.GetKeyLength()};
+  }
+
+  constexpr BaseNode *
+  GetPayloadAsNode(const size_t index) const
+  {
+    return CastPayload<BaseNode>(GetPayloadAddr(GetMetadata(index)));
   }
 
   uint32_t
@@ -330,9 +332,6 @@ class alignas(kWordLength) BaseNode
       const Compare &comp) const
   {
     const int64_t sorted_count = GetSortedCount();
-    if (sorted_count == 0) {
-      return {KeyExistence::kNotExist, 0};
-    }
 
     int64_t begin_index = 0;
     int64_t end_index = sorted_count;
@@ -341,19 +340,21 @@ class alignas(kWordLength) BaseNode
     while (begin_index <= end_index && index < sorted_count) {
       const auto meta = GetMetadata(index);
       const auto *index_key = GetKeyAddr(meta);
-      if (IsEqual(index_key, key, comp)) {
+      const auto index_key_length = meta.GetKeyLength();
+      if (index_key_length == 0 || comp(key, index_key)) {
+        // a target key is in a left side
+        end_index = index - 1;
+      } else if (comp(index_key, key)) {
+        // a target key is in a right side
+        begin_index = index + 1;
+      } else {
+        // find an equivalent key
         if (meta.IsVisible()) {
           return {KeyExistence::kExist, (range_is_closed) ? index : index + 1};
         } else {
           // there is no inserting nor corrupted record in a sorted region
           return {KeyExistence::kDeleted, index};
         }
-      } else if (comp(index_key, key)) {
-        // a target key is in a right side
-        begin_index = index + 1;
-      } else {
-        // a target key is in a left side
-        end_index = index - 1;
       }
       index = (begin_index + end_index) / 2;
     }

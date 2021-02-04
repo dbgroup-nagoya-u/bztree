@@ -22,12 +22,6 @@ class InternalNode : public BaseNode
    * Internal utility functions
    *##############################################################################################*/
 
-  constexpr BaseNode *
-  GetChildNode(const size_t index) const
-  {
-    return CastPayload<BaseNode>(GetPayloadAddr(index));
-  }
-
   static constexpr size_t
   AlignKeyLengthToWord(const size_t key_length)
   {
@@ -90,6 +84,13 @@ class InternalNode : public BaseNode
    * Public getters/setters
    *##############################################################################################*/
 
+  constexpr BaseNode *
+  GetChildNode(const size_t index) const
+  {
+    const auto meta = GetMetadata(index);
+    return CastPayload<BaseNode>(GetPayloadAddr(meta));
+  }
+
   constexpr bool
   NeedSplit(  //
       const size_t key_length,
@@ -146,6 +147,29 @@ class InternalNode : public BaseNode
   /*################################################################################################
    * Public structure modification operations
    *##############################################################################################*/
+
+  static InternalNode *
+  CreateInitialRoot(const size_t node_size)
+  {
+    auto root = CreateEmptyNode(node_size);
+    const auto leaf_node = BaseNode::CreateEmptyNode(node_size, true);
+
+    constexpr auto key = nullptr;  // act as a positive infinity value
+    constexpr auto key_length = 0;
+    constexpr auto payload_length = kWordLength;
+    constexpr auto total_length = kWordLength;
+
+    // set an inital leaf node
+    const auto offset = root->CopyRecord(key, key_length, &leaf_node, payload_length, node_size);
+    const auto meta = kInitMetadata.SetRecordInfo(offset, key_length, total_length);
+    root->SetMetadata(0, meta);
+
+    // set a new header
+    root->SetSortedCount(1);
+    root->SetStatusWord(kInitStatusWord.AddRecordInfo(1, node_size - offset, 0));
+
+    return root;
+  }
 
   static std::pair<InternalNode *, InternalNode *>
   Split(  //
