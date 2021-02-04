@@ -171,4 +171,36 @@ TEST_F(BzTreeUInt64Fixture, Insert_DuplicateKey_InsertionFailed)
   EXPECT_EQ(ReturnCode::kKeyExist, rc);
 }
 
+/*--------------------------------------------------------------------------------------------------
+ * Update operation
+ *------------------------------------------------------------------------------------------------*/
+
+TEST_F(BzTreeUInt64Fixture, Update_SingleKey_ReadUpdatedValue)
+{
+  bztree->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[2], payload_lengths[2]);
+  bztree->Update(key_ptrs[1], key_lengths[1], payload_ptrs[2], payload_lengths[2]);
+
+  auto [rc, u_ptr] = bztree->Read(key_ptrs[1]);
+  auto read_result = CastToValue(u_ptr.get());
+
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  EXPECT_EQ(payloads[2], read_result);
+}
+
+TEST_F(BzTreeUInt64Fixture, Update_NotPresentKey_UpdatedFailed)
+{
+  auto rc = bztree->Update(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1]);
+
+  EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
+}
+
+TEST_F(BzTreeUInt64Fixture, Update_DeletedKey_UpdateFailed)
+{
+  bztree->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[2], payload_lengths[2]);
+  bztree->Delete(key_ptrs[1], key_lengths[1]);
+  auto rc = bztree->Update(key_ptrs[1], key_lengths[1], payload_ptrs[2], payload_lengths[2]);
+
+  EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
+}
+
 }  // namespace bztree
