@@ -233,17 +233,17 @@ class alignas(kWordLength) BaseNode
     return (meta_array_ + index)->meta;
   }
 
-  constexpr void *
-  GetPayloadAddr(const size_t index) const
-  {
-    return GetPayloadAddr(GetMetadata(index));
-  }
-
   std::pair<void *, size_t>
   GetKeyAndItsLength(const size_t index) const
   {
     const auto meta = GetMetadata(index);
     return {GetKeyAddr(meta), meta.GetKeyLength()};
+  }
+
+  constexpr BaseNode *
+  GetPayloadAsNode(const size_t index) const
+  {
+    return CastPayload<BaseNode>(GetPayloadAddr(GetMetadata(index)));
   }
 
   uint32_t

@@ -11,16 +11,16 @@ using std::byte;
 
 namespace bztree
 {
-static constexpr size_t kDefaultNodeSize = 256;
-static constexpr size_t kDefaultBlockSizeThreshold = 256;
-static constexpr size_t kDefaultDeletedSizeThreshold = 256;
-static constexpr size_t kDefaultMinNodeSizeThreshold = 128;
-static constexpr size_t kIndexEpoch = 0;
-static constexpr size_t kKeyNumForTest = 100;
-
-class BzTreeFixture : public testing::Test
+class BzTreeUInt64Fixture : public testing::Test
 {
  public:
+  static constexpr size_t kDefaultNodeSize = 256;
+  static constexpr size_t kDefaultBlockSizeThreshold = 256;
+  static constexpr size_t kDefaultDeletedSizeThreshold = 256;
+  static constexpr size_t kDefaultMinNodeSizeThreshold = 128;
+  static constexpr size_t kIndexEpoch = 0;
+  static constexpr size_t kKeyNumForTest = 100;
+
   uint64_t keys[kKeyNumForTest];
   uint64_t* key_ptrs[kKeyNumForTest];
   uint64_t key_lengths[kKeyNumForTest];
@@ -34,14 +34,15 @@ class BzTreeFixture : public testing::Test
   uint64_t* payload_null_ptr = &payload_null;
   size_t payload_length_null = kWordLength;  // null payload must have 8 bytes to fill a node
 
+  std::unique_ptr<BzTree<CompareAsUInt64>> bztree;
+
   CompareAsUInt64 comp{};
 
  protected:
   void
   SetUp() override
   {
-    pmwcas::InitLibrary(pmwcas::DefaultAllocator::Create, pmwcas::DefaultAllocator::Destroy,
-                        pmwcas::LinuxEnvironment::Create, pmwcas::LinuxEnvironment::Destroy);
+    bztree.reset(new BzTree<CompareAsUInt64>{});
 
     for (uint64_t index = 0; index < kKeyNumForTest; index++) {
       keys[index] = index;
@@ -66,9 +67,7 @@ class BzTreeFixture : public testing::Test
   }
 
   void
-  WriteNullKey(  //
-      LeafNode* target_node,
-      const size_t write_num)
+  WriteNullKey(const size_t write_num)
   {
     for (size_t index = 0; index < write_num; ++index) {
       //
@@ -77,7 +76,6 @@ class BzTreeFixture : public testing::Test
 
   void
   WriteOrderedKeys(  //
-      LeafNode* target_node,
       const size_t begin_index,
       const size_t end_index)
   {
@@ -92,5 +90,52 @@ class BzTreeFixture : public testing::Test
     }
   }
 };
+
+/*--------------------------------------------------------------------------------------------------
+ * Read operation
+ *------------------------------------------------------------------------------------------------*/
+
+TEST_F(BzTreeUInt64Fixture, Read_NotPresentKey_ReadFailed)
+{
+  auto [rc, u_ptr] = bztree->Read(key_ptrs[1]);
+
+  EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
+}
+
+/*--------------------------------------------------------------------------------------------------
+ * Write operation
+ *------------------------------------------------------------------------------------------------*/
+
+TEST_F(BzTreeUInt64Fixture, Write_TwoKeys_ReadWrittenValues)
+{
+  bztree->Write(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1]);
+  bztree->Write(key_ptrs[2], key_lengths[2], payload_ptrs[2], payload_lengths[2]);
+
+  // read 1st input value
+  auto [rc, u_ptr] = bztree->Read(key_ptrs[1]);
+  auto read_result = CastToValue(u_ptr.get());
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(payloads[1], read_result);
+
+  // read 2nd input value
+  std::tie(rc, u_ptr) = bztree->Read(key_ptrs[2]);
+  read_result = CastToValue(u_ptr.get());
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(payloads[2], read_result);
+}
+
+TEST_F(BzTreeUInt64Fixture, Write_DuplicateKey_ReadLatestValue)
+{
+  bztree->Write(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1]);
+  bztree->Write(key_ptrs[1], key_lengths[1], payload_ptrs[2], payload_lengths[2]);
+
+  auto [rc, u_ptr] = bztree->Read(key_ptrs[1]);
+  auto read_result = CastToValue(u_ptr.get());
+
+  EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(payloads[2], read_result);
+}
 
 }  // namespace bztree

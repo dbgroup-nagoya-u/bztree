@@ -22,12 +22,6 @@ class InternalNode : public BaseNode
    * Internal utility functions
    *##############################################################################################*/
 
-  constexpr BaseNode *
-  GetChildNode(const size_t index) const
-  {
-    return CastPayload<BaseNode>(GetPayloadAddr(index));
-  }
-
   static constexpr size_t
   AlignKeyLengthToWord(const size_t key_length)
   {
@@ -89,6 +83,13 @@ class InternalNode : public BaseNode
   /*################################################################################################
    * Public getters/setters
    *##############################################################################################*/
+
+  constexpr BaseNode *
+  GetChildNode(const size_t index) const
+  {
+    const auto meta = GetMetadata(index);
+    return CastPayload<BaseNode>(GetPayloadAddr(meta));
+  }
 
   constexpr bool
   NeedSplit(  //
