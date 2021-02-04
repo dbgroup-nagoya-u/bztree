@@ -203,4 +203,44 @@ TEST_F(BzTreeUInt64Fixture, Update_DeletedKey_UpdateFailed)
   EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
 }
 
+/*--------------------------------------------------------------------------------------------------
+ * Delete operation
+ *------------------------------------------------------------------------------------------------*/
+
+TEST_F(BzTreeUInt64Fixture, Delete_PresentKey_DeletionSucceed)
+{
+  bztree->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1]);
+
+  auto rc = bztree->Delete(key_ptrs[1], key_lengths[1]);
+
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+}
+
+TEST_F(BzTreeUInt64Fixture, Delete_PresentKey_ReadFailed)
+{
+  bztree->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1]);
+  bztree->Delete(key_ptrs[1], key_lengths[1]);
+
+  auto [rc, u_ptr] = bztree->Read(key_ptrs[1]);
+
+  EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
+}
+
+TEST_F(BzTreeUInt64Fixture, Delete_NotPresentKey_DeletionFailed)
+{
+  auto rc = bztree->Delete(key_ptrs[1], key_lengths[1]);
+
+  EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
+}
+
+TEST_F(BzTreeUInt64Fixture, Delete_DeletedKey_DeletionFailed)
+{
+  bztree->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1]);
+  bztree->Delete(key_ptrs[1], key_lengths[1]);
+
+  auto rc = bztree->Delete(key_ptrs[1], key_lengths[1]);
+
+  EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
+}
+
 }  // namespace bztree
