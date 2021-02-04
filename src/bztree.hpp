@@ -22,6 +22,12 @@ class BzTree
 {
  private:
   /*################################################################################################
+   * Internal enum and constants
+   *##############################################################################################*/
+
+  static constexpr size_t kDescriptorPoolSize = 1E3;
+
+  /*################################################################################################
    * Internal member variables
    *##############################################################################################*/
 
@@ -527,8 +533,7 @@ class BzTree
    * Public constructor/destructor
    *##############################################################################################*/
 
-  explicit BzTree(pmwcas::DescriptorPool *pool,
-                  const Compare comparator,
+  explicit BzTree(const Compare comparator,
                   const size_t node_size = 4096,
                   const size_t block_size_threshold = 3072,
                   const size_t deleted_size_threshold = 1024,
@@ -544,14 +549,26 @@ class BzTree
         comparator_{comparator},
         index_epoch_{0}
   {
-    descriptor_pool_.reset(pool);
+    // initialize a MwCAS descriptor pool
+    pmwcas::InitLibrary(pmwcas::DefaultAllocator::Create, pmwcas::DefaultAllocator::Destroy,
+                        pmwcas::LinuxEnvironment::Create, pmwcas::LinuxEnvironment::Destroy);
+    if (const auto cpu_num = std::thread::hardware_concurrency(); cpu_num > 0) {
+      descriptor_pool_.reset(new pmwcas::DescriptorPool{kDescriptorPoolSize, cpu_num, false});
+    } else {
+      // if the program cannot recognize the number of CPU cores, use 64 partitions as default
+      descriptor_pool_.reset(new pmwcas::DescriptorPool{kDescriptorPoolSize, 64, false});
+    }
+
+    // initialize a tree structure: one internal node with one leaf node
+    const auto root_node = InternalNode::CreateInitialRoot(node_size_);
+    root_ = PayloadUnion{root_node};
   }
 
   BzTree(const BzTree &) = delete;
   BzTree &operator=(const BzTree &) = delete;
   BzTree(BzTree &&) = default;
   BzTree &operator=(BzTree &&) = default;
-  virtual ~BzTree() = default;
+  ~BzTree() = default;
 
   /*################################################################################################
    * Public read APIs
