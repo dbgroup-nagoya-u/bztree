@@ -330,9 +330,6 @@ class alignas(kWordLength) BaseNode
       const Compare &comp) const
   {
     const int64_t sorted_count = GetSortedCount();
-    if (sorted_count == 0) {
-      return {KeyExistence::kNotExist, 0};
-    }
 
     int64_t begin_index = 0;
     int64_t end_index = sorted_count;

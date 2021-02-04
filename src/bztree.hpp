@@ -137,7 +137,7 @@ class BzTree
            || status.GetDeletedSize() > deleted_size_threshold_;
   }
 
-  static size_t
+  static constexpr size_t
   ComputeOccupiedSize(const std::vector<std::pair<void *, Metadata>> &live_meta)
   {
     size_t block_size = 0;
