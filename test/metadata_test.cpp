@@ -25,8 +25,6 @@ TEST_F(MetadataFixture, New_DefaultConstructor_CorrectlyInitialized)
 {
   const Metadata meta;
 
-  MetaUnion tmp = MetaUnion{meta};
-
   EXPECT_EQ(kWordLength, sizeof(meta));
   EXPECT_EQ(0, meta.GetControlBit());
   EXPECT_FALSE(meta.IsVisible());

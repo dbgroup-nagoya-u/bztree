@@ -331,6 +331,8 @@ class alignas(kWordLength) BaseNode
       const bool range_is_closed,
       const Compare &comp) const
   {
+    const auto tmp_key = *BitCast<uint64_t *>(key);
+
     const int64_t sorted_count = GetSortedCount();
 
     int64_t begin_index = 0;
@@ -341,6 +343,9 @@ class alignas(kWordLength) BaseNode
       const auto meta = GetMetadata(index);
       const auto *index_key = GetKeyAddr(meta);
       const auto index_key_length = meta.GetKeyLength();
+
+      const auto tmp_index_key = *BitCast<uint64_t *>(index_key);
+
       if (index_key_length == 0 || comp(key, index_key)) {
         // a target key is in a left side
         end_index = index - 1;
