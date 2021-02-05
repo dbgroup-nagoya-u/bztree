@@ -95,7 +95,7 @@ class alignas(kWordLength) StatusWord
   }
 
   constexpr size_t
-  GetApproxDataSize() const
+  GetLiveDataSize() const
   {
     return (kWordLength * record_count_) + block_size_ - deleted_size_;
   }

@@ -793,7 +793,7 @@ TEST_F(LeafNodeUInt64Fixture, Delete_TwoKeys_MetadataCorrectlyUpdated)
   block_size = key_lengths[1] + payload_lengths[1] + key_lengths[2] + payload_lengths[2];
 
   auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
-  deleted_size = key_lengths[1] + payload_lengths[1];
+  deleted_size = kWordLength + key_lengths[1] + payload_lengths[1];
   auto first_meta = node->GetMetadata(0);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
@@ -806,7 +806,7 @@ TEST_F(LeafNodeUInt64Fixture, Delete_TwoKeys_MetadataCorrectlyUpdated)
   EXPECT_EQ(deleted_size, status.GetDeletedSize());
 
   std::tie(rc, status) = node->Delete(key_ptrs[2], key_lengths[2], comp, pool.get());
-  deleted_size += key_lengths[2] + payload_lengths[2];
+  deleted_size += kWordLength + key_lengths[2] + payload_lengths[2];
   auto second_meta = node->GetMetadata(1);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
@@ -875,7 +875,7 @@ TEST_F(LeafNodeUInt64Fixture, Delete_ConsolidatedNode_MetadataCorrectlyUpdated)
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
-  deleted_size = key_lengths[1] + payload_lengths[1];
+  deleted_size = kWordLength + key_lengths[1] + payload_lengths[1];
   index = record_count - 1;
   auto meta = node->GetMetadata(index);
 

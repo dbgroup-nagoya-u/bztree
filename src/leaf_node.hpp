@@ -191,8 +191,7 @@ class LeafNode : public BaseNode
       const auto new_meta = meta.UpdateOffset(offset);
       copied_node->SetMetadata(record_count, new_meta);
     }
-    const auto block_size = (kWordLength * record_count) + (node_size - offset);
-    copied_node->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, block_size, 0));
+    copied_node->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, node_size - offset, 0));
     copied_node->SetSortedCount(record_count);
   }
 
@@ -384,14 +383,13 @@ class LeafNode : public BaseNode
         return {NodeReturnCode::kFrozen, kInitStatusWord};
       }
 
-      const auto added_block_size = kWordLength + total_length;
-      if (current_status.GetOccupiedSize() + added_block_size > GetNodeSize()) {
+      if (current_status.GetOccupiedSize() + kWordLength + total_length > GetNodeSize()) {
         return {NodeReturnCode::kNoSpace, kInitStatusWord};
       }
 
       // prepare for MwCAS
       record_count = current_status.GetRecordCount();
-      const auto new_status = current_status.AddRecordInfo(1, added_block_size, 0);
+      const auto new_status = current_status.AddRecordInfo(1, total_length, 0);
       const auto current_meta = GetMetadata(record_count);
 
       // perform MwCAS to reserve space
@@ -481,13 +479,12 @@ class LeafNode : public BaseNode
         }
       }
 
-      const auto added_block_size = kWordLength + total_length;
-      if (current_status.GetOccupiedSize() + added_block_size > GetNodeSize()) {
+      if (current_status.GetOccupiedSize() + kWordLength + total_length > GetNodeSize()) {
         return {NodeReturnCode::kNoSpace, kInitStatusWord};
       }
 
       // prepare new status for MwCAS
-      const auto new_status = current_status.AddRecordInfo(1, added_block_size, 0);
+      const auto new_status = current_status.AddRecordInfo(1, total_length, 0);
 
       // get current metadata for MwCAS
       const auto current_meta = GetMetadata(record_count);
@@ -588,13 +585,12 @@ class LeafNode : public BaseNode
         return {NodeReturnCode::kKeyNotExist, kInitStatusWord};
       }
 
-      const auto added_block_size = kWordLength + total_length;
-      if (current_status.GetOccupiedSize() + added_block_size > GetNodeSize()) {
+      if (current_status.GetOccupiedSize() + kWordLength + total_length > GetNodeSize()) {
         return {NodeReturnCode::kNoSpace, kInitStatusWord};
       }
 
       // prepare new status for MwCAS
-      const auto new_status = current_status.AddRecordInfo(1, added_block_size, 0);
+      const auto new_status = current_status.AddRecordInfo(1, total_length, 0);
 
       // get current metadata for MwCAS
       const auto current_meta = GetMetadata(record_count);
