@@ -33,14 +33,14 @@ class BzTree
 
   // an entire node size in bytes
   const size_t node_size_;
-  // if a data block size exceeds this threshold, invoke consolidation
-  const size_t block_size_threshold_;
-  // if a deleted block size exceeds this threshold, invoke consolidation
-  const size_t deleted_size_threshold_;
-  // a paramater to prepare a free space for a merged node
-  const size_t desired_free_space_;
   // if an occupied size of a consolidated node is less than this threshold, invoke merging
-  const size_t node_size_min_threshold_;
+  const size_t min_node_size_;
+  // the minimum size of free space in bytes
+  const size_t min_free_space_;
+  // an expected size of free space after SMOs in bytes
+  const size_t expected_free_space_;
+  // if a deleted block size exceeds this threshold, invoke consolidation
+  const size_t max_deleted_size_;
   // if an occupied size of a merged node exceeds this threshold, cancel merging
   const size_t max_merged_size_;
   // an epoch to count the number of failure
@@ -114,8 +114,8 @@ class BzTree
   constexpr bool
   NeedConsolidation(const StatusWord status) const
   {
-    return status.GetBlockSize() > block_size_threshold_
-           || status.GetDeletedSize() > deleted_size_threshold_;
+    return status.GetOccupiedSize() + min_free_space_ > node_size_
+           || status.GetDeletedSize() > max_deleted_size_;
   }
 
   static constexpr size_t
@@ -173,10 +173,10 @@ class BzTree
     // gather sorted live metadata of a targetnode, and check whether split/merge is required
     const auto live_meta = target_leaf->GatherSortedLiveMetadata(comparator_);
     const auto occupied_size = ComputeOccupiedSize(live_meta);
-    if (occupied_size + desired_free_space_ > node_size_) {
+    if (occupied_size + expected_free_space_ > node_size_) {
       SplitLeafNode(target_leaf, target_key, live_meta);
       return;
-    } else if (occupied_size < node_size_min_threshold_) {
+    } else if (occupied_size < min_node_size_) {
       MergeLeafNodes(target_leaf, target_key, target_key_length, occupied_size, live_meta);
       return;
     }
@@ -386,7 +386,7 @@ class BzTree
 
       // check whether it is required to merge a parent node
       parent = BitCast<InternalNode *>(trace.top().first);
-      if (parent->NeedMerge(target_key_length, kWordLength, node_size_min_threshold_)) {
+      if (parent->NeedMerge(target_key_length, kWordLength, min_node_size_)) {
         // invoke a parent (internal) node merging
         MergeInternalNodes(parent, target_key, target_key_length);
         continue;
@@ -490,7 +490,7 @@ class BzTree
       // check whether it is required to merge a parent node
       const auto parent = BitCast<InternalNode *>(trace.top().first);
       if (!HaveSameAddress(parent, GetRoot())
-          && parent->NeedMerge(target_key_length, kWordLength, node_size_min_threshold_)) {
+          && parent->NeedMerge(target_key_length, kWordLength, min_node_size_)) {
         // invoke a parent (internal) node merging
         MergeInternalNodes(parent, target_key, target_key_length);
         continue;
@@ -583,17 +583,17 @@ class BzTree
    *##############################################################################################*/
 
   explicit BzTree(const size_t node_size = 4096,
-                  const size_t block_size_threshold = 3072,
-                  const size_t deleted_size_threshold = 1024,
-                  const size_t desired_free_space = 512,
-                  const size_t node_size_min_threshold = 256,
-                  const size_t merged_size_threshold = 2048)
+                  const size_t min_node_size = 256,
+                  const size_t min_free_space = 3072,
+                  const size_t expected_free_space = 512,
+                  const size_t max_deleted_size = 1024,
+                  const size_t max_merged_size = 2048)
       : node_size_{node_size},
-        block_size_threshold_{block_size_threshold},
-        deleted_size_threshold_{deleted_size_threshold},
-        desired_free_space_{desired_free_space},
-        node_size_min_threshold_{node_size_min_threshold},
-        max_merged_size_{merged_size_threshold},
+        min_node_size_{min_node_size},
+        min_free_space_{min_free_space},
+        expected_free_space_{expected_free_space},
+        max_deleted_size_{max_deleted_size},
+        max_merged_size_{max_merged_size},
         index_epoch_{0}
   {
     // initialize a MwCAS descriptor pool

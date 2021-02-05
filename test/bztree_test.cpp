@@ -14,10 +14,10 @@ namespace bztree
 class BzTreeUInt64Fixture : public testing::Test
 {
  public:
-  static constexpr size_t kDefaultNodeSize = 256;
-  static constexpr size_t kDefaultBlockSizeThreshold = 256;
-  static constexpr size_t kDefaultDeletedSizeThreshold = 256;
-  static constexpr size_t kDefaultMinNodeSizeThreshold = 128;
+  static constexpr size_t kTestNodeSize = 256;          // a node can have 10 records
+  static constexpr size_t kTestMinNodeSize = 159;       // consolidate when a node is full
+  static constexpr size_t kTestMaxDeletedSize = 79;     // consolidate when 5 records are deleted
+  static constexpr size_t kTestExpectedFreeSpace = 72;  // expect free space can write 3 records
   static constexpr size_t kIndexEpoch = 0;
   static constexpr size_t kKeyNumForTest = 100;
 

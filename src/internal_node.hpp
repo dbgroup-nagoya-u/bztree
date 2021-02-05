@@ -37,9 +37,9 @@ class InternalNode : public BaseNode
       const size_t end_index)
   {
     const auto node_size = target_node->GetNodeSize();
-    auto sorted_count = target_node->GetSortedCount();
+    auto record_count = target_node->GetSortedCount();
     auto offset = node_size - target_node->GetStatusWord().GetBlockSize();
-    for (size_t index = begin_index; index < end_index; ++index, ++sorted_count) {
+    for (size_t index = begin_index; index < end_index; ++index, ++record_count) {
       const auto meta = original_node->GetMetadata(index);
       // copy a record
       const auto key = original_node->GetKeyAddr(meta);
@@ -49,10 +49,11 @@ class InternalNode : public BaseNode
       offset = target_node->CopyRecord(key, key_length, payload, payload_length, offset);
       // copy metadata
       const auto new_meta = meta.UpdateOffset(offset);
-      target_node->SetMetadata(sorted_count, new_meta);
+      target_node->SetMetadata(record_count, new_meta);
     }
-    target_node->SetStatusWord(kInitStatusWord.AddRecordInfo(sorted_count, node_size - offset, 0));
-    target_node->SetSortedCount(sorted_count);
+    target_node->SetSortedCount(record_count);
+    const auto block_size = (kWordLength * record_count) + (node_size - offset);
+    target_node->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, block_size, 0));
   }
 
  public:
@@ -166,7 +167,8 @@ class InternalNode : public BaseNode
 
     // set a new header
     root->SetSortedCount(1);
-    root->SetStatusWord(kInitStatusWord.AddRecordInfo(1, node_size - offset, 0));
+    const auto block_size = kWordLength + (node_size - offset);
+    root->SetStatusWord(kInitStatusWord.AddRecordInfo(1, block_size, 0));
 
     return root;
   }
@@ -240,7 +242,8 @@ class InternalNode : public BaseNode
 
     // set a new header
     new_root->SetSortedCount(2);
-    new_root->SetStatusWord(kInitStatusWord.AddRecordInfo(2, node_size - offset, 0));
+    const auto block_size = (kWordLength * 2) + (node_size - offset);
+    new_root->SetStatusWord(kInitStatusWord.AddRecordInfo(2, block_size, 0));
 
     return new_root;
   }
@@ -284,7 +287,8 @@ class InternalNode : public BaseNode
 
     // set a new header
     new_parent->SetSortedCount(++record_count);
-    new_parent->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, node_size - offset, 0));
+    const auto block_size = (kWordLength * record_count) + (node_size - offset);
+    new_parent->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, block_size, 0));
 
     return new_parent;
   }
@@ -322,6 +326,7 @@ class InternalNode : public BaseNode
 
     // set a new header
     new_parent->SetSortedCount(--record_count);
+    const auto block_size = (kWordLength * record_count) + (node_size - offset);
     new_parent->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, node_size - offset, 0));
 
     return new_parent;
