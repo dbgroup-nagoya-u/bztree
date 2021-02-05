@@ -335,9 +335,14 @@ class BzTree
       const size_t target_size,
       const std::vector<std::pair<void *, Metadata>> &sorted_meta)
   {
+    // variables shared by phase 1 & 2
+    LeafNode *sibling_node;
+    bool sibling_is_left;
+
     /*----------------------------------------------------------------------------------------------
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
+
     // check a target node remians
     auto [current_leaf, target_index, trace] = TraceTargetNode(target_key, target_node);
     if (!HaveSameAddress(target_node, current_leaf)) {
@@ -346,14 +351,9 @@ class BzTree
 
     // check a left/right sibling node is not frozen
     auto parent = BitCast<InternalNode *>(trace.top().first);
-    size_t deleted_index;
-    LeafNode *sibling_node;
-    bool sibling_is_left;
-
     if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
       sibling_node = BitCast<LeafNode *>(parent->GetChildNode(target_index - 1));
       if (sibling_node->Freeze(descriptor_pool_.get()) == BaseNode::NodeReturnCode::kSuccess) {
-        deleted_index = target_index - 1;
         sibling_is_left = true;
       } else {
         sibling_node = nullptr;
@@ -363,7 +363,6 @@ class BzTree
         && parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
       sibling_node = BitCast<LeafNode *>(parent->GetChildNode(target_index + 1));
       if (sibling_node->Freeze(descriptor_pool_.get()) == BaseNode::NodeReturnCode::kSuccess) {
-        deleted_index = target_index;
         sibling_is_left = false;
       } else {
         sibling_node = nullptr;
@@ -376,6 +375,7 @@ class BzTree
     /*----------------------------------------------------------------------------------------------
      * Phase 2: installation
      *--------------------------------------------------------------------------------------------*/
+
     bool install_success;
     do {
       // check whether a target node remains
@@ -393,6 +393,7 @@ class BzTree
       }
 
       // create new nodes
+      const auto deleted_index = (sibling_is_left) ? target_index - 1 : target_index;
       const auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comparator_);
       const auto merged_node =
           LeafNode::Merge(target_node, sorted_meta, sibling_node, sibling_meta, sibling_is_left);
@@ -419,6 +420,65 @@ class BzTree
       const void *target_key,
       const size_t target_key_length)
   {
+    // variables shared by phase 1 & 2
+    InternalNode *sibling_node;
+    bool sibling_is_left;
+    pmwcas::Descriptor *desc;
+
+    /*----------------------------------------------------------------------------------------------
+     * Phase 1: preparation
+     *--------------------------------------------------------------------------------------------*/
+
+    do {
+      // check a target node is not frozen and live
+      const auto target_status = target_node->GetStatusWordProtected(descriptor_pool_->GetEpoch());
+      if (target_status.IsFrozen()) {
+        return;  // other SMOs are modifying a target node
+      }
+      auto [current_node, target_index, trace] = TraceTargetNode(target_key, target_node);
+      if (!HaveSameAddress(target_node, current_node)) {
+        return;  // a target node is deleted by SMOs
+      }
+
+      // check a left/right sibling node is not frozen
+      auto parent = BitCast<InternalNode *>(trace.top().first);
+      const auto target_size = target_node->GetStatusWord().GetOccupiedSize();
+      StatusWord sibling_status;
+      if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
+        sibling_node = BitCast<InternalNode *>(parent->GetChildNode(target_index - 1));
+        sibling_status = sibling_node->GetStatusWordProtected(descriptor_pool_->GetEpoch());
+        if (!sibling_status.IsFrozen()) {
+          sibling_is_left = true;
+        } else {
+          sibling_node = nullptr;
+        }
+      }
+      if (sibling_node == nullptr
+          && parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
+        sibling_node = BitCast<InternalNode *>(parent->GetChildNode(target_index + 1));
+        sibling_status = sibling_node->GetStatusWordProtected(descriptor_pool_->GetEpoch());
+        if (!sibling_status.IsFrozen()) {
+          sibling_is_left = false;
+        } else {
+          sibling_node = nullptr;
+        }
+      }
+      if (sibling_node == nullptr) {
+        return;  // there is no live sibling node
+      }
+
+      // freeze target and sibling nodes
+      const auto frozen_target_status = target_status.Freeze();
+      const auto frozen_sibling_status = sibling_status.Freeze();
+      desc = descriptor_pool_->AllocateDescriptor();
+      target_node->SetStatusForMwCAS(target_status, frozen_target_status, desc);
+      sibling_node->SetStatusForMwCAS(sibling_status, frozen_sibling_status, desc);
+    } while (!desc->MwCAS());
+
+    /*----------------------------------------------------------------------------------------------
+     * Phase 2: installation
+     *--------------------------------------------------------------------------------------------*/
+
     bool install_success;
     do {
       // check whether a target node remains
@@ -437,25 +497,11 @@ class BzTree
       }
 
       // create new nodes
-      InternalNode *sibling_node, *merged_node, *new_parent;
-      size_t deleted_index;
-      const auto target_size = target_node->GetStatusWord().GetOccupiedSize();
-      if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
-        deleted_index = target_index - 1;
-        sibling_node = BitCast<InternalNode *>(parent->GetChildNode(deleted_index));
-        merged_node = InternalNode::Merge(target_node, sibling_node, true);
-      } else if (parent->CanMergeRightSibling(target_index, target_size, max_merged_size_)) {
-        const auto right_index = target_index + 1;
-        deleted_index = target_index;
-        sibling_node = BitCast<InternalNode *>(parent->GetChildNode(right_index));
-        merged_node = InternalNode::Merge(target_node, sibling_node, false);
-      } else {
-        return;  // there is no space to perform merge operation
-      }
-      new_parent = InternalNode::NewParentForMerge(parent, merged_node, deleted_index);
-
+      const auto deleted_index = (sibling_is_left) ? target_index - 1 : target_index;
+      const auto merged_node = InternalNode::Merge(target_node, sibling_node, true);
+      auto new_parent = InternalNode::NewParentForMerge(parent, merged_node, deleted_index);
       if (new_parent->GetSortedCount() == 1) {
-        // shrink BzTree
+        // if a merged node is an only child, swap it for a new parent node
         new_parent = merged_node;
       }
 
