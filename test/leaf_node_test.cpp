@@ -635,6 +635,7 @@ TEST_F(LeafNodeUInt64Fixture, Update_SingleKey_MetadataCorrectlyUpdated)
   record_count = 1;
   index = 0;
   block_size = key_lengths[1] + payload_lengths[1];
+  deleted_size = kWordLength + key_lengths[1] + payload_lengths[1];
 
   auto [rc, status] = node->Update(key_ptrs[1], key_lengths[1], payload_ptrs[2], payload_lengths[2],
                                    kIndexEpoch, comp, pool.get());
@@ -719,10 +720,11 @@ TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNode_MetadataCorrectlyUpdated)
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
-  auto [rc, status] = node->Update(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1],
-                                   kIndexEpoch, comp, pool.get());
+  auto [rc, status] = node->Update(key_ptrs[1], key_lengths[1], payload_ptrs[11],
+                                   payload_lengths[11], kIndexEpoch, comp, pool.get());
   ++record_count;
-  block_size += key_lengths[11] + payload_lengths[11];
+  block_size += key_lengths[1] + payload_lengths[11];
+  deleted_size = kWordLength + key_lengths[1] + payload_lengths[1];
   index = record_count - 1;
   auto meta = node->GetMetadata(index);
 

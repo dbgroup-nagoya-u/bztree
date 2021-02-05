@@ -580,7 +580,7 @@ class LeafNode : public BaseNode
       }
 
       record_count = current_status.GetRecordCount();
-      const auto existence = SearchMetadataToRead(key, record_count, comp).first;
+      const auto [existence, updated_index] = SearchMetadataToRead(key, record_count, comp);
       if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
         return {NodeReturnCode::kKeyNotExist, kInitStatusWord};
       }
@@ -590,7 +590,9 @@ class LeafNode : public BaseNode
       }
 
       // prepare new status for MwCAS
-      const auto new_status = current_status.AddRecordInfo(1, total_length, 0);
+      const auto updated_meta = GetMetadata(updated_index);
+      const auto deleted_size = kWordLength + updated_meta.GetTotalLength();
+      const auto new_status = current_status.AddRecordInfo(1, total_length, deleted_size);
 
       // get current metadata for MwCAS
       const auto current_meta = GetMetadata(record_count);
