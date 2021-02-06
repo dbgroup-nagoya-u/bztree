@@ -24,7 +24,7 @@ sudo apt install -y build-essential cmake gdb libnuma-dev
 サブモジュール含めてリポジトリをクローン．
 
 ```bash
-git clone --recurse-submodules git@github.com:dbgroup-nagoya-u/202004-bztree.git
+git clone --recurse-submodules git@github.com:dbgroup-nagoya-u/bztree.git
 ```
 
 ## コンパイル・デバッグ
