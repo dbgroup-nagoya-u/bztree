@@ -600,8 +600,8 @@ class BzTree
 
   explicit BzTree(const size_t node_size = 4096,
                   const size_t min_node_size = 256,
-                  const size_t min_free_space = 3072,
-                  const size_t expected_free_space = 512,
+                  const size_t min_free_space = 256,
+                  const size_t expected_free_space = 1024,
                   const size_t max_deleted_size = 1024,
                   const size_t max_merged_size = 2048)
       : node_size_{node_size},
