@@ -11,7 +11,8 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        submodules: true
+        ssh-key: ${{secrets.SSH_KEY}}
+        submodules: recursive
 
     - name: Create Build Environment
       shell: bash
