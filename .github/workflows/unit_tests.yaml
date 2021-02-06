@@ -13,13 +13,19 @@ jobs:
     - name: Clone Main Repository
       uses: actions/checkout@v2
 
-    - name: Clone Submodules
+    - name: Clone Submodule - PMwCAS
       uses: actions/checkout@v2
       with:
         repository: dbgroup-nagoya-u/pmwcas
         path: external/pmwcas
         ssh-key: ${{secrets.SSH_KEY}}
         persist-credentials: false
+
+    - name: Clone Submodule - GoogleTest
+      uses: actions/checkout@v2
+      with:
+        repository: google/googletest
+        path: external/googletest
 
     - name: Create Build Environment
       shell: bash
