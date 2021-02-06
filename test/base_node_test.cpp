@@ -1,11 +1,13 @@
 // Copyright (c) DB Group, Nagoya University. All rights reserved.
 // Licensed under the MIT license.
 
+#include "base_node.hpp"
+
 #include <gtest/gtest.h>
 
 #include <memory>
 
-#include "bztree.hpp"
+#include "leaf_node.hpp"
 
 using std::byte;
 

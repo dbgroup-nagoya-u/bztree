@@ -1,9 +1,9 @@
 // Copyright (c) DB Group, Nagoya University. All rights reserved.
 // Licensed under the MIT license.
 
-#include <gtest/gtest.h>
+#include "status_word.hpp"
 
-#include "bztree.hpp"
+#include <gtest/gtest.h>
 
 namespace bztree
 {
