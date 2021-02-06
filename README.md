@@ -1,5 +1,7 @@
 # BzTree
 
+![example workflow name](https://github.com/dbgroup-nagoya-u/bztree/workflows/unit_tests/badge.svg)
+
 ## 想定環境
 
 以下のVS Code拡張がインストール済み．
