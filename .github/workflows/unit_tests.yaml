@@ -18,7 +18,6 @@ jobs:
       with:
         repository: dbgroup-nagoya-u/pmwcas
         path: external/pmwcas
-        ref: v2
         ssh-key: ${{secrets.SSH_KEY}}
         persist-credentials: false
 
