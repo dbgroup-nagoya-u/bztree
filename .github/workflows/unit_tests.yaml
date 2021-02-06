@@ -1,0 +1,30 @@
+name: unit_tests
+
+on:
+  # Trigger the workflow on push and pull requests,
+  # but only for the main branch
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+jobs:
+  format_lint_and_tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: 'main'
+          submodules: true
+      - name: Set up c++
+        run: |
+          apt update
+          apt install -y build-essential cmake libnuma-dev
+      - name: Build BzTree and unit tests
+        run: |
+          mkdir build && cd build
+          cmake -DBZTREE_BUILD_TESTS=on ..
+      - name: Run CTest
+        run: |
+          ctest
