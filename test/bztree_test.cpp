@@ -21,7 +21,7 @@ class BzTreeUInt64Fixture : public testing::Test
   static constexpr size_t kTestMaxDeletedSize = 119;    // consolidate when 5 records are deleted
   static constexpr size_t kTestMaxMergedSize = 137;     // a merged node has space for 5 records
   static constexpr size_t kIndexEpoch = 0;
-  static constexpr size_t kKeyNumForTest = 10000;
+  static constexpr size_t kKeyNumForTest = 2000;
 
   uint64_t keys[kKeyNumForTest];
   uint64_t* key_ptrs[kKeyNumForTest];
@@ -89,6 +89,38 @@ class BzTreeUInt64Fixture : public testing::Test
       auto payload_ptr = payload_ptrs[index];
       auto payload_length = payload_lengths[index];
       bztree->Write(key_ptr, key_length, payload_ptr, payload_length);
+    }
+  }
+
+  void
+  InsertOrderedKeys(  //
+      const size_t begin_index,
+      const size_t end_index)
+  {
+    assert(end_index < kKeyNumForTest);
+
+    for (size_t index = begin_index; index <= end_index; ++index) {
+      auto key_ptr = key_ptrs[index];
+      auto key_length = key_lengths[index];
+      auto payload_ptr = payload_ptrs[index];
+      auto payload_length = payload_lengths[index];
+      bztree->Insert(key_ptr, key_length, payload_ptr, payload_length);
+    }
+  }
+
+  void
+  UpdateOrderedKeys(  //
+      const size_t begin_index,
+      const size_t end_index)
+  {
+    assert(end_index + 1 < kKeyNumForTest);
+
+    for (size_t index = begin_index; index <= end_index; ++index) {
+      auto key_ptr = key_ptrs[index];
+      auto key_length = key_lengths[index];
+      auto payload_ptr = payload_ptrs[index + 1];
+      auto payload_length = payload_lengths[index + 1];
+      bztree->Update(key_ptr, key_length, payload_ptr, payload_length);
     }
   }
 
@@ -395,37 +427,100 @@ TEST_F(BzTreeUInt64Fixture, Delete_DeletedKey_DeletionFailed)
  * Split operation
  *------------------------------------------------------------------------------------------------*/
 
-TEST_F(BzTreeUInt64Fixture, Split_assumption_expected)
+TEST_F(BzTreeUInt64Fixture, Split_OrderedKeyWrites_ReadWrittenKeys)
 {
-  // create a small BzTree
+  const auto record_count = 1000;
+  bztree.release();
   bztree.reset(new BzTree<CompareAsUInt64>{kTestNodeSize, kTestMinNodeSize, kTestMinFreeSpace,
                                            kTestExpectedFreeSpace, kTestMaxDeletedSize,
                                            kTestMaxMergedSize});
-
-  const auto record_count = 100;
 
   WriteOrderedKeys(1, record_count);
 
   for (size_t index = 1; index <= record_count; ++index) {
     auto [rc, u_ptr] = bztree->Read(key_ptrs[index]);
+    auto result = CastToValue(u_ptr.get());
     EXPECT_EQ(ReturnCode::kSuccess, rc);
+    EXPECT_EQ(payloads[index], result);
+  }
+
+  auto [rc, scan_results] = bztree->Scan(key_ptrs[50], true, key_ptrs[100], true);
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  auto index = 50UL;
+  for (auto&& [key, payload] : scan_results) {
+    EXPECT_EQ(keys[index], CastToValue(key.get()));
+    EXPECT_EQ(payloads[index++], CastToValue(payload.get()));
   }
 }
 
-TEST_F(BzTreeUInt64Fixture, Merge_assumption_expected)
+TEST_F(BzTreeUInt64Fixture, Split_OrderedKeyInserts_ReadInsertedKeys)
 {
-  // create a small BzTree
+  const auto record_count = 1000;
+  bztree.release();
   bztree.reset(new BzTree<CompareAsUInt64>{kTestNodeSize, kTestMinNodeSize, kTestMinFreeSpace,
                                            kTestExpectedFreeSpace, kTestMaxDeletedSize,
                                            kTestMaxMergedSize});
 
-  const auto record_count = 100;
+  InsertOrderedKeys(1, record_count);
+
+  for (size_t index = 1; index <= record_count; ++index) {
+    auto [rc, u_ptr] = bztree->Read(key_ptrs[index]);
+    auto result = CastToValue(u_ptr.get());
+    EXPECT_EQ(ReturnCode::kSuccess, rc);
+    EXPECT_EQ(payloads[index], result);
+  }
+
+  auto [rc, scan_results] = bztree->Scan(key_ptrs[50], true, key_ptrs[100], true);
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  auto index = 50UL;
+  for (auto&& [key, payload] : scan_results) {
+    EXPECT_EQ(keys[index], CastToValue(key.get()));
+    EXPECT_EQ(payloads[index++], CastToValue(payload.get()));
+  }
+}
+
+TEST_F(BzTreeUInt64Fixture, Split_OrderedKeyInsertsUpdates_ReadLatestKeys)
+{
+  const auto record_count = 1000;
+  bztree.release();
+  bztree.reset(new BzTree<CompareAsUInt64>{kTestNodeSize, kTestMinNodeSize, kTestMinFreeSpace,
+                                           kTestExpectedFreeSpace, kTestMaxDeletedSize,
+                                           kTestMaxMergedSize});
+
+  InsertOrderedKeys(1, record_count);
+  UpdateOrderedKeys(1, record_count);
+
+  for (size_t index = 1; index <= record_count; ++index) {
+    auto [rc, u_ptr] = bztree->Read(key_ptrs[index]);
+    auto result = CastToValue(u_ptr.get());
+    EXPECT_EQ(ReturnCode::kSuccess, rc);
+    EXPECT_EQ(payloads[index + 1], result);
+  }
+
+  auto [rc, scan_results] = bztree->Scan(key_ptrs[50], true, key_ptrs[100], true);
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  auto index = 50UL;
+  for (auto&& [key, payload] : scan_results) {
+    EXPECT_EQ(keys[index], CastToValue(key.get()));
+    EXPECT_EQ(payloads[++index], CastToValue(payload.get()));
+  }
+}
+
+TEST_F(BzTreeUInt64Fixture, Merge_OrderedKeyWritesDeletes_ReadRemainingKey)
+{
+  const auto record_count = 1000;
+  bztree.release();
+  bztree.reset(new BzTree<CompareAsUInt64>{kTestNodeSize, kTestMinNodeSize, kTestMinFreeSpace,
+                                           kTestExpectedFreeSpace, kTestMaxDeletedSize,
+                                           kTestMaxMergedSize});
 
   WriteOrderedKeys(1, record_count);
   DeleteOrderedKeys(2, record_count);
 
   auto [rc, u_ptr] = bztree->Read(key_ptrs[1]);
+  auto result = CastToValue(u_ptr.get());
   EXPECT_EQ(ReturnCode::kSuccess, rc);
+  EXPECT_EQ(payloads[1], result);
 
   for (size_t index = 2; index <= record_count; ++index) {
     std::tie(rc, u_ptr) = bztree->Read(key_ptrs[index]);

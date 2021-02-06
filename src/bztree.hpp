@@ -75,9 +75,10 @@ class BzTree
   BaseNode *
   GetRoot()
   {
-    const auto protected_root = root_.target_field.GetValue(descriptor_pool_->GetEpoch());
-    const auto root_uptr = PayloadUnion{protected_root}.payload.value;
-    return static_cast<BaseNode *>(reinterpret_cast<void *>(root_uptr));
+    return static_cast<BaseNode *>(reinterpret_cast<void *>(root_.payload.value));
+    // const auto protected_root = root_.target_field.GetValue(descriptor_pool_->GetEpoch());
+    // const auto root_uptr = PayloadUnion{protected_root}.payload.value;
+    // return static_cast<BaseNode *>(reinterpret_cast<void *>(root_uptr));
   }
 
   LeafNode *
@@ -180,8 +181,9 @@ class BzTree
       SplitLeafNode(target_leaf, target_key, live_meta);
       return;
     } else if (occupied_size < min_node_size_) {
-      MergeLeafNodes(target_leaf, target_key, target_key_length, occupied_size, live_meta);
-      return;
+      if (MergeLeafNodes(target_leaf, target_key, target_key_length, occupied_size, live_meta)) {
+        return;
+      }
     }
 
     // install a new node
@@ -190,7 +192,7 @@ class BzTree
     auto epoch_manager = descriptor_pool_->GetEpoch();
     do {
       // check whether a target node remains
-      auto [current_leaf_node, unused, trace] = TraceTargetNode(target_key, target_leaf);
+      auto [current_leaf_node, target_index, trace] = TraceTargetNode(target_key, target_leaf);
       if (!HaveSameAddress(target_leaf, current_leaf_node)) {
         // other threads have already performed consolidation
         delete new_leaf;
@@ -198,7 +200,7 @@ class BzTree
       }
 
       // check a parent status
-      auto [parent_node, target_index] = trace.top();
+      auto [parent_node, unused] = trace.top();
       const auto parent_status = parent_node->GetStatusWordProtected(epoch_manager);
       if (parent_status.IsFrozen()) {
         continue;
@@ -225,8 +227,6 @@ class BzTree
     const auto left_record_count = (sorted_meta.size() / 2);
     const auto [split_key, split_meta] = sorted_meta[left_record_count - 1];
     const auto split_key_length = split_meta.GetKeyLength();
-
-    const auto tmp_key = *BitCast<uint64_t *>(split_key);
 
     bool install_success;
     do {
@@ -295,8 +295,6 @@ class BzTree
     const auto [split_key, split_key_length] =
         target_node->GetKeyAndItsLength(left_record_count - 1);
 
-    const auto tmp_key = *BitCast<uint64_t *>(split_key);
-
     bool install_success;
     do {
       // check whether a target node remains
@@ -343,7 +341,7 @@ class BzTree
     } while (!install_success);
   }
 
-  void
+  bool
   MergeLeafNodes(  //
       const LeafNode *target_node,
       const void *target_key,
@@ -362,7 +360,7 @@ class BzTree
     // check a target node remians
     auto [current_leaf, target_index, trace] = TraceTargetNode(target_key, target_node);
     if (!HaveSameAddress(target_node, current_leaf)) {
-      return;  // other threads have already performed merging
+      return true;  // other threads have already performed merging
     }
 
     // check a left/right sibling node is not frozen
@@ -385,7 +383,7 @@ class BzTree
       }
     }
     if (sibling_node == nullptr) {
-      return;  // there is no live sibling node
+      return false;  // there is no live sibling node
     }
 
     /*----------------------------------------------------------------------------------------------
@@ -398,7 +396,7 @@ class BzTree
       // check whether a target node remains
       std::tie(current_leaf, target_index, trace) = TraceTargetNode(target_key, target_node);
       if (!HaveSameAddress(target_node, current_leaf)) {
-        return;  // other threads have already performed merging
+        return true;  // other threads have already performed merging
       }
 
       // create new nodes
@@ -429,6 +427,8 @@ class BzTree
       // invoke a parent (internal) node merging
       MergeInternalNodes(new_parent, target_key, target_key_length);
     }
+
+    return true;
   }
 
   void
@@ -464,7 +464,7 @@ class BzTree
       if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
         sibling_node = BitCast<InternalNode *>(parent->GetChildNode(target_index - 1));
         sibling_status = sibling_node->GetStatusWordProtected(descriptor_pool_->GetEpoch());
-        if (!sibling_status.IsFrozen()) {
+        if (!sibling_status.IsFrozen() && !sibling_node->IsLeaf()) {
           sibling_is_left = true;
         } else {
           sibling_node = nullptr;
@@ -474,7 +474,7 @@ class BzTree
           && parent->CanMergeRightSibling(target_index, target_size, max_merged_size_)) {
         sibling_node = BitCast<InternalNode *>(parent->GetChildNode(target_index + 1));
         sibling_status = sibling_node->GetStatusWordProtected(descriptor_pool_->GetEpoch());
-        if (!sibling_status.IsFrozen()) {
+        if (!sibling_status.IsFrozen() && !sibling_node->IsLeaf()) {
           sibling_is_left = false;
         } else {
           sibling_node = nullptr;
@@ -507,7 +507,7 @@ class BzTree
 
       // create new nodes
       const auto deleted_index = (sibling_is_left) ? target_index - 1 : target_index;
-      const auto merged_node = InternalNode::Merge(target_node, sibling_node, true);
+      const auto merged_node = InternalNode::Merge(target_node, sibling_node, sibling_is_left);
       const auto parent = BitCast<InternalNode *>(trace.top().first);
       new_parent = InternalNode::NewParentForMerge(parent, merged_node, deleted_index);
       if (new_parent->GetSortedCount() == 1) {
@@ -542,7 +542,7 @@ class BzTree
       std::stack<std::pair<BaseNode *, size_t>> *trace,
       const InternalNode *new_internal_node)
   {
-    auto *pd = descriptor_pool_->AllocateDescriptor();
+    auto *desc = descriptor_pool_->AllocateDescriptor();
     auto epoch_manager = descriptor_pool_->GetEpoch();
 
     if (trace->size() > 1) {
@@ -566,9 +566,9 @@ class BzTree
       const auto frozen_status = status.Freeze();
 
       // install a new internal node by PMwCAS
-      old_internal_node->SetStatusForMwCAS(status, frozen_status, pd);
-      parent_node->SetPayloadForMwCAS(swapping_index, old_internal_node, new_internal_node, pd);
-      parent_node->SetStatusForMwCAS(parent_status, parent_status, pd);  // check concurrent SMOs
+      old_internal_node->SetStatusForMwCAS(status, frozen_status, desc);
+      parent_node->SetPayloadForMwCAS(swapping_index, old_internal_node, new_internal_node, desc);
+      parent_node->SetStatusForMwCAS(parent_status, parent_status, desc);  // check concurrent SMOs
     } else {
       /*--------------------------------------------------------------------------------------------
        * Swapping a new root node
@@ -586,11 +586,11 @@ class BzTree
       const auto frozen_status = status.Freeze();
 
       // install a new root node by PMwCAS
-      old_root_node->SetStatusForMwCAS(status, frozen_status, pd);
-      SetRootForMwCAS(old_root_node, new_internal_node, pd);
+      old_root_node->SetStatusForMwCAS(status, frozen_status, desc);
+      SetRootForMwCAS(old_root_node, new_internal_node, desc);
     }
 
-    return pd->MwCAS();
+    return desc->MwCAS();
   }
 
  public:
@@ -724,9 +724,9 @@ class BzTree
 
     if (NeedConsolidation(node_status)) {
       // invoke consolidation with a new thread
-      std::thread t(&BzTree::ConsolidateLeafNode, this, leaf_node, key, key_length);
-      t.join();
+      // std::thread t(&BzTree::ConsolidateLeafNode, this, leaf_node, key, key_length);
       // t.detach();
+      ConsolidateLeafNode(leaf_node, key, key_length);
     }
     return ReturnCode::kSuccess;
   }
@@ -760,9 +760,9 @@ class BzTree
 
     if (NeedConsolidation(node_status)) {
       // invoke consolidation with a new thread
-      std::thread t(&BzTree::ConsolidateLeafNode, this, leaf_node, key, key_length);
-      t.join();
+      // std::thread t(&BzTree::ConsolidateLeafNode, this, leaf_node, key, key_length);
       // t.detach();
+      ConsolidateLeafNode(leaf_node, key, key_length);
     }
     return ReturnCode::kSuccess;
   }
@@ -796,9 +796,9 @@ class BzTree
 
     if (NeedConsolidation(node_status)) {
       // invoke consolidation with a new thread
-      std::thread t(&BzTree::ConsolidateLeafNode, this, leaf_node, key, key_length);
-      t.join();
+      // std::thread t(&BzTree::ConsolidateLeafNode, this, leaf_node, key, key_length);
       // t.detach();
+      ConsolidateLeafNode(leaf_node, key, key_length);
     }
     return ReturnCode::kSuccess;
   }
@@ -829,9 +829,9 @@ class BzTree
 
     if (NeedConsolidation(node_status)) {
       // invoke consolidation with a new thread
-      std::thread t(&BzTree::ConsolidateLeafNode, this, leaf_node, key, key_length);
-      t.join();
+      // std::thread t(&BzTree::ConsolidateLeafNode, this, leaf_node, key, key_length);
       // t.detach();
+      ConsolidateLeafNode(leaf_node, key, key_length);
     }
     return ReturnCode::kSuccess;
   }
