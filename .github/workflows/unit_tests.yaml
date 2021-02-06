@@ -1,30 +1,35 @@
 name: unit_tests
 
-on:
-  # Trigger the workflow on push and pull requests,
-  # but only for the main branch
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+on: [push]
+
+env:
+  BUILD_TYPE: Release
+
 jobs:
-  format_lint_and_tests:
+  unit_test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-        with:
-          ref: 'main'
-          submodules: true
-      - name: Set up c++
-        run: |
-          apt update
-          apt install -y build-essential cmake libnuma-dev
-      - name: Build BzTree and unit tests
-        run: |
-          mkdir build && cd build
-          cmake -DBZTREE_BUILD_TESTS=on ..
-      - name: Run CTest
-        run: |
-          ctest
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Create Build Environment
+      shell: bash
+      run: |
+        apt update && apt install -y build-essential cmake libnuma-dev
+        cmake -E make_directory ${{github.workspace}}/build
+
+    - name: Configure CMake
+      shell: bash
+      working-directory: ${{github.workspace}}/build
+      run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBZTREE_BUILD_TESTS=on
+
+    - name: Build
+      shell: bash
+      working-directory: ${{github.workspace}}/build
+      run: cmake --build . --config $BUILD_TYPE
+
+    - name: Test
+      shell: bash
+      working-directory: ${{github.workspace}}/build
+      run: ctest -C $BUILD_TYPE
