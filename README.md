@@ -1,6 +1,6 @@
 # BzTree
 
-![example workflow name](https://github.com/dbgroup-nagoya-u/bztree/workflows/unit_tests/badge.svg)
+![example workflow name](https://github.com/dbgroup-nagoya-u/bztree/workflows/Unit%20Tests/badge.svg)
 
 ## 想定環境
 
