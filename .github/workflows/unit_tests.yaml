@@ -9,10 +9,18 @@ jobs:
   unit_test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+
+    - name: Clone Main Repository
+      uses: actions/checkout@v2
+
+    - name: Clone Submodules
+      uses: actions/checkout@v2
       with:
+        repository: dbgroup-nagoya-u/pmwcas
+        path: external/pmwcas
+        ref: v2
         ssh-key: ${{secrets.SSH_KEY}}
-        submodules: recursive
+        persist-credentials: false
 
     - name: Create Build Environment
       shell: bash
