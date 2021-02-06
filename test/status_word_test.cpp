@@ -1,9 +1,9 @@
 // Copyright (c) DB Group, Nagoya University. All rights reserved.
 // Licensed under the MIT license.
 
-#include <gtest/gtest.h>
+#include "status_word.hpp"
 
-#include "bztree.hpp"
+#include <gtest/gtest.h>
 
 namespace bztree
 {
@@ -59,7 +59,7 @@ TEST_F(StatusWordFixture, AddRecordInfo_InitialStatus_AddInfoWithoutSideEffect)
   EXPECT_EQ(block_size, updated_status.GetBlockSize());
   EXPECT_EQ(deleted_size, updated_status.GetDeletedSize());
   EXPECT_EQ(kHeaderLength + (kWordLength * 16) + block_size, updated_status.GetOccupiedSize());
-  EXPECT_EQ((kWordLength * 16) + block_size - deleted_size, updated_status.GetApproxDataSize());
+  EXPECT_EQ((kWordLength * 16) + block_size - deleted_size, updated_status.GetLiveDataSize());
 }
 
 TEST_F(StatusWordFixture, Union_DefaultConstructor_CorrectTypeInfomation)

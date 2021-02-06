@@ -1,5 +1,7 @@
 # BzTree
 
+![example workflow name](https://github.com/dbgroup-nagoya-u/bztree/workflows/Unit%20Tests/badge.svg)
+
 ## 想定環境
 
 以下のVS Code拡張がインストール済み．
@@ -24,7 +26,7 @@ sudo apt install -y build-essential cmake gdb libnuma-dev
 サブモジュール含めてリポジトリをクローン．
 
 ```bash
-git clone --recurse-submodules git@github.com:dbgroup-nagoya-u/202004-bztree.git
+git clone --recurse-submodules git@github.com:dbgroup-nagoya-u/bztree.git
 ```
 
 ## コンパイル・デバッグ

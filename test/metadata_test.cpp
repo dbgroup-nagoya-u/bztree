@@ -1,9 +1,9 @@
 // Copyright (c) DB Group, Nagoya University. All rights reserved.
 // Licensed under the MIT license.
 
-#include <gtest/gtest.h>
+#include "metadata.hpp"
 
-#include "bztree.hpp"
+#include <gtest/gtest.h>
 
 namespace bztree
 {

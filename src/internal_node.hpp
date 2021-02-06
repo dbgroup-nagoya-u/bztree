@@ -37,9 +37,9 @@ class InternalNode : public BaseNode
       const size_t end_index)
   {
     const auto node_size = target_node->GetNodeSize();
-    auto sorted_count = target_node->GetSortedCount();
+    auto record_count = target_node->GetSortedCount();
     auto offset = node_size - target_node->GetStatusWord().GetBlockSize();
-    for (size_t index = begin_index; index < end_index; ++index, ++sorted_count) {
+    for (size_t index = begin_index; index < end_index; ++index, ++record_count) {
       const auto meta = original_node->GetMetadata(index);
       // copy a record
       const auto key = original_node->GetKeyAddr(meta);
@@ -49,10 +49,10 @@ class InternalNode : public BaseNode
       offset = target_node->CopyRecord(key, key_length, payload, payload_length, offset);
       // copy metadata
       const auto new_meta = meta.UpdateOffset(offset);
-      target_node->SetMetadata(sorted_count, new_meta);
+      target_node->SetMetadata(record_count, new_meta);
     }
-    target_node->SetStatusWord(kInitStatusWord.AddRecordInfo(sorted_count, node_size - offset, 0));
-    target_node->SetSortedCount(sorted_count);
+    target_node->SetSortedCount(record_count);
+    target_node->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, node_size - offset, 0));
   }
 
  public:
@@ -123,7 +123,7 @@ class InternalNode : public BaseNode
     if (index == 0) {
       return false;
     } else {
-      const auto data_size = GetChildNode(index - 1)->GetStatusWord().GetApproxDataSize();
+      const auto data_size = GetChildNode(index - 1)->GetStatusWord().GetLiveDataSize();
       return (merged_node_size + data_size) < max_merged_node_size;
     }
   }
@@ -139,7 +139,7 @@ class InternalNode : public BaseNode
     if (index == GetSortedCount() - 1) {
       return false;
     } else {
-      const auto data_size = GetChildNode(index + 1)->GetStatusWord().GetApproxDataSize();
+      const auto data_size = GetChildNode(index + 1)->GetStatusWord().GetLiveDataSize();
       return (merged_node_size + data_size) < max_merged_node_size;
     }
   }

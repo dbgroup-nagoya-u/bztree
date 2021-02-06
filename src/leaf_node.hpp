@@ -178,9 +178,9 @@ class LeafNode : public BaseNode
   {
     const auto node_size = original_node->GetNodeSize();
 
-    auto sorted_count = copied_node->GetSortedCount();
+    auto record_count = copied_node->GetSortedCount();
     auto offset = node_size - copied_node->GetStatusWord().GetBlockSize();
-    for (auto iter = begin_iter; iter != end_iter; ++sorted_count, ++iter) {
+    for (auto iter = begin_iter; iter != end_iter; ++record_count, ++iter) {
       // copy a record
       const auto [key, meta] = *iter;
       const auto key_length = meta.GetKeyLength();
@@ -189,10 +189,10 @@ class LeafNode : public BaseNode
       offset = copied_node->CopyRecord(key, key_length, payload, payload_length, offset);
       // copy metadata
       const auto new_meta = meta.UpdateOffset(offset);
-      copied_node->SetMetadata(sorted_count, new_meta);
+      copied_node->SetMetadata(record_count, new_meta);
     }
-    copied_node->SetStatusWord(kInitStatusWord.AddRecordInfo(sorted_count, node_size - offset, 0));
-    copied_node->SetSortedCount(sorted_count);
+    copied_node->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, node_size - offset, 0));
+    copied_node->SetSortedCount(record_count);
   }
 
  public:
@@ -580,7 +580,7 @@ class LeafNode : public BaseNode
       }
 
       record_count = current_status.GetRecordCount();
-      const auto existence = SearchMetadataToRead(key, record_count, comp).first;
+      const auto [existence, updated_index] = SearchMetadataToRead(key, record_count, comp);
       if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
         return {NodeReturnCode::kKeyNotExist, kInitStatusWord};
       }
@@ -590,7 +590,9 @@ class LeafNode : public BaseNode
       }
 
       // prepare new status for MwCAS
-      const auto new_status = current_status.AddRecordInfo(1, total_length, 0);
+      const auto updated_meta = GetMetadata(updated_index);
+      const auto deleted_size = kWordLength + updated_meta.GetTotalLength();
+      const auto new_status = current_status.AddRecordInfo(1, total_length, deleted_size);
 
       // get current metadata for MwCAS
       const auto current_meta = GetMetadata(record_count);
@@ -670,8 +672,8 @@ class LeafNode : public BaseNode
       const auto deleted_meta = current_meta.DeleteRecordInfo();
 
       // prepare new status
-      const auto total_length = key_length + current_meta.GetPayloadLength();
-      new_status = current_status.AddRecordInfo(0, 0, total_length);
+      const auto deleted_block_size = kWordLength + key_length + current_meta.GetPayloadLength();
+      new_status = current_status.AddRecordInfo(0, 0, deleted_block_size);
 
       // perform MwCAS to reserve space
       desc = descriptor_pool->AllocateDescriptor();
