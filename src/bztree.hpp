@@ -613,8 +613,6 @@ class BzTree
         index_epoch_{0}
   {
     // initialize a MwCAS descriptor pool
-    pmwcas::InitLibrary(pmwcas::DefaultAllocator::Create, pmwcas::DefaultAllocator::Destroy,
-                        pmwcas::LinuxEnvironment::Create, pmwcas::LinuxEnvironment::Destroy);
     if (const auto cpu_num = std::thread::hardware_concurrency(); cpu_num > 0) {
       descriptor_pool_.reset(new pmwcas::DescriptorPool{kDescriptorPoolSize, cpu_num, false});
     } else {

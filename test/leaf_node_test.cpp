@@ -3,6 +3,7 @@
 
 #include "leaf_node.hpp"
 
+#include <common/thread_local_storage.h>
 #include <gtest/gtest.h>
 
 #include <memory>
@@ -51,8 +52,6 @@ class LeafNodeUInt64Fixture : public testing::Test
   void
   SetUp() override
   {
-    pmwcas::InitLibrary(pmwcas::DefaultAllocator::Create, pmwcas::DefaultAllocator::Destroy,
-                        pmwcas::LinuxEnvironment::Create, pmwcas::LinuxEnvironment::Destroy);
     pool.reset(new pmwcas::DescriptorPool{1000, 1, false});
     epoch_manager = pool->GetEpoch();
     node.reset(LeafNode::CreateEmptyNode(kDefaultNodeSize));
