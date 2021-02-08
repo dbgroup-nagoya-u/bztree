@@ -3,11 +3,10 @@
 
 #include "internal_node.hpp"
 
-#include <common/thread_local_storage.h>
-#include <gtest/gtest.h>
-
 #include <memory>
 
+#include "common/thread_local_storage.h"
+#include "gtest/gtest.h"
 #include "leaf_node.hpp"
 
 using std::byte;
@@ -45,7 +44,7 @@ class InternalNodeFixture : public testing::Test
   void
   SetUp() override
   {
-    pool.reset(new pmwcas::DescriptorPool{1000, 1, false});
+    pool.reset(new pmwcas::DescriptorPool{1000, 1});
     epoch_manager = pool->GetEpoch();
 
     for (uint64_t index = 0; index < kKeyNumForTest; index++) {

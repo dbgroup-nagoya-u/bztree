@@ -37,8 +37,8 @@ target_include_directories(bztree INTERFACE
   "${PMWCAS_SOURCE_DIR}/src"
   "${PMWCAS_SOURCE_DIR}/include"
 )
-target_link_libraries(bztree INTERFACE pmwcas_static)
-add_dependencies(bztree pmwcas_static)
+target_link_libraries(bztree INTERFACE mwcas_static)
+add_dependencies(bztree mwcas_static)
 
 # build unit tests if required
 option(BZTREE_BUILD_TESTS, "Build unit tests for BzTree" OFF)

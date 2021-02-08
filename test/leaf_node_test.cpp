@@ -3,10 +3,10 @@
 
 #include "leaf_node.hpp"
 
-#include <common/thread_local_storage.h>
-#include <gtest/gtest.h>
-
 #include <memory>
+
+#include "common/thread_local_storage.h"
+#include "gtest/gtest.h"
 
 using std::byte;
 
@@ -52,7 +52,7 @@ class LeafNodeUInt64Fixture : public testing::Test
   void
   SetUp() override
   {
-    pool.reset(new pmwcas::DescriptorPool{1000, 1, false});
+    pool.reset(new pmwcas::DescriptorPool{1000, 1});
     epoch_manager = pool->GetEpoch();
     node.reset(LeafNode::CreateEmptyNode(kDefaultNodeSize));
 

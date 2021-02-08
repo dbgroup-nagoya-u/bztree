@@ -3,7 +3,7 @@
 
 #include "metadata.hpp"
 
-#include <gtest/gtest.h>
+#include "gtest/gtest.h"
 
 namespace bztree
 {

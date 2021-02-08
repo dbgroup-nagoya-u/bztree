@@ -3,10 +3,10 @@
 
 #include "bztree.hpp"
 
-#include <common/thread_local_storage.h>
-#include <gtest/gtest.h>
-
 #include <memory>
+
+#include "common/thread_local_storage.h"
+#include "gtest/gtest.h"
 
 using std::byte;
 

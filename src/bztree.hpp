@@ -614,10 +614,10 @@ class BzTree
   {
     // initialize a MwCAS descriptor pool
     if (const auto cpu_num = std::thread::hardware_concurrency(); cpu_num > 0) {
-      descriptor_pool_.reset(new pmwcas::DescriptorPool{kDescriptorPoolSize, cpu_num, false});
+      descriptor_pool_.reset(new pmwcas::DescriptorPool{kDescriptorPoolSize, cpu_num});
     } else {
       // if the program cannot recognize the number of CPU cores, use 64 partitions as default
-      descriptor_pool_.reset(new pmwcas::DescriptorPool{kDescriptorPoolSize, 64, false});
+      descriptor_pool_.reset(new pmwcas::DescriptorPool{kDescriptorPoolSize, 64});
     }
 
     // initialize a tree structure: one internal node with one leaf node
@@ -625,11 +625,12 @@ class BzTree
     root_.payload = PtrPayload{root_node};
   }
 
+  ~BzTree() { pmwcas::Thread::ClearRegistry(); }
+
   BzTree(const BzTree &) = delete;
   BzTree &operator=(const BzTree &) = delete;
   BzTree(BzTree &&) = default;
   BzTree &operator=(BzTree &&) = default;
-  ~BzTree() = default;
 
   /*################################################################################################
    * Public read APIs

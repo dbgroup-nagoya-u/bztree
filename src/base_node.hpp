@@ -3,9 +3,6 @@
 
 #pragma once
 
-#include <common/epoch.h>
-#include <mwcas/mwcas.h>
-
 #include <algorithm>
 #include <map>
 #include <memory>
@@ -13,7 +10,9 @@
 #include <utility>
 #include <vector>
 
+#include "common/epoch_manager.hpp"
 #include "metadata.hpp"
+#include "mwcas/mwcas.h"
 #include "status_word.hpp"
 
 namespace bztree

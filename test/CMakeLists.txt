@@ -17,11 +17,11 @@ function(ADD_BZTREE_TEST BZTREE_TEST_TARGET)
     "${GOOGLETEST_SOURCE_DIR}/include"
   )
   target_link_libraries(${BZTREE_TEST_TARGET} PRIVATE
-    pmwcas_static
+    mwcas_static
     gtest_main
   )
   add_dependencies(${BZTREE_TEST_TARGET}
-    pmwcas_static
+    mwcas_static
     gtest_main
   )
   add_test(NAME ${BZTREE_TEST_TARGET} COMMAND $<TARGET_FILE:${BZTREE_TEST_TARGET}>)
