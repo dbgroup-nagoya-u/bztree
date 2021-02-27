@@ -3,10 +3,9 @@
 
 #include "bztree.hpp"
 
-#include <memory>
+#include <gtest/gtest.h>
 
-#include "common/thread_local_storage.h"
-#include "gtest/gtest.h"
+#include <memory>
 
 using std::byte;
 
@@ -60,7 +59,6 @@ class BzTreeUInt64Fixture : public testing::Test
   void
   TearDown() override
   {
-    pmwcas::Thread::ClearRegistry();
   }
 
   constexpr uint64_t

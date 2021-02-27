@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <mwcas/mwcas.h>
-
 #include <cassert>
 #include <cstring>
 #include <memory>
@@ -179,25 +177,4 @@ HaveSameAddress(const void *a, const void *b)
 {
   return a == b;
 }
-
-struct PtrPayload {
-  uintptr_t value : 61 = 0;
-
-  constexpr explicit PtrPayload(const void *ptr) : value{reinterpret_cast<uintptr_t>(ptr)} {}
-
- private:
-  uint64_t control : 3 = 0;
-};
-
-union PayloadUnion {
-  PtrPayload payload;
-  uint64_t int_payload;
-  pmwcas::MwcTargetField<uint64_t> target_field;
-
-  constexpr explicit PayloadUnion() : int_payload{0} {}
-  constexpr explicit PayloadUnion(const uint64_t int_payload) : int_payload{int_payload} {}
-  constexpr explicit PayloadUnion(const PtrPayload payload) : payload{payload} {}
-  constexpr explicit PayloadUnion(const void *ptr) : payload{PtrPayload{ptr}} {}
-};
-
 }  // namespace bztree

@@ -3,10 +3,6 @@
 
 #pragma once
 
-#include <mwcas/mwcas.h>
-
-#include <string>
-
 #include "common.hpp"
 
 namespace bztree
@@ -22,24 +18,24 @@ class alignas(kWordLength) StatusWord
    * Internal member variables
    *##############################################################################################*/
 
-  uint64_t record_count_ : 16 = 0;
-  uint64_t block_size_ : 22 = 0;
-  uint64_t deleted_size_ : 22 = 0;
-  bool frozen_ : 1 = false;
-  uint64_t control_ : 3 = 0;
+  uint64_t record_count_ : 16;
+  uint64_t block_size_ : 22;
+  uint64_t deleted_size_ : 22;
+  uint64_t frozen_ : 1;
 
  public:
   /*################################################################################################
    * Public constructors/destructors
    *##############################################################################################*/
 
-  constexpr explicit StatusWord() = default;
+  constexpr StatusWord() : record_count_{0}, block_size_{0}, deleted_size_{0}, frozen_{0} {}
+
+  ~StatusWord() = default;
 
   StatusWord(const StatusWord &) = default;
   StatusWord &operator=(const StatusWord &) = default;
   StatusWord(StatusWord &&) = default;
   StatusWord &operator=(StatusWord &&) = default;
-  ~StatusWord() = default;
 
   constexpr bool
   operator==(const StatusWord &comp) const
@@ -57,12 +53,6 @@ class alignas(kWordLength) StatusWord
   /*################################################################################################
    * Public getters/setters
    *##############################################################################################*/
-
-  constexpr size_t
-  GetControlBit() const
-  {
-    return control_;
-  }
 
   constexpr bool
   IsFrozen() const
@@ -124,32 +114,6 @@ class alignas(kWordLength) StatusWord
     new_status.deleted_size_ += deleted_size;
     return new_status;
   }
-
-  std::string
-  ToString() const
-  {
-    std::stringstream ss;
-    ss << "StatusWord: 0x" << std::hex << this << "{" << std::endl
-       << "  control: 0x" << GetControlBit() << "," << std::dec << std::endl
-       << "  frozen: 0x" << IsFrozen() << "," << std::endl
-       << "  block size: " << GetBlockSize() << "," << std::endl
-       << "  delete size: " << GetDeletedSize() << "," << std::endl
-       << "  record count: " << GetRecordCount() << std::endl
-       << "}";
-    return ss.str();
-  }
-};
-
-constexpr auto kInitStatusWord = StatusWord{};
-
-union StatusUnion {
-  StatusWord word;
-  uint64_t int_word;
-  pmwcas::MwcTargetField<uint64_t> target_field;
-
-  constexpr explicit StatusUnion() : int_word{0} {}
-  constexpr explicit StatusUnion(const uint64_t int_stat) : int_word{int_stat} {}
-  constexpr explicit StatusUnion(const StatusWord word_stat) : word{word_stat} {}
 };
 
 }  // namespace bztree

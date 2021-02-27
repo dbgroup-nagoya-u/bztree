@@ -3,10 +3,10 @@
 
 #include "internal_node.hpp"
 
+#include <gtest/gtest.h>
+
 #include <memory>
 
-#include "common/thread_local_storage.h"
-#include "gtest/gtest.h"
 #include "leaf_node.hpp"
 
 using std::byte;
@@ -36,17 +36,12 @@ class InternalNodeFixture : public testing::Test
   uint64_t* payload_null_ptr = &payload_null;
   size_t payload_length_null = kWordLength;  // null payload must have 8 bytes to fill a node
 
-  std::unique_ptr<pmwcas::DescriptorPool> pool;
-  pmwcas::EpochManager* epoch_manager;
   CompareAsUInt64 comp{};
 
  protected:
   void
   SetUp() override
   {
-    pool.reset(new pmwcas::DescriptorPool{1000, 1});
-    epoch_manager = pool->GetEpoch();
-
     for (uint64_t index = 0; index < kKeyNumForTest; index++) {
       keys[index] = index;
       key_ptrs[index] = &keys[index];
@@ -60,7 +55,6 @@ class InternalNodeFixture : public testing::Test
   void
   TearDown() override
   {
-    pmwcas::Thread::ClearRegistry();
   }
 
   constexpr uint64_t
@@ -76,7 +70,7 @@ class InternalNodeFixture : public testing::Test
   {
     for (size_t index = 0; index < write_num; ++index) {
       target_node->Write(key_null_ptr, key_length_null, payload_null_ptr, payload_length_null,
-                         kIndexEpoch, pool.get());
+                         kIndexEpoch);
     }
   }
 
@@ -93,7 +87,7 @@ class InternalNodeFixture : public testing::Test
       auto key_length = key_lengths[index];
       auto payload_ptr = payload_ptrs[index];
       auto payload_length = payload_lengths[index];
-      target_node->Write(key_ptr, key_length, payload_ptr, payload_length, kIndexEpoch, pool.get());
+      target_node->Write(key_ptr, key_length, payload_ptr, payload_length, kIndexEpoch);
     }
   }
 
@@ -170,17 +164,17 @@ TEST_F(InternalNodeFixture, Split_TenKeys_SplitNodesHaveCorrectKeysAndPayloads)
 
   size_t index = 1;
   for (size_t count = 0; count < left_record_count; ++count, ++index) {
-    auto [rc, u_ptr] = left_node->Read(key_ptrs[index], comp, epoch_manager);
+    auto [rc, u_ptr] = left_node->Read(key_ptrs[index], comp);
     EXPECT_EQ(payloads[index], CastToValue(u_ptr.get()));
   }
-  auto return_code = left_node->Read(key_ptrs[index], comp, epoch_manager).first;
+  auto return_code = left_node->Read(key_ptrs[index], comp).first;
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, return_code);
 
   for (size_t count = 0; count < right_record_count; ++count, ++index) {
-    auto [rc, u_ptr] = right_node->Read(key_ptrs[index], comp, epoch_manager);
+    auto [rc, u_ptr] = right_node->Read(key_ptrs[index], comp);
     EXPECT_EQ(payloads[index], CastToValue(u_ptr.get()));
   }
-  return_code = right_node->Read(key_ptrs[left_record_count - 1], comp, epoch_manager).first;
+  return_code = right_node->Read(key_ptrs[left_record_count - 1], comp).first;
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, return_code);
 }
 
@@ -252,8 +246,7 @@ TEST_F(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectKeysAndPayload
   auto merged_node = std::unique_ptr<LeafNode>(
       BitCast<LeafNode*>(InternalNode::Merge(target_node.get(), sibling_node.get(), true)));
 
-  auto [rc, scan_results] =
-      merged_node->Scan(key_ptrs[3], true, key_ptrs[5], false, comp, epoch_manager);
+  auto [rc, scan_results] = merged_node->Scan(key_ptrs[3], true, key_ptrs[5], false, comp);
 
   ASSERT_EQ(2, scan_results.size());
   EXPECT_EQ(keys[3], CastToValue(scan_results[0].first.get()));
@@ -270,8 +263,7 @@ TEST_F(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectKeysAndPayloa
   auto merged_node = std::unique_ptr<LeafNode>(
       BitCast<LeafNode*>(InternalNode::Merge(target_node.get(), sibling_node.get(), false)));
 
-  auto [rc, scan_results] =
-      merged_node->Scan(key_ptrs[5], false, key_ptrs[7], true, comp, epoch_manager);
+  auto [rc, scan_results] = merged_node->Scan(key_ptrs[5], false, key_ptrs[7], true, comp);
 
   ASSERT_EQ(2, scan_results.size());
   EXPECT_EQ(keys[6], CastToValue(scan_results[0].first.get()));
@@ -309,13 +301,13 @@ TEST_F(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectPointersToChildren)
       BitCast<LeafNode*>(InternalNode::CreateNewRoot(left_node.get(), right_node.get())));
 
   auto left_addr = reinterpret_cast<uintptr_t>(left_node.get());
-  auto [rc, u_ptr] = new_root->Read(key_ptrs[5], comp, epoch_manager);
+  auto [rc, u_ptr] = new_root->Read(key_ptrs[5], comp);
   auto read_left_addr = PayloadToPtr(u_ptr.get());
 
   EXPECT_EQ(left_addr, read_left_addr);
 
   auto right_addr = reinterpret_cast<uintptr_t>(right_node.get());
-  std::tie(rc, u_ptr) = new_root->Read(key_ptrs[10], comp, epoch_manager);
+  std::tie(rc, u_ptr) = new_root->Read(key_ptrs[10], comp);
   auto read_right_addr = PayloadToPtr(u_ptr.get());
 
   EXPECT_EQ(right_addr, read_right_addr);
@@ -374,17 +366,17 @@ TEST_F(InternalNodeFixture, NewParent_AfterSplit_HasCorrectPointersToChildren)
                                       split_right.get(), split_index)));
 
   auto left_addr = reinterpret_cast<uintptr_t>(split_left.get());
-  auto [rc, u_ptr] = new_parent->Read(key_ptrs[3], comp, epoch_manager);
+  auto [rc, u_ptr] = new_parent->Read(key_ptrs[3], comp);
 
   EXPECT_EQ(left_addr, PayloadToPtr(u_ptr.get()));
 
   auto split_addr = reinterpret_cast<uintptr_t>(split_right.get());
-  std::tie(rc, u_ptr) = new_parent->Read(key_ptrs[6], comp, epoch_manager);
+  std::tie(rc, u_ptr) = new_parent->Read(key_ptrs[6], comp);
 
   EXPECT_EQ(split_addr, PayloadToPtr(u_ptr.get()));
 
   auto right_addr = reinterpret_cast<uintptr_t>(right_node.get());
-  std::tie(rc, u_ptr) = new_parent->Read(key_ptrs[9], comp, epoch_manager);
+  std::tie(rc, u_ptr) = new_parent->Read(key_ptrs[9], comp);
 
   EXPECT_EQ(right_addr, PayloadToPtr(u_ptr.get()));
 }
@@ -434,7 +426,7 @@ TEST_F(InternalNodeFixture, NewParent_AfterMerge_HasCorrectPointersToChildren)
       InternalNode::NewParentForMerge(old_parent.get(), merged_node.get(), deleted_index)));
 
   auto merged_addr = reinterpret_cast<uintptr_t>(merged_node.get());
-  auto [rc, u_ptr] = new_parent->Read(key_ptrs[9], comp, epoch_manager);
+  auto [rc, u_ptr] = new_parent->Read(key_ptrs[9], comp);
 
   EXPECT_EQ(merged_addr, PayloadToPtr(u_ptr.get()));
 }

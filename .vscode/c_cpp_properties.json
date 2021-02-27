@@ -8,10 +8,7 @@
       "intelliSenseMode": "linux-gcc-x64",
       "includePath": [
         "${workspaceFolder}/src",
-        "${workspaceFolder}/external/pmwcas",
-        "${workspaceFolder}/external/pmwcas/src",
-        "${workspaceFolder}/external/pmwcas/include",
-        "${workspaceFolder}/external/googletest/googletest/include"
+        "${workspaceFolder}/external/mwcas/include"
       ],
       "configurationProvider": "ms-vscode.cmake-tools"
     }

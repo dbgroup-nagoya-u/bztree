@@ -3,10 +3,9 @@
 
 #include "leaf_node.hpp"
 
-#include <memory>
+#include <gtest/gtest.h>
 
-#include "common/thread_local_storage.h"
-#include "gtest/gtest.h"
+#include <memory>
 
 using std::byte;
 
@@ -38,9 +37,6 @@ class LeafNodeUInt64Fixture : public testing::Test
   uint64_t* payload_null_ptr = &payload_null;
   size_t payload_length_null = kWordLength;  // null payload must have 8 bytes to fill a node
 
-  std::unique_ptr<pmwcas::DescriptorPool> pool;
-  pmwcas::EpochManager* epoch_manager;
-
   std::unique_ptr<LeafNode> node;
   CompareAsUInt64 comp{};
   size_t record_count = 0;
@@ -52,8 +48,6 @@ class LeafNodeUInt64Fixture : public testing::Test
   void
   SetUp() override
   {
-    pool.reset(new pmwcas::DescriptorPool{1000, 1});
-    epoch_manager = pool->GetEpoch();
     node.reset(LeafNode::CreateEmptyNode(kDefaultNodeSize));
 
     for (uint64_t index = 0; index < kKeyNumForTest; index++) {
@@ -69,7 +63,6 @@ class LeafNodeUInt64Fixture : public testing::Test
   void
   TearDown() override
   {
-    pmwcas::Thread::ClearRegistry();
   }
 
   constexpr uint64_t
@@ -82,8 +75,8 @@ class LeafNodeUInt64Fixture : public testing::Test
   WriteNullKey(const size_t write_num)
   {
     for (size_t index = 0; index < write_num; ++index) {
-      node->Write(key_null_ptr, key_length_null, payload_null_ptr, payload_length_null, kIndexEpoch,
-                  pool.get());
+      node->Write(key_null_ptr, key_length_null, payload_null_ptr, payload_length_null,
+                  kIndexEpoch);
       ++record_count;
       block_size += key_length_null + payload_length_null;
     }
@@ -103,7 +96,7 @@ class LeafNodeUInt64Fixture : public testing::Test
       auto key_length = key_lengths[index];
       auto payload_ptr = payload_ptrs[index];
       auto payload_length = payload_lengths[index];
-      node->Write(key_ptr, key_length, payload_ptr, payload_length, kIndexEpoch, pool.get());
+      node->Write(key_ptr, key_length, payload_ptr, payload_length, kIndexEpoch);
 
       written_keys.emplace_back(key);
       ++record_count;
@@ -128,7 +121,7 @@ TEST_F(LeafNodeUInt64Fixture, New_EmptyNode_CorrectlyInitialized)
 
 TEST_F(LeafNodeUInt64Fixture, Read_NotPresentKey_ReadFailed)
 {
-  auto [rc, u_ptr] = node->Read(key_ptrs[1], comp, epoch_manager);
+  auto [rc, u_ptr] = node->Read(key_ptrs[1], comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
@@ -139,7 +132,7 @@ TEST_F(LeafNodeUInt64Fixture, Read_NotPresentKey_ReadFailed)
 
 TEST_F(LeafNodeUInt64Fixture, Scan_EmptyNode_NoResult)
 {
-  auto [rc, scan_results] = node->Scan(key_ptrs[1], true, key_ptrs[10], true, comp, epoch_manager);
+  auto [rc, scan_results] = node->Scan(key_ptrs[1], true, key_ptrs[10], true, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(0, scan_results.size());
@@ -150,7 +143,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_BothClosed_ScanTargetValues)
   WriteOrderedKeys(5, 10);
   WriteOrderedKeys(1, 4);
 
-  auto [rc, scan_results] = node->Scan(key_ptrs[4], true, key_ptrs[6], true, comp, epoch_manager);
+  auto [rc, scan_results] = node->Scan(key_ptrs[4], true, key_ptrs[6], true, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(3, scan_results.size());
@@ -167,7 +160,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_LeftClosed_ScanTargetValues)
   WriteOrderedKeys(5, 10);
   WriteOrderedKeys(1, 4);
 
-  auto [rc, scan_results] = node->Scan(key_ptrs[8], true, key_ptrs[10], false, comp, epoch_manager);
+  auto [rc, scan_results] = node->Scan(key_ptrs[8], true, key_ptrs[10], false, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
@@ -182,7 +175,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_RightClosed_ScanTargetValues)
   WriteOrderedKeys(5, 10);
   WriteOrderedKeys(1, 4);
 
-  auto [rc, scan_results] = node->Scan(key_ptrs[8], false, key_ptrs[10], true, comp, epoch_manager);
+  auto [rc, scan_results] = node->Scan(key_ptrs[8], false, key_ptrs[10], true, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
@@ -197,8 +190,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_BothOpened_ScanTargetValues)
   WriteOrderedKeys(5, 10);
   WriteOrderedKeys(1, 4);
 
-  auto [rc, scan_results] =
-      node->Scan(key_ptrs[8], false, key_ptrs[10], false, comp, epoch_manager);
+  auto [rc, scan_results] = node->Scan(key_ptrs[8], false, key_ptrs[10], false, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(1, scan_results.size());
@@ -211,7 +203,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_LeftInfinity_ScanTargetValues)
   WriteOrderedKeys(5, 10);
   WriteOrderedKeys(1, 4);
 
-  auto [rc, scan_results] = node->Scan(nullptr, false, key_ptrs[2], true, comp, epoch_manager);
+  auto [rc, scan_results] = node->Scan(nullptr, false, key_ptrs[2], true, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
@@ -226,7 +218,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_RightInfinity_ScanTargetValues)
   WriteOrderedKeys(5, 10);
   WriteOrderedKeys(1, 4);
 
-  auto [rc, scan_results] = node->Scan(key_ptrs[9], true, nullptr, false, comp, epoch_manager);
+  auto [rc, scan_results] = node->Scan(key_ptrs[9], true, nullptr, false, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kScanInProgress, rc);
   EXPECT_EQ(2, scan_results.size());
@@ -240,7 +232,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_LeftOutsideRange_NoResults)
 {
   WriteOrderedKeys(5, 10);
 
-  auto [rc, scan_results] = node->Scan(nullptr, false, key_ptrs[3], false, comp, epoch_manager);
+  auto [rc, scan_results] = node->Scan(nullptr, false, key_ptrs[3], false, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(0, scan_results.size());
@@ -250,7 +242,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_RightOutsideRange_NoResults)
 {
   WriteOrderedKeys(1, 4);
 
-  auto [rc, scan_results] = node->Scan(key_ptrs[5], false, nullptr, false, comp, epoch_manager);
+  auto [rc, scan_results] = node->Scan(key_ptrs[5], false, nullptr, false, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(0, scan_results.size());
@@ -259,11 +251,10 @@ TEST_F(LeafNodeUInt64Fixture, Scan_RightOutsideRange_NoResults)
 TEST_F(LeafNodeUInt64Fixture, Scan_WithUpdateDelete_ScanLatestValues)
 {
   WriteOrderedKeys(1, 5);
-  node->Update(key_ptrs[2], key_lengths[2], payload_ptrs[0], payload_lengths[0], kIndexEpoch, comp,
-               pool.get());
-  node->Delete(key_ptrs[3], key_lengths[3], comp, pool.get());
+  node->Update(key_ptrs[2], key_lengths[2], payload_ptrs[0], payload_lengths[0], kIndexEpoch, comp);
+  node->Delete(key_ptrs[3], key_lengths[3], comp);
 
-  auto [rc, scan_results] = node->Scan(key_ptrs[2], true, key_ptrs[4], true, comp, epoch_manager);
+  auto [rc, scan_results] = node->Scan(key_ptrs[2], true, key_ptrs[4], true, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
@@ -280,7 +271,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithinRange_ScanTargetValues)
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
-  auto [rc, scan_results] = node->Scan(key_ptrs[4], true, key_ptrs[6], true, comp, epoch_manager);
+  auto [rc, scan_results] = node->Scan(key_ptrs[4], true, key_ptrs[6], true, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(3, scan_results.size());
@@ -299,7 +290,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithLeftInfinity_ScanTargetVa
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
-  auto [rc, scan_results] = node->Scan(nullptr, true, key_ptrs[3], true, comp, epoch_manager);
+  auto [rc, scan_results] = node->Scan(nullptr, true, key_ptrs[3], true, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(1, scan_results.size());
@@ -314,7 +305,7 @@ TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithRightInfinity_ScanTargetV
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
-  auto [rc, scan_results] = node->Scan(key_ptrs[7], true, nullptr, true, comp, epoch_manager);
+  auto [rc, scan_results] = node->Scan(key_ptrs[7], true, nullptr, true, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kScanInProgress, rc);
   EXPECT_EQ(1, scan_results.size());
@@ -328,11 +319,10 @@ TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithUpdateDelete_ScanLatestVa
   WriteOrderedKeys(3, 7);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
-  node->Update(key_ptrs[5], key_lengths[5], payload_ptrs[0], payload_lengths[0], kIndexEpoch, comp,
-               pool.get());
-  node->Delete(key_ptrs[7], key_lengths[7], comp, pool.get());
+  node->Update(key_ptrs[5], key_lengths[5], payload_ptrs[0], payload_lengths[0], kIndexEpoch, comp);
+  node->Delete(key_ptrs[7], key_lengths[7], comp);
 
-  auto [rc, scan_results] = node->Scan(key_ptrs[5], true, key_ptrs[7], true, comp, epoch_manager);
+  auto [rc, scan_results] = node->Scan(key_ptrs[5], true, key_ptrs[7], true, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
@@ -348,8 +338,8 @@ TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithUpdateDelete_ScanLatestVa
 
 TEST_F(LeafNodeUInt64Fixture, Write_TwoKeys_MetadataCorrectlyUpdated)
 {
-  auto [rc, status] = node->Write(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1],
-                                  kIndexEpoch, pool.get());
+  auto [rc, status] =
+      node->Write(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch);
   record_count = 1;
   index = 0;
   block_size = key_lengths[1] + payload_lengths[1];
@@ -366,8 +356,8 @@ TEST_F(LeafNodeUInt64Fixture, Write_TwoKeys_MetadataCorrectlyUpdated)
   EXPECT_EQ(block_size, status.GetBlockSize());
   EXPECT_EQ(deleted_size, status.GetDeletedSize());
 
-  std::tie(rc, status) = node->Write(key_ptrs[2], key_lengths[2], payload_ptrs[2],
-                                     payload_lengths[2], kIndexEpoch, pool.get());
+  std::tie(rc, status) =
+      node->Write(key_ptrs[2], key_lengths[2], payload_ptrs[2], payload_lengths[2], kIndexEpoch);
   ++record_count;
   ++index;
   block_size += key_lengths[2] + payload_lengths[2];
@@ -384,20 +374,18 @@ TEST_F(LeafNodeUInt64Fixture, Write_TwoKeys_MetadataCorrectlyUpdated)
 
 TEST_F(LeafNodeUInt64Fixture, Write_TwoKeys_ReadWrittenValues)
 {
-  node->Write(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch,
-              pool.get());
-  node->Write(key_ptrs[2], key_lengths[2], payload_ptrs[2], payload_lengths[2], kIndexEpoch,
-              pool.get());
+  node->Write(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch);
+  node->Write(key_ptrs[2], key_lengths[2], payload_ptrs[2], payload_lengths[2], kIndexEpoch);
 
   // read 1st input value
-  auto [rc, u_ptr] = node->Read(key_ptrs[1], comp, epoch_manager);
+  auto [rc, u_ptr] = node->Read(key_ptrs[1], comp);
   auto read_result = CastToValue(u_ptr.get());
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(payloads[1], read_result);
 
   // read 2nd input value
-  std::tie(rc, u_ptr) = node->Read(key_ptrs[2], comp, epoch_manager);
+  std::tie(rc, u_ptr) = node->Read(key_ptrs[2], comp);
   read_result = CastToValue(u_ptr.get());
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
@@ -406,12 +394,10 @@ TEST_F(LeafNodeUInt64Fixture, Write_TwoKeys_ReadWrittenValues)
 
 TEST_F(LeafNodeUInt64Fixture, Write_DuplicateKey_ReadLatestValue)
 {
-  node->Write(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch,
-              pool.get());
-  node->Write(key_ptrs[1], key_lengths[1], payload_ptrs[2], payload_lengths[2], kIndexEpoch,
-              pool.get());
+  node->Write(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch);
+  node->Write(key_ptrs[1], key_lengths[1], payload_ptrs[2], payload_lengths[2], kIndexEpoch);
 
-  auto [rc, u_ptr] = node->Read(key_ptrs[1], comp, epoch_manager);
+  auto [rc, u_ptr] = node->Read(key_ptrs[1], comp);
   auto read_result = CastToValue(u_ptr.get());
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
@@ -422,13 +408,13 @@ TEST_F(LeafNodeUInt64Fixture, Write_FilledNode_GetCorrectReturnCodes)
 {
   WriteNullKey(9);
 
-  auto [rc, status] = node->Write(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1],
-                                  kIndexEpoch, pool.get());
+  auto [rc, status] =
+      node->Write(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
 
-  std::tie(rc, status) = node->Write(key_ptrs[1], key_lengths[1], payload_ptrs[1],
-                                     payload_lengths[1], kIndexEpoch, pool.get());
+  std::tie(rc, status) =
+      node->Write(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kNoSpace, rc);
 }
@@ -441,7 +427,7 @@ TEST_F(LeafNodeUInt64Fixture, Write_ConsolidatedNode_MetadataCorrectlyUpdated)
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto [rc, status] = node->Write(key_ptrs[11], key_lengths[11], payload_ptrs[11],
-                                  payload_lengths[11], kIndexEpoch, pool.get());
+                                  payload_lengths[11], kIndexEpoch);
   ++record_count;
   block_size += key_lengths[11] + payload_lengths[11];
   index = record_count - 1;
@@ -464,9 +450,8 @@ TEST_F(LeafNodeUInt64Fixture, Write_ConsolidatedNode_ReadWrittenValue)
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
-  node->Write(key_ptrs[11], key_lengths[11], payload_ptrs[11], payload_lengths[11], kIndexEpoch,
-              pool.get());
-  auto [rc, u_ptr] = node->Read(key_ptrs[11], comp, epoch_manager);
+  node->Write(key_ptrs[11], key_lengths[11], payload_ptrs[11], payload_lengths[11], kIndexEpoch);
+  auto [rc, u_ptr] = node->Read(key_ptrs[11], comp);
   auto read_result = CastToValue(u_ptr.get());
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
@@ -480,7 +465,7 @@ TEST_F(LeafNodeUInt64Fixture, Write_ConsolidatedNode_ReadWrittenValue)
 TEST_F(LeafNodeUInt64Fixture, Insert_TwoKeys_MetadataCorrectlyUpdated)
 {
   auto [rc, status] = node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1],
-                                   kIndexEpoch, comp, pool.get());
+                                   kIndexEpoch, comp);
   record_count = 1;
   index = 0;
   block_size = key_lengths[1] + payload_lengths[1];
@@ -498,7 +483,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_TwoKeys_MetadataCorrectlyUpdated)
   EXPECT_EQ(deleted_size, status.GetDeletedSize());
 
   std::tie(rc, status) = node->Insert(key_ptrs[2], key_lengths[2], payload_ptrs[2],
-                                      payload_lengths[2], kIndexEpoch, comp, pool.get());
+                                      payload_lengths[2], kIndexEpoch, comp);
   ++record_count;
   ++index;
   block_size += key_lengths[2] + payload_lengths[2];
@@ -515,20 +500,18 @@ TEST_F(LeafNodeUInt64Fixture, Insert_TwoKeys_MetadataCorrectlyUpdated)
 
 TEST_F(LeafNodeUInt64Fixture, Insert_TwoKeys_ReadInsertedValues)
 {
-  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch, comp,
-               pool.get());
-  node->Insert(key_ptrs[2], key_lengths[2], payload_ptrs[2], payload_lengths[2], kIndexEpoch, comp,
-               pool.get());
+  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch, comp);
+  node->Insert(key_ptrs[2], key_lengths[2], payload_ptrs[2], payload_lengths[2], kIndexEpoch, comp);
 
   // read 1st input value
-  auto [rc, u_ptr] = node->Read(key_ptrs[1], comp, epoch_manager);
+  auto [rc, u_ptr] = node->Read(key_ptrs[1], comp);
   auto read_result = CastToValue(u_ptr.get());
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(payloads[1], read_result);
 
   // read 2nd input value
-  std::tie(rc, u_ptr) = node->Read(key_ptrs[2], comp, epoch_manager);
+  std::tie(rc, u_ptr) = node->Read(key_ptrs[2], comp);
   read_result = CastToValue(u_ptr.get());
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
@@ -537,11 +520,10 @@ TEST_F(LeafNodeUInt64Fixture, Insert_TwoKeys_ReadInsertedValues)
 
 TEST_F(LeafNodeUInt64Fixture, Insert_DuplicateKey_InsertionFailed)
 {
-  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch, comp,
-               pool.get());
+  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch, comp);
 
   auto [rc, status] = node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1],
-                                   kIndexEpoch, comp, pool.get());
+                                   kIndexEpoch, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyExist, rc);
 }
@@ -552,20 +534,20 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 
   // fill a node
   auto [rc, status] = node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1],
-                                   kIndexEpoch, comp, pool.get());
+                                   kIndexEpoch, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(kDefaultNodeSize, status.GetOccupiedSize());
 
   // insert a filled node with a not present key
   std::tie(rc, status) = node->Insert(key_ptrs[2], key_lengths[2], payload_ptrs[2],
-                                      payload_lengths[2], kIndexEpoch, comp, pool.get());
+                                      payload_lengths[2], kIndexEpoch, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kNoSpace, rc);
 
   // insert a filled node with an present key
   std::tie(rc, status) = node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1],
-                                      payload_lengths[1], kIndexEpoch, comp, pool.get());
+                                      payload_lengths[1], kIndexEpoch, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyExist, rc);
 }
@@ -578,7 +560,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_ConsolidatedNode_MetadataCorrectlyUpdated)
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto [rc, status] = node->Insert(key_ptrs[11], key_lengths[11], payload_ptrs[11],
-                                   payload_lengths[11], kIndexEpoch, comp, pool.get());
+                                   payload_lengths[11], kIndexEpoch, comp);
   ++record_count;
   block_size += key_lengths[11] + payload_lengths[11];
   index = record_count - 1;
@@ -602,8 +584,8 @@ TEST_F(LeafNodeUInt64Fixture, Insert_ConsolidatedNode_ReadInsertedValue)
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   node->Insert(key_ptrs[11], key_lengths[11], payload_ptrs[11], payload_lengths[11], kIndexEpoch,
-               comp, pool.get());
-  auto [rc, u_ptr] = node->Read(key_ptrs[11], comp, epoch_manager);
+               comp);
+  auto [rc, u_ptr] = node->Read(key_ptrs[11], comp);
   auto read_result = CastToValue(u_ptr.get());
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
@@ -618,7 +600,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_ConsolidatedNodeWithDuplicateKey_InsertionF
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto [rc, status] = node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1],
-                                   kIndexEpoch, comp, pool.get());
+                                   kIndexEpoch, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyExist, rc);
 }
@@ -629,15 +611,14 @@ TEST_F(LeafNodeUInt64Fixture, Insert_ConsolidatedNodeWithDuplicateKey_InsertionF
 
 TEST_F(LeafNodeUInt64Fixture, Update_SingleKey_MetadataCorrectlyUpdated)
 {
-  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch, comp,
-               pool.get());
+  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch, comp);
   record_count = 1;
   index = 0;
   block_size = key_lengths[1] + payload_lengths[1];
   deleted_size = kWordLength + key_lengths[1] + payload_lengths[1];
 
   auto [rc, status] = node->Update(key_ptrs[1], key_lengths[1], payload_ptrs[2], payload_lengths[2],
-                                   kIndexEpoch, comp, pool.get());
+                                   kIndexEpoch, comp);
   ++record_count;
   ++index;
   block_size += key_lengths[1] + payload_lengths[2];
@@ -657,12 +638,10 @@ TEST_F(LeafNodeUInt64Fixture, Update_SingleKey_MetadataCorrectlyUpdated)
 
 TEST_F(LeafNodeUInt64Fixture, Update_SingleKey_ReadUpdatedValue)
 {
-  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[2], payload_lengths[2], kIndexEpoch, comp,
-               pool.get());
-  node->Update(key_ptrs[1], key_lengths[1], payload_ptrs[2], payload_lengths[2], kIndexEpoch, comp,
-               pool.get());
+  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[2], payload_lengths[2], kIndexEpoch, comp);
+  node->Update(key_ptrs[1], key_lengths[1], payload_ptrs[2], payload_lengths[2], kIndexEpoch, comp);
 
-  auto [rc, u_ptr] = node->Read(key_ptrs[1], comp, epoch_manager);
+  auto [rc, u_ptr] = node->Read(key_ptrs[1], comp);
   auto read_result = CastToValue(u_ptr.get());
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
@@ -672,18 +651,17 @@ TEST_F(LeafNodeUInt64Fixture, Update_SingleKey_ReadUpdatedValue)
 TEST_F(LeafNodeUInt64Fixture, Update_NotPresentKey_UpdatedFailed)
 {
   auto [rc, status] = node->Update(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1],
-                                   kIndexEpoch, comp, pool.get());
+                                   kIndexEpoch, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 TEST_F(LeafNodeUInt64Fixture, Update_DeletedKey_UpdateFailed)
 {
-  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[2], payload_lengths[2], kIndexEpoch, comp,
-               pool.get());
-  node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
+  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[2], payload_lengths[2], kIndexEpoch, comp);
+  node->Delete(key_ptrs[1], key_lengths[1], comp);
   auto [rc, status] = node->Update(key_ptrs[1], key_lengths[1], payload_ptrs[2], payload_lengths[2],
-                                   kIndexEpoch, comp, pool.get());
+                                   kIndexEpoch, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
@@ -694,20 +672,20 @@ TEST_F(LeafNodeUInt64Fixture, Update_FilledNode_GetCorrectReturnCodes)
 
   // fill a node
   auto [rc, status] = node->Update(key_null_ptr, key_length_null, payload_null_ptr,
-                                   payload_length_null, kIndexEpoch, comp, pool.get());
+                                   payload_length_null, kIndexEpoch, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(kDefaultNodeSize, status.GetOccupiedSize());
 
   // update a filled node with an present key
   std::tie(rc, status) = node->Update(key_null_ptr, key_length_null, payload_null_ptr,
-                                      payload_length_null, kIndexEpoch, comp, pool.get());
+                                      payload_length_null, kIndexEpoch, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kNoSpace, rc);
 
   // update a filled node with a not present key
   std::tie(rc, status) = node->Update(key_ptrs[1], key_lengths[1], payload_ptrs[1],
-                                      payload_lengths[1], kIndexEpoch, comp, pool.get());
+                                      payload_lengths[1], kIndexEpoch, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
@@ -720,7 +698,7 @@ TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNode_MetadataCorrectlyUpdated)
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto [rc, status] = node->Update(key_ptrs[1], key_lengths[1], payload_ptrs[11],
-                                   payload_lengths[11], kIndexEpoch, comp, pool.get());
+                                   payload_lengths[11], kIndexEpoch, comp);
   ++record_count;
   block_size += key_lengths[1] + payload_lengths[11];
   deleted_size = kWordLength + key_lengths[1] + payload_lengths[1];
@@ -745,8 +723,8 @@ TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNode_ReadUpdatedValue)
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   node->Update(key_ptrs[1], key_lengths[1], payload_ptrs[11], payload_lengths[11], kIndexEpoch,
-               comp, pool.get());
-  auto [rc, u_ptr] = node->Read(key_ptrs[1], comp, epoch_manager);
+               comp);
+  auto [rc, u_ptr] = node->Read(key_ptrs[1], comp);
   auto read_result = CastToValue(u_ptr.get());
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
@@ -761,7 +739,7 @@ TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNodeWithNotPresentKey_UpdatedFa
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
   auto [rc, status] = node->Update(key_null_ptr, key_length_null, payload_null_ptr,
-                                   payload_length_null, kIndexEpoch, comp, pool.get());
+                                   payload_length_null, kIndexEpoch, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
@@ -772,10 +750,10 @@ TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNodeWithDeletedKey_UpdatedFaile
   WriteOrderedKeys(1, 5);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
-  node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
+  node->Delete(key_ptrs[1], key_lengths[1], comp);
 
   auto [rc, status] = node->Update(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1],
-                                   kIndexEpoch, comp, pool.get());
+                                   kIndexEpoch, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
@@ -786,14 +764,12 @@ TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNodeWithDeletedKey_UpdatedFaile
 
 TEST_F(LeafNodeUInt64Fixture, Delete_TwoKeys_MetadataCorrectlyUpdated)
 {
-  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch, comp,
-               pool.get());
-  node->Insert(key_ptrs[2], key_lengths[2], payload_ptrs[2], payload_lengths[2], kIndexEpoch, comp,
-               pool.get());
+  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch, comp);
+  node->Insert(key_ptrs[2], key_lengths[2], payload_ptrs[2], payload_lengths[2], kIndexEpoch, comp);
   record_count = 2;
   block_size = key_lengths[1] + payload_lengths[1] + key_lengths[2] + payload_lengths[2];
 
-  auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
+  auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp);
   deleted_size = kWordLength + key_lengths[1] + payload_lengths[1];
   auto first_meta = node->GetMetadata(0);
 
@@ -806,7 +782,7 @@ TEST_F(LeafNodeUInt64Fixture, Delete_TwoKeys_MetadataCorrectlyUpdated)
   EXPECT_EQ(block_size, status.GetBlockSize());
   EXPECT_EQ(deleted_size, status.GetDeletedSize());
 
-  std::tie(rc, status) = node->Delete(key_ptrs[2], key_lengths[2], comp, pool.get());
+  std::tie(rc, status) = node->Delete(key_ptrs[2], key_lengths[2], comp);
   deleted_size += kWordLength + key_lengths[2] + payload_lengths[2];
   auto second_meta = node->GetMetadata(1);
 
@@ -822,39 +798,36 @@ TEST_F(LeafNodeUInt64Fixture, Delete_TwoKeys_MetadataCorrectlyUpdated)
 
 TEST_F(LeafNodeUInt64Fixture, Delete_PresentKey_DeletionSucceed)
 {
-  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch, comp,
-               pool.get());
+  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch, comp);
 
-  auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
+  auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
 }
 
 TEST_F(LeafNodeUInt64Fixture, Delete_PresentKey_ReadFailed)
 {
-  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch, comp,
-               pool.get());
-  node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
+  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch, comp);
+  node->Delete(key_ptrs[1], key_lengths[1], comp);
 
-  auto [rc, u_ptr] = node->Read(key_ptrs[1], comp, epoch_manager);
+  auto [rc, u_ptr] = node->Read(key_ptrs[1], comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 TEST_F(LeafNodeUInt64Fixture, Delete_NotPresentKey_DeletionFailed)
 {
-  auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
+  auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
 
 TEST_F(LeafNodeUInt64Fixture, Delete_DeletedKey_DeletionFailed)
 {
-  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch, comp,
-               pool.get());
-  node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
+  node->Insert(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch, comp);
+  node->Delete(key_ptrs[1], key_lengths[1], comp);
 
-  auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
+  auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
@@ -863,7 +836,7 @@ TEST_F(LeafNodeUInt64Fixture, Delete_FilledNode_GetCorrectReturnCodes)
 {
   WriteNullKey(10);
 
-  auto [rc, status] = node->Delete(key_null_ptr, key_length_null, comp, pool.get());
+  auto [rc, status] = node->Delete(key_null_ptr, key_length_null, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
 }
@@ -875,7 +848,7 @@ TEST_F(LeafNodeUInt64Fixture, Delete_ConsolidatedNode_MetadataCorrectlyUpdated)
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
-  auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
+  auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp);
   deleted_size = kWordLength + key_lengths[1] + payload_lengths[1];
   index = record_count - 1;
   auto meta = node->GetMetadata(index);
@@ -897,7 +870,7 @@ TEST_F(LeafNodeUInt64Fixture, Delete_ConsolidatedNode_DeletionSucceed)
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
-  auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
+  auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
 }
@@ -909,7 +882,7 @@ TEST_F(LeafNodeUInt64Fixture, Delete_ConsolidatedNodeWithNotPresentKey_DeletionF
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
-  auto [rc, status] = node->Delete(key_null_ptr, key_length_null, comp, pool.get());
+  auto [rc, status] = node->Delete(key_null_ptr, key_length_null, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
@@ -920,9 +893,9 @@ TEST_F(LeafNodeUInt64Fixture, Delete_ConsolidatedNodeWithDeletedKey_DeletionFail
   WriteOrderedKeys(1, 5);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
-  node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
+  node->Delete(key_ptrs[1], key_lengths[1], comp);
 
-  auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp, pool.get());
+  auto [rc, status] = node->Delete(key_ptrs[1], key_lengths[1], comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kKeyNotExist, rc);
 }
@@ -950,7 +923,7 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithDelete_GatherSortedLi
 {
   // fill a node with ordered keys
   auto written_keys = WriteOrderedKeys(1, 10);
-  node->Delete(key_ptrs[2], key_lengths[2], comp, pool.get());
+  node->Delete(key_ptrs[2], key_lengths[2], comp);
   written_keys.erase(++(written_keys.begin()));
   --record_count;
 
@@ -969,7 +942,7 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithUpdate_GatherSortedLi
   // fill a node with ordered keys
   auto written_keys = WriteOrderedKeys(1, 9);
   node->Update(key_ptrs[2], key_lengths[2], payload_null_ptr, payload_length_null, kIndexEpoch,
-               comp, pool.get());
+               comp);
 
   // gather live metadata and check equality
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
@@ -1018,7 +991,7 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithDelete_NodeHasCorrect
 {
   // prepare a consolidated node
   WriteOrderedKeys(1, 10);
-  node->Delete(key_ptrs[2], key_lengths[2], comp, pool.get());
+  node->Delete(key_ptrs[2], key_lengths[2], comp);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
@@ -1038,7 +1011,7 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithUpdate_NodeHasCorrect
   // prepare a consolidated node
   WriteOrderedKeys(1, 9);
   node->Update(key_ptrs[2], key_lengths[2], payload_null_ptr, payload_length_null, kIndexEpoch,
-               comp, pool.get());
+               comp);
   auto meta_vec = node->GatherSortedLiveMetadata(comp);
   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
@@ -1113,7 +1086,7 @@ TEST_F(LeafNodeUInt64Fixture, Split_EquallyDivided_NodesHaveCorrectKeyPayloads)
   // check a split left node
   size_t index = 1;
   for (; index <= left_record_count; ++index) {
-    auto [rc, u_ptr] = left_node->Read(key_ptrs[index], comp, epoch_manager);
+    auto [rc, u_ptr] = left_node->Read(key_ptrs[index], comp);
 
     EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
     EXPECT_EQ(payloads[index], CastToValue(u_ptr.get()));
@@ -1121,7 +1094,7 @@ TEST_F(LeafNodeUInt64Fixture, Split_EquallyDivided_NodesHaveCorrectKeyPayloads)
 
   // check a split right node
   for (; index <= record_count; ++index) {
-    auto [rc, u_ptr] = right_node->Read(key_ptrs[index], comp, epoch_manager);
+    auto [rc, u_ptr] = right_node->Read(key_ptrs[index], comp);
 
     EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
     EXPECT_EQ(payloads[index], CastToValue(u_ptr.get()));
@@ -1138,8 +1111,8 @@ TEST_F(LeafNodeUInt64Fixture, Merge_LeftSiblingNode_NodeHasCorrectStatus)
   WriteOrderedKeys(4, 6);
   auto this_meta = node->GatherSortedLiveMetadata(comp);
   auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kDefaultNodeSize));
-  sibling_node->Write(key_ptrs[3], key_lengths[3], payload_ptrs[3], payload_lengths[3], kIndexEpoch,
-                      pool.get());
+  sibling_node->Write(key_ptrs[3], key_lengths[3], payload_ptrs[3], payload_lengths[3],
+                      kIndexEpoch);
   auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
   auto merged_node = LeafNode::Merge(node.get(), this_meta, sibling_node.get(), sibling_meta, true);
 
@@ -1161,8 +1134,8 @@ TEST_F(LeafNodeUInt64Fixture, Merge_RightSiblingNode_NodeHasCorrectStatus)
   WriteOrderedKeys(4, 6);
   auto this_meta = node->GatherSortedLiveMetadata(comp);
   auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kDefaultNodeSize));
-  sibling_node->Write(key_ptrs[7], key_lengths[7], payload_ptrs[7], payload_lengths[7], kIndexEpoch,
-                      pool.get());
+  sibling_node->Write(key_ptrs[7], key_lengths[7], payload_ptrs[7], payload_lengths[7],
+                      kIndexEpoch);
   auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
   auto merged_node =
       LeafNode::Merge(node.get(), this_meta, sibling_node.get(), sibling_meta, false);
@@ -1185,14 +1158,14 @@ TEST_F(LeafNodeUInt64Fixture, Merge_LeftSiblingNode_NodeHasCorrectKeyPayloads)
   WriteOrderedKeys(4, 6);
   auto this_meta = node->GatherSortedLiveMetadata(comp);
   auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kDefaultNodeSize));
-  sibling_node->Write(key_ptrs[3], key_lengths[3], payload_ptrs[3], payload_lengths[3], kIndexEpoch,
-                      pool.get());
+  sibling_node->Write(key_ptrs[3], key_lengths[3], payload_ptrs[3], payload_lengths[3],
+                      kIndexEpoch);
   auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
   auto merged_node = LeafNode::Merge(node.get(), this_meta, sibling_node.get(), sibling_meta, true);
 
   // check keys and payloads
   for (size_t index = 3; index <= 6; ++index) {
-    auto [rc, u_ptr] = merged_node->Read(key_ptrs[index], comp, epoch_manager);
+    auto [rc, u_ptr] = merged_node->Read(key_ptrs[index], comp);
 
     EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
     EXPECT_EQ(payloads[index], CastToValue(u_ptr.get()));
@@ -1205,15 +1178,15 @@ TEST_F(LeafNodeUInt64Fixture, Merge_RightSiblingNode_NodeHasCorrectKeyPayloads)
   WriteOrderedKeys(4, 6);
   auto this_meta = node->GatherSortedLiveMetadata(comp);
   auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kDefaultNodeSize));
-  sibling_node->Write(key_ptrs[7], key_lengths[7], payload_ptrs[7], payload_lengths[7], kIndexEpoch,
-                      pool.get());
+  sibling_node->Write(key_ptrs[7], key_lengths[7], payload_ptrs[7], payload_lengths[7],
+                      kIndexEpoch);
   auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
   auto merged_node =
       LeafNode::Merge(node.get(), this_meta, sibling_node.get(), sibling_meta, false);
 
   // check keys and payloads
   for (size_t index = 4; index <= 7; ++index) {
-    auto [rc, u_ptr] = merged_node->Read(key_ptrs[index], comp, epoch_manager);
+    auto [rc, u_ptr] = merged_node->Read(key_ptrs[index], comp);
 
     EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
     EXPECT_EQ(payloads[index], CastToValue(u_ptr.get()));

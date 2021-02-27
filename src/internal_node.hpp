@@ -51,8 +51,8 @@ class InternalNode : public BaseNode
       const auto new_meta = meta.UpdateOffset(offset);
       target_node->SetMetadata(record_count, new_meta);
     }
-    target_node->SetSortedCount(record_count);
-    target_node->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, node_size - offset, 0));
+    target_node->sorted_count_ = record_count;
+    target_node->status_ = StatusWord{}.AddRecordInfo(record_count, node_size - offset, 0);
   }
 
  public:
@@ -161,12 +161,12 @@ class InternalNode : public BaseNode
 
     // set an inital leaf node
     const auto offset = root->CopyRecord(key, key_length, &leaf_node, payload_length, node_size);
-    const auto meta = kInitMetadata.SetRecordInfo(offset, key_length, total_length);
+    const auto meta = Metadata{}.SetRecordInfo(offset, key_length, total_length);
     root->SetMetadata(0, meta);
 
     // set a new header
-    root->SetSortedCount(1);
-    root->SetStatusWord(kInitStatusWord.AddRecordInfo(1, node_size - offset, 0));
+    root->sorted_count_ = 1;
+    root->status_ = StatusWord{}.AddRecordInfo(1, node_size - offset, 0);
 
     return root;
   }
@@ -226,7 +226,7 @@ class InternalNode : public BaseNode
     const auto left_key_length = left_meta.GetKeyLength();
     offset = new_root->CopyRecord(left_key, left_key_length, &left_child, kWordLength, offset);
     const auto new_left_meta =
-        kInitMetadata.SetRecordInfo(offset, left_key_length, left_key_length + kWordLength);
+        Metadata{}.SetRecordInfo(offset, left_key_length, left_key_length + kWordLength);
     new_root->SetMetadata(0, new_left_meta);
 
     // insert a right child node
@@ -235,12 +235,12 @@ class InternalNode : public BaseNode
     const auto right_key_length = right_meta.GetKeyLength();
     offset = new_root->CopyRecord(right_key, right_key_length, &right_child, kWordLength, offset);
     const auto new_right_meta =
-        kInitMetadata.SetRecordInfo(offset, right_key_length, right_key_length + kWordLength);
+        Metadata{}.SetRecordInfo(offset, right_key_length, right_key_length + kWordLength);
     new_root->SetMetadata(1, new_right_meta);
 
     // set a new header
-    new_root->SetSortedCount(2);
-    new_root->SetStatusWord(kInitStatusWord.AddRecordInfo(2, node_size - offset, 0));
+    new_root->sorted_count_ = 2;
+    new_root->status_ = StatusWord{}.AddRecordInfo(2, node_size - offset, 0);
 
     return new_root;
   }
@@ -271,7 +271,7 @@ class InternalNode : public BaseNode
         const auto aligned_length = AlignKeyLengthToWord(new_key_length);
         offset = new_parent->CopyRecord(new_key, aligned_length, &left_addr, kWordLength, offset);
         const auto total_length = aligned_length + kWordLength;
-        const auto left_meta = kInitMetadata.SetRecordInfo(offset, aligned_length, total_length);
+        const auto left_meta = Metadata{}.SetRecordInfo(offset, aligned_length, total_length);
         new_parent->SetMetadata(new_idx++, left_meta);
         // continue with a split right child
         node_addr = &right_addr;
@@ -283,8 +283,8 @@ class InternalNode : public BaseNode
     }
 
     // set a new header
-    new_parent->SetSortedCount(++record_count);
-    new_parent->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, node_size - offset, 0));
+    new_parent->sorted_count_ = ++record_count;
+    new_parent->status_ = StatusWord{}.AddRecordInfo(record_count, node_size - offset, 0);
 
     return new_parent;
   }
@@ -321,8 +321,8 @@ class InternalNode : public BaseNode
     }
 
     // set a new header
-    new_parent->SetSortedCount(--record_count);
-    new_parent->SetStatusWord(kInitStatusWord.AddRecordInfo(record_count, node_size - offset, 0));
+    new_parent->sorted_count_ = --record_count;
+    new_parent->status_ = StatusWord{}.AddRecordInfo(record_count, node_size - offset, 0);
 
     return new_parent;
   }

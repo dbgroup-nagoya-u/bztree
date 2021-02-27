@@ -3,10 +3,6 @@
 
 #pragma once
 
-#include <mwcas/mwcas.h>
-
-#include <string>
-
 #include "common.hpp"
 
 namespace bztree
@@ -22,25 +18,27 @@ class alignas(kWordLength) Metadata
    * Internal member variables
    *##############################################################################################*/
 
-  uint64_t offset_ : 27 = 0;
-  bool visible_ : 1 = false;
-  bool in_progress_ : 1 = false;
-  uint64_t key_length_ : 16 = 0;
-  uint64_t total_length_ : 16 = 0;
-  uint64_t control_ : 3 = 0;
+  uint64_t offset_ : 27;
+  uint64_t visible_ : 1;
+  uint64_t in_progress_ : 1;
+  uint64_t key_length_ : 16;
+  uint64_t total_length_ : 16;
 
  public:
   /*################################################################################################
    * Public getters/setters
    *##############################################################################################*/
 
-  constexpr explicit Metadata() = default;
+  constexpr Metadata() : offset_{0}, visible_{0}, in_progress_{0}, key_length_{0}, total_length_{0}
+  {
+  }
+
+  ~Metadata() = default;
 
   Metadata(const Metadata &) = default;
   Metadata &operator=(const Metadata &) = default;
   Metadata(Metadata &&) = default;
   Metadata &operator=(Metadata &&) = default;
-  ~Metadata() = default;
 
   /*################################################################################################
    * Public getters/setters
@@ -68,12 +66,6 @@ class alignas(kWordLength) Metadata
   IsCorrupted(const size_t index_epoch) const
   {
     return IsInProgress() && (GetOffset() != index_epoch);
-  }
-
-  constexpr uint64_t
-  GetControlBit() const
-  {
-    return control_;
   }
 
   constexpr size_t
@@ -144,33 +136,6 @@ class alignas(kWordLength) Metadata
     new_meta.in_progress_ = false;
     return new_meta;
   }
-
-  std::string
-  ToString() const
-  {
-    std::stringstream ss;
-    ss << "0x" << std::hex << this << "{" << std::endl
-       << "  control: 0x" << GetControlBit() << "," << std::endl
-       << "  visible: 0x" << IsVisible() << "," << std::endl
-       << "  inserting: 0x" << IsInProgress() << "," << std::dec << std::endl
-       << "  offset/epoch: " << GetOffset() << "," << std::endl
-       << "  key length: " << GetKeyLength() << "," << std::endl
-       << "  total length: " << GetTotalLength() << std::endl
-       << "}";
-    return ss.str();
-  }
-};
-
-constexpr Metadata kInitMetadata = Metadata{};
-
-union MetaUnion {
-  Metadata meta;
-  uint64_t int_meta;
-  pmwcas::MwcTargetField<uint64_t> target_field;
-
-  constexpr explicit MetaUnion() : int_meta{0} {}
-  constexpr explicit MetaUnion(const uint64_t m_int) : int_meta{m_int} {}
-  constexpr explicit MetaUnion(const Metadata meta) : meta{meta} {}
 };
 
 }  // namespace bztree

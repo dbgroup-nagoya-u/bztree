@@ -49,10 +49,7 @@ class BzTree
   const Compare comparator_ = Compare{};
 
   // a root node of BzTree
-  PayloadUnion root_;
-
-  // a pool of descriptors for MwCAS
-  std::unique_ptr<pmwcas::DescriptorPool> descriptor_pool_;
+  uintptr_t root_;
 
   /*------------------------------------------------------------------------------------------------
    * Temporal garbage collector
@@ -75,10 +72,7 @@ class BzTree
   BaseNode *
   GetRoot()
   {
-    return static_cast<BaseNode *>(reinterpret_cast<void *>(root_.payload.value));
-    // const auto protected_root = root_.target_field.GetValue(descriptor_pool_->GetEpoch());
-    // const auto root_uptr = PayloadUnion{protected_root}.payload.value;
-    // return static_cast<BaseNode *>(reinterpret_cast<void *>(root_uptr));
+    return reinterpret_cast<BaseNode *>(ReadMwCASField<uintptr_t>(&root_));
   }
 
   LeafNode *
@@ -133,15 +127,15 @@ class BzTree
     return block_size;
   }
 
-  uint32_t
+  void
   SetRootForMwCAS(  //
+      MwCASDescriptor &desc,
       const void *old_root_node,
-      const void *new_root_node,
-      pmwcas::Descriptor *descriptor)
+      const void *new_root_node)
   {
-    const auto old_union = PayloadUnion{old_root_node};
-    const auto new_union = PayloadUnion{new_root_node};
-    return descriptor->AddEntry(&(root_.int_payload), old_union.int_payload, new_union.int_payload);
+    desc.AddMwCASTarget(&root_,  //
+                        reinterpret_cast<uintptr_t>(old_root_node),
+                        reinterpret_cast<uintptr_t>(new_root_node));
   }
 
   /*------------------------------------------------------------------------------------------------
@@ -172,7 +166,7 @@ class BzTree
       const size_t target_key_length)
   {
     // freeze a target node and perform consolidation
-    target_leaf->Freeze(descriptor_pool_.get());
+    target_leaf->Freeze();
 
     // gather sorted live metadata of a targetnode, and check whether split/merge is required
     const auto live_meta = target_leaf->GatherSortedLiveMetadata(comparator_);
@@ -188,8 +182,7 @@ class BzTree
 
     // install a new node
     auto new_leaf = LeafNode::Consolidate(target_leaf, live_meta);
-    pmwcas::Descriptor *pd;
-    auto epoch_manager = descriptor_pool_->GetEpoch();
+    bool mwcas_success;
     do {
       // check whether a target node remains
       auto [current_leaf_node, target_index, trace] = TraceTargetNode(target_key, target_leaf);
@@ -201,16 +194,17 @@ class BzTree
 
       // check a parent status
       auto [parent_node, unused] = trace.top();
-      const auto parent_status = parent_node->GetStatusWordProtected(epoch_manager);
+      const auto parent_status = parent_node->GetStatusWordProtected();
       if (parent_status.IsFrozen()) {
         continue;
       }
 
       // swap a consolidated node for an old one
-      pd = descriptor_pool_->AllocateDescriptor();
-      parent_node->SetStatusForMwCAS(parent_status, parent_status, pd);
-      parent_node->SetPayloadForMwCAS(target_index, target_leaf, new_leaf, pd);
-    } while (!pd->MwCAS());
+      auto desc = MwCASDescriptor{};
+      parent_node->SetStatusForMwCAS(desc, parent_status, parent_status);
+      parent_node->SetPayloadForMwCAS(desc, target_index, target_leaf, new_leaf);
+      mwcas_success = desc.MwCAS();
+    } while (!mwcas_success);
 
     // Temporal implementation of garbage collection
     const auto reserved_index = ReserveGabageRegion(1);
@@ -282,7 +276,7 @@ class BzTree
 
     // freeze a target node only if it is not a root node
     if (!HaveSameAddress(target_node, GetRoot())
-        && target_node->Freeze(descriptor_pool_.get()) == BaseNode::NodeReturnCode::kFrozen) {
+        && target_node->Freeze() == BaseNode::NodeReturnCode::kFrozen) {
       return;  // a target node is modified by concurrent SMOs
     }
 
@@ -367,7 +361,7 @@ class BzTree
     auto parent = BitCast<InternalNode *>(trace.top().first);
     if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
       sibling_node = BitCast<LeafNode *>(parent->GetChildNode(target_index - 1));
-      if (sibling_node->Freeze(descriptor_pool_.get()) == BaseNode::NodeReturnCode::kSuccess) {
+      if (sibling_node->Freeze() == BaseNode::NodeReturnCode::kSuccess) {
         sibling_is_left = true;
       } else {
         sibling_node = nullptr;
@@ -376,7 +370,7 @@ class BzTree
     if (sibling_node == nullptr
         && parent->CanMergeRightSibling(target_index, target_size, max_merged_size_)) {
       sibling_node = BitCast<LeafNode *>(parent->GetChildNode(target_index + 1));
-      if (sibling_node->Freeze(descriptor_pool_.get()) == BaseNode::NodeReturnCode::kSuccess) {
+      if (sibling_node->Freeze() == BaseNode::NodeReturnCode::kSuccess) {
         sibling_is_left = false;
       } else {
         sibling_node = nullptr;
@@ -440,15 +434,15 @@ class BzTree
     // variables shared by phase 1 & 2
     InternalNode *sibling_node = nullptr;
     bool sibling_is_left;
-    pmwcas::Descriptor *desc;
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
 
+    bool mwcas_success;
     do {
       // check a target node is not frozen and live
-      const auto target_status = target_node->GetStatusWordProtected(descriptor_pool_->GetEpoch());
+      const auto target_status = target_node->GetStatusWordProtected();
       if (target_status.IsFrozen()) {
         return;  // other SMOs are modifying a target node
       }
@@ -463,7 +457,7 @@ class BzTree
       StatusWord sibling_status;
       if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
         sibling_node = BitCast<InternalNode *>(parent->GetChildNode(target_index - 1));
-        sibling_status = sibling_node->GetStatusWordProtected(descriptor_pool_->GetEpoch());
+        sibling_status = sibling_node->GetStatusWordProtected();
         if (!sibling_status.IsFrozen() && !sibling_node->IsLeaf()) {
           sibling_is_left = true;
         } else {
@@ -473,7 +467,7 @@ class BzTree
       if (sibling_node == nullptr
           && parent->CanMergeRightSibling(target_index, target_size, max_merged_size_)) {
         sibling_node = BitCast<InternalNode *>(parent->GetChildNode(target_index + 1));
-        sibling_status = sibling_node->GetStatusWordProtected(descriptor_pool_->GetEpoch());
+        sibling_status = sibling_node->GetStatusWordProtected();
         if (!sibling_status.IsFrozen() && !sibling_node->IsLeaf()) {
           sibling_is_left = false;
         } else {
@@ -485,12 +479,11 @@ class BzTree
       }
 
       // freeze target and sibling nodes
-      const auto frozen_target_status = target_status.Freeze();
-      const auto frozen_sibling_status = sibling_status.Freeze();
-      desc = descriptor_pool_->AllocateDescriptor();
-      target_node->SetStatusForMwCAS(target_status, frozen_target_status, desc);
-      sibling_node->SetStatusForMwCAS(sibling_status, frozen_sibling_status, desc);
-    } while (!desc->MwCAS());
+      auto desc = MwCASDescriptor{};
+      target_node->SetStatusForMwCAS(desc, target_status, target_status.Freeze());
+      sibling_node->SetStatusForMwCAS(desc, sibling_status, sibling_status.Freeze());
+      mwcas_success = desc.MwCAS();
+    } while (!mwcas_success);
 
     /*----------------------------------------------------------------------------------------------
      * Phase 2: installation
@@ -542,9 +535,7 @@ class BzTree
       std::stack<std::pair<BaseNode *, size_t>> *trace,
       const InternalNode *new_internal_node)
   {
-    auto *desc = descriptor_pool_->AllocateDescriptor();
-    auto epoch_manager = descriptor_pool_->GetEpoch();
-
+    auto desc = MwCASDescriptor{};
     if (trace->size() > 1) {
       /*--------------------------------------------------------------------------------------------
        * Swapping a new internal node
@@ -556,8 +547,8 @@ class BzTree
       auto parent_node = trace->top().first;
 
       // check wether related nodes are frozen
-      const auto status = old_internal_node->GetStatusWordProtected(epoch_manager);
-      const auto parent_status = parent_node->GetStatusWordProtected(epoch_manager);
+      const auto status = old_internal_node->GetStatusWordProtected();
+      const auto parent_status = parent_node->GetStatusWordProtected();
       if (status.IsFrozen() || parent_status.IsFrozen()) {
         return false;
       }
@@ -566,9 +557,9 @@ class BzTree
       const auto frozen_status = status.Freeze();
 
       // install a new internal node by PMwCAS
-      old_internal_node->SetStatusForMwCAS(status, frozen_status, desc);
-      parent_node->SetPayloadForMwCAS(swapping_index, old_internal_node, new_internal_node, desc);
-      parent_node->SetStatusForMwCAS(parent_status, parent_status, desc);  // check concurrent SMOs
+      old_internal_node->SetStatusForMwCAS(desc, status, frozen_status);
+      parent_node->SetPayloadForMwCAS(desc, swapping_index, old_internal_node, new_internal_node);
+      parent_node->SetStatusForMwCAS(desc, parent_status, parent_status);  // check concurrent SMOs
     } else {
       /*--------------------------------------------------------------------------------------------
        * Swapping a new root node
@@ -577,7 +568,7 @@ class BzTree
       auto old_root_node = trace->top().first;
 
       // check wether an old root node is frozen
-      const auto status = old_root_node->GetStatusWordProtected(epoch_manager);
+      const auto status = old_root_node->GetStatusWordProtected();
       if (status.IsFrozen()) {
         return false;
       }
@@ -586,11 +577,11 @@ class BzTree
       const auto frozen_status = status.Freeze();
 
       // install a new root node by PMwCAS
-      old_root_node->SetStatusForMwCAS(status, frozen_status, desc);
-      SetRootForMwCAS(old_root_node, new_internal_node, desc);
+      old_root_node->SetStatusForMwCAS(desc, status, frozen_status);
+      SetRootForMwCAS(desc, old_root_node, new_internal_node);
     }
 
-    return desc->MwCAS();
+    return desc.MwCAS();
   }
 
  public:
@@ -612,20 +603,12 @@ class BzTree
         max_merged_size_{max_merged_size},
         index_epoch_{0}
   {
-    // initialize a MwCAS descriptor pool
-    if (const auto cpu_num = std::thread::hardware_concurrency(); cpu_num > 0) {
-      descriptor_pool_.reset(new pmwcas::DescriptorPool{kDescriptorPoolSize, cpu_num});
-    } else {
-      // if the program cannot recognize the number of CPU cores, use 64 partitions as default
-      descriptor_pool_.reset(new pmwcas::DescriptorPool{kDescriptorPoolSize, 64});
-    }
-
     // initialize a tree structure: one internal node with one leaf node
     const auto root_node = InternalNode::CreateInitialRoot(node_size_);
-    root_.payload = PtrPayload{root_node};
+    root_ = reinterpret_cast<uintptr_t>(root_node);
   }
 
-  ~BzTree() { pmwcas::Thread::ClearRegistry(); }
+  ~BzTree() = default;
 
   BzTree(const BzTree &) = delete;
   BzTree &operator=(const BzTree &) = delete;
@@ -640,7 +623,7 @@ class BzTree
   Read(const void *key)
   {
     auto leaf_node = SearchLeafNode(key, true);
-    auto [return_code, payload] = leaf_node->Read(key, comparator_, descriptor_pool_->GetEpoch());
+    auto [return_code, payload] = leaf_node->Read(key, comparator_);
     if (return_code == BaseNode::NodeReturnCode::kSuccess) {
       return std::pair{ReturnCode::kSuccess, std::move(payload)};
     } else {
@@ -684,8 +667,7 @@ class BzTree
   {
     auto leaf_node = SearchLeafNode(begin_key, begin_is_closed);
     auto [return_code, scan_results] =
-        leaf_node->Scan(begin_key, begin_is_closed, end_key, end_is_closed, comparator_,
-                        descriptor_pool_->GetEpoch());
+        leaf_node->Scan(begin_key, begin_is_closed, end_key, end_is_closed, comparator_);
     if (return_code == BaseNode::NodeReturnCode::kScanInProgress) {
       return {ReturnCode::kScanInProgress, std::move(scan_results)};
     } else {
@@ -710,8 +692,8 @@ class BzTree
     bool is_retry = false;
     do {
       leaf_node = SearchLeafNode(key, true);
-      std::tie(return_code, node_status) = leaf_node->Write(
-          key, key_length, payload, payload_length, index_epoch_, descriptor_pool_.get());
+      std::tie(return_code, node_status) =
+          leaf_node->Write(key, key_length, payload, payload_length, index_epoch_);
       if (is_retry && return_code == BaseNode::NodeReturnCode::kFrozen) {
         // invoke consolidation in this thread
         ConsolidateLeafNode(leaf_node, key, key_length);
@@ -744,8 +726,7 @@ class BzTree
     do {
       leaf_node = SearchLeafNode(key, true);
       std::tie(return_code, node_status) =
-          leaf_node->Insert(key, key_length, payload, payload_length, index_epoch_, comparator_,
-                            descriptor_pool_.get());
+          leaf_node->Insert(key, key_length, payload, payload_length, index_epoch_, comparator_);
       if (return_code == BaseNode::NodeReturnCode::kKeyExist) {
         return ReturnCode::kKeyExist;
       } else if (is_retry && return_code == BaseNode::NodeReturnCode::kFrozen) {
@@ -781,7 +762,7 @@ class BzTree
       leaf_node = SearchLeafNode(key, true);
       std::tie(return_code, node_status) =
           leaf_node->Update(key, key_length, payload, payload_length,  //
-                            index_epoch_, comparator_, descriptor_pool_.get());
+                            index_epoch_, comparator_);
       if (return_code == BaseNode::NodeReturnCode::kKeyNotExist) {
         return ReturnCode::kKeyNotExist;
       } else if (is_retry && return_code == BaseNode::NodeReturnCode::kFrozen) {
@@ -813,8 +794,7 @@ class BzTree
     bool is_retry = false;
     do {
       leaf_node = SearchLeafNode(key, true);
-      std::tie(return_code, node_status) =
-          leaf_node->Delete(key, key_length, comparator_, descriptor_pool_.get());
+      std::tie(return_code, node_status) = leaf_node->Delete(key, key_length, comparator_);
       if (return_code == BaseNode::NodeReturnCode::kKeyNotExist) {
         return ReturnCode::kKeyNotExist;
       } else if (is_retry && return_code == BaseNode::NodeReturnCode::kFrozen) {
