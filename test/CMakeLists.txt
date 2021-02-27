@@ -1,7 +1,41 @@
+#--------------------------------------------------------------------------------------#
+# Copy and paste from GoogleTest doc.
+#--------------------------------------------------------------------------------------#
+configure_file(CMakeLists.txt.in googletest-download/CMakeLists.txt)
+execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
+  RESULT_VARIABLE result
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/googletest-download )
+if(result)
+  message(FATAL_ERROR "CMake step for googletest failed: ${result}")
+endif()
+execute_process(COMMAND ${CMAKE_COMMAND} --build .
+  RESULT_VARIABLE result
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/googletest-download )
+if(result)
+  message(FATAL_ERROR "Build step for googletest failed: ${result}")
+endif()
+
+# Prevent overriding the parent project's compiler/linker
+# settings on Windows
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+
+# Add googletest directly to our build. This defines
+# the gtest and gtest_main targets.
+add_subdirectory(${CMAKE_CURRENT_BINARY_DIR}/googletest-src
+                 ${CMAKE_CURRENT_BINARY_DIR}/googletest-build
+                 EXCLUDE_FROM_ALL)
+#--------------------------------------------------------------------------------------#
+# End of copy and paste
+#--------------------------------------------------------------------------------------#
+
 # define function to add unit tests in the same format
 function(ADD_BZTREE_TEST BZTREE_TEST_TARGET)
-  add_executable(${BZTREE_TEST_TARGET} "${CMAKE_CURRENT_SOURCE_DIR}/${BZTREE_TEST_TARGET}.cpp")
-  target_compile_features(${BZTREE_TEST_TARGET} PRIVATE "cxx_std_20")
+  add_executable(${BZTREE_TEST_TARGET}
+    "${CMAKE_CURRENT_SOURCE_DIR}/${BZTREE_TEST_TARGET}.cpp"
+  )
+  target_compile_features(${BZTREE_TEST_TARGET} PRIVATE
+    "cxx_std_17"
+  )
   target_compile_options(${BZTREE_TEST_TARGET} PRIVATE
     -Wall
     -Wextra
@@ -11,20 +45,19 @@ function(ADD_BZTREE_TEST BZTREE_TEST_TARGET)
   )
   target_include_directories(${BZTREE_TEST_TARGET} PRIVATE
     "${BZTREE_SOURCE_DIR}/src"
-    "${PMWCAS_SOURCE_DIR}"
-    "${PMWCAS_SOURCE_DIR}/src"
-    "${PMWCAS_SOURCE_DIR}/include"
-    "${GOOGLETEST_SOURCE_DIR}/include"
   )
   target_link_libraries(${BZTREE_TEST_TARGET} PRIVATE
-    mwcas_static
+    pthread
+    mwcas
     gtest_main
   )
   add_dependencies(${BZTREE_TEST_TARGET}
-    mwcas_static
-    gtest_main
+    mwcas
   )
-  add_test(NAME ${BZTREE_TEST_TARGET} COMMAND $<TARGET_FILE:${BZTREE_TEST_TARGET}>)
+  add_test(
+    NAME ${BZTREE_TEST_TARGET}
+    COMMAND $<TARGET_FILE:${BZTREE_TEST_TARGET}>
+  )
 endfunction()
 
 # add unit tests to build targets
