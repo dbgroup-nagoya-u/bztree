@@ -1,7 +1,7 @@
 // Copyright (c) DB Group, Nagoya University. All rights reserved.
 // Licensed under the MIT license.
 
-#include "status_word.hpp"
+#include "bztree/components/status_word.hpp"
 
 #include <gtest/gtest.h>
 

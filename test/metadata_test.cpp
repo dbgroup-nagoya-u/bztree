@@ -1,7 +1,7 @@
 // Copyright (c) DB Group, Nagoya University. All rights reserved.
 // Licensed under the MIT license.
 
-#include "metadata.hpp"
+#include "bztree/components/metadata.hpp"
 
 #include "gtest/gtest.h"
 

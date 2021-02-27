@@ -12,8 +12,8 @@
 #include <utility>
 #include <vector>
 
-#include "internal_node.hpp"
-#include "leaf_node.hpp"
+#include "components/internal_node.hpp"
+#include "components/leaf_node.hpp"
 
 namespace bztree
 {

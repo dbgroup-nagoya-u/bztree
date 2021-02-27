@@ -1,7 +1,7 @@
 // Copyright (c) DB Group, Nagoya University. All rights reserved.
 // Licensed under the MIT license.
 
-#include "leaf_node.hpp"
+#include "bztree/components/leaf_node.hpp"
 
 #include <gtest/gtest.h>
 

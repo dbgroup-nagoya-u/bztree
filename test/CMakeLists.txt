@@ -44,7 +44,7 @@ function(ADD_BZTREE_TEST BZTREE_TEST_TARGET)
     $<$<STREQUAL:${CMAKE_BUILD_TYPE},"Debug">:"-g3 -O0 -pg">
   )
   target_include_directories(${BZTREE_TEST_TARGET} PRIVATE
-    "${BZTREE_SOURCE_DIR}/src"
+    "${BZTREE_SOURCE_DIR}/include"
   )
   target_link_libraries(${BZTREE_TEST_TARGET} PRIVATE
     pthread

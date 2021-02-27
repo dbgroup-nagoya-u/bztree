@@ -35,7 +35,7 @@ target_compile_definitions(bztree INTERFACE
   MWCAS_CAPACITY=3
 )
 target_include_directories(bztree INTERFACE
-  "${BZTREE_SOURCE_DIR}/src"
+  "${BZTREE_SOURCE_DIR}/include"
 )
 target_link_libraries(bztree INTERFACE
   mwcas
