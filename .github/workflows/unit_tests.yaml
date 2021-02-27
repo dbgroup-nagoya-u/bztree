@@ -22,7 +22,7 @@ jobs:
       with:
         repository: dbgroup-nagoya-u/mwcas
         path: external/mwcas
-        ssh-key: ${{secrets.SSH_KEY}}
+        ssh-key: ${{secrets.SSH_KEY_FOR_ACTIONS}}
         persist-credentials: false
 
     - name: Create Build Environment
