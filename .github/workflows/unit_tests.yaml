@@ -1,6 +1,10 @@
 name: Unit Tests
 
-on: [pull_request]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
 
 env:
   BUILD_TYPE: Release
@@ -13,24 +17,18 @@ jobs:
     - name: Clone Main Repository
       uses: actions/checkout@v2
 
-    - name: Clone Submodule - PMwCAS
+    - name: Clone Submodule - MwCAS
       uses: actions/checkout@v2
       with:
-        repository: dbgroup-nagoya-u/pmwcas
-        path: external/pmwcas
+        repository: dbgroup-nagoya-u/mwcas
+        path: external/mwcas
         ssh-key: ${{secrets.SSH_KEY}}
         persist-credentials: false
-
-    - name: Clone Submodule - GoogleTest
-      uses: actions/checkout@v2
-      with:
-        repository: google/googletest
-        path: external/googletest
 
     - name: Create Build Environment
       shell: bash
       run: |
-        sudo apt-get update && sudo apt-get install -y build-essential cmake libnuma-dev
+        sudo apt-get install -y build-essential cmake
         cmake -E make_directory ${{github.workspace}}/build
 
     - name: Configure CMake
