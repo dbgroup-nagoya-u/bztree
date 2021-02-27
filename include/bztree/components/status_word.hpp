@@ -22,13 +22,17 @@ class alignas(kWordLength) StatusWord
   uint64_t block_size_ : 22;
   uint64_t deleted_size_ : 22;
   uint64_t frozen_ : 1;
+  uint64_t control_region_ : 3;
 
  public:
   /*################################################################################################
    * Public constructors/destructors
    *##############################################################################################*/
 
-  constexpr StatusWord() : record_count_{0}, block_size_{0}, deleted_size_{0}, frozen_{0} {}
+  constexpr StatusWord()
+      : record_count_{0}, block_size_{0}, deleted_size_{0}, frozen_{0}, control_region_{0}
+  {
+  }
 
   ~StatusWord() = default;
 
@@ -117,5 +121,7 @@ class alignas(kWordLength) StatusWord
     return new_status;
   }
 };
+
+static_assert(sizeof(StatusWord) == kWordLength);
 
 }  // namespace bztree

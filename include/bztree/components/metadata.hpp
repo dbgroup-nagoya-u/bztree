@@ -23,18 +23,30 @@ class alignas(kWordLength) Metadata
   uint64_t in_progress_ : 1;
   uint64_t key_length_ : 16;
   uint64_t total_length_ : 16;
+  uint64_t control_region_ : 3;
 
  public:
   /*################################################################################################
    * Public getters/setters
    *##############################################################################################*/
 
-  constexpr Metadata() : offset_{0}, visible_{0}, in_progress_{0}, key_length_{0}, total_length_{0}
+  constexpr Metadata()
+      : offset_{0},
+        visible_{0},
+        in_progress_{0},
+        key_length_{0},
+        total_length_{0},
+        control_region_{0}
   {
   }
 
   constexpr explicit Metadata(const bool is_in_progress)
-      : offset_{0}, visible_{0}, in_progress_{is_in_progress}, key_length_{0}, total_length_{0}
+      : offset_{0},
+        visible_{0},
+        in_progress_{is_in_progress},
+        key_length_{0},
+        total_length_{0},
+        control_region_{0}
   {
   }
 
