@@ -19,7 +19,7 @@ namespace bztree
 using dbgroup::atomic::MwCASDescriptor;
 using dbgroup::atomic::ReadMwCASField;
 
-class alignas(kWordLength) BaseNode
+class alignas(kCacheLineSize) BaseNode
 {
  protected:
   /*################################################################################################
@@ -161,8 +161,8 @@ class alignas(kWordLength) BaseNode
   {
     assert((node_size % kWordLength) == 0);
 
-    auto aligned_page = aligned_alloc(kWordLength, node_size);
-    auto new_node = new (aligned_page) BaseNode{node_size, is_leaf};
+    auto page = malloc(node_size);
+    auto new_node = new (page) BaseNode{node_size, is_leaf};
     return new_node;
   }
 
@@ -211,12 +211,6 @@ class alignas(kWordLength) BaseNode
   {
     const auto meta = GetMetadata(index);
     return {GetKeyAddr(meta), meta.GetKeyLength()};
-  }
-
-  constexpr BaseNode *
-  GetPayloadAsNode(const size_t index) const
-  {
-    return CastPayload<BaseNode>(GetPayloadAddr(GetMetadata(index)));
   }
 
   void

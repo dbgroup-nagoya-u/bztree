@@ -33,6 +33,11 @@ class alignas(kWordLength) Metadata
   {
   }
 
+  constexpr explicit Metadata(const bool is_in_progress)
+      : offset_{0}, visible_{0}, in_progress_{is_in_progress}, key_length_{0}, total_length_{0}
+  {
+  }
+
   ~Metadata() = default;
 
   Metadata(const Metadata &) = default;
@@ -96,11 +101,10 @@ class alignas(kWordLength) Metadata
    * Public utility functions
    *##############################################################################################*/
 
-  constexpr Metadata
-  InitForInsert(const size_t index_epoch) const
+  static constexpr Metadata
+  GetInsertingMeta(const size_t index_epoch)
   {
-    auto inserting_meta = *this;
-    inserting_meta.in_progress_ = true;
+    auto inserting_meta = Metadata{true};
     inserting_meta.offset_ = index_epoch;
     return inserting_meta;
   }
@@ -120,8 +124,8 @@ class alignas(kWordLength) Metadata
       const size_t total_length) const
   {
     auto new_meta = *this;
-    new_meta.visible_ = true;
-    new_meta.in_progress_ = false;
+    new_meta.visible_ = 1;
+    new_meta.in_progress_ = 0;
     new_meta.offset_ = offset;
     new_meta.key_length_ = key_length;
     new_meta.total_length_ = total_length;
@@ -132,8 +136,8 @@ class alignas(kWordLength) Metadata
   DeleteRecordInfo() const
   {
     auto new_meta = *this;
-    new_meta.visible_ = false;
-    new_meta.in_progress_ = false;
+    new_meta.visible_ = 0;
+    new_meta.in_progress_ = 0;
     return new_meta;
   }
 };

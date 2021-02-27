@@ -216,8 +216,8 @@ class LeafNode : public BaseNode
   {
     assert((node_size % kWordLength) == 0);
 
-    auto aligned_page = aligned_alloc(kWordLength, node_size);
-    auto new_node = new (aligned_page) LeafNode{node_size};
+    auto page = malloc(node_size);
+    auto new_node = new (page) LeafNode{node_size};
     return new_node;
   }
 
@@ -368,7 +368,7 @@ class LeafNode : public BaseNode
     StatusWord current_status;
     size_t record_count;
     const auto total_length = key_length + payload_length;
-    const auto inserting_meta = Metadata{}.InitForInsert(index_epoch);
+    const auto inserting_meta = Metadata::GetInsertingMeta(index_epoch);
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: reserve free space to write a record
@@ -452,7 +452,7 @@ class LeafNode : public BaseNode
     StatusWord current_status;
     size_t record_count;
     const auto total_length = key_length + payload_length;
-    const auto inserting_meta = Metadata{}.InitForInsert(index_epoch);
+    const auto inserting_meta = Metadata::GetInsertingMeta(index_epoch);
 
     // local flags for insertion
     auto uniqueness = KeyExistence::kNotExist;
@@ -562,7 +562,7 @@ class LeafNode : public BaseNode
     StatusWord current_status;
     size_t record_count;
     const auto total_length = key_length + payload_length;
-    const auto inserting_meta = Metadata{}.InitForInsert(index_epoch);
+    const auto inserting_meta = Metadata::GetInsertingMeta(index_epoch);
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: reserve free space to insert a record

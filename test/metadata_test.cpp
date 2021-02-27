@@ -37,7 +37,7 @@ TEST_F(MetadataFixture, InitForInsert_InitMeta_InitWithoutSideEffect)
 {
   const Metadata meta;
   const auto epoch = 256, different_epoch = 512;
-  const auto test_meta = meta.InitForInsert(epoch);
+  const auto test_meta = Metadata::GetInsertingMeta(epoch);
 
   EXPECT_EQ(kWordLength, sizeof(test_meta));
   EXPECT_FALSE(test_meta.IsVisible());
@@ -90,7 +90,8 @@ TEST_F(MetadataFixture, SetRecordInfo_InsertedMeta_SetWithoutSideEffect)
   const Metadata meta;
   const auto epoch = 0;
   const auto offset = 256, key_length = 16, total_length = 32;
-  const auto test_meta = meta.InitForInsert(epoch).SetRecordInfo(offset, key_length, total_length);
+  const auto test_meta =
+      Metadata::GetInsertingMeta(epoch).SetRecordInfo(offset, key_length, total_length);
 
   EXPECT_EQ(kWordLength, sizeof(test_meta));
   EXPECT_TRUE(test_meta.IsVisible());
@@ -109,8 +110,9 @@ TEST_F(MetadataFixture, DeletePayload_InitMeta_DeleteWithoutSideEffect)
   const Metadata meta;
   const auto epoch = 0;
   const auto offset = 256, key_length = 16, total_length = 32;
-  const auto test_meta =
-      meta.InitForInsert(epoch).SetRecordInfo(offset, key_length, total_length).DeleteRecordInfo();
+  const auto test_meta = Metadata::GetInsertingMeta(epoch)
+                             .SetRecordInfo(offset, key_length, total_length)
+                             .DeleteRecordInfo();
 
   EXPECT_EQ(kWordLength, sizeof(test_meta));
   EXPECT_FALSE(test_meta.IsVisible());

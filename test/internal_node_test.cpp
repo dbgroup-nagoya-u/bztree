@@ -302,13 +302,13 @@ TEST_F(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectPointersToChildren)
 
   auto left_addr = reinterpret_cast<uintptr_t>(left_node.get());
   auto [rc, u_ptr] = new_root->Read(key_ptrs[5], comp);
-  auto read_left_addr = PayloadToPtr(u_ptr.get());
+  auto read_left_addr = PayloadToUIntptr(u_ptr.get());
 
   EXPECT_EQ(left_addr, read_left_addr);
 
   auto right_addr = reinterpret_cast<uintptr_t>(right_node.get());
   std::tie(rc, u_ptr) = new_root->Read(key_ptrs[10], comp);
-  auto read_right_addr = PayloadToPtr(u_ptr.get());
+  auto read_right_addr = PayloadToUIntptr(u_ptr.get());
 
   EXPECT_EQ(right_addr, read_right_addr);
 }
@@ -368,17 +368,17 @@ TEST_F(InternalNodeFixture, NewParent_AfterSplit_HasCorrectPointersToChildren)
   auto left_addr = reinterpret_cast<uintptr_t>(split_left.get());
   auto [rc, u_ptr] = new_parent->Read(key_ptrs[3], comp);
 
-  EXPECT_EQ(left_addr, PayloadToPtr(u_ptr.get()));
+  EXPECT_EQ(left_addr, PayloadToUIntptr(u_ptr.get()));
 
   auto split_addr = reinterpret_cast<uintptr_t>(split_right.get());
   std::tie(rc, u_ptr) = new_parent->Read(key_ptrs[6], comp);
 
-  EXPECT_EQ(split_addr, PayloadToPtr(u_ptr.get()));
+  EXPECT_EQ(split_addr, PayloadToUIntptr(u_ptr.get()));
 
   auto right_addr = reinterpret_cast<uintptr_t>(right_node.get());
   std::tie(rc, u_ptr) = new_parent->Read(key_ptrs[9], comp);
 
-  EXPECT_EQ(right_addr, PayloadToPtr(u_ptr.get()));
+  EXPECT_EQ(right_addr, PayloadToUIntptr(u_ptr.get()));
 }
 
 TEST_F(InternalNodeFixture, NewParent_AfterMerge_HasCorrectStatus)
@@ -428,7 +428,7 @@ TEST_F(InternalNodeFixture, NewParent_AfterMerge_HasCorrectPointersToChildren)
   auto merged_addr = reinterpret_cast<uintptr_t>(merged_node.get());
   auto [rc, u_ptr] = new_parent->Read(key_ptrs[9], comp);
 
-  EXPECT_EQ(merged_addr, PayloadToPtr(u_ptr.get()));
+  EXPECT_EQ(merged_addr, PayloadToUIntptr(u_ptr.get()));
 }
 
 TEST_F(InternalNodeFixture, CanMergeLeftSibling_SiblingHasSufficentSpace_CanBeMerged)

@@ -26,17 +26,10 @@ enum ReturnCode
   kKeyExist
 };
 
-constexpr uintptr_t
-PayloadToPtr(const void *payload)
+uintptr_t
+PayloadToUIntptr(const void *payload)
 {
-  return static_cast<uintptr_t>(*static_cast<uint64_t *>(const_cast<void *>(payload)));
-}
-
-template <class T>
-constexpr T *
-CastPayload(const void *payload)
-{
-  return static_cast<T *>(reinterpret_cast<void *>(PayloadToPtr(payload)));
+  return *reinterpret_cast<const uint64_t *>(payload);
 }
 
 template <class To, class From>
@@ -104,10 +97,13 @@ struct CompareAsInt64 {
  * Common constants and utility functions
  *------------------------------------------------------------------------------------------------*/
 
-// this code assumes that one word is represented by 8 bytes.
+/// Assumes that one word is represented by 8 bytes
 constexpr size_t kWordLength = 8;
 
-// header length in bytes
+/// Assumes that one word is represented by 8 bytes
+constexpr size_t kCacheLineSize = 64;
+
+/// Header length in bytes
 constexpr size_t kHeaderLength = 2 * kWordLength;
 
 /**

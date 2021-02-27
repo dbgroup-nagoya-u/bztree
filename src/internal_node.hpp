@@ -75,8 +75,8 @@ class InternalNode : public BaseNode
   {
     assert((node_size % kWordLength) == 0);
 
-    auto aligned_page = aligned_alloc(kWordLength, node_size);
-    auto new_node = new (aligned_page) InternalNode{node_size};
+    auto page = malloc(node_size);
+    auto new_node = new (page) InternalNode{node_size};
     return new_node;
   }
 
@@ -84,11 +84,10 @@ class InternalNode : public BaseNode
    * Public getters/setters
    *##############################################################################################*/
 
-  constexpr BaseNode *
+  BaseNode *
   GetChildNode(const size_t index) const
   {
-    const auto meta = GetMetadata(index);
-    return CastPayload<BaseNode>(GetPayloadAddr(meta));
+    return reinterpret_cast<BaseNode *>(PayloadToUIntptr(GetPayloadAddr(GetMetadata(index))));
   }
 
   constexpr bool
