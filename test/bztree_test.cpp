@@ -1,9 +1,8 @@
 // Copyright (c) DB Group, Nagoya University. All rights reserved.
 // Licensed under the MIT license.
 
-#include "bztree.hpp"
+#include "bztree/bztree.hpp"
 
-#include <common/thread_local_storage.h>
 #include <gtest/gtest.h>
 
 #include <memory>
@@ -60,7 +59,6 @@ class BzTreeUInt64Fixture : public testing::Test
   void
   TearDown() override
   {
-    pmwcas::Thread::ClearRegistry();
   }
 
   constexpr uint64_t

@@ -1,6 +1,4 @@
-[submodule "external/googletest"]
-	path = external/googletest
-	url = https://github.com/google/googletest.git
-[submodule "external/pmwcas"]
-	path = external/pmwcas
-	url = git@github.com:dbgroup-nagoya-u/pmwcas.git
+[submodule "external/mwcas"]
+	path = external/mwcas
+	url = git@github.com:dbgroup-nagoya-u/mwcas.git
+	branch = main

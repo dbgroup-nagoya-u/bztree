@@ -3,9 +3,6 @@
 
 #pragma once
 
-#include <common/epoch.h>
-#include <mwcas/mwcas.h>
-
 #include <algorithm>
 #include <map>
 #include <memory>
@@ -14,41 +11,42 @@
 #include <vector>
 
 #include "metadata.hpp"
+#include "mwcas/mwcas_descriptor.hpp"
 #include "status_word.hpp"
 
 namespace bztree
 {
-class alignas(kWordLength) BaseNode
+using dbgroup::atomic::MwCASDescriptor;
+using dbgroup::atomic::ReadMwCASField;
+
+class alignas(kCacheLineSize) BaseNode
 {
- private:
+ protected:
   /*################################################################################################
-   * Internal member variables
+   * Internal inherited variables
    *##############################################################################################*/
 
   uint64_t node_size_ : 32;
 
-  bool is_leaf_ : 1;
+  uint64_t is_leaf_ : 1;
 
   uint64_t sorted_count_ : 16;
 
   uint64_t : 0;
 
-  StatusUnion status_;
+  StatusWord status_;
 
-  MetaUnion meta_array_[0];
+  Metadata meta_array_[0];
 
- protected:
   /*################################################################################################
    * Internally inherited constructors
    *##############################################################################################*/
 
-  explicit BaseNode(const size_t node_size, const bool is_leaf)
+  BaseNode(  //
+      const size_t node_size,
+      const bool is_leaf)
+      : node_size_{node_size}, is_leaf_{is_leaf}, sorted_count_{0}, status_{}
   {
-    // initialize header
-    SetNodeSize(node_size);
-    SetStatusWord(StatusWord{});
-    SetIsLeaf(is_leaf);
-    SetSortedCount(0);
   }
 
   /*################################################################################################
@@ -56,35 +54,11 @@ class alignas(kWordLength) BaseNode
    *##############################################################################################*/
 
   void
-  SetNodeSize(const size_t size)
-  {
-    node_size_ = size;
-  }
-
-  void
-  SetStatusWord(const StatusWord status)
-  {
-    status_.word = status;
-  }
-
-  void
-  SetIsLeaf(const bool is_leaf)
-  {
-    is_leaf_ = is_leaf;
-  }
-
-  void
-  SetSortedCount(const size_t sorted_count)
-  {
-    sorted_count_ = sorted_count;
-  }
-
-  void
   SetMetadata(  //
       const size_t index,
       const Metadata new_meta)
   {
-    (meta_array_ + index)->meta = new_meta;
+    meta_array_[index] = new_meta;
   }
 
   constexpr void *
@@ -169,11 +143,12 @@ class alignas(kWordLength) BaseNode
    * Public constructors/destructors
    *##############################################################################################*/
 
+  ~BaseNode() = default;
+
   BaseNode(const BaseNode &) = delete;
   BaseNode &operator=(const BaseNode &) = delete;
-  BaseNode(BaseNode &&) = default;
-  BaseNode &operator=(BaseNode &&) = default;
-  ~BaseNode() = default;
+  BaseNode(BaseNode &&) = delete;
+  BaseNode &operator=(BaseNode &&) = delete;
 
   /*################################################################################################
    * Public builders
@@ -186,8 +161,8 @@ class alignas(kWordLength) BaseNode
   {
     assert((node_size % kWordLength) == 0);
 
-    auto aligned_page = aligned_alloc(kWordLength, node_size);
-    auto new_node = new (aligned_page) BaseNode{node_size, is_leaf};
+    auto page = malloc(node_size);
+    auto new_node = new (page) BaseNode{node_size, is_leaf};
     return new_node;
   }
 
@@ -216,21 +191,19 @@ class alignas(kWordLength) BaseNode
   constexpr StatusWord
   GetStatusWord() const
   {
-    return status_.word;
+    return status_;
   }
 
   StatusWord
-  GetStatusWordProtected(pmwcas::EpochManager *epoch)
+  GetStatusWordProtected() const
   {
-    return GetStatusWord();
-    // const auto protected_status = status_.target_field.GetValue(epoch);
-    // return StatusUnion{protected_status}.word;
+    return ReadMwCASField<StatusWord>(&status_);
   }
 
   constexpr Metadata
   GetMetadata(const size_t index) const
   {
-    return (meta_array_ + index)->meta;
+    return meta_array_[index];
   }
 
   std::pair<void *, size_t>
@@ -240,47 +213,35 @@ class alignas(kWordLength) BaseNode
     return {GetKeyAddr(meta), meta.GetKeyLength()};
   }
 
-  constexpr BaseNode *
-  GetPayloadAsNode(const size_t index) const
-  {
-    return CastPayload<BaseNode>(GetPayloadAddr(GetMetadata(index)));
-  }
-
-  uint32_t
+  void
   SetStatusForMwCAS(  //
+      MwCASDescriptor &desc,
       const StatusWord old_status,
-      const StatusWord new_status,
-      pmwcas::Descriptor *descriptor)
+      const StatusWord new_status)
   {
-    auto status_addr = &status_.int_word;
-    auto old_stat_int = StatusUnion{old_status}.int_word;
-    auto new_stat_int = StatusUnion{new_status}.int_word;
-    return descriptor->AddEntry(status_addr, old_stat_int, new_stat_int);
+    desc.AddMwCASTarget(&status_, old_status, new_status);
   }
 
-  uint32_t
+  void
   SetMetadataForMwCAS(  //
+      MwCASDescriptor &desc,
       const size_t index,
       const Metadata old_meta,
-      const Metadata new_meta,
-      pmwcas::Descriptor *descriptor)
+      const Metadata new_meta)
   {
-    auto meta_addr = &((meta_array_ + index)->int_meta);
-    auto old_meta_int = MetaUnion{old_meta}.int_meta;
-    auto new_meta_int = MetaUnion{new_meta}.int_meta;
-    return descriptor->AddEntry(meta_addr, old_meta_int, new_meta_int);
+    desc.AddMwCASTarget(meta_array_ + index, old_meta, new_meta);
   }
 
-  uint32_t
+  void
   SetPayloadForMwCAS(  //
+      MwCASDescriptor &desc,
       const size_t index,
       const void *old_payload,
-      const void *new_payload,
-      pmwcas::Descriptor *descriptor)
+      const void *new_payload)
   {
-    return descriptor->AddEntry(static_cast<uint64_t *>(GetPayloadAddr(GetMetadata(index))),
-                                PayloadUnion{old_payload}.int_payload,
-                                PayloadUnion{new_payload}.int_payload);
+    desc.AddMwCASTarget(GetPayloadAddr(GetMetadata(index)),
+                        reinterpret_cast<uintptr_t>(old_payload),
+                        reinterpret_cast<uintptr_t>(new_payload));
   }
 
   /*################################################################################################
@@ -296,20 +257,19 @@ class alignas(kWordLength) BaseNode
    * 2) `kFrozen` if this node is already frozen.
    */
   NodeReturnCode
-  Freeze(pmwcas::DescriptorPool *pmwcas_pool)
+  Freeze()
   {
-    pmwcas::Descriptor *pd;
-    auto epoch_manager = pmwcas_pool->GetEpoch();
+    bool mwcas_success;
     do {
-      const auto current_status = GetStatusWordProtected(epoch_manager);
+      const auto current_status = GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         return NodeReturnCode::kFrozen;
       }
 
-      const auto new_status = current_status.Freeze();
-      pd = pmwcas_pool->AllocateDescriptor();
-      SetStatusForMwCAS(current_status, new_status, pd);
-    } while (!pd->MwCAS());
+      MwCASDescriptor desc;
+      SetStatusForMwCAS(desc, current_status, current_status.Freeze());
+      mwcas_success = desc.MwCAS();
+    } while (!mwcas_success);
 
     return NodeReturnCode::kSuccess;
   }

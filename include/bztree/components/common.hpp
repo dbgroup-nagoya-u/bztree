@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <mwcas/mwcas.h>
-
 #include <cassert>
 #include <cstring>
 #include <memory>
@@ -28,17 +26,10 @@ enum ReturnCode
   kKeyExist
 };
 
-constexpr uintptr_t
-PayloadToPtr(const void *payload)
+uintptr_t
+PayloadToUIntptr(const void *payload)
 {
-  return static_cast<uintptr_t>(*static_cast<uint64_t *>(const_cast<void *>(payload)));
-}
-
-template <class T>
-constexpr T *
-CastPayload(const void *payload)
-{
-  return static_cast<T *>(reinterpret_cast<void *>(PayloadToPtr(payload)));
+  return *reinterpret_cast<const uint64_t *>(payload);
 }
 
 template <class To, class From>
@@ -106,10 +97,13 @@ struct CompareAsInt64 {
  * Common constants and utility functions
  *------------------------------------------------------------------------------------------------*/
 
-// this code assumes that one word is represented by 8 bytes.
+/// Assumes that one word is represented by 8 bytes
 constexpr size_t kWordLength = 8;
 
-// header length in bytes
+/// Assumes that one word is represented by 8 bytes
+constexpr size_t kCacheLineSize = 64;
+
+/// Header length in bytes
 constexpr size_t kHeaderLength = 2 * kWordLength;
 
 /**
@@ -179,25 +173,4 @@ HaveSameAddress(const void *a, const void *b)
 {
   return a == b;
 }
-
-struct PtrPayload {
-  uintptr_t value : 61 = 0;
-
-  constexpr explicit PtrPayload(const void *ptr) : value{reinterpret_cast<uintptr_t>(ptr)} {}
-
- private:
-  uint64_t control : 3 = 0;
-};
-
-union PayloadUnion {
-  PtrPayload payload;
-  uint64_t int_payload;
-  pmwcas::MwcTargetField<uint64_t> target_field;
-
-  constexpr explicit PayloadUnion() : int_payload{0} {}
-  constexpr explicit PayloadUnion(const uint64_t int_payload) : int_payload{int_payload} {}
-  constexpr explicit PayloadUnion(const PtrPayload payload) : payload{payload} {}
-  constexpr explicit PayloadUnion(const void *ptr) : payload{PtrPayload{ptr}} {}
-};
-
 }  // namespace bztree
