@@ -17,6 +17,7 @@ set(BZTREE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 set(MWCAS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/mwcas")
 
 # BzTree uses the MwCAS library with three-words swap
+set(MWCAS_CAPACITY "3" CACHE STRING "Use MwCAS with three words" FORCE)
 add_subdirectory("${MWCAS_SOURCE_DIR}")
 
 # build BzTree as a header-only library
@@ -30,9 +31,6 @@ target_compile_options(bztree INTERFACE
   $<$<STREQUAL:${CMAKE_BUILD_TYPE},"Release">:"-O2 -march=native">
   $<$<STREQUAL:${CMAKE_BUILD_TYPE},"RelWithDebInfo">:"-g3 -Og -pg">
   $<$<STREQUAL:${CMAKE_BUILD_TYPE},"Debug">:"-g3 -O0 -pg">
-)
-target_compile_definitions(bztree INTERFACE
-  MWCAS_CAPACITY=3
 )
 target_include_directories(bztree INTERFACE
   "${BZTREE_SOURCE_DIR}/include"
