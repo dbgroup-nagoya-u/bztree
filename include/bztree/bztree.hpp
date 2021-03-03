@@ -15,7 +15,7 @@
 #include "components/internal_node.hpp"
 #include "components/leaf_node.hpp"
 
-namespace bztree
+namespace dbgroup::index::bztree
 {
 template <class Compare>
 class BzTree
@@ -816,4 +816,4 @@ class BzTree
   }
 };
 
-}  // namespace bztree
+}  // namespace dbgroup::index::bztree

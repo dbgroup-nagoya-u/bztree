@@ -5,7 +5,7 @@
 
 #include "gtest/gtest.h"
 
-namespace bztree
+namespace dbgroup::index::bztree
 {
 class MetadataFixture : public testing::Test
 {
@@ -125,4 +125,4 @@ TEST_F(MetadataFixture, DeletePayload_InitMeta_DeleteWithoutSideEffect)
   EXPECT_FALSE(test_meta.IsCorrupted(epoch));
 }
 
-}  // namespace bztree
+}  // namespace dbgroup::index::bztree

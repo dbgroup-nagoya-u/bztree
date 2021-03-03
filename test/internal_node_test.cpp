@@ -11,7 +11,7 @@
 
 using std::byte;
 
-namespace bztree
+namespace dbgroup::index::bztree
 {
 static constexpr size_t kDefaultNodeSize = 256;
 static constexpr size_t kDefaultBlockSizeThreshold = 256;
@@ -542,4 +542,4 @@ TEST_F(InternalNodeFixture, CanMergeRightSibling_NoSibling_CannotBeMerged)
   EXPECT_FALSE(can_be_merged);
 }
 
-}  // namespace bztree
+}  // namespace dbgroup::index::bztree

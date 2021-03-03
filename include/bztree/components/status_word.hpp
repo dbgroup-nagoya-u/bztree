@@ -5,7 +5,7 @@
 
 #include "common.hpp"
 
-namespace bztree
+namespace dbgroup::index::bztree
 {
 /**
  * @brief Status word accessor:
@@ -124,4 +124,4 @@ class alignas(kWordLength) StatusWord
 
 static_assert(sizeof(StatusWord) == kWordLength);
 
-}  // namespace bztree
+}  // namespace dbgroup::index::bztree

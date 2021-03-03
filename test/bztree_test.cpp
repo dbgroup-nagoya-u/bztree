@@ -9,7 +9,7 @@
 
 using std::byte;
 
-namespace bztree
+namespace dbgroup::index::bztree
 {
 class BzTreeUInt64Fixture : public testing::Test
 {
@@ -527,4 +527,4 @@ TEST_F(BzTreeUInt64Fixture, Merge_OrderedKeyWritesDeletes_ReadRemainingKey)
   }
 }
 
-}  // namespace bztree
+}  // namespace dbgroup::index::bztree

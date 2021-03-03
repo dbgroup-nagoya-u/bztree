@@ -14,7 +14,7 @@
 #include "mwcas/mwcas_descriptor.hpp"
 #include "status_word.hpp"
 
-namespace bztree
+namespace dbgroup::index::bztree
 {
 using dbgroup::atomic::mwcas::MwCASDescriptor;
 using dbgroup::atomic::mwcas::ReadMwCASField;
@@ -324,4 +324,4 @@ class alignas(kCacheLineSize) BaseNode
   }
 };
 
-}  // namespace bztree
+}  // namespace dbgroup::index::bztree

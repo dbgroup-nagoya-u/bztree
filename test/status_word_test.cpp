@@ -5,7 +5,7 @@
 
 #include <gtest/gtest.h>
 
-namespace bztree
+namespace dbgroup::index::bztree
 {
 class StatusWordFixture : public testing::Test
 {
@@ -59,4 +59,4 @@ TEST_F(StatusWordFixture, AddRecordInfo_InitialStatus_AddInfoWithoutSideEffect)
   EXPECT_EQ((kWordLength * 16) + block_size - deleted_size, updated_status.GetLiveDataSize());
 }
 
-}  // namespace bztree
+}  // namespace dbgroup::index::bztree

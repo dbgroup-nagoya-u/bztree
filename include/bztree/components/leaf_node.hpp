@@ -13,7 +13,7 @@
 
 #include "base_node.hpp"
 
-namespace bztree
+namespace dbgroup::index::bztree
 {
 class LeafNode : public BaseNode
 {
@@ -782,4 +782,4 @@ class LeafNode : public BaseNode
   }
 };
 
-}  // namespace bztree
+}  // namespace dbgroup::index::bztree
