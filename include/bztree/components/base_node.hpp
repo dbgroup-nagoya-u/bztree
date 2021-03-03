@@ -16,8 +16,8 @@
 
 namespace bztree
 {
-using dbgroup::atomic::MwCASDescriptor;
-using dbgroup::atomic::ReadMwCASField;
+using dbgroup::atomic::mwcas::MwCASDescriptor;
+using dbgroup::atomic::mwcas::ReadMwCASField;
 
 class alignas(kCacheLineSize) BaseNode
 {
