@@ -8,7 +8,8 @@
       "intelliSenseMode": "linux-gcc-x64",
       "includePath": [
         "${workspaceFolder}/include",
-        "${workspaceFolder}/external/mwcas/include"
+        "${workspaceFolder}/external/mwcas/include",
+        "${workspaceFolder}/external/memory-manager/include"
       ],
       "configurationProvider": "ms-vscode.cmake-tools"
     }

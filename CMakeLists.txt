@@ -15,10 +15,14 @@ project(bztree
 # define source directories
 set(BZTREE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 set(MWCAS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/mwcas")
+set(MEMORY_MANAGER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/memory-manager")
 
 # BzTree uses the MwCAS library with three-words swap
 set(MWCAS_CAPACITY "3" CACHE STRING "Use MwCAS with three words" FORCE)
 add_subdirectory("${MWCAS_SOURCE_DIR}")
+
+# use GC
+add_subdirectory("${MEMORY_MANAGER_SOURCE_DIR}")
 
 # build BzTree as a header-only library
 add_library(bztree INTERFACE)
@@ -37,9 +41,11 @@ target_include_directories(bztree INTERFACE
 )
 target_link_libraries(bztree INTERFACE
   mwcas
+  memory_manager
 )
 add_dependencies(bztree
   mwcas
+  memory_manager
 )
 
 # build unit tests if required
