@@ -9,13 +9,11 @@
 
 using std::byte;
 
-namespace bztree
+namespace dbgroup::index::bztree
 {
-static constexpr size_t kDefaultNodeSize = 256;
-static constexpr size_t kDefaultBlockSizeThreshold = 256;
-static constexpr size_t kDefaultDeletedSizeThreshold = 256;
+static constexpr size_t kNodeSize = 256;
 static constexpr size_t kIndexEpoch = 0;
-static constexpr size_t kKeyNumForTest = 100;
+static constexpr size_t kKeyNumForTest = 10000;
 
 /*##################################################################################################
  * Unsigned int 64 bits unit tests
@@ -48,7 +46,7 @@ class LeafNodeUInt64Fixture : public testing::Test
   void
   SetUp() override
   {
-    node.reset(LeafNode::CreateEmptyNode(kDefaultNodeSize));
+    node.reset(LeafNode::CreateEmptyNode(kNodeSize));
 
     for (uint64_t index = 0; index < kKeyNumForTest; index++) {
       keys[index] = index;
@@ -110,7 +108,7 @@ TEST_F(LeafNodeUInt64Fixture, New_EmptyNode_CorrectlyInitialized)
 {
   auto status = *BitCast<StatusWord*>(ShiftAddress(node.get(), kWordLength));
 
-  EXPECT_EQ(kDefaultNodeSize, node->GetNodeSize());
+  EXPECT_EQ(kNodeSize, node->GetNodeSize());
   EXPECT_EQ(0, node->GetSortedCount());
   EXPECT_EQ(status, node->GetStatusWord());
 }
@@ -537,7 +535,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
                                    kIndexEpoch, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(kDefaultNodeSize, status.GetOccupiedSize());
+  EXPECT_EQ(kNodeSize, status.GetOccupiedSize());
 
   // insert a filled node with a not present key
   std::tie(rc, status) = node->Insert(key_ptrs[2], key_lengths[2], payload_ptrs[2],
@@ -675,7 +673,7 @@ TEST_F(LeafNodeUInt64Fixture, Update_FilledNode_GetCorrectReturnCodes)
                                    payload_length_null, kIndexEpoch, comp);
 
   EXPECT_EQ(BaseNode::NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(kDefaultNodeSize, status.GetOccupiedSize());
+  EXPECT_EQ(kNodeSize, status.GetOccupiedSize());
 
   // update a filled node with an present key
   std::tie(rc, status) = node->Update(key_null_ptr, key_length_null, payload_null_ptr,
@@ -1110,7 +1108,7 @@ TEST_F(LeafNodeUInt64Fixture, Merge_LeftSiblingNode_NodeHasCorrectStatus)
   // prepare a merged node
   WriteOrderedKeys(4, 6);
   auto this_meta = node->GatherSortedLiveMetadata(comp);
-  auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kDefaultNodeSize));
+  auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kNodeSize));
   sibling_node->Write(key_ptrs[3], key_lengths[3], payload_ptrs[3], payload_lengths[3],
                       kIndexEpoch);
   auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
@@ -1133,7 +1131,7 @@ TEST_F(LeafNodeUInt64Fixture, Merge_RightSiblingNode_NodeHasCorrectStatus)
   // prepare a merged node
   WriteOrderedKeys(4, 6);
   auto this_meta = node->GatherSortedLiveMetadata(comp);
-  auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kDefaultNodeSize));
+  auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kNodeSize));
   sibling_node->Write(key_ptrs[7], key_lengths[7], payload_ptrs[7], payload_lengths[7],
                       kIndexEpoch);
   auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
@@ -1157,7 +1155,7 @@ TEST_F(LeafNodeUInt64Fixture, Merge_LeftSiblingNode_NodeHasCorrectKeyPayloads)
   // prepare a merged node
   WriteOrderedKeys(4, 6);
   auto this_meta = node->GatherSortedLiveMetadata(comp);
-  auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kDefaultNodeSize));
+  auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kNodeSize));
   sibling_node->Write(key_ptrs[3], key_lengths[3], payload_ptrs[3], payload_lengths[3],
                       kIndexEpoch);
   auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
@@ -1177,7 +1175,7 @@ TEST_F(LeafNodeUInt64Fixture, Merge_RightSiblingNode_NodeHasCorrectKeyPayloads)
   // prepare a merged node
   WriteOrderedKeys(4, 6);
   auto this_meta = node->GatherSortedLiveMetadata(comp);
-  auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kDefaultNodeSize));
+  auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kNodeSize));
   sibling_node->Write(key_ptrs[7], key_lengths[7], payload_ptrs[7], payload_lengths[7],
                       kIndexEpoch);
   auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
@@ -1193,4 +1191,4 @@ TEST_F(LeafNodeUInt64Fixture, Merge_RightSiblingNode_NodeHasCorrectKeyPayloads)
   }
 }
 
-}  // namespace bztree
+}  // namespace dbgroup::index::bztree

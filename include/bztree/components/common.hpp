@@ -8,7 +8,7 @@
 #include <memory>
 #include <sstream>
 
-namespace bztree
+namespace dbgroup::index::bztree
 {
 /*--------------------------------------------------------------------------------------------------
  * public utility: divide `utility.h` when reconstruct directory structure
@@ -173,4 +173,4 @@ HaveSameAddress(const void *a, const void *b)
 {
   return a == b;
 }
-}  // namespace bztree
+}  // namespace dbgroup::index::bztree

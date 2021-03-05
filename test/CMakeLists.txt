@@ -49,10 +49,12 @@ function(ADD_BZTREE_TEST BZTREE_TEST_TARGET)
   target_link_libraries(${BZTREE_TEST_TARGET} PRIVATE
     pthread
     mwcas
+    memory_manager
     gtest_main
   )
   add_dependencies(${BZTREE_TEST_TARGET}
     mwcas
+    memory_manager
   )
   add_test(
     NAME ${BZTREE_TEST_TARGET}

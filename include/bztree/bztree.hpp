@@ -14,9 +14,12 @@
 
 #include "components/internal_node.hpp"
 #include "components/leaf_node.hpp"
+#include "memory/manager/tls_based_memory_manager.hpp"
 
-namespace bztree
+namespace dbgroup::index::bztree
 {
+using dbgroup::memory::manager::TLSBasedMemoryManager;
+
 template <class Compare>
 class BzTree
 {
@@ -51,19 +54,8 @@ class BzTree
   // a root node of BzTree
   uintptr_t root_;
 
-  /*------------------------------------------------------------------------------------------------
-   * Temporal garbage collector
-   *----------------------------------------------------------------------------------------------*/
-
-  /// The number of the maximum garbages
-  static constexpr size_t kMaxGarbage = 1E6;
-
-  /// A list of garbage nodes
-  std::array<void *, kMaxGarbage> garbage_nodes;
-
-  /// The number of garbage nodes. This count is utilized to reserve a garbage region in
-  /// multi-thread environment.
-  std::atomic<size_t> garbage_count{0};
+  /// garbage collector
+  TLSBasedMemoryManager<BaseNode> gc_;
 
   /*################################################################################################
    * Internal utility functions
@@ -138,55 +130,38 @@ class BzTree
                         reinterpret_cast<uintptr_t>(new_root_node));
   }
 
-  /*------------------------------------------------------------------------------------------------
-   * Temporal utilities for garbage collect
-   *----------------------------------------------------------------------------------------------*/
-
-  size_t
-  ReserveGabageRegion(const size_t num_garbage)
-  {
-    size_t expected = garbage_count.load();
-    size_t reserved_count;
-
-    do {
-      reserved_count = expected + num_garbage;
-    } while (!garbage_count.compare_exchange_weak(expected, reserved_count));
-
-    return expected;
-  }
-
   /*################################################################################################
    * Internal structure modification functoins
    *##############################################################################################*/
 
   void
   ConsolidateLeafNode(  //
-      LeafNode *target_leaf,
+      LeafNode *target_node,
       const void *target_key,
       const size_t target_key_length)
   {
     // freeze a target node and perform consolidation
-    target_leaf->Freeze();
+    target_node->Freeze();
 
     // gather sorted live metadata of a targetnode, and check whether split/merge is required
-    const auto live_meta = target_leaf->GatherSortedLiveMetadata(comparator_);
+    const auto live_meta = target_node->GatherSortedLiveMetadata(comparator_);
     const auto occupied_size = ComputeOccupiedSize(live_meta);
     if (occupied_size + expected_free_space_ > node_size_) {
-      SplitLeafNode(target_leaf, target_key, live_meta);
+      SplitLeafNode(target_node, target_key, live_meta);
       return;
     } else if (occupied_size < min_node_size_) {
-      if (MergeLeafNodes(target_leaf, target_key, target_key_length, occupied_size, live_meta)) {
+      if (MergeLeafNodes(target_node, target_key, target_key_length, occupied_size, live_meta)) {
         return;
       }
     }
 
     // install a new node
-    auto new_leaf = LeafNode::Consolidate(target_leaf, live_meta);
+    auto new_leaf = LeafNode::Consolidate(target_node, live_meta);
     bool mwcas_success;
     do {
       // check whether a target node remains
-      auto [current_leaf_node, target_index, trace] = TraceTargetNode(target_key, target_leaf);
-      if (!HaveSameAddress(target_leaf, current_leaf_node)) {
+      auto [current_leaf_node, target_index, trace] = TraceTargetNode(target_key, target_node);
+      if (!HaveSameAddress(target_node, current_leaf_node)) {
         // other threads have already performed consolidation
         delete new_leaf;
         return;
@@ -202,18 +177,17 @@ class BzTree
       // swap a consolidated node for an old one
       auto desc = MwCASDescriptor{};
       parent_node->SetStatusForMwCAS(desc, parent_status, parent_status);
-      parent_node->SetPayloadForMwCAS(desc, target_index, target_leaf, new_leaf);
+      parent_node->SetPayloadForMwCAS(desc, target_index, target_node, new_leaf);
       mwcas_success = desc.MwCAS();
     } while (!mwcas_success);
 
     // Temporal implementation of garbage collection
-    const auto reserved_index = ReserveGabageRegion(1);
-    garbage_nodes[reserved_index] = target_leaf;
+    gc_.AddGarbage(target_node);
   }
 
   void
   SplitLeafNode(  //
-      const LeafNode *target_leaf,
+      const LeafNode *target_node,
       const void *target_key,
       const std::vector<std::pair<void *, Metadata>> &sorted_meta)
   {
@@ -225,8 +199,8 @@ class BzTree
     bool install_success;
     do {
       // check whether a target node remains
-      auto [current_leaf, target_index, trace] = TraceTargetNode(target_key, target_leaf);
-      if (!HaveSameAddress(target_leaf, current_leaf)) {
+      auto [current_leaf, target_index, trace] = TraceTargetNode(target_key, target_node);
+      if (!HaveSameAddress(target_node, current_leaf)) {
         return;  // other threads have already performed splitting
       }
 
@@ -240,7 +214,7 @@ class BzTree
 
       // create new nodes
       const auto [left_leaf, right_leaf] =
-          LeafNode::Split(target_leaf, sorted_meta, left_record_count);
+          LeafNode::Split(target_node, sorted_meta, left_record_count);
       const auto new_parent = InternalNode::NewParentForSplit(parent, split_key, split_key_length,
                                                               left_leaf, right_leaf, target_index);
 
@@ -248,9 +222,8 @@ class BzTree
       install_success = InstallNewInternalNode(&trace, new_parent);
       if (install_success) {
         // Temporal implementation of garbage collection
-        const auto reserved_index = ReserveGabageRegion(2);
-        garbage_nodes[reserved_index] = const_cast<LeafNode *>(target_leaf);
-        garbage_nodes[reserved_index + 1] = parent;
+        gc_.AddGarbage(target_node);
+        gc_.AddGarbage(parent);
       } else {
         delete left_leaf;
         delete right_leaf;
@@ -305,8 +278,8 @@ class BzTree
         new_parent = InternalNode::CreateNewRoot(left_node, right_node);
         // push an old root for installation
         trace.emplace(GetRoot(), 0);
-        // retain an old root node for garbage collection
-        parent = BitCast<InternalNode *>(GetRoot());
+        // there is no parent node because the target node is a root
+        parent = nullptr;
       } else {
         // check whether it is required to split a parent node
         parent = BitCast<InternalNode *>(trace.top().first);
@@ -324,9 +297,10 @@ class BzTree
       install_success = InstallNewInternalNode(&trace, new_parent);
       if (install_success) {
         // Temporal implementation of garbage collection
-        const auto reserved_index = ReserveGabageRegion(2);
-        garbage_nodes[reserved_index] = target_node;
-        garbage_nodes[reserved_index + 1] = parent;
+        gc_.AddGarbage(target_node);
+        if (parent != nullptr) {
+          gc_.AddGarbage(parent);
+        }
       } else {
         delete left_node;
         delete right_node;
@@ -405,10 +379,9 @@ class BzTree
       install_success = InstallNewInternalNode(&trace, new_parent);
       if (install_success) {
         // Temporal implementation of garbage collection
-        const auto reserved_index = ReserveGabageRegion(3);
-        garbage_nodes[reserved_index] = const_cast<LeafNode *>(target_node);
-        garbage_nodes[reserved_index + 1] = sibling_node;
-        garbage_nodes[reserved_index + 2] = parent;
+        gc_.AddGarbage(target_node);
+        gc_.AddGarbage(parent);
+        gc_.AddGarbage(sibling_node);
       } else {
         delete merged_node;
         delete new_parent;
@@ -512,10 +485,9 @@ class BzTree
       install_success = InstallNewInternalNode(&trace, new_parent);
       if (install_success) {
         // Temporal implementation of garbage collection
-        const auto reserved_index = ReserveGabageRegion(3);
-        garbage_nodes[reserved_index] = target_node;
-        garbage_nodes[reserved_index + 1] = sibling_node;
-        garbage_nodes[reserved_index + 2] = parent;
+        gc_.AddGarbage(target_node);
+        gc_.AddGarbage(parent);
+        gc_.AddGarbage(sibling_node);
       } else {
         delete merged_node;
         delete new_parent;
@@ -601,7 +573,8 @@ class BzTree
         expected_free_space_{expected_free_space},
         max_deleted_size_{max_deleted_size},
         max_merged_size_{max_merged_size},
-        index_epoch_{0}
+        index_epoch_{0},
+        gc_{1024, 1000}
   {
     // initialize a tree structure: one internal node with one leaf node
     const auto root_node = InternalNode::CreateInitialRoot(node_size_);
@@ -622,6 +595,8 @@ class BzTree
   std::pair<ReturnCode, std::unique_ptr<std::byte[]>>
   Read(const void *key)
   {
+    const auto guard = gc_.CreateEpochGuard();
+
     auto leaf_node = SearchLeafNode(key, true);
     auto [return_code, payload] = leaf_node->Read(key, comparator_);
     if (return_code == BaseNode::NodeReturnCode::kSuccess) {
@@ -665,6 +640,8 @@ class BzTree
       const void *end_key,
       const bool end_is_closed)
   {
+    const auto guard = gc_.CreateEpochGuard();
+
     auto leaf_node = SearchLeafNode(begin_key, begin_is_closed);
     auto [return_code, scan_results] =
         leaf_node->Scan(begin_key, begin_is_closed, end_key, end_is_closed, comparator_);
@@ -686,6 +663,8 @@ class BzTree
       const void *payload,
       const size_t payload_length)
   {
+    const auto guard = gc_.CreateEpochGuard();
+
     LeafNode *leaf_node;
     BaseNode::NodeReturnCode return_code;
     StatusWord node_status;
@@ -719,6 +698,8 @@ class BzTree
       const void *payload,
       const size_t payload_length)
   {
+    const auto guard = gc_.CreateEpochGuard();
+
     LeafNode *leaf_node;
     BaseNode::NodeReturnCode return_code;
     StatusWord node_status;
@@ -754,6 +735,8 @@ class BzTree
       const void *payload,
       const size_t payload_length)
   {
+    const auto guard = gc_.CreateEpochGuard();
+
     LeafNode *leaf_node;
     BaseNode::NodeReturnCode return_code;
     StatusWord node_status;
@@ -788,6 +771,8 @@ class BzTree
       const void *key,
       const size_t key_length)
   {
+    const auto guard = gc_.CreateEpochGuard();
+
     LeafNode *leaf_node;
     BaseNode::NodeReturnCode return_code;
     StatusWord node_status;
@@ -816,4 +801,4 @@ class BzTree
   }
 };
 
-}  // namespace bztree
+}  // namespace dbgroup::index::bztree
