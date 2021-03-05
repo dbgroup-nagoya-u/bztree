@@ -25,6 +25,14 @@ jobs:
         ssh-key: ${{secrets.SSH_KEY_FOR_ACTIONS}}
         persist-credentials: false
 
+    - name: Clone Submodule - Memory Manager
+      uses: actions/checkout@v2
+      with:
+        repository: dbgroup-nagoya-u/memory-manager
+        path: external/memory-manager
+        ssh-key: ${{secrets.SSH_KEY_FOR_ACTIONS}}
+        persist-credentials: false
+
     - name: Create Build Environment
       shell: bash
       run: |
