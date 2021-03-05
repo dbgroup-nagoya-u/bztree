@@ -13,9 +13,7 @@ using std::byte;
 
 namespace dbgroup::index::bztree
 {
-static constexpr size_t kDefaultNodeSize = 256;
-static constexpr size_t kDefaultBlockSizeThreshold = 256;
-static constexpr size_t kDefaultDeletedSizeThreshold = 256;
+static constexpr size_t kNodeSize = 256;
 static constexpr size_t kDefaultMinNodeSizeThreshold = 128;
 static constexpr size_t kIndexEpoch = 0;
 static constexpr size_t kKeyNumForTest = 100;
@@ -96,7 +94,7 @@ class InternalNodeFixture : public testing::Test
       const size_t begin_index,
       const size_t end_index)
   {
-    auto tmp_leaf_node = LeafNode::CreateEmptyNode(kDefaultNodeSize);
+    auto tmp_leaf_node = LeafNode::CreateEmptyNode(kNodeSize);
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
     auto tmp_meta = tmp_leaf_node->GatherSortedLiveMetadata(comp);
     tmp_leaf_node = LeafNode::Consolidate(tmp_leaf_node, tmp_meta);
@@ -106,7 +104,7 @@ class InternalNodeFixture : public testing::Test
 
 TEST_F(InternalNodeFixture, NeedSplit_EmptyNode_SplitNotRequired)
 {
-  auto target_node = std::unique_ptr<InternalNode>(InternalNode::CreateEmptyNode(kDefaultNodeSize));
+  auto target_node = std::unique_ptr<InternalNode>(InternalNode::CreateEmptyNode(kNodeSize));
 
   auto split_required = target_node->NeedSplit(key_lengths[1], payload_lengths[1]);
 
@@ -139,13 +137,13 @@ TEST_F(InternalNodeFixture, Split_TenKeys_SplitNodesHaveCorrectStatus)
   auto right_block_size = (kWordLength * 2) * right_record_count;
   auto right_deleted_size = 0;
 
-  EXPECT_EQ(kDefaultNodeSize, left_node->GetNodeSize());
+  EXPECT_EQ(kNodeSize, left_node->GetNodeSize());
   EXPECT_EQ(left_record_count, left_node->GetSortedCount());
   EXPECT_EQ(left_record_count, left_status.GetRecordCount());
   EXPECT_EQ(left_block_size, left_status.GetBlockSize());
   EXPECT_EQ(left_deleted_size, left_status.GetDeletedSize());
 
-  EXPECT_EQ(kDefaultNodeSize, right_node->GetNodeSize());
+  EXPECT_EQ(kNodeSize, right_node->GetNodeSize());
   EXPECT_EQ(right_record_count, right_node->GetSortedCount());
   EXPECT_EQ(right_record_count, right_status.GetRecordCount());
   EXPECT_EQ(right_block_size, right_status.GetBlockSize());
@@ -180,7 +178,7 @@ TEST_F(InternalNodeFixture, Split_TenKeys_SplitNodesHaveCorrectKeysAndPayloads)
 
 TEST_F(InternalNodeFixture, NeedMerge_EmptyNode_MergeRequired)
 {
-  auto target_node = std::unique_ptr<InternalNode>(InternalNode::CreateEmptyNode(kDefaultNodeSize));
+  auto target_node = std::unique_ptr<InternalNode>(InternalNode::CreateEmptyNode(kNodeSize));
 
   auto merge_required =
       target_node->NeedMerge(key_lengths[1], payload_lengths[1], kDefaultMinNodeSizeThreshold);
@@ -211,7 +209,7 @@ TEST_F(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectStatus)
   auto block_size = (kWordLength * 2) * record_count;
   auto deleted_size = 0;
 
-  EXPECT_EQ(kDefaultNodeSize, merged_node->GetNodeSize());
+  EXPECT_EQ(kNodeSize, merged_node->GetNodeSize());
   EXPECT_EQ(record_count, merged_node->GetSortedCount());
   EXPECT_EQ(record_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
@@ -231,7 +229,7 @@ TEST_F(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectStatus)
   auto block_size = (kWordLength * 2) * record_count;
   auto deleted_size = 0;
 
-  EXPECT_EQ(kDefaultNodeSize, merged_node->GetNodeSize());
+  EXPECT_EQ(kNodeSize, merged_node->GetNodeSize());
   EXPECT_EQ(record_count, merged_node->GetSortedCount());
   EXPECT_EQ(record_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
@@ -285,7 +283,7 @@ TEST_F(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectStatus)
   auto block_size = (kWordLength * 2) * record_count;
   auto deleted_size = 0;
 
-  EXPECT_EQ(kDefaultNodeSize, new_root->GetNodeSize());
+  EXPECT_EQ(kNodeSize, new_root->GetNodeSize());
   EXPECT_EQ(record_count, new_root->GetSortedCount());
   EXPECT_EQ(record_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
@@ -338,7 +336,7 @@ TEST_F(InternalNodeFixture, NewParent_AfterSplit_HasCorrectStatus)
   auto block_size = (kWordLength * 2) * record_count;
   auto deleted_size = 0;
 
-  EXPECT_EQ(kDefaultNodeSize, new_parent->GetNodeSize());
+  EXPECT_EQ(kNodeSize, new_parent->GetNodeSize());
   EXPECT_EQ(record_count, new_parent->GetSortedCount());
   EXPECT_EQ(record_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());
@@ -402,7 +400,7 @@ TEST_F(InternalNodeFixture, NewParent_AfterMerge_HasCorrectStatus)
   auto block_size = (kWordLength * 2) * record_count;
   auto deleted_size = 0;
 
-  EXPECT_EQ(kDefaultNodeSize, new_parent->GetNodeSize());
+  EXPECT_EQ(kNodeSize, new_parent->GetNodeSize());
   EXPECT_EQ(record_count, new_parent->GetSortedCount());
   EXPECT_EQ(record_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());

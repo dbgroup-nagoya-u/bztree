@@ -527,6 +527,10 @@ TEST_F(BzTreeUInt64Fixture, Split_OrderedKeyInsertsUpdates_ReadLatestKeys)
   }
 }
 
+/*--------------------------------------------------------------------------------------------------
+ * Merge operation
+ *------------------------------------------------------------------------------------------------*/
+
 TEST_F(BzTreeUInt64Fixture, Merge_OrderedKeyWritesDeletes_ReadRemainingKey)
 {
   auto bztree =

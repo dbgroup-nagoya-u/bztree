@@ -13,10 +13,7 @@ using std::byte;
 
 namespace dbgroup::index::bztree
 {
-static constexpr size_t kDefaultNodeSize = 256;
-static constexpr size_t kDefaultBlockSizeThreshold = 256;
-static constexpr size_t kDefaultDeletedSizeThreshold = 256;
-static constexpr size_t kDefaultMinNodeSizeThreshold = 128;
+static constexpr size_t kNodeSize = 256;
 static constexpr size_t kIndexEpoch = 0;
 static constexpr size_t kKeyNumForTest = 100;
 
@@ -96,7 +93,7 @@ class BaseNodeFixture : public testing::Test
       const size_t begin_index,
       const size_t end_index)
   {
-    auto tmp_leaf_node = LeafNode::CreateEmptyNode(kDefaultNodeSize);
+    auto tmp_leaf_node = LeafNode::CreateEmptyNode(kNodeSize);
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
     auto tmp_meta = tmp_leaf_node->GatherSortedLiveMetadata(comp);
     tmp_leaf_node = LeafNode::Consolidate(tmp_leaf_node, tmp_meta);
@@ -106,17 +103,17 @@ class BaseNodeFixture : public testing::Test
 
 TEST_F(BaseNodeFixture, New_EmptyNode_CorrectlyInitialized)
 {
-  auto node = std::unique_ptr<BaseNode>(BaseNode::CreateEmptyNode(kDefaultNodeSize, true));
+  auto node = std::unique_ptr<BaseNode>(BaseNode::CreateEmptyNode(kNodeSize, true));
   auto status = *BitCast<StatusWord*>(ShiftAddress(node.get(), kWordLength));
 
-  EXPECT_EQ(kDefaultNodeSize, node->GetNodeSize());
+  EXPECT_EQ(kNodeSize, node->GetNodeSize());
   EXPECT_EQ(0, node->GetSortedCount());
   EXPECT_EQ(status, node->GetStatusWord());
 }
 
 TEST_F(BaseNodeFixture, Freeze_NotFrozenNode_FreezeNode)
 {
-  auto node = std::unique_ptr<BaseNode>(BaseNode::CreateEmptyNode(kDefaultNodeSize, true));
+  auto node = std::unique_ptr<BaseNode>(BaseNode::CreateEmptyNode(kNodeSize, true));
 
   auto rc = node->Freeze();
   auto status = node->GetStatusWord();
@@ -127,7 +124,7 @@ TEST_F(BaseNodeFixture, Freeze_NotFrozenNode_FreezeNode)
 
 TEST_F(BaseNodeFixture, Freeze_FrozenNode_FreezeFailed)
 {
-  auto node = std::unique_ptr<BaseNode>(BaseNode::CreateEmptyNode(kDefaultNodeSize, true));
+  auto node = std::unique_ptr<BaseNode>(BaseNode::CreateEmptyNode(kNodeSize, true));
 
   node->Freeze();
   auto rc = node->Freeze();
@@ -180,7 +177,7 @@ TEST_F(BaseNodeFixture, SearchSortedMeta_SearchPresentKeyWithOpenedRange_FindNex
 TEST_F(BaseNodeFixture, SearchSortedMeta_SearchNotPresentKey_FindNextIndex)
 {
   // prepare a target node
-  auto tmp_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kDefaultNodeSize));
+  auto tmp_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kNodeSize));
   tmp_node->Write(key_ptrs[1], key_lengths[1], payload_ptrs[1], payload_lengths[1], kIndexEpoch);
   tmp_node->Write(key_ptrs[2], key_lengths[2], payload_ptrs[2], payload_lengths[2], kIndexEpoch);
   tmp_node->Write(key_ptrs[4], key_lengths[4], payload_ptrs[4], payload_lengths[4], kIndexEpoch);
