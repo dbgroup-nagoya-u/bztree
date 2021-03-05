@@ -574,7 +574,7 @@ class BzTree
         max_deleted_size_{max_deleted_size},
         max_merged_size_{max_merged_size},
         index_epoch_{0},
-        gc_{2048, 1000}
+        gc_{1024, 1000}
   {
     // initialize a tree structure: one internal node with one leaf node
     const auto root_node = InternalNode::CreateInitialRoot(node_size_);

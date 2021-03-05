@@ -216,7 +216,7 @@ class LeafNode : public BaseNode
   {
     assert((node_size % kWordLength) == 0);
 
-    auto page = malloc(node_size);
+    auto page = calloc(1, node_size);
     auto new_node = new (page) LeafNode{node_size};
     return new_node;
   }

@@ -161,7 +161,7 @@ class alignas(kCacheLineSize) BaseNode
   {
     assert((node_size % kWordLength) == 0);
 
-    auto page = malloc(node_size);
+    auto page = calloc(1, node_size);
     auto new_node = new (page) BaseNode{node_size, is_leaf};
     return new_node;
   }
