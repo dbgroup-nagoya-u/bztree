@@ -32,6 +32,19 @@ PayloadToUIntptr(const void *payload)
   return *reinterpret_cast<const uint64_t *>(payload);
 }
 
+template <class T>
+constexpr T
+CastTarget(const void *addr)
+{
+  static_assert(std::is_pointer_v<T>);
+
+  if constexpr (std::is_const_v<T>) {
+    return static_cast<T>(addr);
+  } else {
+    return static_cast<T>(const_cast<void *>(addr));
+  }
+}
+
 template <class To, class From>
 constexpr To
 BitCast(const From *obj)
