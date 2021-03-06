@@ -32,9 +32,16 @@ PayloadToUIntptr(const void *payload)
   return *reinterpret_cast<const uint64_t *>(payload);
 }
 
+/**
+ * @brief Cast a memory address to a target pointer.
+ *
+ * @tparam T a target class
+ * @param addr an original address
+ * @return a pointer of \c T
+ */
 template <class T>
 constexpr T
-CastTarget(const void *addr)
+CastAddress(const void *addr)
 {
   static_assert(std::is_pointer_v<T>);
 

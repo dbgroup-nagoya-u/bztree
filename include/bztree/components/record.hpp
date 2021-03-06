@@ -220,7 +220,7 @@ class Record<Key*, Payload>
   constexpr Key*
   GetKey() const
   {
-    return CastTarget<Key*>(record_);
+    return CastAddress<Key*>(record_);
   }
 
   /**
@@ -229,7 +229,7 @@ class Record<Key*, Payload>
   constexpr Payload
   GetPayload() const
   {
-    return *CastTarget<Payload*>(record_ + GetKeyLength());
+    return *CastAddress<Payload*>(record_ + GetKeyLength());
   }
 
   /**
@@ -344,7 +344,7 @@ class Record<Key, Payload*>
   constexpr Key
   GetKey() const
   {
-    return *CastTarget<Key*>(record_);
+    return *CastAddress<Key*>(record_);
   }
 
   /**
@@ -353,7 +353,7 @@ class Record<Key, Payload*>
   constexpr Payload*
   GetPayload() const
   {
-    return CastTarget<Payload*>(record_ + GetKeyLength());
+    return CastAddress<Payload*>(record_ + GetKeyLength());
   }
 
   /**
@@ -469,7 +469,7 @@ class Record<Key*, Payload*>
   constexpr Key*
   GetKey() const
   {
-    return CastTarget<Key*>(record_);
+    return CastAddress<Key*>(record_);
   }
 
   /**
@@ -478,7 +478,7 @@ class Record<Key*, Payload*>
   constexpr Payload*
   GetPayload() const
   {
-    return CastTarget<Payload*>(record_ + GetKeyLength());
+    return CastAddress<Payload*>(record_ + GetKeyLength());
   }
 
   /**
