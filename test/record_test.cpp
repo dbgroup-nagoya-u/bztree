@@ -5,9 +5,11 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+
 namespace dbgroup::index::bztree
 {
-class RecordFixture : public testing::Test
+class RecordFixture : public ::testing::Test
 {
  public:
   static constexpr size_t kIntLength = sizeof(uint64_t);
@@ -17,45 +19,66 @@ class RecordFixture : public testing::Test
   static constexpr const char* kCStrKey = "test";
   static constexpr const char* kCStrPayload = "hoge";
 
-  struct UInt64UInt64Record {
+  struct IntKeyIntPayloadRecord {
     std::byte data[kIntLength + kIntLength];
 
-    UInt64UInt64Record()
+    IntKeyIntPayloadRecord()
     {
       memcpy(data, &kIntKey, kIntLength);
       memcpy(data + kIntLength, &kIntPayload, kIntLength);
     }
   };
 
-  struct UInt64CStringRecord {
+  struct IntKeyCStrPayloadRecord {
     std::byte data[kIntLength + kCStrLength];
 
-    UInt64CStringRecord()
+    IntKeyCStrPayloadRecord()
     {
       memcpy(data, &kIntKey, kIntLength);
       memcpy(data + kIntLength, kCStrPayload, kCStrLength);
     }
   };
 
-  struct CStringUInt64Record {
+  struct CStrPayloadIntKeyRecord {
     std::byte data[kCStrLength + kIntLength];
 
-    CStringUInt64Record()
+    CStrPayloadIntKeyRecord()
     {
       memcpy(data, kCStrKey, kCStrLength);
       memcpy(data + kCStrLength, &kIntPayload, kIntLength);
     }
   };
 
-  struct CStringCStringRecord {
+  struct CStrKeyCStrPayloadRecord {
     std::byte data[kCStrLength + kCStrLength];
 
-    CStringCStringRecord()
+    CStrKeyCStrPayloadRecord()
     {
       memcpy(data, kCStrKey, kCStrLength);
       memcpy(data + kCStrLength, kCStrPayload, kCStrLength);
     }
   };
+
+  /**
+   * @brief A wrapper API to create \c std::unique_ptr<Record> .
+   *
+   * @tparam Key
+   * @tparam Payload
+   * @param src_addr
+   * @param key_length
+   * @param payload_length
+   * @return \c std::unique_ptr<Record>
+   */
+  template <class Key, class Payload>
+  std::unique_ptr<Record<Key, Payload>>
+  CreateRecord(  //
+      const void* src_addr,
+      const size_t key_length,
+      const size_t payload_length)
+  {
+    return std::unique_ptr<Record<Key, Payload>>(
+        Record<Key, Payload>::Create(src_addr, key_length, payload_length));
+  }
 
  protected:
   void
@@ -69,37 +92,37 @@ class RecordFixture : public testing::Test
   }
 };
 
-TEST_F(RecordFixture, Create_DefaultConstructor_CorrectlyInitialized)
+TEST_F(RecordFixture, Create_IntKeyIntPayload_RecordHasCorrectData)
 {
-  auto src_rec = UInt64UInt64Record{};
-  auto record = Record<uint64_t, uint64_t>::Create(&src_rec, kIntLength, kIntLength);
+  auto src = IntKeyIntPayloadRecord{};
+  auto record = CreateRecord<uint64_t, uint64_t>(&src, kIntLength, kIntLength);
 
   EXPECT_EQ(kIntKey, record->GetKey());
   EXPECT_EQ(kIntPayload, record->GetPayload());
 }
 
-TEST_F(RecordFixture, Create_IntKeyCStrPayload_CorrectlyInitialized)
+TEST_F(RecordFixture, Create_IntKeyCStrPayload_RecordHasCorrectData)
 {
-  auto src_rec = UInt64CStringRecord{};
-  auto record = Record<uint64_t, const char*>::Create(&src_rec, kIntLength, kCStrLength);
+  auto src = IntKeyCStrPayloadRecord{};
+  auto record = CreateRecord<uint64_t, const char*>(&src, kIntLength, kCStrLength);
 
   EXPECT_EQ(kIntKey, record->GetKey());
   EXPECT_STREQ(kCStrPayload, record->GetPayload());
 }
 
-TEST_F(RecordFixture, Create_CStrKeyIntPayload_CorrectlyInitialized)
+TEST_F(RecordFixture, Create_CStrKeyIntPayload_RecordHasCorrectData)
 {
-  auto src_rec = CStringUInt64Record{};
-  auto record = Record<const char*, uint64_t>::Create(&src_rec, kCStrLength, kIntLength);
+  auto src = CStrPayloadIntKeyRecord{};
+  auto record = CreateRecord<const char*, uint64_t>(&src, kCStrLength, kIntLength);
 
   EXPECT_STREQ(kCStrKey, record->GetKey());
   EXPECT_EQ(kIntPayload, record->GetPayload());
 }
 
-TEST_F(RecordFixture, Create_CStrKeyCStrPayload_CorrectlyInitialized)
+TEST_F(RecordFixture, Create_CStrKeyCStrPayload_RecordHasCorrectData)
 {
-  auto src_rec = CStringCStringRecord{};
-  auto record = Record<const char*, const char*>::Create(&src_rec, kCStrLength, kCStrLength);
+  auto src = CStrKeyCStrPayloadRecord{};
+  auto record = CreateRecord<const char*, const char*>(&src, kCStrLength, kCStrLength);
 
   EXPECT_STREQ(kCStrKey, record->GetKey());
   EXPECT_STREQ(kCStrPayload, record->GetPayload());
