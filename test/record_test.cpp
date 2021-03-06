@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <utility>
 
 namespace dbgroup::index::bztree
 {
@@ -59,27 +60,6 @@ class RecordFixture : public ::testing::Test
     }
   };
 
-  /**
-   * @brief A wrapper API to create \c std::unique_ptr<Record> .
-   *
-   * @tparam Key
-   * @tparam Payload
-   * @param src_addr
-   * @param key_length
-   * @param payload_length
-   * @return \c std::unique_ptr<Record>
-   */
-  template <class Key, class Payload>
-  std::unique_ptr<Record<Key, Payload>>
-  CreateRecord(  //
-      const void* src_addr,
-      const size_t key_length,
-      const size_t payload_length)
-  {
-    return std::unique_ptr<Record<Key, Payload>>(
-        Record<Key, Payload>::Create(src_addr, key_length, payload_length));
-  }
-
  protected:
   void
   SetUp() override
@@ -95,7 +75,7 @@ class RecordFixture : public ::testing::Test
 TEST_F(RecordFixture, Create_IntKeyIntPayload_RecordHasCorrectData)
 {
   auto src = IntKeyIntPayloadRecord{};
-  auto record = CreateRecord<uint64_t, uint64_t>(&src, kIntLength, kIntLength);
+  auto record = Record<uint64_t, uint64_t>::Create(&src, kIntLength, kIntLength);
 
   EXPECT_EQ(kIntKey, record->GetKey());
   EXPECT_EQ(kIntPayload, record->GetPayload());
@@ -104,7 +84,7 @@ TEST_F(RecordFixture, Create_IntKeyIntPayload_RecordHasCorrectData)
 TEST_F(RecordFixture, Create_IntKeyCStrPayload_RecordHasCorrectData)
 {
   auto src = IntKeyCStrPayloadRecord{};
-  auto record = CreateRecord<uint64_t, const char*>(&src, kIntLength, kCStrLength);
+  auto record = Record<uint64_t, const char*>::Create(&src, kIntLength, kCStrLength);
 
   EXPECT_EQ(kIntKey, record->GetKey());
   EXPECT_STREQ(kCStrPayload, record->GetPayload());
@@ -113,7 +93,7 @@ TEST_F(RecordFixture, Create_IntKeyCStrPayload_RecordHasCorrectData)
 TEST_F(RecordFixture, Create_CStrKeyIntPayload_RecordHasCorrectData)
 {
   auto src = CStrPayloadIntKeyRecord{};
-  auto record = CreateRecord<const char*, uint64_t>(&src, kCStrLength, kIntLength);
+  auto record = Record<const char*, uint64_t>::Create(&src, kCStrLength, kIntLength);
 
   EXPECT_STREQ(kCStrKey, record->GetKey());
   EXPECT_EQ(kIntPayload, record->GetPayload());
@@ -122,10 +102,45 @@ TEST_F(RecordFixture, Create_CStrKeyIntPayload_RecordHasCorrectData)
 TEST_F(RecordFixture, Create_CStrKeyCStrPayload_RecordHasCorrectData)
 {
   auto src = CStrKeyCStrPayloadRecord{};
-  auto record = CreateRecord<const char*, const char*>(&src, kCStrLength, kCStrLength);
+  auto record = Record<const char*, const char*>::Create(&src, kCStrLength, kCStrLength);
 
   EXPECT_STREQ(kCStrKey, record->GetKey());
   EXPECT_STREQ(kCStrPayload, record->GetPayload());
+}
+
+TEST_F(RecordFixture, Copy_IntKeyIntPayload_RecordCorrectlyCopied)
+{
+  auto src = IntKeyIntPayloadRecord{};
+  auto record_ptr = Record<uint64_t, uint64_t>::Create(&src, kIntLength, kIntLength);
+  auto orig_record = *record_ptr;
+
+  auto copy_by_costructor = Record{orig_record};
+
+  EXPECT_EQ(record_ptr->GetKey(), copy_by_costructor.GetKey());
+  EXPECT_EQ(record_ptr->GetPayload(), copy_by_costructor.GetPayload());
+
+  auto copy_by_operator = orig_record;
+
+  EXPECT_EQ(record_ptr->GetKey(), copy_by_operator.GetKey());
+  EXPECT_EQ(record_ptr->GetPayload(), copy_by_operator.GetPayload());
+}
+
+TEST_F(RecordFixture, Move_IntKeyIntPayload_RecordCorrectlyMoved)
+{
+  auto src = IntKeyIntPayloadRecord{};
+  auto record_ptr = Record<uint64_t, uint64_t>::Create(&src, kIntLength, kIntLength);
+
+  auto orig_record = *record_ptr;
+  auto move_by_costructor = Record{std::move(orig_record)};
+
+  EXPECT_EQ(record_ptr->GetKey(), move_by_costructor.GetKey());
+  EXPECT_EQ(record_ptr->GetPayload(), move_by_costructor.GetPayload());
+
+  orig_record = *record_ptr;
+  auto move_by_operator = std::move(orig_record);
+
+  EXPECT_EQ(record_ptr->GetKey(), move_by_operator.GetKey());
+  EXPECT_EQ(record_ptr->GetPayload(), move_by_operator.GetPayload());
 }
 
 }  // namespace dbgroup::index::bztree

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "common.hpp"
 
 namespace dbgroup::index::bztree
@@ -29,8 +31,9 @@ class Record
   /// a payload stored in this record
   Payload payload_;
 
+ public:
   /*################################################################################################
-   * Internal constructors
+   * Public constructors/destructors
    *##############################################################################################*/
 
   /**
@@ -48,16 +51,11 @@ class Record
     static_assert(!std::is_pointer_v<Key>);
     static_assert(!std::is_pointer_v<Payload>);
 
-    // a record itself must be trivially copyable
+    // this record is trivially copyable because keys and payloads have fixed-length
     static_assert(std::is_trivially_copyable_v<Record>);
 
     memcpy(this, src_addr, GetKeyLength() + GetPayloadLength());
   }
-
- public:
-  /*################################################################################################
-   * Public constructors/destructors
-   *##############################################################################################*/
 
   ~Record() = default;
   constexpr Record(const Record&) = default;
@@ -75,15 +73,15 @@ class Record
    * @param src_addr a source address to copy the key and payload of a record
    * @param key_length the length of a key
    * @param payload_length the length of a payload
-   * @return a \c std::unique_ptr of Record
+   * @return a \c std::unique_ptr of \c Record
    */
-  static Record*
+  static std::unique_ptr<Record>
   Create(  //
       const void* src_addr,
       [[maybe_unused]] const size_t key_length,
       [[maybe_unused]] const size_t payload_length)
   {
-    return new Record{src_addr};
+    return std::make_unique<Record>(src_addr);
   }
 
   /*################################################################################################
@@ -171,9 +169,6 @@ class Record<Key*, Payload>
     // this template deals with fixed-length payloads
     static_assert(!std::is_pointer_v<Payload>);
 
-    // a record itself must be trivially copyable
-    static_assert(std::is_trivially_copyable_v<Record>);
-
     memcpy(record_, src_addr, GetKeyLength() + GetPayloadLength());
   }
 
@@ -183,10 +178,10 @@ class Record<Key*, Payload>
    *##############################################################################################*/
 
   ~Record() = default;
-  constexpr Record(const Record&) = default;
-  constexpr Record& operator=(const Record&) = default;
-  constexpr Record(Record&&) = default;
-  constexpr Record& operator=(Record&&) = default;
+  Record(const Record&) = delete;
+  Record& operator=(const Record&) = delete;
+  Record(Record&&) = delete;
+  Record& operator=(Record&&) = delete;
 
   /*################################################################################################
    * Public builders
@@ -198,16 +193,16 @@ class Record<Key*, Payload>
    * @param src_addr a source address to copy the key and payload of a record
    * @param key_length the length of a key
    * @param payload_length the length of a payload
-   * @return a \c std::unique_ptr of Record
+   * @return a \c std::unique_ptr of \c Record
    */
-  static Record*
+  static std::unique_ptr<Record>
   Create(  //
       const void* src_addr,
       const size_t key_length,
       [[maybe_unused]] const size_t payload_length)
   {
     auto page = malloc(key_length + sizeof(Payload));
-    return new (page) Record{src_addr, key_length};
+    return std::unique_ptr<Record>(new (page) Record{src_addr, key_length});
   }
 
   /*################################################################################################
@@ -295,9 +290,6 @@ class Record<Key, Payload*>
     // this template deals with fixed-length keys
     static_assert(!std::is_pointer_v<Key>);
 
-    // a record itself must be trivially copyable
-    static_assert(std::is_trivially_copyable_v<Record>);
-
     memcpy(record_, src_addr, GetKeyLength() + GetPayloadLength());
   }
 
@@ -307,10 +299,10 @@ class Record<Key, Payload*>
    *##############################################################################################*/
 
   ~Record() = default;
-  constexpr Record(const Record&) = default;
-  constexpr Record& operator=(const Record&) = default;
-  constexpr Record(Record&&) = default;
-  constexpr Record& operator=(Record&&) = default;
+  Record(const Record&) = delete;
+  Record& operator=(const Record&) = delete;
+  Record(Record&&) = delete;
+  Record& operator=(Record&&) = delete;
 
   /*################################################################################################
    * Public builders
@@ -322,16 +314,16 @@ class Record<Key, Payload*>
    * @param src_addr a source address to copy the key and payload of a record
    * @param key_length the length of a key
    * @param payload_length the length of a payload
-   * @return a \c std::unique_ptr of Record
+   * @return a \c std::unique_ptr of \c Record
    */
-  static Record*
+  static std::unique_ptr<Record>
   Create(  //
       const void* src_addr,
       [[maybe_unused]] const size_t key_length,
       const size_t payload_length)
   {
     auto page = malloc(sizeof(Key) + payload_length);
-    return new (page) Record{src_addr, payload_length};
+    return std::unique_ptr<Record>(new (page) Record{src_addr, payload_length});
   }
 
   /*################################################################################################
@@ -420,9 +412,6 @@ class Record<Key*, Payload*>
     static_assert(std::is_trivially_copyable_v<Key>);
     static_assert(std::is_trivially_copyable_v<Payload>);
 
-    // a record itself must be trivially copyable
-    static_assert(std::is_trivially_copyable_v<Record>);
-
     memcpy(record_, src_addr, GetKeyLength() + GetPayloadLength());
   }
 
@@ -432,10 +421,10 @@ class Record<Key*, Payload*>
    *##############################################################################################*/
 
   ~Record() = default;
-  constexpr Record(const Record&) = default;
-  constexpr Record& operator=(const Record&) = default;
-  constexpr Record(Record&&) = default;
-  constexpr Record& operator=(Record&&) = default;
+  Record(const Record&) = delete;
+  Record& operator=(const Record&) = delete;
+  Record(Record&&) = delete;
+  Record& operator=(Record&&) = delete;
 
   /*################################################################################################
    * Public builders
@@ -447,16 +436,16 @@ class Record<Key*, Payload*>
    * @param src_addr a source address to copy the key and payload of a record
    * @param key_length the length of a key
    * @param payload_length the length of a payload
-   * @return a \c std::unique_ptr of Record
+   * @return a \c std::unique_ptr of \c Record
    */
-  static Record*
+  static std::unique_ptr<Record>
   Create(  //
       const void* src_addr,
       const size_t key_length,
       const size_t payload_length)
   {
     auto page = malloc(key_length + payload_length);
-    return new (page) Record{src_addr, key_length, payload_length};
+    return std::unique_ptr<Record>(new (page) Record{src_addr, key_length, payload_length});
   }
 
   /*################################################################################################
