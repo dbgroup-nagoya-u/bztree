@@ -10,7 +10,7 @@
 namespace dbgroup::index::bztree
 {
 /**
- * @brief A class to represent returning records of BzTree API.
+ * @brief A class to represent return records of BzTree API.
  *
  * This class template deals with fixed-length keys and payloads as targets to be stored.
  *
@@ -126,7 +126,7 @@ class Record
 };
 
 /**
- * @brief A class to represent returning records of BzTree API.
+ * @brief A class to represent return records of BzTree API.
  *
  * This class template deals with variable-length keys and fixed-length payloads as
  * targets to be stored.
@@ -247,7 +247,7 @@ class Record<Key*, Payload>
 };
 
 /**
- * @brief A class to represent returning records of BzTree API.
+ * @brief A class to represent return records of BzTree API.
  *
  * This class template deals with fixed-length keys and variable-length payloads as
  * targets to be stored.
@@ -368,7 +368,7 @@ class Record<Key, Payload*>
 };
 
 /**
- * @brief A class to represent returning records of BzTree API.
+ * @brief A class to represent return records of BzTree API.
  *
  * This class template deals with variable-length keys and variable-length payloads as
  * targets to be stored.
