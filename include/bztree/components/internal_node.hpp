@@ -3,12 +3,14 @@
 
 #pragma once
 
+#include <functional>
 #include <utility>
 
 #include "base_node.hpp"
 
 namespace dbgroup::index::bztree
 {
+template <class Key, class Payload, class Compare = std::less<Key>>
 class InternalNode : public BaseNode
 {
  private:

@@ -136,11 +136,11 @@ constexpr size_t kHeaderLength = 2 * kWordLength;
  * @return true if a specified objects are equivalent according to `comp` comparator
  * @return false otherwise
  */
-template <class Compare>
+template <class Compare, class Key>
 constexpr bool
-IsEqual(const void *obj_1, const void *obj_2, const Compare &comp)
+IsEqual(const Key &obj_1, const Key &obj_2)
 {
-  return !(comp(obj_1, obj_2) || comp(obj_2, obj_1));
+  return !(Compare{}(obj_1, obj_2) || Compare{}(obj_2, obj_1));
 }
 
 /**

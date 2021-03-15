@@ -4,6 +4,7 @@
 #pragma once
 
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -19,6 +20,7 @@ namespace dbgroup::index::bztree
 using dbgroup::atomic::mwcas::MwCASDescriptor;
 using dbgroup::atomic::mwcas::ReadMwCASField;
 
+template <class Key, class Payload, class Compare = std::less<Key>>
 class alignas(kCacheLineSize) BaseNode
 {
  protected:
@@ -77,29 +79,37 @@ class alignas(kCacheLineSize) BaseNode
 
   void
   SetKey(  //
-      const void *key,
+      const Key &key,
       const size_t key_length,
       const size_t offset)
   {
     const auto key_ptr = ShiftAddress(this, offset);
-    memcpy(key_ptr, key, key_length);
+    if constexpr (std::is_pointer_v<Key>) {
+      memcpy(key_ptr, key, key_length);
+    } else {
+      memcpy(key_ptr, &key, key_length);
+    }
   }
 
   void
   SetPayload(  //
-      const void *payload,
+      const Payload &payload,
       const size_t payload_length,
       const size_t offset)
   {
     const auto payload_ptr = ShiftAddress(this, offset);
-    memcpy(payload_ptr, payload, payload_length);
+    if constexpr (std::is_pointer_v<Payload>) {
+      memcpy(payload_ptr, payload, payload_length);
+    } else {
+      memcpy(payload_ptr, &payload, payload_length);
+    }
   }
 
   size_t
   CopyRecord(  //
-      const void *key,
+      const Key &key,
       const size_t key_length,
-      const void *payload,
+      const Payload &payload,
       const size_t payload_length,
       size_t offset)
   {
@@ -236,8 +246,8 @@ class alignas(kCacheLineSize) BaseNode
   SetPayloadForMwCAS(  //
       MwCASDescriptor &desc,
       const size_t index,
-      const void *old_payload,
-      const void *new_payload)
+      const Payload &old_payload,
+      const Payload &new_payload)
   {
     desc.AddMwCASTarget(GetPayloadAddr(GetMetadata(index)),
                         reinterpret_cast<uintptr_t>(old_payload),
@@ -284,12 +294,10 @@ class alignas(kCacheLineSize) BaseNode
    * @param comp
    * @return std::pair<KeyExistence, size_t>
    */
-  template <class Compare>
   std::pair<KeyExistence, size_t>
   SearchSortedMetadata(  //
-      const void *key,
-      const bool range_is_closed,
-      const Compare &comp) const
+      const Key &key,
+      const bool range_is_closed) const
   {
     const int64_t sorted_count = GetSortedCount();
 
@@ -299,13 +307,13 @@ class alignas(kCacheLineSize) BaseNode
 
     while (begin_index <= end_index && index < sorted_count) {
       const auto meta = GetMetadata(index);
-      const auto *index_key = GetKeyAddr(meta);
+      const auto index_key = *reinterpret_cast<Key *>(GetKeyAddr(meta));
       const auto index_key_length = meta.GetKeyLength();
 
-      if (index_key_length == 0 || comp(key, index_key)) {
+      if (index_key_length == 0 || Compare{}(key, index_key)) {
         // a target key is in a left side
         end_index = index - 1;
-      } else if (comp(index_key, key)) {
+      } else if (Compare{}(index_key, key)) {
         // a target key is in a right side
         begin_index = index + 1;
       } else {
