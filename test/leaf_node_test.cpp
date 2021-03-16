@@ -36,10 +36,10 @@ class LeafNodeUInt64Fixture : public testing::Test
   Payload payload_null = 0;  // null payload must have 8 bytes to fill a node
 
   std::unique_ptr<LeafNode<Key, Payload>> node;
-  size_t record_count = 0;
-  size_t index = 0;
-  size_t block_size = 0;
-  size_t deleted_size = 0;
+  size_t index;
+  size_t expected_record_count;
+  size_t expected_block_size;
+  size_t expected_deleted_size;
 
   NodeReturnCode rc;
   StatusWord status;
@@ -50,10 +50,10 @@ class LeafNodeUInt64Fixture : public testing::Test
   SetUp() override
   {
     node.reset(LeafNode<Key, Payload>::CreateEmptyNode(kNodeSize));
-    record_count = 0;
     index = 0;
-    block_size = 0;
-    deleted_size = 0;
+    expected_record_count = 0;
+    expected_block_size = 0;
+    expected_deleted_size = 0;
 
     for (size_t index = 0; index < kKeyNumForTest; index++) {
       keys[index] = index + 1;
@@ -71,8 +71,8 @@ class LeafNodeUInt64Fixture : public testing::Test
   {
     for (size_t index = 0; index < write_num; ++index) {
       node->Write(key_null, kKeyLength, payload_null, kPayloadLength);
-      ++record_count;
-      block_size += kRecordLength;
+      ++expected_record_count;
+      expected_block_size += kRecordLength;
     }
   }
 
@@ -90,29 +90,42 @@ class LeafNodeUInt64Fixture : public testing::Test
       node->Write(key, kKeyLength, payload, kPayloadLength);
 
       written_keys.emplace_back(key);
-      ++record_count;
-      block_size += kRecordLength;
+      ++expected_record_count;
+      expected_block_size += kRecordLength;
     }
     return written_keys;
   }
 
   void
-  VerifyWrittenMetadata(const Metadata meta)
+  VerifyMetadata(  //
+      const Metadata meta,
+      const bool record_is_visible = true)
   {
-    EXPECT_TRUE(meta.IsVisible());
-    EXPECT_FALSE(meta.IsDeleted());
+    if (record_is_visible) {
+      EXPECT_TRUE(meta.IsVisible());
+      EXPECT_FALSE(meta.IsDeleted());
+    } else {
+      EXPECT_FALSE(meta.IsVisible());
+      EXPECT_TRUE(meta.IsDeleted());
+    }
     EXPECT_EQ(kKeyLength, meta.GetKeyLength());
     EXPECT_EQ(kPayloadLength, meta.GetPayloadLength());
   }
 
   void
-  VerifyUnfrozenStatusWord(const StatusWord status)
+  VerifyStatusWord(  //
+      const StatusWord status,
+      const bool status_is_frozen = false)
   {
     EXPECT_EQ(status, node->GetStatusWord());
-    EXPECT_FALSE(status.IsFrozen());
-    EXPECT_EQ(record_count, status.GetRecordCount());
-    EXPECT_EQ(block_size, status.GetBlockSize());
-    EXPECT_EQ(deleted_size, status.GetDeletedSize());
+    if (status_is_frozen) {
+      EXPECT_TRUE(status.IsFrozen());
+    } else {
+      EXPECT_FALSE(status.IsFrozen());
+    }
+    EXPECT_EQ(expected_record_count, status.GetRecordCount());
+    EXPECT_EQ(expected_block_size, status.GetBlockSize());
+    EXPECT_EQ(expected_deleted_size, status.GetDeletedSize());
   }
 };
 
@@ -349,20 +362,20 @@ TEST_F(LeafNodeUInt64Fixture, New_EmptyNode_CorrectlyInitialized)
 TEST_F(LeafNodeUInt64Fixture, Write_TwoKeys_MetadataCorrectlyUpdated)
 {
   std::tie(rc, status) = node->Write(keys[1], kKeyLength, payloads[1], kPayloadLength);
-  record_count += 1;
-  block_size += kRecordLength;
+  expected_record_count += 1;
+  expected_block_size += kRecordLength;
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-  VerifyWrittenMetadata(node->GetMetadata(index++));
-  VerifyUnfrozenStatusWord(status);
+  VerifyMetadata(node->GetMetadata(index++));
+  VerifyStatusWord(status);
 
   std::tie(rc, status) = node->Write(keys[2], kKeyLength, payloads[2], kPayloadLength);
-  record_count += 1;
-  block_size += kRecordLength;
+  expected_record_count += 1;
+  expected_block_size += kRecordLength;
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-  VerifyWrittenMetadata(node->GetMetadata(index++));
-  VerifyUnfrozenStatusWord(status);
+  VerifyMetadata(node->GetMetadata(index++));
+  VerifyStatusWord(status);
 }
 
 TEST_F(LeafNodeUInt64Fixture, Write_TwoKeys_ReadWrittenValues)
@@ -416,9 +429,9 @@ TEST_F(LeafNodeUInt64Fixture, Write_FilledNode_GetCorrectReturnCodes)
 
 //   std::tie(rc, status)  = node->Write(keys[11], key_lengths[11], payloads[11],
 //                                   payload_lengths[11]);
-//   ++record_count;
-//   block_size += key_lengths[11] + payload_lengths[11];
-//   index = record_count - 1;
+//   ++expected_record_count;
+//   expected_block_size += key_lengths[11] + payload_lengths[11];
+//   index = expected_record_count - 1;
 //   auto meta = node->GetMetadata(index);
 
 //   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
@@ -426,9 +439,9 @@ TEST_F(LeafNodeUInt64Fixture, Write_FilledNode_GetCorrectReturnCodes)
 //   EXPECT_TRUE(meta.IsVisible());
 //   EXPECT_FALSE(meta.IsDeleted());
 //   EXPECT_FALSE(status.IsFrozen());
-//   EXPECT_EQ(record_count, status.GetRecordCount());
-//   EXPECT_EQ(block_size, status.GetBlockSize());
-//   EXPECT_EQ(deleted_size, status.GetDeletedSize());
+//   EXPECT_EQ(expected_record_count, status.GetRecordCount());
+//   EXPECT_EQ(expected_block_size, status.GetBlockSize());
+//   EXPECT_EQ(expected_deleted_size, status.GetDeletedSize());
 // }
 
 // TEST_F(LeafNodeUInt64Fixture, Write_ConsolidatedNode_ReadWrittenValue)
@@ -452,20 +465,20 @@ TEST_F(LeafNodeUInt64Fixture, Write_FilledNode_GetCorrectReturnCodes)
 TEST_F(LeafNodeUInt64Fixture, Insert_TwoKeys_MetadataCorrectlyUpdated)
 {
   std::tie(rc, status) = node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
-  record_count += 1;
-  block_size += kRecordLength;
+  expected_record_count += 1;
+  expected_block_size += kRecordLength;
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-  VerifyWrittenMetadata(node->GetMetadata(index++));
-  VerifyUnfrozenStatusWord(status);
+  VerifyMetadata(node->GetMetadata(index++));
+  VerifyStatusWord(status);
 
   std::tie(rc, status) = node->Insert(keys[2], kKeyLength, payloads[2], kPayloadLength);
-  record_count += 1;
-  block_size += kRecordLength;
+  expected_record_count += 1;
+  expected_block_size += kRecordLength;
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-  VerifyWrittenMetadata(node->GetMetadata(index++));
-  VerifyUnfrozenStatusWord(status);
+  VerifyMetadata(node->GetMetadata(index++));
+  VerifyStatusWord(status);
 }
 
 TEST_F(LeafNodeUInt64Fixture, Insert_TwoKeys_ReadInsertedValues)
@@ -525,9 +538,9 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 
 //   std::tie(rc, status)  = node->Insert(keys[11], key_lengths[11], payloads[11],
 //                                    payload_lengths[11]);
-//   ++record_count;
-//   block_size += key_lengths[11] + payload_lengths[11];
-//   index = record_count - 1;
+//   ++expected_record_count;
+//   expected_block_size += key_lengths[11] + payload_lengths[11];
+//   index = expected_record_count - 1;
 //   auto meta = node->GetMetadata(index);
 
 //   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
@@ -535,9 +548,9 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 //   EXPECT_TRUE(meta.IsVisible());
 //   EXPECT_FALSE(meta.IsDeleted());
 //   EXPECT_FALSE(status.IsFrozen());
-//   EXPECT_EQ(record_count, status.GetRecordCount());
-//   EXPECT_EQ(block_size, status.GetBlockSize());
-//   EXPECT_EQ(deleted_size, status.GetDeletedSize());
+//   EXPECT_EQ(expected_record_count, status.GetRecordCount());
+//   EXPECT_EQ(expected_block_size, status.GetBlockSize());
+//   EXPECT_EQ(expected_deleted_size, status.GetDeletedSize());
 // }
 
 // TEST_F(LeafNodeUInt64Fixture, Insert_ConsolidatedNode_ReadInsertedValue)
@@ -567,86 +580,74 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 //   EXPECT_EQ(NodeReturnCode::kKeyExist, rc);
 // }
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Update operation
-//  *------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------
+ * Update operation
+ *------------------------------------------------------------------------------------------------*/
 
-// TEST_F(LeafNodeUInt64Fixture, Update_SingleKey_MetadataCorrectlyUpdated)
-// {
-//   node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength); record_count = 1; index = 0;
-//   block_size = sizeof(Key) + sizeof(Payload); deleted_size = kWordLength + sizeof(Key) +
-//   sizeof(Payload);
+TEST_F(LeafNodeUInt64Fixture, Update_SingleKey_MetadataCorrectlyUpdated)
+{
+  node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  expected_record_count += 1;
+  expected_block_size += kRecordLength;
 
-//   std::tie(rc, status)  = node->Update(keys[1], kKeyLength, payloads[2],
-//   kPayloadLength);
-//   ++record_count;
-//   ++index;
-//   block_size += sizeof(Key) + sizeof(Payload);
-//   auto meta = node->GetMetadata(index);
+  std::tie(rc, status) = node->Update(keys[1], kKeyLength, payloads[2], kPayloadLength);
+  expected_record_count += 1;
+  expected_block_size += kRecordLength;
+  expected_deleted_size += kWordLength + kRecordLength;
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(status, node->GetStatusWord());
-//   EXPECT_TRUE(meta.IsVisible());
-//   EXPECT_FALSE(meta.IsDeleted());
-//   EXPECT_EQ(kKeyLength, meta.GetKeyLength());
-//   EXPECT_EQ(kPayloadLength, meta.GetPayloadLength());
-//   EXPECT_FALSE(status.IsFrozen());
-//   EXPECT_EQ(record_count, status.GetRecordCount());
-//   EXPECT_EQ(block_size, status.GetBlockSize());
-//   EXPECT_EQ(deleted_size, status.GetDeletedSize());
-// }
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  VerifyMetadata(node->GetMetadata(index++));
+  VerifyStatusWord(status);
+}
 
-// TEST_F(LeafNodeUInt64Fixture, Update_SingleKey_ReadUpdatedValue)
-// {
-//   node->Insert(keys[1], kKeyLength, payloads[2], kPayloadLength); node->Update(keys[1],
-//   kKeyLength, payloads[2], kPayloadLength);
+TEST_F(LeafNodeUInt64Fixture, Update_SingleKey_ReadUpdatedValue)
+{
+  node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  node->Update(keys[1], kKeyLength, payloads[2], kPayloadLength);
 
-//   std::tie(rc, record) = node->Read(keys[1]);
+  std::tie(rc, record) = node->Read(keys[1]);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(payloads[2], record->GetPayload());
-// }
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(payloads[2], record->GetPayload());
+}
 
-// TEST_F(LeafNodeUInt64Fixture, Update_NotPresentKey_UpdatedFailed)
-// {
-//   std::tie(rc, status)  = node->Update(keys[1], kKeyLength, payloads[1],
-//   kPayloadLength);
+TEST_F(LeafNodeUInt64Fixture, Update_NotPresentKey_UpdatedFailed)
+{
+  std::tie(rc, status) = node->Update(keys[1], kKeyLength, payloads[1], kPayloadLength);
 
-//   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
-// }
+  EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
+}
 
-// TEST_F(LeafNodeUInt64Fixture, Update_DeletedKey_UpdateFailed)
-// {
-//   node->Insert(keys[1], kKeyLength, payloads[2], kPayloadLength); node->Delete(keys[1],
-//   kKeyLength); std::tie(rc, status)  = node->Update(keys[1], kKeyLength, payloads[2],
-//   kPayloadLength);
+TEST_F(LeafNodeUInt64Fixture, Update_DeletedKey_UpdateFailed)
+{
+  node->Insert(keys[1], kKeyLength, payloads[2], kPayloadLength);
+  node->Delete(keys[1], kKeyLength);
 
-//   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
-// }
+  std::tie(rc, status) = node->Update(keys[1], kKeyLength, payloads[2], kPayloadLength);
 
-// TEST_F(LeafNodeUInt64Fixture, Update_FilledNode_GetCorrectReturnCodes)
-// {
-//   WriteNullKey(9);
+  EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
+}
 
-//   // fill a node
-//   std::tie(rc, status)  = node->Update(key_null_ptr, key_length_null, payload_null_ptr,
-//                                    payload_length_null);
+TEST_F(LeafNodeUInt64Fixture, Update_FilledNode_GetCorrectReturnCodes)
+{
+  WriteNullKey(9);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(kNodeSize, status.GetOccupiedSize());
+  // fill a node
+  std::tie(rc, status) = node->Update(key_null, kKeyLength, payload_null, kPayloadLength);
 
-//   // update a filled node with an present key
-//   std::tie(rc, status) = node->Update(key_null_ptr, key_length_null, payload_null_ptr,
-//                                       payload_length_null);
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(kNodeSize, status.GetOccupiedSize());
 
-//   EXPECT_EQ(NodeReturnCode::kNoSpace, rc);
+  // update a filled node with an present key
+  std::tie(rc, status) = node->Update(key_null, kKeyLength, payload_null, kPayloadLength);
 
-//   // update a filled node with a not present key
-//   std::tie(rc, status) = node->Update(keys[1], kKeyLength, payloads[1],
-//                                       kPayloadLength);
+  EXPECT_EQ(NodeReturnCode::kNoSpace, rc);
 
-//   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
-// }
+  // update a filled node with a not present key
+  std::tie(rc, status) = node->Update(keys[1], kKeyLength, payloads[1], kPayloadLength);
+
+  EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
+}
 
 // TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNode_MetadataCorrectlyUpdated)
 // {
@@ -657,10 +658,10 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 
 //   std::tie(rc, status)  = node->Update(keys[1], kKeyLength, payloads[11],
 //                                    payload_lengths[11]);
-//   ++record_count;
-//   block_size += sizeof(Key) + payload_lengths[11];
-//   deleted_size = kWordLength + sizeof(Key) + sizeof(Payload);
-//   index = record_count - 1;
+//   ++expected_record_count;
+//   expected_block_size += sizeof(Key) + payload_lengths[11];
+//   expected_deleted_size = kWordLength + sizeof(Key) + sizeof(Payload);
+//   index = expected_record_count - 1;
 //   auto meta = node->GetMetadata(index);
 
 //   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
@@ -668,9 +669,9 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 //   EXPECT_TRUE(meta.IsVisible());
 //   EXPECT_FALSE(meta.IsDeleted());
 //   EXPECT_FALSE(status.IsFrozen());
-//   EXPECT_EQ(record_count, status.GetRecordCount());
-//   EXPECT_EQ(block_size, status.GetBlockSize());
-//   EXPECT_EQ(deleted_size, status.GetDeletedSize());
+//   EXPECT_EQ(expected_record_count, status.GetRecordCount());
+//   EXPECT_EQ(expected_block_size, status.GetBlockSize());
+//   EXPECT_EQ(expected_deleted_size, status.GetDeletedSize());
 // }
 
 // TEST_F(LeafNodeUInt64Fixture, Update_ConsolidatedNode_ReadUpdatedValue)
@@ -694,8 +695,8 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 //   auto meta_vec = node->GatherSortedLiveMetadata(comp);
 //   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
-//   std::tie(rc, status)  = node->Update(key_null_ptr, key_length_null, payload_null_ptr,
-//                                    payload_length_null);
+//   std::tie(rc, status)  = node->Update(key_null, kKeyLength, payload_null,
+//                                    kPayloadLength);
 
 //   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 // }
@@ -714,87 +715,82 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 //   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 // }
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Delete operation
-//  *------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------
+ * Delete operation
+ *------------------------------------------------------------------------------------------------*/
 
-// TEST_F(LeafNodeUInt64Fixture, Delete_TwoKeys_MetadataCorrectlyUpdated)
-// {
-//   node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength); node->Insert(keys[2],
-//   kKeyLength, payloads[2], kPayloadLength); record_count = 2; block_size =
-//   sizeof(Key) + sizeof(Payload) + sizeof(Key) + sizeof(Payload);
+TEST_F(LeafNodeUInt64Fixture, Delete_TwoKeys_MetadataCorrectlyUpdated)
+{
+  constexpr bool kRecordIsVisible = false;
 
-//   std::tie(rc, status)  = node->Delete(keys[1], kKeyLength);
-//   deleted_size = kWordLength + sizeof(Key) + sizeof(Payload);
-//   auto first_meta = node->GetMetadata(0);
+  node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  node->Insert(keys[2], kKeyLength, payloads[2], kPayloadLength);
+  expected_record_count += 2;
+  expected_block_size += 2 * kRecordLength;
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(status, node->GetStatusWord());
-//   EXPECT_FALSE(first_meta.IsVisible());
-//   EXPECT_TRUE(first_meta.IsDeleted());
-//   EXPECT_FALSE(status.IsFrozen());
-//   EXPECT_EQ(record_count, status.GetRecordCount());
-//   EXPECT_EQ(block_size, status.GetBlockSize());
-//   EXPECT_EQ(deleted_size, status.GetDeletedSize());
+  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
+  expected_deleted_size += kWordLength + kRecordLength;
 
-//   std::tie(rc, status) = node->Delete(keys[2], kKeyLength);
-//   deleted_size += kWordLength + sizeof(Key) + sizeof(Payload);
-//   auto second_meta = node->GetMetadata(1);
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  VerifyMetadata(node->GetMetadata(index++), kRecordIsVisible);
+  VerifyStatusWord(status);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(status, node->GetStatusWord());
-//   EXPECT_FALSE(second_meta.IsVisible());
-//   EXPECT_TRUE(second_meta.IsDeleted());
-//   EXPECT_FALSE(status.IsFrozen());
-//   EXPECT_EQ(record_count, status.GetRecordCount());
-//   EXPECT_EQ(block_size, status.GetBlockSize());
-//   EXPECT_EQ(deleted_size, status.GetDeletedSize());
-// }
+  std::tie(rc, status) = node->Delete(keys[2], kKeyLength);
+  expected_deleted_size += kWordLength + kRecordLength;
 
-// TEST_F(LeafNodeUInt64Fixture, Delete_PresentKey_DeletionSucceed)
-// {
-//   node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  VerifyMetadata(node->GetMetadata(index++), kRecordIsVisible);
+  VerifyStatusWord(status);
+}
 
-//   std::tie(rc, status)  = node->Delete(keys[1], kKeyLength);
+TEST_F(LeafNodeUInt64Fixture, Delete_PresentKey_DeletionSucceed)
+{
+  node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-// }
+  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
 
-// TEST_F(LeafNodeUInt64Fixture, Delete_PresentKey_ReadFailed)
-// {
-//   node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength); node->Delete(keys[1],
-//   kKeyLength);
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+}
 
-//   std::tie(rc, record) = node->Read(keys[1]);
+TEST_F(LeafNodeUInt64Fixture, Delete_PresentKey_ReadFailed)
+{
+  node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  node->Delete(keys[1], kKeyLength);
 
-//   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
-// }
+  std::tie(rc, record) = node->Read(keys[1]);
 
-// TEST_F(LeafNodeUInt64Fixture, Delete_NotPresentKey_DeletionFailed)
-// {
-//   std::tie(rc, status)  = node->Delete(keys[1], kKeyLength);
+  EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
+}
 
-//   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
-// }
+TEST_F(LeafNodeUInt64Fixture, Delete_NotPresentKey_DeletionFailed)
+{
+  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
 
-// TEST_F(LeafNodeUInt64Fixture, Delete_DeletedKey_DeletionFailed)
-// {
-//   node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength); node->Delete(keys[1],
-//   kKeyLength);
+  EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
+}
 
-//   std::tie(rc, status)  = node->Delete(keys[1], kKeyLength);
+TEST_F(LeafNodeUInt64Fixture, Delete_DeletedKey_DeletionFailed)
+{
+  node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  node->Delete(keys[1], kKeyLength);
 
-//   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
-// }
+  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
 
-// TEST_F(LeafNodeUInt64Fixture, Delete_FilledNode_GetCorrectReturnCodes)
-// {
-//   WriteNullKey(10);
+  EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
+}
 
-//   std::tie(rc, status)  = node->Delete(key_null_ptr, key_length_null);
+TEST_F(LeafNodeUInt64Fixture, Delete_FilledNode_GetCorrectReturnCodes)
+{
+  WriteNullKey(10);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-// }
+  std::tie(rc, status) = node->Delete(key_null, kKeyLength);
+
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+
+  std::tie(rc, status) = node->Delete(key_null, kKeyLength);
+
+  EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
+}
 
 // TEST_F(LeafNodeUInt64Fixture, Delete_ConsolidatedNode_MetadataCorrectlyUpdated)
 // {
@@ -804,8 +800,8 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 //   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
 //   std::tie(rc, status)  = node->Delete(keys[1], kKeyLength);
-//   deleted_size = kWordLength + sizeof(Key) + sizeof(Payload);
-//   index = record_count - 1;
+//   expected_deleted_size = kWordLength + sizeof(Key) + sizeof(Payload);
+//   index = expected_record_count - 1;
 //   auto meta = node->GetMetadata(index);
 
 //   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
@@ -813,9 +809,9 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 //   EXPECT_TRUE(meta.IsVisible());
 //   EXPECT_FALSE(meta.IsDeleted());
 //   EXPECT_FALSE(status.IsFrozen());
-//   EXPECT_EQ(record_count, status.GetRecordCount());
-//   EXPECT_EQ(block_size, status.GetBlockSize());
-//   EXPECT_EQ(deleted_size, status.GetDeletedSize());
+//   EXPECT_EQ(expected_record_count, status.GetRecordCount());
+//   EXPECT_EQ(expected_block_size, status.GetBlockSize());
+//   EXPECT_EQ(expected_deleted_size, status.GetDeletedSize());
 // }
 
 // TEST_F(LeafNodeUInt64Fixture, Delete_ConsolidatedNode_DeletionSucceed)
@@ -837,7 +833,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 //   auto meta_vec = node->GatherSortedLiveMetadata(comp);
 //   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
-//   std::tie(rc, status)  = node->Delete(key_null_ptr, key_length_null);
+//   std::tie(rc, status)  = node->Delete(key_null, kKeyLength);
 
 //   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 // }
@@ -867,7 +863,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 //   // gather live metadata and check equality
 //   auto meta_vec = node->GatherSortedLiveMetadata(comp);
 
-//   EXPECT_EQ(record_count, meta_vec.size());
+//   EXPECT_EQ(expected_record_count, meta_vec.size());
 
 //   for (size_t index = 0; index < meta_vec.size(); index++) {
 //     EXPECT_EQ(written_keys[index], CastToValue(meta_vec[index].first));
@@ -880,12 +876,12 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 //   auto written_keys = WriteOrderedKeys(1, 10);
 //   node->Delete(keys[2], kKeyLength);
 //   written_keys.erase(++(written_keys.begin()));
-//   --record_count;
+//   --expected_record_count;
 
 //   // gather live metadata and check equality
 //   auto meta_vec = node->GatherSortedLiveMetadata(comp);
 
-//   EXPECT_EQ(record_count, meta_vec.size());
+//   EXPECT_EQ(expected_record_count, meta_vec.size());
 
 //   for (size_t index = 0; index < meta_vec.size(); index++) {
 //     EXPECT_EQ(written_keys[index], CastToValue(meta_vec[index].first));
@@ -896,12 +892,12 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 // {
 //   // fill a node with ordered keys
 //   auto written_keys = WriteOrderedKeys(1, 9);
-//   node->Update(keys[2], kKeyLength, payload_null_ptr, payload_length_null);
+//   node->Update(keys[2], kKeyLength, payload_null, kPayloadLength);
 
 //   // gather live metadata and check equality
 //   auto meta_vec = node->GatherSortedLiveMetadata(comp);
 
-//   EXPECT_EQ(record_count, meta_vec.size());
+//   EXPECT_EQ(expected_record_count, meta_vec.size());
 
 //   for (size_t index = 0; index < meta_vec.size(); index++) {
 //     EXPECT_EQ(written_keys[index], CastToValue(meta_vec[index].first));
@@ -918,7 +914,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 //   // gather live metadata and check equality
 //   auto meta_vec = node->GatherSortedLiveMetadata(comp);
 
-//   EXPECT_EQ(record_count, meta_vec.size());
+//   EXPECT_EQ(expected_record_count, meta_vec.size());
 
 //   for (size_t index = 0; index < meta_vec.size(); index++) {
 //     EXPECT_EQ(written_keys[index], CastToValue(meta_vec[index].first));
@@ -934,11 +930,11 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 
 //   auto status = node->GetStatusWord();
 
-//   EXPECT_EQ(record_count, node->GetSortedCount());
+//   EXPECT_EQ(expected_record_count, node->GetSortedCount());
 //   EXPECT_FALSE(status.IsFrozen());
-//   EXPECT_EQ(record_count, status.GetRecordCount());
-//   EXPECT_EQ(block_size, status.GetBlockSize());
-//   EXPECT_EQ(deleted_size, status.GetDeletedSize());
+//   EXPECT_EQ(expected_record_count, status.GetRecordCount());
+//   EXPECT_EQ(expected_block_size, status.GetBlockSize());
+//   EXPECT_EQ(expected_deleted_size, status.GetDeletedSize());
 // }
 
 // TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithDelete_NodeHasCorrectStatus)
@@ -950,31 +946,31 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 //   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
 //   auto status = node->GetStatusWord();
-//   --record_count;
-//   block_size -= sizeof(Key) + sizeof(Payload);
+//   --expected_record_count;
+//   expected_block_size -= sizeof(Key) + sizeof(Payload);
 
-//   EXPECT_EQ(record_count, node->GetSortedCount());
+//   EXPECT_EQ(expected_record_count, node->GetSortedCount());
 //   EXPECT_FALSE(status.IsFrozen());
-//   EXPECT_EQ(record_count, status.GetRecordCount());
-//   EXPECT_EQ(block_size, status.GetBlockSize());
-//   EXPECT_EQ(deleted_size, status.GetDeletedSize());
+//   EXPECT_EQ(expected_record_count, status.GetRecordCount());
+//   EXPECT_EQ(expected_block_size, status.GetBlockSize());
+//   EXPECT_EQ(expected_deleted_size, status.GetDeletedSize());
 // }
 
 // TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithUpdate_NodeHasCorrectStatus)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(1, 9);
-//   node->Update(keys[2], kKeyLength, payload_null_ptr, payload_length_null);
+//   node->Update(keys[2], kKeyLength, payload_null, kPayloadLength);
 //   auto meta_vec = node->GatherSortedLiveMetadata(comp);
 //   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
 
 //   auto status = node->GetStatusWord();
 
-//   EXPECT_EQ(record_count, node->GetSortedCount());
+//   EXPECT_EQ(expected_record_count, node->GetSortedCount());
 //   EXPECT_FALSE(status.IsFrozen());
-//   EXPECT_EQ(record_count, status.GetRecordCount());
-//   EXPECT_EQ(block_size, status.GetBlockSize());
-//   EXPECT_EQ(deleted_size, status.GetDeletedSize());
+//   EXPECT_EQ(expected_record_count, status.GetRecordCount());
+//   EXPECT_EQ(expected_block_size, status.GetBlockSize());
+//   EXPECT_EQ(expected_deleted_size, status.GetDeletedSize());
 // }
 
 // TEST_F(LeafNodeUInt64Fixture, Consolidate_UnsortedTenKeys_NodeHasCorrectStatus)
@@ -987,11 +983,11 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 
 //   auto status = node->GetStatusWord();
 
-//   EXPECT_EQ(record_count, node->GetSortedCount());
+//   EXPECT_EQ(expected_record_count, node->GetSortedCount());
 //   EXPECT_FALSE(status.IsFrozen());
-//   EXPECT_EQ(record_count, status.GetRecordCount());
-//   EXPECT_EQ(block_size, status.GetBlockSize());
-//   EXPECT_EQ(deleted_size, status.GetDeletedSize());
+//   EXPECT_EQ(expected_record_count, status.GetRecordCount());
+//   EXPECT_EQ(expected_block_size, status.GetBlockSize());
+//   EXPECT_EQ(expected_deleted_size, status.GetDeletedSize());
 // }
 
 // /*--------------------------------------------------------------------------------------------------
@@ -1007,7 +1003,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 //   auto [left_node, right_node] = LeafNode::Split(node.get(), meta_vec, left_record_count);
 
 //   auto left_status = left_node->GetStatusWord();
-//   auto left_kBlockSize = block_size / 2;
+//   auto left_kBlockSize = expected_block_size / 2;
 //   auto left_deleted_size = 0;
 
 //   EXPECT_EQ(left_record_count, left_node->GetSortedCount());
@@ -1017,8 +1013,8 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 //   EXPECT_EQ(left_deleted_size, left_status.GetDeletedSize());
 
 //   auto right_status = right_node->GetStatusWord();
-//   auto right_record_count = record_count - left_record_count;
-//   auto right_kBlockSize = block_size / 2;
+//   auto right_record_count = expected_record_count - left_record_count;
+//   auto right_kBlockSize = expected_block_size / 2;
 //   auto right_deleted_size = 0;
 
 //   EXPECT_EQ(right_record_count, right_node->GetSortedCount());
@@ -1046,7 +1042,7 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 //   }
 
 //   // check a split right node
-//   for (; index <= record_count; ++index) {
+//   for (; index <= expected_record_count; ++index) {
 //     std::tie(rc, record) = right_node->Read(keys[index]);
 
 //     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
@@ -1070,8 +1066,8 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 //   true);
 
 //   auto merged_status = merged_node->GetStatusWord();
-//   auto merged_record_count = record_count + 1;
-//   auto merged_kBlockSize = block_size + key_lengths[3] + payload_lengths[3];
+//   auto merged_record_count = expected_record_count + 1;
+//   auto merged_kBlockSize = expected_block_size + key_lengths[3] + payload_lengths[3];
 //   auto merged_deleted_size = 0;
 
 //   EXPECT_EQ(merged_record_count, merged_node->GetSortedCount());
@@ -1093,8 +1089,8 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 //       LeafNode::Merge(node.get(), this_meta, sibling_node.get(), sibling_meta, false);
 
 //   auto merged_status = merged_node->GetStatusWord();
-//   auto merged_record_count = record_count + 1;
-//   auto merged_kBlockSize = block_size + key_lengths[7] + payload_lengths[7];
+//   auto merged_record_count = expected_record_count + 1;
+//   auto merged_kBlockSize = expected_block_size + key_lengths[7] + payload_lengths[7];
 //   auto merged_deleted_size = 0;
 
 //   EXPECT_EQ(merged_record_count, merged_node->GetSortedCount());

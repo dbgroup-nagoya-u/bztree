@@ -544,10 +544,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       const size_t key_length,
       const Payload &payload,
       const size_t payload_length,
-      const size_t index_epoch)
+      const size_t index_epoch = 0)
   {
-    assert(key != nullptr);
-
     // variables and constants shared in Phase 1 & 2
     StatusWord current_status;
     size_t record_count;
@@ -632,8 +630,6 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       const Key &key,
       const size_t key_length)
   {
-    assert(key != nullptr);
-
     // variables and constants
     StatusWord new_status;
 
