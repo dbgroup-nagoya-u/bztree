@@ -15,6 +15,7 @@ using Key = uint64_t;
 using Payload = uint64_t;
 using NodeReturnCode = BaseNode<Key, Payload>::NodeReturnCode;
 using Record_t = Record<Key, Payload>;
+using LeafNode_t = LeafNode<Key, Payload>;
 
 static constexpr size_t kNodeSize = 256;
 static constexpr size_t kIndexEpoch = 0;
@@ -35,7 +36,7 @@ class LeafNodeUInt64Fixture : public testing::Test
   Key key_null = 0;          // null key must have 8 bytes to fill a node
   Payload payload_null = 0;  // null payload must have 8 bytes to fill a node
 
-  std::unique_ptr<LeafNode<Key, Payload>> node;
+  std::unique_ptr<LeafNode_t> node;
   size_t index;
   size_t expected_record_count;
   size_t expected_block_size;
@@ -49,7 +50,7 @@ class LeafNodeUInt64Fixture : public testing::Test
   void
   SetUp() override
   {
-    node.reset(LeafNode<Key, Payload>::CreateEmptyNode(kNodeSize));
+    node.reset(LeafNode_t::CreateEmptyNode(kNodeSize));
     index = 0;
     expected_record_count = 0;
     expected_block_size = 0;
@@ -291,8 +292,8 @@ TEST_F(LeafNodeUInt64Fixture, New_EmptyNode_CorrectlyInitialized)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(3, 7);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
 //   auto [rc, scan_results] = node->Scan(keys[4], true, keys[6], true);
 
@@ -310,8 +311,8 @@ TEST_F(LeafNodeUInt64Fixture, New_EmptyNode_CorrectlyInitialized)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(3, 7);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
 //   auto [rc, scan_results] = node->Scan(nullptr, true, keys[3], true);
 
@@ -325,8 +326,8 @@ TEST_F(LeafNodeUInt64Fixture, New_EmptyNode_CorrectlyInitialized)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(3, 7);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
 //   auto [rc, scan_results] = node->Scan(keys[7], true, nullptr, true);
 
@@ -340,8 +341,8 @@ TEST_F(LeafNodeUInt64Fixture, New_EmptyNode_CorrectlyInitialized)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(3, 7);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 //   node->Update(keys[5], key_lengths[5], payloads[0], payload_lengths[0]); node->Delete(keys[7],
 //   key_lengths[7]);
 
@@ -424,8 +425,8 @@ TEST_F(LeafNodeUInt64Fixture, Write_FilledNode_GetCorrectReturnCodes)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(1, 5);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
 //   std::tie(rc, status)  = node->Write(keys[11], key_lengths[11], payloads[11],
 //                                   payload_lengths[11]);
@@ -448,8 +449,8 @@ TEST_F(LeafNodeUInt64Fixture, Write_FilledNode_GetCorrectReturnCodes)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(1, 5);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
 //   node->Write(keys[11], key_lengths[11], payloads[11], payload_lengths[11]);
 //   std::tie(rc, record) = node->Read(keys[11]);
@@ -533,8 +534,8 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(1, 5);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
 //   std::tie(rc, status)  = node->Insert(keys[11], key_lengths[11], payloads[11],
 //                                    payload_lengths[11]);
@@ -557,8 +558,8 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(1, 5);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
 //   node->Insert(keys[11], key_lengths[11], payloads[11], payload_lengths[11]);
 //   std::tie(rc, record) = node->Read(keys[11]);
@@ -571,8 +572,8 @@ TEST_F(LeafNodeUInt64Fixture, Insert_FilledNode_GetCorrectReturnCodes)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(1, 5);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
 //   std::tie(rc, status)  = node->Insert(keys[1], kKeyLength, payloads[1],
 //   kPayloadLength);
@@ -653,8 +654,8 @@ TEST_F(LeafNodeUInt64Fixture, Update_FilledNode_GetCorrectReturnCodes)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(1, 5);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
 //   std::tie(rc, status)  = node->Update(keys[1], kKeyLength, payloads[11],
 //                                    payload_lengths[11]);
@@ -678,8 +679,8 @@ TEST_F(LeafNodeUInt64Fixture, Update_FilledNode_GetCorrectReturnCodes)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(1, 5);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
 //   node->Update(keys[1], kKeyLength, payloads[11], payload_lengths[11]);
 //   std::tie(rc, record) = node->Read(keys[1]);
@@ -692,8 +693,8 @@ TEST_F(LeafNodeUInt64Fixture, Update_FilledNode_GetCorrectReturnCodes)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(1, 5);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
 //   std::tie(rc, status)  = node->Update(key_null, kKeyLength, payload_null,
 //                                    kPayloadLength);
@@ -705,8 +706,8 @@ TEST_F(LeafNodeUInt64Fixture, Update_FilledNode_GetCorrectReturnCodes)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(1, 5);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 //   node->Delete(keys[1], kKeyLength);
 
 //   std::tie(rc, status)  = node->Update(keys[1], kKeyLength, payloads[1],
@@ -796,8 +797,8 @@ TEST_F(LeafNodeUInt64Fixture, Delete_FilledNode_GetCorrectReturnCodes)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(1, 5);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
 //   std::tie(rc, status)  = node->Delete(keys[1], kKeyLength);
 //   expected_deleted_size = kWordLength + sizeof(Key) + sizeof(Payload);
@@ -818,8 +819,8 @@ TEST_F(LeafNodeUInt64Fixture, Delete_FilledNode_GetCorrectReturnCodes)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(1, 5);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
 //   std::tie(rc, status)  = node->Delete(keys[1], kKeyLength);
 
@@ -830,8 +831,8 @@ TEST_F(LeafNodeUInt64Fixture, Delete_FilledNode_GetCorrectReturnCodes)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(1, 5);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
 //   std::tie(rc, status)  = node->Delete(key_null, kKeyLength);
 
@@ -842,8 +843,8 @@ TEST_F(LeafNodeUInt64Fixture, Delete_FilledNode_GetCorrectReturnCodes)
 // {
 //   // prepare a consolidated node
 //   WriteOrderedKeys(1, 5);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 //   node->Delete(keys[1], kKeyLength);
 
 //   std::tie(rc, status)  = node->Delete(keys[1], kKeyLength);
@@ -851,144 +852,129 @@ TEST_F(LeafNodeUInt64Fixture, Delete_FilledNode_GetCorrectReturnCodes)
 //   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 // }
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Consolide operation
-//  *------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------
+ * Consolide operation
+ *------------------------------------------------------------------------------------------------*/
 
-// TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeys_GatherSortedLiveMetadata)
-// {
-//   // fill a node with ordered keys
-//   auto written_keys = WriteOrderedKeys(1, 10);
+TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeys_GatherSortedLiveMetadata)
+{
+  // fill a node with ordered keys
+  auto written_keys = WriteOrderedKeys(0, 9);
 
-//   // gather live metadata and check equality
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  // gather live metadata and check equality
+  auto meta_vec = node->GatherSortedLiveMetadata();
 
-//   EXPECT_EQ(expected_record_count, meta_vec.size());
+  EXPECT_EQ(expected_record_count, meta_vec.size());
+  for (size_t index = 0; index < meta_vec.size(); index++) {
+    auto [key, meta] = meta_vec[index];
+    EXPECT_EQ(written_keys[index], key);
+    EXPECT_TRUE(meta.IsVisible());
+  }
+}
 
-//   for (size_t index = 0; index < meta_vec.size(); index++) {
-//     EXPECT_EQ(written_keys[index], CastToValue(meta_vec[index].first));
-//   }
-// }
+TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithDelete_GatherSortedLiveMetadata)
+{
+  // fill a node with ordered keys
+  auto written_keys = WriteOrderedKeys(0, 9);
 
-// TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithDelete_GatherSortedLiveMetadata)
-// {
-//   // fill a node with ordered keys
-//   auto written_keys = WriteOrderedKeys(1, 10);
-//   node->Delete(keys[2], kKeyLength);
-//   written_keys.erase(++(written_keys.begin()));
-//   --expected_record_count;
+  // delete a key
+  node->Delete(keys[2], kKeyLength);
+  --expected_record_count;
+  written_keys.erase(std::find(written_keys.begin(), written_keys.end(), keys[2]));
 
-//   // gather live metadata and check equality
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  // gather live metadata and check equality
+  auto meta_vec = node->GatherSortedLiveMetadata();
 
-//   EXPECT_EQ(expected_record_count, meta_vec.size());
+  EXPECT_EQ(expected_record_count, meta_vec.size());
+  for (size_t index = 0; index < meta_vec.size(); index++) {
+    auto [key, meta] = meta_vec[index];
+    EXPECT_EQ(written_keys[index], key);
+    EXPECT_TRUE(meta.IsVisible());
+  }
+}
 
-//   for (size_t index = 0; index < meta_vec.size(); index++) {
-//     EXPECT_EQ(written_keys[index], CastToValue(meta_vec[index].first));
-//   }
-// }
+TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithUpdate_GatherSortedLiveMetadata)
+{
+  // fill a node with ordered keys
+  auto written_keys = WriteOrderedKeys(0, 8);
+  node->Update(keys[2], kKeyLength, payload_null, kPayloadLength);
 
-// TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithUpdate_GatherSortedLiveMetadata)
-// {
-//   // fill a node with ordered keys
-//   auto written_keys = WriteOrderedKeys(1, 9);
-//   node->Update(keys[2], kKeyLength, payload_null, kPayloadLength);
+  // gather live metadata and check equality
+  auto meta_vec = node->GatherSortedLiveMetadata();
 
-//   // gather live metadata and check equality
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
+  EXPECT_EQ(expected_record_count, meta_vec.size());
+  for (size_t index = 0; index < meta_vec.size(); index++) {
+    auto [key, meta] = meta_vec[index];
+    EXPECT_EQ(written_keys[index], key);
+    EXPECT_TRUE(meta.IsVisible());
+  }
+}
 
-//   EXPECT_EQ(expected_record_count, meta_vec.size());
+TEST_F(LeafNodeUInt64Fixture, Consolidate_UnsortedTenKeys_GatherSortedLiveMetadata)
+{
+  // fill a node with ordered keys
+  auto tmp_keys = WriteOrderedKeys(4, 9);
+  auto written_keys = WriteOrderedKeys(0, 3);
+  written_keys.insert(written_keys.end(), tmp_keys.begin(), tmp_keys.end());
 
-//   for (size_t index = 0; index < meta_vec.size(); index++) {
-//     EXPECT_EQ(written_keys[index], CastToValue(meta_vec[index].first));
-//   }
-// }
+  // gather live metadata and check equality
+  auto meta_vec = node->GatherSortedLiveMetadata();
 
-// TEST_F(LeafNodeUInt64Fixture, Consolidate_UnsortedTenKeys_GatherSortedLiveMetadata)
-// {
-//   // fill a node with ordered keys
-//   auto tmp_keys = WriteOrderedKeys(5, 10);
-//   auto written_keys = WriteOrderedKeys(1, 4);
-//   written_keys.insert(written_keys.end(), tmp_keys.begin(), tmp_keys.end());
+  EXPECT_EQ(expected_record_count, meta_vec.size());
+  for (size_t index = 0; index < meta_vec.size(); index++) {
+    auto [key, meta] = meta_vec[index];
+    EXPECT_EQ(written_keys[index], key);
+    EXPECT_TRUE(meta.IsVisible());
+  }
+}
 
-//   // gather live metadata and check equality
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
+TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeys_NodeHasCorrectStatus)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(0, 9);
+  auto meta_vec = node->GatherSortedLiveMetadata();
+  node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-//   EXPECT_EQ(expected_record_count, meta_vec.size());
+  VerifyStatusWord(node->GetStatusWord());
+}
 
-//   for (size_t index = 0; index < meta_vec.size(); index++) {
-//     EXPECT_EQ(written_keys[index], CastToValue(meta_vec[index].first));
-//   }
-// }
+TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithDelete_NodeHasCorrectStatus)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(0, 9);
+  node->Delete(keys[2], kKeyLength);
+  expected_record_count -= 1;
+  expected_block_size -= kRecordLength;
 
-// TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeys_NodeHasCorrectStatus)
-// {
-//   // prepare a consolidated node
-//   WriteOrderedKeys(1, 10);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+  auto meta_vec = node->GatherSortedLiveMetadata();
+  node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-//   auto status = node->GetStatusWord();
+  VerifyStatusWord(node->GetStatusWord());
+}
 
-//   EXPECT_EQ(expected_record_count, node->GetSortedCount());
-//   EXPECT_FALSE(status.IsFrozen());
-//   EXPECT_EQ(expected_record_count, status.GetRecordCount());
-//   EXPECT_EQ(expected_block_size, status.GetBlockSize());
-//   EXPECT_EQ(expected_deleted_size, status.GetDeletedSize());
-// }
+TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithUpdate_NodeHasCorrectStatus)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(0, 8);
+  node->Update(keys[2], kKeyLength, payload_null, kPayloadLength);
 
-// TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithDelete_NodeHasCorrectStatus)
-// {
-//   // prepare a consolidated node
-//   WriteOrderedKeys(1, 10);
-//   node->Delete(keys[2], kKeyLength);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+  auto meta_vec = node->GatherSortedLiveMetadata();
+  node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-//   auto status = node->GetStatusWord();
-//   --expected_record_count;
-//   expected_block_size -= sizeof(Key) + sizeof(Payload);
+  VerifyStatusWord(node->GetStatusWord());
+}
 
-//   EXPECT_EQ(expected_record_count, node->GetSortedCount());
-//   EXPECT_FALSE(status.IsFrozen());
-//   EXPECT_EQ(expected_record_count, status.GetRecordCount());
-//   EXPECT_EQ(expected_block_size, status.GetBlockSize());
-//   EXPECT_EQ(expected_deleted_size, status.GetDeletedSize());
-// }
+TEST_F(LeafNodeUInt64Fixture, Consolidate_UnsortedTenKeys_NodeHasCorrectStatus)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(4, 9);
+  WriteOrderedKeys(0, 3);
 
-// TEST_F(LeafNodeUInt64Fixture, Consolidate_SortedTenKeysWithUpdate_NodeHasCorrectStatus)
-// {
-//   // prepare a consolidated node
-//   WriteOrderedKeys(1, 9);
-//   node->Update(keys[2], kKeyLength, payload_null, kPayloadLength);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
+  auto meta_vec = node->GatherSortedLiveMetadata();
+  node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-//   auto status = node->GetStatusWord();
-
-//   EXPECT_EQ(expected_record_count, node->GetSortedCount());
-//   EXPECT_FALSE(status.IsFrozen());
-//   EXPECT_EQ(expected_record_count, status.GetRecordCount());
-//   EXPECT_EQ(expected_block_size, status.GetBlockSize());
-//   EXPECT_EQ(expected_deleted_size, status.GetDeletedSize());
-// }
-
-// TEST_F(LeafNodeUInt64Fixture, Consolidate_UnsortedTenKeys_NodeHasCorrectStatus)
-// {
-//   // prepare a consolidated node
-//   WriteOrderedKeys(5, 10);
-//   WriteOrderedKeys(1, 4);
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   node.reset(LeafNode::Consolidate(node.get(), meta_vec));
-
-//   auto status = node->GetStatusWord();
-
-//   EXPECT_EQ(expected_record_count, node->GetSortedCount());
-//   EXPECT_FALSE(status.IsFrozen());
-//   EXPECT_EQ(expected_record_count, status.GetRecordCount());
-//   EXPECT_EQ(expected_block_size, status.GetBlockSize());
-//   EXPECT_EQ(expected_deleted_size, status.GetDeletedSize());
-// }
+  VerifyStatusWord(node->GetStatusWord());
+}
 
 // /*--------------------------------------------------------------------------------------------------
 //  * Split operation
@@ -997,10 +983,10 @@ TEST_F(LeafNodeUInt64Fixture, Delete_FilledNode_GetCorrectReturnCodes)
 // TEST_F(LeafNodeUInt64Fixture, Split_EquallyDivided_NodesHaveCorrectStatus)
 // {
 //   // prepare split nodes
-//   WriteOrderedKeys(1, 10);
+//   WriteOrderedKeys(0, 9);
 //   auto left_record_count = 5;
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   auto [left_node, right_node] = LeafNode::Split(node.get(), meta_vec, left_record_count);
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   auto [left_node, right_node] = LeafNode_t::Split(node.get(), meta_vec, left_record_count);
 
 //   auto left_status = left_node->GetStatusWord();
 //   auto left_kBlockSize = expected_block_size / 2;
@@ -1027,10 +1013,10 @@ TEST_F(LeafNodeUInt64Fixture, Delete_FilledNode_GetCorrectReturnCodes)
 // TEST_F(LeafNodeUInt64Fixture, Split_EquallyDivided_NodesHaveCorrectKeyPayloads)
 // {
 //   // prepare split nodes
-//   WriteOrderedKeys(1, 10);
+//   WriteOrderedKeys(0, 9);
 //   const auto left_record_count = 5;
-//   auto meta_vec = node->GatherSortedLiveMetadata(comp);
-//   auto [left_node, right_node] = LeafNode::Split(node.get(), meta_vec, left_record_count);
+//   auto meta_vec = node->GatherSortedLiveMetadata();
+//   auto [left_node, right_node] = LeafNode_t::Split(node.get(), meta_vec, left_record_count);
 
 //   // check a split left node
 //   size_t index = 1;
@@ -1058,11 +1044,11 @@ TEST_F(LeafNodeUInt64Fixture, Delete_FilledNode_GetCorrectReturnCodes)
 // {
 //   // prepare a merged node
 //   WriteOrderedKeys(4, 6);
-//   auto this_meta = node->GatherSortedLiveMetadata(comp);
-//   auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kNodeSize));
+//   auto this_meta = node->GatherSortedLiveMetadata();
+//   auto sibling_node = std::unique_ptr<LeafNode>(LeafNode_t::CreateEmptyNode(kNodeSize));
 //   sibling_node->Write(keys[3], key_lengths[3], payloads[3], payload_lengths[3]);
-//   auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
-//   auto merged_node = LeafNode::Merge(node.get(), this_meta, sibling_node.get(), sibling_meta,
+//   auto sibling_meta = sibling_node->GatherSortedLiveMetadata();
+//   auto merged_node = LeafNode_t::Merge(node.get(), this_meta, sibling_node.get(), sibling_meta,
 //   true);
 
 //   auto merged_status = merged_node->GetStatusWord();
@@ -1081,12 +1067,12 @@ TEST_F(LeafNodeUInt64Fixture, Delete_FilledNode_GetCorrectReturnCodes)
 // {
 //   // prepare a merged node
 //   WriteOrderedKeys(4, 6);
-//   auto this_meta = node->GatherSortedLiveMetadata(comp);
-//   auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kNodeSize));
+//   auto this_meta = node->GatherSortedLiveMetadata();
+//   auto sibling_node = std::unique_ptr<LeafNode>(LeafNode_t::CreateEmptyNode(kNodeSize));
 //   sibling_node->Write(keys[7], key_lengths[7], payloads[7], payload_lengths[7]);
-//   auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
+//   auto sibling_meta = sibling_node->GatherSortedLiveMetadata();
 //   auto merged_node =
-//       LeafNode::Merge(node.get(), this_meta, sibling_node.get(), sibling_meta, false);
+//       LeafNode_t::Merge(node.get(), this_meta, sibling_node.get(), sibling_meta, false);
 
 //   auto merged_status = merged_node->GetStatusWord();
 //   auto merged_record_count = expected_record_count + 1;
@@ -1104,11 +1090,11 @@ TEST_F(LeafNodeUInt64Fixture, Delete_FilledNode_GetCorrectReturnCodes)
 // {
 //   // prepare a merged node
 //   WriteOrderedKeys(4, 6);
-//   auto this_meta = node->GatherSortedLiveMetadata(comp);
-//   auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kNodeSize));
+//   auto this_meta = node->GatherSortedLiveMetadata();
+//   auto sibling_node = std::unique_ptr<LeafNode>(LeafNode_t::CreateEmptyNode(kNodeSize));
 //   sibling_node->Write(keys[3], key_lengths[3], payloads[3], payload_lengths[3]);
-//   auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
-//   auto merged_node = LeafNode::Merge(node.get(), this_meta, sibling_node.get(), sibling_meta,
+//   auto sibling_meta = sibling_node->GatherSortedLiveMetadata();
+//   auto merged_node = LeafNode_t::Merge(node.get(), this_meta, sibling_node.get(), sibling_meta,
 //   true);
 
 //   // check keys and payloads
@@ -1124,12 +1110,12 @@ TEST_F(LeafNodeUInt64Fixture, Delete_FilledNode_GetCorrectReturnCodes)
 // {
 //   // prepare a merged node
 //   WriteOrderedKeys(4, 6);
-//   auto this_meta = node->GatherSortedLiveMetadata(comp);
-//   auto sibling_node = std::unique_ptr<LeafNode>(LeafNode::CreateEmptyNode(kNodeSize));
+//   auto this_meta = node->GatherSortedLiveMetadata();
+//   auto sibling_node = std::unique_ptr<LeafNode>(LeafNode_t::CreateEmptyNode(kNodeSize));
 //   sibling_node->Write(keys[7], key_lengths[7], payloads[7], payload_lengths[7]);
-//   auto sibling_meta = sibling_node->GatherSortedLiveMetadata(comp);
+//   auto sibling_meta = sibling_node->GatherSortedLiveMetadata();
 //   auto merged_node =
-//       LeafNode::Merge(node.get(), this_meta, sibling_node.get(), sibling_meta, false);
+//       LeafNode_t::Merge(node.get(), this_meta, sibling_node.get(), sibling_meta, false);
 
 //   // check keys and payloads
 //   for (size_t index = 4; index <= 7; ++index) {

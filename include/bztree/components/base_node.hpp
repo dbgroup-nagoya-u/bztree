@@ -106,7 +106,7 @@ class alignas(kCacheLineSize) BaseNode
   }
 
   size_t
-  CopyRecord(  //
+  SetRecord(  //
       const Key &key,
       const size_t key_length,
       const Payload &payload,
@@ -119,6 +119,22 @@ class alignas(kCacheLineSize) BaseNode
       offset -= key_length;
       SetKey(key, key_length, offset);
     }
+    return offset;
+  }
+
+  size_t
+  CopyRecord(  //
+      const BaseNode *original_node,
+      const Metadata meta,
+      size_t offset)
+  {
+    const auto total_length = meta.GetTotalLength();
+
+    offset -= total_length;
+    const auto dest = ShiftAddress(this, offset);
+    const auto src = original_node->GetKeyAddr(meta);
+    memcpy(dest, src, total_length);
+
     return offset;
   }
 

@@ -188,10 +188,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     for (auto iter = begin_iter; iter != end_iter; ++record_count, ++iter) {
       // copy a record
       const auto [key, meta] = *iter;
-      const auto key_length = meta.GetKeyLength();
-      const auto payload = original_node->GetPayloadAddr(meta);
-      const auto payload_length = meta.GetPayloadLength();
-      offset = copied_node->CopyRecord(key, key_length, payload, payload_length, offset);
+      offset = copied_node->CopyRecord(original_node, meta, offset);
       // copy metadata
       const auto new_meta = meta.UpdateOffset(offset);
       copied_node->SetMetadata(record_count, new_meta);
@@ -398,7 +395,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
     // insert a record
     auto offset = this->GetNodeSize() - current_status.GetBlockSize();
-    offset = this->CopyRecord(key, key_length, payload, payload_length, offset);
+    offset = this->SetRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = inserting_meta.SetRecordInfo(offset, key_length, total_length);
@@ -494,7 +491,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
     // insert a record
     auto offset = this->GetNodeSize() - current_status.GetBlockSize();
-    offset = this->CopyRecord(key, key_length, payload, payload_length, offset);
+    offset = this->SetRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = inserting_meta.SetRecordInfo(offset, key_length, total_length);
@@ -593,7 +590,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
     // insert a record
     auto offset = this->GetNodeSize() - current_status.GetBlockSize();
-    offset = this->CopyRecord(key, key_length, payload, payload_length, offset);
+    offset = this->SetRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = inserting_meta.SetRecordInfo(offset, key_length, total_length);
@@ -739,7 +736,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     for (int64_t index = record_count - 1; index >= sorted_count; --index) {
       const auto meta = this->GetMetadata(index);
       if (meta.IsVisible() || meta.IsDeleted()) {
-        meta_arr.emplace_back(GetKeyAddr(meta), meta);
+        const auto key = *reinterpret_cast<Key *>(this->GetKeyAddr(meta));
+        meta_arr.emplace_back(key, meta);
       } else {
         // there is a key, but it is in inserting or corrupted.
         // NOTE: we can ignore inserting records because concurrent writes are aborted due to SMOs.
@@ -749,7 +747,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     // search sorted metadata
     for (int64_t index = 0; index < sorted_count; ++index) {
       const auto meta = this->GetMetadata(index);
-      meta_arr.emplace_back(GetKeyAddr(meta), meta);
+      const auto key = *reinterpret_cast<Key *>(this->GetKeyAddr(meta));
+      meta_arr.emplace_back(key, meta);
     }
 
     // make unique with keeping the order of writes
