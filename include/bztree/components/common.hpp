@@ -151,25 +151,31 @@ IsEqual(const Key &obj_1, const Key &obj_2)
  * @param begin_is_closed
  * @param end_key
  * @param end_is_closed
- * @param comp
  * @return true if a specfied key is in an input interval
  * @return false
  */
-template <class Compare>
+template <class Compare, class Key>
 constexpr bool
-IsInRange(const void *key,
-          const void *begin_key,
+IsInRange(const Key &key,
+          const Key *begin_key,
           const bool begin_is_closed,
-          const void *end_key,
-          const bool end_is_closed,
-          const Compare &comp)
+          const Key *end_key,
+          const bool end_is_closed)
 {
-  if (begin_key != nullptr) {
-    return (comp(begin_key, key) && comp(key, end_key))
-           || (begin_is_closed && IsEqual(key, begin_key, comp))
-           || (end_is_closed && IsEqual(key, end_key, comp));
+  if (begin_key == nullptr && end_key == nullptr) {
+    // no range condition
+    return true;
+  } else if (begin_key == nullptr) {
+    // less than or equal to
+    return Compare{}(key, *end_key) || (end_is_closed && IsEqual<Compare>(key, *end_key));
+  } else if (end_key == nullptr) {
+    // greater than or equal to
+    return Compare{}(*begin_key, key) || (begin_is_closed && IsEqual<Compare>(key, *begin_key));
   } else {
-    return comp(key, end_key) || (end_is_closed && IsEqual(key, end_key, comp));
+    // between
+    return (Compare{}(*begin_key, key) && Compare{}(key, *end_key))
+           || (begin_is_closed && IsEqual<Compare>(key, *begin_key))
+           || (end_is_closed && IsEqual<Compare>(key, *end_key));
   }
 }
 

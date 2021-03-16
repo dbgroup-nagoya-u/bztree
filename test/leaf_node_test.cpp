@@ -139,222 +139,222 @@ TEST_F(LeafNodeUInt64Fixture, New_EmptyNode_CorrectlyInitialized)
   EXPECT_EQ(status, node->GetStatusWord());
 }
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Read operation
-//  *------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------
+ * Read operation
+ *------------------------------------------------------------------------------------------------*/
 
-// TEST_F(LeafNodeUInt64Fixture, Read_NotPresentKey_ReadFailed)
-// {
-//   std::tie(rc, record) = node->Read(keys[1]);
+TEST_F(LeafNodeUInt64Fixture, Read_NotPresentKey_ReadFailed)
+{
+  std::tie(rc, record) = node->Read(keys[1]);
 
-//   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
-// }
+  EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
+}
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Scan operation
-//  *------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------
+ * Scan operation
+ *------------------------------------------------------------------------------------------------*/
 
-// TEST_F(LeafNodeUInt64Fixture, Scan_EmptyNode_NoResult)
-// {
-//   auto [rc, scan_results] = node->Scan(keys[1], true, keys[10], true);
+TEST_F(LeafNodeUInt64Fixture, Scan_EmptyNode_NoResult)
+{
+  auto [rc, scan_results] = node->Scan(&keys[0], true, &keys[9], true);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(0, scan_results.size());
-// }
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(0, scan_results.size());
+}
 
-// TEST_F(LeafNodeUInt64Fixture, Scan_BothClosed_ScanTargetValues)
-// {
-//   WriteOrderedKeys(5, 10);
-//   WriteOrderedKeys(1, 4);
+TEST_F(LeafNodeUInt64Fixture, Scan_BothClosed_ScanTargetValues)
+{
+  WriteOrderedKeys(4, 9);
+  WriteOrderedKeys(0, 3);
 
-//   auto [rc, scan_results] = node->Scan(keys[4], true, keys[6], true);
+  auto [rc, scan_results] = node->Scan(&keys[4], true, &keys[6], true);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(3, scan_results.size());
-//   EXPECT_EQ(keys[4], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[4], CastToValue(scan_results[0].second.get()));
-//   EXPECT_EQ(keys[5], CastToValue(scan_results[1].first.get()));
-//   EXPECT_EQ(payloads[5], CastToValue(scan_results[1].second.get()));
-//   EXPECT_EQ(keys[6], CastToValue(scan_results[2].first.get()));
-//   EXPECT_EQ(payloads[6], CastToValue(scan_results[2].second.get()));
-// }
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(3, scan_results.size());
+  EXPECT_EQ(keys[4], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[4], scan_results[0]->GetPayload());
+  EXPECT_EQ(keys[5], scan_results[1]->GetKey());
+  EXPECT_EQ(payloads[5], scan_results[1]->GetPayload());
+  EXPECT_EQ(keys[6], scan_results[2]->GetKey());
+  EXPECT_EQ(payloads[6], scan_results[2]->GetPayload());
+}
 
-// TEST_F(LeafNodeUInt64Fixture, Scan_LeftClosed_ScanTargetValues)
-// {
-//   WriteOrderedKeys(5, 10);
-//   WriteOrderedKeys(1, 4);
+TEST_F(LeafNodeUInt64Fixture, Scan_LeftClosed_ScanTargetValues)
+{
+  WriteOrderedKeys(4, 9);
+  WriteOrderedKeys(0, 3);
 
-//   auto [rc, scan_results] = node->Scan(keys[8], true, keys[10], false);
+  auto [rc, scan_results] = node->Scan(&keys[7], true, &keys[9], false);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   EXPECT_EQ(keys[8], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[8], CastToValue(scan_results[0].second.get()));
-//   EXPECT_EQ(keys[9], CastToValue(scan_results[1].first.get()));
-//   EXPECT_EQ(payloads[9], CastToValue(scan_results[1].second.get()));
-// }
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(2, scan_results.size());
+  EXPECT_EQ(keys[7], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[7], scan_results[0]->GetPayload());
+  EXPECT_EQ(keys[8], scan_results[1]->GetKey());
+  EXPECT_EQ(payloads[8], scan_results[1]->GetPayload());
+}
 
-// TEST_F(LeafNodeUInt64Fixture, Scan_RightClosed_ScanTargetValues)
-// {
-//   WriteOrderedKeys(5, 10);
-//   WriteOrderedKeys(1, 4);
+TEST_F(LeafNodeUInt64Fixture, Scan_RightClosed_ScanTargetValues)
+{
+  WriteOrderedKeys(4, 9);
+  WriteOrderedKeys(0, 3);
 
-//   auto [rc, scan_results] = node->Scan(keys[8], false, keys[10], true);
+  auto [rc, scan_results] = node->Scan(&keys[7], false, &keys[9], true);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   EXPECT_EQ(keys[9], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[9], CastToValue(scan_results[0].second.get()));
-//   EXPECT_EQ(keys[10], CastToValue(scan_results[1].first.get()));
-//   EXPECT_EQ(payloads[10], CastToValue(scan_results[1].second.get()));
-// }
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(2, scan_results.size());
+  EXPECT_EQ(keys[8], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[8], scan_results[0]->GetPayload());
+  EXPECT_EQ(keys[9], scan_results[1]->GetKey());
+  EXPECT_EQ(payloads[9], scan_results[1]->GetPayload());
+}
 
-// TEST_F(LeafNodeUInt64Fixture, Scan_BothOpened_ScanTargetValues)
-// {
-//   WriteOrderedKeys(5, 10);
-//   WriteOrderedKeys(1, 4);
+TEST_F(LeafNodeUInt64Fixture, Scan_BothOpened_ScanTargetValues)
+{
+  WriteOrderedKeys(4, 9);
+  WriteOrderedKeys(0, 3);
 
-//   auto [rc, scan_results] = node->Scan(keys[8], false, keys[10], false);
+  auto [rc, scan_results] = node->Scan(&keys[7], false, &keys[9], false);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(1, scan_results.size());
-//   EXPECT_EQ(keys[9], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[9], CastToValue(scan_results[0].second.get()));
-// }
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(1, scan_results.size());
+  EXPECT_EQ(keys[8], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[8], scan_results[0]->GetPayload());
+}
 
-// TEST_F(LeafNodeUInt64Fixture, Scan_LeftInfinity_ScanTargetValues)
-// {
-//   WriteOrderedKeys(5, 10);
-//   WriteOrderedKeys(1, 4);
+TEST_F(LeafNodeUInt64Fixture, Scan_LeftInfinity_ScanTargetValues)
+{
+  WriteOrderedKeys(4, 9);
+  WriteOrderedKeys(0, 3);
 
-//   auto [rc, scan_results] = node->Scan(nullptr, false, keys[2], true);
+  auto [rc, scan_results] = node->Scan(nullptr, false, &keys[1], true);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   EXPECT_EQ(keys[1], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[1], CastToValue(scan_results[0].second.get()));
-//   EXPECT_EQ(keys[2], CastToValue(scan_results[1].first.get()));
-//   EXPECT_EQ(payloads[2], CastToValue(scan_results[1].second.get()));
-// }
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(2, scan_results.size());
+  EXPECT_EQ(keys[0], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[0], scan_results[0]->GetPayload());
+  EXPECT_EQ(keys[1], scan_results[1]->GetKey());
+  EXPECT_EQ(payloads[1], scan_results[1]->GetPayload());
+}
 
-// TEST_F(LeafNodeUInt64Fixture, Scan_RightInfinity_ScanTargetValues)
-// {
-//   WriteOrderedKeys(5, 10);
-//   WriteOrderedKeys(1, 4);
+TEST_F(LeafNodeUInt64Fixture, Scan_RightInfinity_ScanTargetValues)
+{
+  WriteOrderedKeys(4, 9);
+  WriteOrderedKeys(0, 3);
 
-//   auto [rc, scan_results] = node->Scan(keys[9], true, nullptr, false);
+  auto [rc, scan_results] = node->Scan(&keys[8], true, nullptr, false);
 
-//   EXPECT_EQ(NodeReturnCode::kScanInProgress, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   EXPECT_EQ(keys[9], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[9], CastToValue(scan_results[0].second.get()));
-//   EXPECT_EQ(keys[10], CastToValue(scan_results[1].first.get()));
-//   EXPECT_EQ(payloads[10], CastToValue(scan_results[1].second.get()));
-// }
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(2, scan_results.size());
+  EXPECT_EQ(keys[8], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[8], scan_results[0]->GetPayload());
+  EXPECT_EQ(keys[9], scan_results[1]->GetKey());
+  EXPECT_EQ(payloads[9], scan_results[1]->GetPayload());
+}
 
-// TEST_F(LeafNodeUInt64Fixture, Scan_LeftOutsideRange_NoResults)
-// {
-//   WriteOrderedKeys(5, 10);
+TEST_F(LeafNodeUInt64Fixture, Scan_LeftOutsideRange_NoResults)
+{
+  WriteOrderedKeys(4, 9);
 
-//   auto [rc, scan_results] = node->Scan(nullptr, false, keys[3], false);
+  auto [rc, scan_results] = node->Scan(nullptr, false, &keys[3], false);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(0, scan_results.size());
-// }
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(0, scan_results.size());
+}
 
-// TEST_F(LeafNodeUInt64Fixture, Scan_RightOutsideRange_NoResults)
-// {
-//   WriteOrderedKeys(1, 4);
+TEST_F(LeafNodeUInt64Fixture, Scan_RightOutsideRange_NoResults)
+{
+  WriteOrderedKeys(0, 3);
 
-//   auto [rc, scan_results] = node->Scan(keys[5], false, nullptr, false);
+  auto [rc, scan_results] = node->Scan(&keys[5], false, nullptr, false);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(0, scan_results.size());
-// }
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(0, scan_results.size());
+}
 
-// TEST_F(LeafNodeUInt64Fixture, Scan_WithUpdateDelete_ScanLatestValues)
-// {
-//   WriteOrderedKeys(0, 4);
-//   node->Update(keys[2], kKeyLength, payloads[0], payload_lengths[0]); node->Delete(keys[3],
-//   kKeyLength);
+TEST_F(LeafNodeUInt64Fixture, Scan_WithUpdateDelete_ScanLatestValues)
+{
+  WriteOrderedKeys(0, 4);
+  node->Update(keys[2], kKeyLength, payloads[0], kPayloadLength);
+  node->Delete(keys[3], kKeyLength);
 
-//   auto [rc, scan_results] = node->Scan(keys[2], true, keys[4], true);
+  auto [rc, scan_results] = node->Scan(&keys[2], true, &keys[4], true);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   EXPECT_EQ(keys[2], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[0], CastToValue(scan_results[0].second.get()));
-//   EXPECT_EQ(keys[4], CastToValue(scan_results[1].first.get()));
-//   EXPECT_EQ(payloads[4], CastToValue(scan_results[1].second.get()));
-// }
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(2, scan_results.size());
+  EXPECT_EQ(keys[2], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[0], scan_results[0]->GetPayload());
+  EXPECT_EQ(keys[4], scan_results[1]->GetKey());
+  EXPECT_EQ(payloads[4], scan_results[1]->GetPayload());
+}
 
-// TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithinRange_ScanTargetValues)
-// {
-//   // prepare a consolidated node
-//   WriteOrderedKeys(3, 7);
-//   auto meta_vec = node->GatherSortedLiveMetadata();
-//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
+TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithinRange_ScanTargetValues)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(3, 7);
+  auto meta_vec = node->GatherSortedLiveMetadata();
+  node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-//   auto [rc, scan_results] = node->Scan(keys[4], true, keys[6], true);
+  auto [rc, scan_results] = node->Scan(&keys[4], true, &keys[6], true);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(3, scan_results.size());
-//   EXPECT_EQ(keys[4], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[4], CastToValue(scan_results[0].second.get()));
-//   EXPECT_EQ(keys[5], CastToValue(scan_results[1].first.get()));
-//   EXPECT_EQ(payloads[5], CastToValue(scan_results[1].second.get()));
-//   EXPECT_EQ(keys[6], CastToValue(scan_results[2].first.get()));
-//   EXPECT_EQ(payloads[6], CastToValue(scan_results[2].second.get()));
-// }
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(3, scan_results.size());
+  EXPECT_EQ(keys[4], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[4], scan_results[0]->GetPayload());
+  EXPECT_EQ(keys[5], scan_results[1]->GetKey());
+  EXPECT_EQ(payloads[5], scan_results[1]->GetPayload());
+  EXPECT_EQ(keys[6], scan_results[2]->GetKey());
+  EXPECT_EQ(payloads[6], scan_results[2]->GetPayload());
+}
 
-// TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithLeftInfinity_ScanTargetValues)
-// {
-//   // prepare a consolidated node
-//   WriteOrderedKeys(3, 7);
-//   auto meta_vec = node->GatherSortedLiveMetadata();
-//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
+TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithLeftInfinity_ScanTargetValues)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(3, 7);
+  auto meta_vec = node->GatherSortedLiveMetadata();
+  node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-//   auto [rc, scan_results] = node->Scan(nullptr, true, keys[3], true);
+  auto [rc, scan_results] = node->Scan(nullptr, true, &keys[3], true);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(1, scan_results.size());
-//   EXPECT_EQ(keys[3], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[3], CastToValue(scan_results[0].second.get()));
-// }
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(1, scan_results.size());
+  EXPECT_EQ(keys[3], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[3], scan_results[0]->GetPayload());
+}
 
-// TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithRightInfinity_ScanTargetValues)
-// {
-//   // prepare a consolidated node
-//   WriteOrderedKeys(3, 7);
-//   auto meta_vec = node->GatherSortedLiveMetadata();
-//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
+TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithRightInfinity_ScanTargetValues)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(3, 7);
+  auto meta_vec = node->GatherSortedLiveMetadata();
+  node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-//   auto [rc, scan_results] = node->Scan(keys[7], true, nullptr, true);
+  auto [rc, scan_results] = node->Scan(&keys[7], true, nullptr, true);
 
-//   EXPECT_EQ(NodeReturnCode::kScanInProgress, rc);
-//   EXPECT_EQ(1, scan_results.size());
-//   EXPECT_EQ(keys[7], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[7], CastToValue(scan_results[0].second.get()));
-// }
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(1, scan_results.size());
+  EXPECT_EQ(keys[7], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[7], scan_results[0]->GetPayload());
+}
 
-// TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithUpdateDelete_ScanLatestValues)
-// {
-//   // prepare a consolidated node
-//   WriteOrderedKeys(3, 7);
-//   auto meta_vec = node->GatherSortedLiveMetadata();
-//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
-//   node->Update(keys[5], key_lengths[5], payloads[0], payload_lengths[0]); node->Delete(keys[7],
-//   key_lengths[7]);
+TEST_F(LeafNodeUInt64Fixture, Scan_ConsolidatedNodeWithUpdateDelete_ScanLatestValues)
+{
+  // prepare a consolidated node
+  WriteOrderedKeys(3, 7);
+  auto meta_vec = node->GatherSortedLiveMetadata();
+  node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
+  node->Update(keys[5], kKeyLength, payloads[0], kPayloadLength);
+  node->Delete(keys[7], kKeyLength);
 
-//   auto [rc, scan_results] = node->Scan(keys[5], true, keys[7], true);
+  auto [rc, scan_results] = node->Scan(&keys[5], true, &keys[7], true);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   EXPECT_EQ(keys[5], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[0], CastToValue(scan_results[0].second.get()));
-//   EXPECT_EQ(keys[6], CastToValue(scan_results[1].first.get()));
-//   EXPECT_EQ(payloads[6], CastToValue(scan_results[1].second.get()));
-// }
+  EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+  EXPECT_EQ(2, scan_results.size());
+  EXPECT_EQ(keys[5], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[0], scan_results[0]->GetPayload());
+  EXPECT_EQ(keys[6], scan_results[1]->GetKey());
+  EXPECT_EQ(payloads[6], scan_results[1]->GetPayload());
+}
 
 /*--------------------------------------------------------------------------------------------------
  * Write operation

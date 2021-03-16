@@ -73,26 +73,6 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     return Record_t::Create(key_addr, key_length, payload_length);
   }
 
-  std::unique_ptr<std::byte[]>
-  GetCopiedKey(const Metadata meta) const
-  {
-    const auto key_ptr = this->GetKeyAddr(meta);
-    const auto key_length = meta.GetKeyLength();
-    auto copied_key_ptr = std::make_unique<std::byte[]>(key_length);
-    memcpy(copied_key_ptr.get(), key_ptr, key_length);
-    return copied_key_ptr;
-  }
-
-  std::unique_ptr<std::byte[]>
-  GetCopiedPayload(const Metadata meta) const
-  {
-    const auto payload_ptr = this->GetPayloadAddr(meta);
-    const auto payload_length = meta.GetPayloadLength();
-    auto copied_payload_ptr = std::make_unique<std::byte[]>(payload_length);
-    memcpy(copied_payload_ptr.get(), payload_ptr, payload_length);
-    return copied_payload_ptr;
-  }
-
   /*################################################################################################
    * Internal utility functions
    *##############################################################################################*/
@@ -233,7 +213,6 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * @tparam Compare
    * @param key
    * @param key_length
-   * @param comp
    * @return std::pair<NodeReturnCode, std::unique_ptr<std::byte[]>>
    */
   std::pair<NodeReturnCode, std::unique_ptr<Record_t>>
@@ -257,16 +236,14 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * @param begin_is_closed
    * @param end_key
    * @param end_is_closed
-   * @param comp
    * @return std::pair<NodeReturnCode,
    *         std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>>>
    */
-  std::pair<NodeReturnCode,
-            std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>>>
+  std::pair<NodeReturnCode, std::vector<std::unique_ptr<Record_t>>>
   Scan(  //
-      const Key &begin_key,
+      const Key *begin_key,
       const bool begin_is_closed,
-      const Key &end_key,
+      const Key *end_key,
       const bool end_is_closed)
   {
     const auto status = this->GetStatusWordProtected();
@@ -276,40 +253,30 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     // gather valid (live or deleted) records
     std::vector<std::pair<Key, Metadata>> meta_arr;
     meta_arr.reserve(record_count);
-    auto return_code = NodeReturnCode::kScanInProgress;
 
     // search unsorted metadata in reverse order
     for (int64_t index = record_count - 1; index >= sorted_count; --index) {
       const auto meta = this->GetMetadata(index);
-      const auto key = GetKeyAddr(meta);
-      if (IsInRange(key, begin_key, begin_is_closed, end_key, end_is_closed)
+      const auto key = *reinterpret_cast<Key *>(this->GetKeyAddr(meta));
+      if (IsInRange<Compare>(key, begin_key, begin_is_closed, end_key, end_is_closed)
           && (meta.IsVisible() || meta.IsDeleted())) {
         meta_arr.emplace_back(key, meta);
-      }
-      if (return_code != NodeReturnCode::kSuccess
-          && (comp(end_key, key) || IsEqual<Compare>(key, end_key))) {
-        // a current key is out/end of range condition
-        return_code = NodeReturnCode::kSuccess;
       }
     }
 
     // search sorted metadata
     const auto begin_index =
-        (begin_key == nullptr) ? 0 : SearchSortedMetadata(begin_key, begin_is_closed).second;
+        (begin_key == nullptr) ? 0 : this->SearchSortedMetadata(*begin_key, begin_is_closed).second;
     for (int64_t index = begin_index; index < sorted_count; ++index) {
       const auto meta = this->GetMetadata(index);
-      const auto key = GetKeyAddr(meta);
-      if (IsInRange(key, begin_key, begin_is_closed, end_key, end_is_closed)) {
+      const auto key = *reinterpret_cast<Key *>(this->GetKeyAddr(meta));
+      if (IsInRange<Compare>(key, begin_key, begin_is_closed, end_key, end_is_closed)) {
         meta_arr.emplace_back(key, meta);
-        if (end_is_closed && IsEqual<Compare>(key, end_key)) {
-          // a current key is end of range condition
-          return_code = NodeReturnCode::kSuccess;
-          break;
+        if (end_key != nullptr && end_is_closed && IsEqual<Compare>(key, *end_key)) {
+          break;  // a current key is end of range condition
         }
       } else {
-        // a current key is out of range condition
-        return_code = NodeReturnCode::kSuccess;
-        break;
+        break;  // a current key is out of range condition
       }
     }
 
@@ -319,18 +286,17 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     meta_arr.erase(end_iter, meta_arr.end());
 
     // copy live records for return
-    std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>> scan_results;
+    std::vector<std::unique_ptr<Record_t>> scan_results;
     if (meta_arr.empty()) {
       return {NodeReturnCode::kSuccess, std::move(scan_results)};
     } else {
       scan_results.reserve(meta_arr.size());
       for (auto &&[key, meta] : meta_arr) {
         if (meta.IsVisible()) {
-          scan_results.emplace_back(GetCopiedKey(meta), GetCopiedPayload(meta));
+          scan_results.emplace_back(GetRecord(meta));
         }
       }
-
-      return {return_code, std::move(scan_results)};
+      return {NodeReturnCode::kSuccess, std::move(scan_results)};
     }
   }
 
@@ -425,7 +391,6 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * @param key_length
    * @param payload
    * @param payload_length
-   * @param comp
    * @param descriptor_pool
    * @return NodeReturnCode
    */
@@ -531,7 +496,6 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * @param key_length
    * @param payload
    * @param payload_length
-   * @param comp
    * @param descriptor_pool
    * @return NodeReturnCode
    */
@@ -618,7 +582,6 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * @tparam Compare
    * @param key
    * @param key_length
-   * @param comp
    * @param descriptor_pool
    * @return NodeReturnCode
    */
