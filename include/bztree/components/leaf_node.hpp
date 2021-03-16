@@ -107,7 +107,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     // perform a linear search in revese order
     for (int64_t index = begin_index; index >= sorted_count; --index) {
       const auto meta = this->GetMetadata(index);
-      if (IsEqual<Compare>(key, GetKeyAddr(meta))) {
+      const auto target_key = *reinterpret_cast<Key *>(this->GetKeyAddr(meta));
+      if (IsEqual<Compare>(key, target_key)) {
         if (meta.IsVisible()) {
           return KeyExistence::kExist;
         } else if (meta.IsDeleted()) {
@@ -132,7 +133,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
         SearchUnsortedMetaToWrite(key, record_count - 1, this->GetSortedCount(), index_epoch);
     if (existence == KeyExistence::kNotExist) {
       // there is no key in unsorted metadata, so search a sorted region
-      return SearchSortedMetadata(key, true).first;
+      return this->SearchSortedMetadata(key, true).first;
     } else {
       return existence;
     }
@@ -437,10 +438,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       const size_t key_length,
       const Payload &payload,
       const size_t payload_length,
-      const size_t index_epoch)
+      const size_t index_epoch = 0)
   {
-    assert(key != nullptr);
-
     // variables and constants shared in Phase 1 & 2
     StatusWord current_status;
     size_t record_count;
