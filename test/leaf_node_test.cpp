@@ -942,38 +942,26 @@ TEST_F(LeafNodeUInt64Fixture, Consolidate_UnsortedTenKeys_NodeHasCorrectStatus)
   VerifyStatusWord(node->GetStatusWord());
 }
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Split operation
-//  *------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------
+ * Split operation
+ *------------------------------------------------------------------------------------------------*/
 
 TEST_F(LeafNodeUInt64Fixture, Split_EquallyDivided_NodesHaveCorrectStatus)
 {
   // prepare split nodes
   WriteOrderedKeys(0, 9);
-  auto left_record_count = 5;
+  const auto left_record_count = 5;
   auto meta_vec = node->GatherSortedLiveMetadata();
+
   auto [left_node, right_node] = LeafNode_t::Split(node.get(), meta_vec, left_record_count);
+  expected_record_count = 5;
+  expected_block_size = expected_record_count * kRecordLength;
 
-  auto left_status = left_node->GetStatusWord();
-  auto left_kBlockSize = expected_block_size / 2;
-  auto left_deleted_size = 0;
+  node.reset(left_node);
+  VerifyStatusWord(node->GetStatusWord());
 
-  EXPECT_EQ(left_record_count, left_node->GetSortedCount());
-  EXPECT_FALSE(left_status.IsFrozen());
-  EXPECT_EQ(left_record_count, left_status.GetRecordCount());
-  EXPECT_EQ(left_kBlockSize, left_status.GetBlockSize());
-  EXPECT_EQ(left_deleted_size, left_status.GetDeletedSize());
-
-  auto right_status = right_node->GetStatusWord();
-  auto right_record_count = expected_record_count - left_record_count;
-  auto right_kBlockSize = expected_block_size / 2;
-  auto right_deleted_size = 0;
-
-  EXPECT_EQ(right_record_count, right_node->GetSortedCount());
-  EXPECT_FALSE(right_status.IsFrozen());
-  EXPECT_EQ(right_record_count, right_status.GetRecordCount());
-  EXPECT_EQ(right_kBlockSize, right_status.GetBlockSize());
-  EXPECT_EQ(right_deleted_size, right_status.GetDeletedSize());
+  node.reset(right_node);
+  VerifyStatusWord(node->GetStatusWord());
 }
 
 TEST_F(LeafNodeUInt64Fixture, Split_EquallyDivided_NodesHaveCorrectKeyPayloads)

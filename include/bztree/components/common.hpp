@@ -29,7 +29,7 @@ enum ReturnCode
 uintptr_t
 PayloadToUIntptr(const void *payload)
 {
-  return *reinterpret_cast<const uint64_t *>(payload);
+  return *reinterpret_cast<const uintptr_t *>(payload);
 }
 
 /**

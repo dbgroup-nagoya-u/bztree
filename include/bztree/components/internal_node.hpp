@@ -11,14 +11,16 @@
 namespace dbgroup::index::bztree
 {
 template <class Key, class Payload, class Compare = std::less<Key>>
-class InternalNode : public BaseNode
+class InternalNode : public BaseNode<Key, Payload, Compare>
 {
  private:
+  using BaseNode_t = BaseNode<Key, Payload, Compare>;
+
   /*################################################################################################
    * Internal constructor/destructor
    *##############################################################################################*/
 
-  explicit InternalNode(const size_t node_size) : BaseNode{node_size, false} {}
+  explicit InternalNode(const size_t node_size) : BaseNode_t{node_size, false} {}
 
   /*################################################################################################
    * Internal utility functions
@@ -29,6 +31,29 @@ class InternalNode : public BaseNode
   {
     const auto pad_length = key_length % kWordLength;
     return (pad_length == 0) ? key_length : key_length + (kWordLength - pad_length);
+  }
+
+  size_t
+  SetChild(  //
+      const Key &key,
+      const size_t key_length,
+      const uintptr_t child_addr,
+      size_t offset)
+  {
+    offset -= kWordLength;
+    const auto pad_length = key_length % kWordLength;
+    if (pad_length != 0) {
+      // align memory address
+      offset -= pad_length;
+    }
+    memcpy(ShiftAddress(this, offset), &child_addr, kWordLength);
+
+    if (key_length > 0) {
+      offset -= key_length;
+      this->SetKey(key, key_length, offset);
+    }
+
+    return offset;
   }
 
   static void
@@ -44,11 +69,10 @@ class InternalNode : public BaseNode
     for (size_t index = begin_index; index < end_index; ++index, ++record_count) {
       const auto meta = original_node->GetMetadata(index);
       // copy a record
-      const auto key = original_node->GetKeyAddr(meta);
+      const auto key = *reinterpret_cast<Key *>(original_node->GetKeyAddr(meta));
       const auto key_length = meta.GetKeyLength();
-      const auto payload = original_node->GetPayloadAddr(meta);
-      const auto payload_length = meta.GetPayloadLength();
-      offset = target_node->SetRecord(key, key_length, payload, payload_length, offset);
+      const auto child_addr = PayloadToUIntptr(original_node->GetPayloadAddr(meta));
+      offset = target_node->SetChild(key, key_length, child_addr, offset);
       // copy metadata
       const auto new_meta = meta.UpdateOffset(offset);
       target_node->SetMetadata(record_count, new_meta);
@@ -86,10 +110,11 @@ class InternalNode : public BaseNode
    * Public getters/setters
    *##############################################################################################*/
 
-  BaseNode *
+  BaseNode_t *
   GetChildNode(const size_t index) const
   {
-    return reinterpret_cast<BaseNode *>(PayloadToUIntptr(GetPayloadAddr(GetMetadata(index))));
+    const auto node_uintptr = PayloadToUIntptr(this->GetPayloadAddr(this->GetMetadata(index)));
+    return reinterpret_cast<BaseNode_t *>(node_uintptr);
   }
 
   constexpr bool
@@ -98,8 +123,8 @@ class InternalNode : public BaseNode
       const size_t payload_length) const
   {
     const auto new_block_size =
-        GetStatusWord().GetOccupiedSize() + kWordLength + key_length + payload_length;
-    return new_block_size > GetNodeSize();
+        this->GetStatusWord().GetOccupiedSize() + kWordLength + key_length + payload_length;
+    return new_block_size > this->GetNodeSize();
   }
 
   constexpr bool
@@ -109,7 +134,7 @@ class InternalNode : public BaseNode
       const size_t min_node_size) const
   {
     const int64_t new_block_size =
-        GetStatusWord().GetOccupiedSize() - kWordLength - (key_length + payload_length);
+        this->GetStatusWord().GetOccupiedSize() - kWordLength - (key_length + payload_length);
     return new_block_size < static_cast<int64_t>(min_node_size);
   }
 
@@ -119,7 +144,7 @@ class InternalNode : public BaseNode
       const size_t merged_node_size,
       const size_t max_merged_node_size) const
   {
-    assert(index < GetSortedCount());  // an input index must be within range
+    assert(index < this->GetSortedCount());  // an input index must be within range
 
     if (index == 0) {
       return false;
@@ -135,9 +160,9 @@ class InternalNode : public BaseNode
       const size_t merged_node_size,
       const size_t max_merged_node_size) const
   {
-    assert(index < GetSortedCount());  // an input index must be within range
+    assert(index < this->GetSortedCount());  // an input index must be within range
 
-    if (index == GetSortedCount() - 1) {
+    if (index == this->GetSortedCount() - 1) {
       return false;
     } else {
       const auto data_size = GetChildNode(index + 1)->GetStatusWord().GetLiveDataSize();
@@ -153,7 +178,7 @@ class InternalNode : public BaseNode
   CreateInitialRoot(const size_t node_size)
   {
     auto root = CreateEmptyNode(node_size);
-    const auto leaf_node = BaseNode::CreateEmptyNode(node_size, true);
+    const auto leaf_node = BaseNode_t::CreateEmptyNode(node_size, true);
 
     constexpr auto key = nullptr;  // act as a positive infinity value
     constexpr auto key_length = 0;
@@ -223,18 +248,20 @@ class InternalNode : public BaseNode
 
     // insert a left child node
     const auto left_meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
-    const auto left_key = left_child->GetKeyAddr(left_meta);
+    const auto left_key = *reinterpret_cast<Key *>(left_child->GetKeyAddr(left_meta));
     const auto left_key_length = left_meta.GetKeyLength();
-    offset = new_root->SetRecord(left_key, left_key_length, &left_child, kWordLength, offset);
+    const auto left_child_addr = reinterpret_cast<uintptr_t>(left_child);
+    offset = new_root->SetChild(left_key, left_key_length, left_child_addr, offset);
     const auto new_left_meta =
         Metadata{}.SetRecordInfo(offset, left_key_length, left_key_length + kWordLength);
     new_root->SetMetadata(0, new_left_meta);
 
     // insert a right child node
     const auto right_meta = right_child->GetMetadata(right_child->GetSortedCount() - 1);
-    const auto right_key = right_child->GetKeyAddr(right_meta);
+    const auto right_key = *reinterpret_cast<Key *>(right_child->GetKeyAddr(right_meta));
     const auto right_key_length = right_meta.GetKeyLength();
-    offset = new_root->SetRecord(right_key, right_key_length, &right_child, kWordLength, offset);
+    const auto right_child_addr = reinterpret_cast<uintptr_t>(right_child);
+    offset = new_root->SetChild(right_key, right_key_length, right_child_addr, offset);
     const auto new_right_meta =
         Metadata{}.SetRecordInfo(offset, right_key_length, right_key_length + kWordLength);
     new_root->SetMetadata(1, new_right_meta);
@@ -249,7 +276,7 @@ class InternalNode : public BaseNode
   static InternalNode *
   NewParentForSplit(  //
       const InternalNode *old_parent,
-      const void *new_key,
+      const Key &new_key,
       const size_t new_key_length,
       const void *left_addr,
       const void *right_addr,
@@ -264,21 +291,22 @@ class InternalNode : public BaseNode
     for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
       // prepare copying record and metadata
       const auto meta = old_parent->GetMetadata(old_idx);
-      const auto key = old_parent->GetKeyAddr(meta);
+      const auto key = *reinterpret_cast<Key *>(old_parent->GetKeyAddr(meta));
       const auto key_length = meta.GetKeyLength();
-      auto node_addr = old_parent->GetPayloadAddr(meta);
+      auto node_addr = PayloadToUIntptr(old_parent->GetPayloadAddr(meta));
       if (old_idx == split_index) {
         // insert a split left child
-        const auto aligned_length = AlignKeyLengthToWord(new_key_length);
-        offset = new_parent->SetRecord(new_key, aligned_length, &left_addr, kWordLength, offset);
-        const auto total_length = aligned_length + kWordLength;
-        const auto left_meta = Metadata{}.SetRecordInfo(offset, aligned_length, total_length);
+        const auto left_addr_uintptr = reinterpret_cast<uintptr_t>(left_addr);
+        const auto prev_offset = offset;
+        offset = new_parent->SetChild(new_key, new_key_length, left_addr_uintptr, offset);
+        const auto total_length = prev_offset - offset;
+        const auto left_meta = Metadata{}.SetRecordInfo(offset, new_key_length, total_length);
         new_parent->SetMetadata(new_idx++, left_meta);
         // continue with a split right child
-        node_addr = &right_addr;
+        node_addr = reinterpret_cast<uintptr_t>(right_addr);
       }
       // copy a child node
-      offset = new_parent->SetRecord(key, key_length, node_addr, kWordLength, offset);
+      offset = new_parent->SetChild(key, key_length, node_addr, offset);
       const auto new_meta = meta.UpdateOffset(offset);
       new_parent->SetMetadata(new_idx, new_meta);
     }
@@ -305,18 +333,18 @@ class InternalNode : public BaseNode
     for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
       // prepare copying record and metadata
       auto meta = old_parent->GetMetadata(old_idx);
-      auto key = old_parent->GetKeyAddr(meta);
+      auto key = *reinterpret_cast<Key *>(old_parent->GetKeyAddr(meta));
       auto key_length = meta.GetKeyLength();
-      auto node_addr = old_parent->GetPayloadAddr(meta);
+      auto node_addr = PayloadToUIntptr(old_parent->GetPayloadAddr(meta));
       if (old_idx == deleted_index) {
         // skip a deleted node and insert a merged node
         meta = old_parent->GetMetadata(++old_idx);
-        key = old_parent->GetKeyAddr(meta);
+        key = *reinterpret_cast<Key *>(old_parent->GetKeyAddr(meta));
         key_length = meta.GetKeyLength();
-        node_addr = &merged_child_addr;
+        node_addr = reinterpret_cast<uintptr_t>(merged_child_addr);
       }
       // copy a child node
-      offset = new_parent->SetRecord(key, key_length, node_addr, kWordLength, offset);
+      offset = new_parent->SetChild(key, key_length, node_addr, offset);
       const auto new_meta = meta.UpdateOffset(offset);
       new_parent->SetMetadata(new_idx, new_meta);
     }
