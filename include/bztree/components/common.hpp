@@ -132,7 +132,6 @@ constexpr size_t kHeaderLength = 2 * kWordLength;
  * @tparam Compare
  * @param obj_1
  * @param obj_2
- * @param comp comparator
  * @return true if a specified objects are equivalent according to `comp` comparator
  * @return false otherwise
  */
