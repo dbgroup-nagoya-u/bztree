@@ -232,11 +232,11 @@ class alignas(kCacheLineSize) BaseNode
     return meta_array_[index];
   }
 
-  std::pair<void *, size_t>
+  std::pair<Key, size_t>
   GetKeyAndItsLength(const size_t index) const
   {
     const auto meta = GetMetadata(index);
-    return {GetKeyAddr(meta), meta.GetKeyLength()};
+    return {*reinterpret_cast<Key *>(GetKeyAddr(meta)), meta.GetKeyLength()};
   }
 
   void
@@ -259,15 +259,14 @@ class alignas(kCacheLineSize) BaseNode
   }
 
   void
-  SetPayloadForMwCAS(  //
+  SetChildForMwCAS(  //
       MwCASDescriptor &desc,
       const size_t index,
-      const Payload &old_payload,
-      const Payload &new_payload)
+      const void *old_addr,
+      const void *new_addr)
   {
-    desc.AddMwCASTarget(GetPayloadAddr(GetMetadata(index)),
-                        reinterpret_cast<uintptr_t>(old_payload),
-                        reinterpret_cast<uintptr_t>(new_payload));
+    desc.AddMwCASTarget(GetPayloadAddr(GetMetadata(index)), reinterpret_cast<uintptr_t>(old_addr),
+                        reinterpret_cast<uintptr_t>(new_addr));
   }
 
   /*################################################################################################

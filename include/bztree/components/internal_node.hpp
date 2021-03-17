@@ -180,13 +180,13 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     auto root = CreateEmptyNode(node_size);
     const auto leaf_node = BaseNode_t::CreateEmptyNode(node_size, true);
 
-    constexpr auto key = nullptr;  // act as a positive infinity value
+    constexpr auto key = Key{};  // act as a positive infinity value
     constexpr auto key_length = 0;
-    constexpr auto payload_length = kWordLength;
+    const auto leaf_addr = reinterpret_cast<uintptr_t>(leaf_node);
     constexpr auto total_length = kWordLength;
 
     // set an inital leaf node
-    const auto offset = root->SetRecord(key, key_length, &leaf_node, payload_length, node_size);
+    const auto offset = root->SetChild(key, key_length, leaf_addr, node_size);
     const auto meta = Metadata{}.SetRecordInfo(offset, key_length, total_length);
     root->SetMetadata(0, meta);
 
