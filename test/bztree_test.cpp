@@ -142,147 +142,137 @@ TEST_F(BzTreeUInt64Fixture, Read_NotPresentKey_ReadFailed)
   EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
 }
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Scan operation
-//  *------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------
+ * Scan operation
+ *------------------------------------------------------------------------------------------------*/
 
-// TEST_F(BzTreeUInt64Fixture, Scan_EmptyNode_NoResult)
-// {
-//
-//   auto [rc, scan_results] = bztree.Scan(keys[1], true, keys[10], true);
+TEST_F(BzTreeUInt64Fixture, Scan_EmptyNode_NoResult)
+{
+  auto [rc, scan_results] = bztree.Scan(keys[1], true, keys[10], true);
 
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(0, scan_results.size());
-// }
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  EXPECT_EQ(0, scan_results.size());
+}
 
-// TEST_F(BzTreeUInt64Fixture, Scan_BothClosed_ScanTargetValues)
-// {
-//
-//   WriteOrderedKeys(&bztree, 1, 10);
+TEST_F(BzTreeUInt64Fixture, Scan_BothClosed_ScanTargetValues)
+{
+  WriteOrderedKeys(&bztree, 1, 10);
 
-//   auto [rc, scan_results] = bztree.Scan(keys[4], true, keys[6], true);
+  auto [rc, scan_results] = bztree.Scan(keys[4], true, keys[6], true);
 
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(3, scan_results.size());
-//   EXPECT_EQ(keys[4], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[4], CastToValue(scan_results[0].second.get()));
-//   EXPECT_EQ(keys[5], CastToValue(scan_results[1].first.get()));
-//   EXPECT_EQ(payloads[5], CastToValue(scan_results[1].second.get()));
-//   EXPECT_EQ(keys[6], CastToValue(scan_results[2].first.get()));
-//   EXPECT_EQ(payloads[6], CastToValue(scan_results[2].second.get()));
-// }
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  EXPECT_EQ(3, scan_results.size());
+  EXPECT_EQ(keys[4], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[4], scan_results[0]->GetPayload());
+  EXPECT_EQ(keys[5], scan_results[1]->GetKey());
+  EXPECT_EQ(payloads[5], scan_results[1]->GetPayload());
+  EXPECT_EQ(keys[6], scan_results[2]->GetKey());
+  EXPECT_EQ(payloads[6], scan_results[2]->GetPayload());
+}
 
-// TEST_F(BzTreeUInt64Fixture, Scan_LeftClosed_ScanTargetValues)
-// {
-//
-//   WriteOrderedKeys(&bztree, 1, 10);
+TEST_F(BzTreeUInt64Fixture, Scan_LeftClosed_ScanTargetValues)
+{
+  WriteOrderedKeys(&bztree, 1, 10);
 
-//   auto [rc, scan_results] = bztree.Scan(keys[8], true, keys[10], false);
+  auto [rc, scan_results] = bztree.Scan(keys[8], true, keys[10], false);
 
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   EXPECT_EQ(keys[8], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[8], CastToValue(scan_results[0].second.get()));
-//   EXPECT_EQ(keys[9], CastToValue(scan_results[1].first.get()));
-//   EXPECT_EQ(payloads[9], CastToValue(scan_results[1].second.get()));
-// }
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  EXPECT_EQ(2, scan_results.size());
+  EXPECT_EQ(keys[8], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[8], scan_results[0]->GetPayload());
+  EXPECT_EQ(keys[9], scan_results[1]->GetKey());
+  EXPECT_EQ(payloads[9], scan_results[1]->GetPayload());
+}
 
-// TEST_F(BzTreeUInt64Fixture, Scan_RightClosed_ScanTargetValues)
-// {
-//
-//   WriteOrderedKeys(&bztree, 1, 10);
+TEST_F(BzTreeUInt64Fixture, Scan_RightClosed_ScanTargetValues)
+{
+  WriteOrderedKeys(&bztree, 1, 10);
 
-//   auto [rc, scan_results] = bztree.Scan(keys[8], false, keys[10], true);
+  auto [rc, scan_results] = bztree.Scan(keys[8], false, keys[10], true);
 
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   EXPECT_EQ(keys[9], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[9], CastToValue(scan_results[0].second.get()));
-//   EXPECT_EQ(keys[10], CastToValue(scan_results[1].first.get()));
-//   EXPECT_EQ(payloads[10], CastToValue(scan_results[1].second.get()));
-// }
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  EXPECT_EQ(2, scan_results.size());
+  EXPECT_EQ(keys[9], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[9], scan_results[0]->GetPayload());
+  EXPECT_EQ(keys[10], scan_results[1]->GetKey());
+  EXPECT_EQ(payloads[10], scan_results[1]->GetPayload());
+}
 
-// TEST_F(BzTreeUInt64Fixture, Scan_BothOpened_ScanTargetValues)
-// {
-//
-//   WriteOrderedKeys(&bztree, 1, 10);
+TEST_F(BzTreeUInt64Fixture, Scan_BothOpened_ScanTargetValues)
+{
+  WriteOrderedKeys(&bztree, 1, 10);
 
-//   auto [rc, scan_results] = bztree.Scan(keys[8], false, keys[10], false);
+  auto [rc, scan_results] = bztree.Scan(keys[8], false, keys[10], false);
 
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(1, scan_results.size());
-//   EXPECT_EQ(keys[9], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[9], CastToValue(scan_results[0].second.get()));
-// }
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  EXPECT_EQ(1, scan_results.size());
+  EXPECT_EQ(keys[9], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[9], scan_results[0]->GetPayload());
+}
 
-// TEST_F(BzTreeUInt64Fixture, Scan_LeftInfinity_ScanTargetValues)
-// {
-//
-//   WriteOrderedKeys(&bztree, 1, 10);
+TEST_F(BzTreeUInt64Fixture, ScanLess_EndClosed_ScanTargetValues)
+{
+  WriteOrderedKeys(&bztree, 1, 10);
 
-//   auto [rc, scan_results] = bztree.Scan(nullptr, false, keys[2], true);
+  auto [rc, scan_results] = bztree.ScanLess(keys[2], true);
 
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   EXPECT_EQ(keys[1], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[1], CastToValue(scan_results[0].second.get()));
-//   EXPECT_EQ(keys[2], CastToValue(scan_results[1].first.get()));
-//   EXPECT_EQ(payloads[2], CastToValue(scan_results[1].second.get()));
-// }
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  EXPECT_EQ(2, scan_results.size());
+  EXPECT_EQ(keys[1], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[1], scan_results[0]->GetPayload());
+  EXPECT_EQ(keys[2], scan_results[1]->GetKey());
+  EXPECT_EQ(payloads[2], scan_results[1]->GetPayload());
+}
 
-// TEST_F(BzTreeUInt64Fixture, Scan_RightInfinity_ScanTargetValues)
-// {
-//
-//   WriteOrderedKeys(&bztree, 1, 10);
+TEST_F(BzTreeUInt64Fixture, ScanGreater_BeginClosed_ScanTargetValues)
+{
+  WriteOrderedKeys(&bztree, 1, 10);
 
-//   auto [rc, scan_results] = bztree.Scan(keys[9], true, nullptr, false);
+  auto [rc, scan_results] = bztree.ScanGreater(keys[9], true);
 
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   EXPECT_EQ(keys[9], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[9], CastToValue(scan_results[0].second.get()));
-//   EXPECT_EQ(keys[10], CastToValue(scan_results[1].first.get()));
-//   EXPECT_EQ(payloads[10], CastToValue(scan_results[1].second.get()));
-// }
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  EXPECT_EQ(2, scan_results.size());
+  EXPECT_EQ(keys[9], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[9], scan_results[0]->GetPayload());
+  EXPECT_EQ(keys[10], scan_results[1]->GetKey());
+  EXPECT_EQ(payloads[10], scan_results[1]->GetPayload());
+}
 
-// TEST_F(BzTreeUInt64Fixture, Scan_LeftOutsideRange_NoResults)
-// {
-//
-//   WriteOrderedKeys(&bztree, 5, 10);
+TEST_F(BzTreeUInt64Fixture, ScanLess_LeftOutsideRange_NoResults)
+{
+  WriteOrderedKeys(&bztree, 5, 10);
 
-//   auto [rc, scan_results] = bztree.Scan(nullptr, false, keys[3], false);
+  auto [rc, scan_results] = bztree.ScanLess(keys[3], false);
 
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(0, scan_results.size());
-// }
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  EXPECT_EQ(0, scan_results.size());
+}
 
-// TEST_F(BzTreeUInt64Fixture, Scan_RightOutsideRange_NoResults)
-// {
-//
-//   WriteOrderedKeys(&bztree, 1, 4);
+TEST_F(BzTreeUInt64Fixture, ScanGreater_RightOutsideRange_NoResults)
+{
+  WriteOrderedKeys(&bztree, 1, 4);
 
-//   auto [rc, scan_results] = bztree.Scan(keys[5], false, nullptr, false);
+  auto [rc, scan_results] = bztree.ScanGreater(keys[5], false);
 
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(0, scan_results.size());
-// }
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  EXPECT_EQ(0, scan_results.size());
+}
 
-// TEST_F(BzTreeUInt64Fixture, Scan_WithUpdateDelete_ScanLatestValues)
-// {
-//
-//   WriteOrderedKeys(&bztree, 1, 5);
-//   bztree.Update(keys[2], payloads[0]);
-//   bztree.Delete(keys[3]);
+TEST_F(BzTreeUInt64Fixture, Scan_WithUpdateDelete_ScanLatestValues)
+{
+  WriteOrderedKeys(&bztree, 1, 5);
+  bztree.Update(keys[2], payloads[0]);
+  bztree.Delete(keys[3]);
 
-//   auto [rc, scan_results] = bztree.Scan(keys[2], true, keys[4], true);
+  auto [rc, scan_results] = bztree.Scan(keys[2], true, keys[4], true);
 
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   EXPECT_EQ(keys[2], CastToValue(scan_results[0].first.get()));
-//   EXPECT_EQ(payloads[0], CastToValue(scan_results[0].second.get()));
-//   EXPECT_EQ(keys[4], CastToValue(scan_results[1].first.get()));
-//   EXPECT_EQ(payloads[4], CastToValue(scan_results[1].second.get()));
-// }
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  EXPECT_EQ(2, scan_results.size());
+  EXPECT_EQ(keys[2], scan_results[0]->GetKey());
+  EXPECT_EQ(payloads[0], scan_results[0]->GetPayload());
+  EXPECT_EQ(keys[4], scan_results[1]->GetKey());
+  EXPECT_EQ(payloads[4], scan_results[1]->GetPayload());
+}
 
 /*--------------------------------------------------------------------------------------------------
  * Write operation

@@ -287,17 +287,13 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
     // copy live records for return
     std::vector<std::unique_ptr<Record_t>> scan_results;
-    if (meta_arr.empty()) {
-      return {NodeReturnCode::kSuccess, std::move(scan_results)};
-    } else {
-      scan_results.reserve(meta_arr.size());
-      for (auto &&[key, meta] : meta_arr) {
-        if (meta.IsVisible()) {
-          scan_results.emplace_back(GetRecord(meta));
-        }
+    scan_results.reserve(meta_arr.size());
+    for (auto &&[key, meta] : meta_arr) {
+      if (meta.IsVisible()) {
+        scan_results.emplace_back(GetRecord(meta));
       }
-      return {NodeReturnCode::kSuccess, std::move(scan_results)};
     }
+    return {NodeReturnCode::kSuccess, std::move(scan_results)};
   }
 
   /*################################################################################################

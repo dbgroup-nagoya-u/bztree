@@ -64,13 +64,6 @@ class alignas(kCacheLineSize) BaseNode
   }
 
   constexpr void *
-  GetKeyAddr(const Metadata meta) const
-  {
-    const auto offset = meta.GetOffset();
-    return ShiftAddress(this, offset);
-  }
-
-  constexpr void *
   GetPayloadAddr(const Metadata meta) const
   {
     const auto offset = meta.GetOffset() + meta.GetKeyLength();
@@ -230,6 +223,13 @@ class alignas(kCacheLineSize) BaseNode
   GetMetadata(const size_t index) const
   {
     return meta_array_[index];
+  }
+
+  constexpr void *
+  GetKeyAddr(const Metadata meta) const
+  {
+    const auto offset = meta.GetOffset();
+    return ShiftAddress(this, offset);
   }
 
   std::pair<Key, size_t>

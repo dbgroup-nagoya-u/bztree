@@ -72,18 +72,26 @@ class BzTree
     return reinterpret_cast<BaseNode_t *>(ReadMwCASField<uintptr_t>(&root_));
   }
 
-  LeafNode_t *
+  std::pair<Key *, LeafNode_t *>
   SearchLeafNode(  //
-      const Key &key,
+      const Key *key,
       const bool range_is_closed)
   {
     auto current_node = GetRoot();
+    Key *node_key = nullptr;
     do {
-      const auto index = current_node->SearchSortedMetadata(key, range_is_closed).second;
+      const auto index =
+          (key == nullptr) ? 0 : current_node->SearchSortedMetadata(*key, range_is_closed).second;
+      const auto meta = current_node->GetMetadata(index);
+      if (meta.GetKeyLength() == 0) {
+        node_key = nullptr;
+      } else {
+        node_key = reinterpret_cast<Key *>(current_node->GetKeyAddr(meta));
+      }
       current_node = BitCast<InternalNode_t *>(current_node)->GetChildNode(index);
     } while (!current_node->IsLeaf());
 
-    return BitCast<LeafNode_t *>(current_node);
+    return {node_key, BitCast<LeafNode_t *>(current_node)};
   }
 
   std::tuple<BaseNode_t *, size_t, std::stack<std::pair<BaseNode_t *, size_t>>>
@@ -132,6 +140,28 @@ class BzTree
     desc.AddMwCASTarget(&root_,  //
                         reinterpret_cast<uintptr_t>(old_root_node),
                         reinterpret_cast<uintptr_t>(new_root_node));
+  }
+
+  std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
+  ScanPerLeaf(  //
+      const Key *begin_key,
+      const bool begin_is_closed,
+      const Key *end_key,
+      const bool end_is_closed)
+  {
+    const auto guard = gc_.CreateEpochGuard();
+
+    auto [node_key, leaf_node] = SearchLeafNode(begin_key, begin_is_closed);
+    auto [return_code, scan_results] =
+        leaf_node->Scan(begin_key, begin_is_closed, end_key, end_is_closed);
+
+    if (node_key == nullptr
+        || (end_key != nullptr
+            && (Compare{}(*end_key, *node_key) || IsEqual<Compare>(*end_key, *node_key)))) {
+      return {ReturnCode::kSuccess, std::move(scan_results)};
+    } else {
+      return {ReturnCode::kScanInProgress, std::move(scan_results)};
+    }
   }
 
   /*################################################################################################
@@ -601,7 +631,7 @@ class BzTree
   {
     const auto guard = gc_.CreateEpochGuard();
 
-    auto leaf_node = SearchLeafNode(key, true);
+    auto leaf_node = SearchLeafNode(&key, true).second;
     auto [return_code, payload] = leaf_node->Read(key);
     if (return_code == NodeReturnCode::kSuccess) {
       return std::pair{ReturnCode::kSuccess, std::move(payload)};
@@ -612,21 +642,21 @@ class BzTree
 
   std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
   Scan(  //
-      const void *begin_key,
+      Key &begin_key,
       bool begin_is_closed,
-      const void *end_key,
+      const Key &end_key,
       const bool end_is_closed)
   {
     std::vector<std::unique_ptr<Record_t>> all_results;
     while (true) {
       auto [return_code, leaf_results] =
-          ScanPerLeaf(begin_key, begin_is_closed, end_key, end_is_closed);
+          ScanPerLeaf(&begin_key, begin_is_closed, &end_key, end_is_closed);
       // concatanate scan results for each leaf node
       all_results.reserve(all_results.size() + leaf_results.size());
       all_results.insert(all_results.end(), std::make_move_iterator(leaf_results.begin()),
                          std::make_move_iterator(leaf_results.end()));
       if (return_code == ReturnCode::kScanInProgress) {
-        begin_key = all_results.back().first.get();
+        begin_key = all_results.back()->GetKey();
         begin_is_closed = false;
       } else {
         break;
@@ -636,22 +666,44 @@ class BzTree
   }
 
   std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
-  ScanPerLeaf(  //
-      const void *begin_key,
-      const bool begin_is_closed,
-      const void *end_key,
+  ScanLess(  //
+      const Key &end_key,
       const bool end_is_closed)
   {
-    const auto guard = gc_.CreateEpochGuard();
-
-    auto leaf_node = SearchLeafNode(begin_key, begin_is_closed);
-    auto [return_code, scan_results] =
-        leaf_node->Scan(begin_key, begin_is_closed, end_key, end_is_closed);
-    if (return_code == NodeReturnCode::kScanInProgress) {
-      return {ReturnCode::kScanInProgress, std::move(scan_results)};
-    } else {
-      return {ReturnCode::kSuccess, std::move(scan_results)};
+    std::vector<std::unique_ptr<Record_t>> all_results;
+    while (true) {
+      auto [return_code, leaf_results] = ScanPerLeaf(nullptr, false, &end_key, end_is_closed);
+      // concatanate scan results for each leaf node
+      all_results.reserve(all_results.size() + leaf_results.size());
+      all_results.insert(all_results.end(), std::make_move_iterator(leaf_results.begin()),
+                         std::make_move_iterator(leaf_results.end()));
+      if (return_code != ReturnCode::kScanInProgress) {
+        break;
+      }
     }
+    return {ReturnCode::kSuccess, std::move(all_results)};
+  }
+
+  std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
+  ScanGreater(  //
+      Key &begin_key,
+      bool begin_is_closed)
+  {
+    std::vector<std::unique_ptr<Record_t>> all_results;
+    while (true) {
+      auto [return_code, leaf_results] = ScanPerLeaf(&begin_key, begin_is_closed, nullptr, false);
+      // concatanate scan results for each leaf node
+      all_results.reserve(all_results.size() + leaf_results.size());
+      all_results.insert(all_results.end(), std::make_move_iterator(leaf_results.begin()),
+                         std::make_move_iterator(leaf_results.end()));
+      if (return_code == ReturnCode::kScanInProgress) {
+        begin_key = all_results.back()->GetKey();
+        begin_is_closed = false;
+      } else {
+        break;
+      }
+    }
+    return {ReturnCode::kSuccess, std::move(all_results)};
   }
 
   /*################################################################################################
@@ -672,7 +724,7 @@ class BzTree
     StatusWord node_status;
     bool is_retry = false;
     do {
-      leaf_node = SearchLeafNode(key, true);
+      leaf_node = SearchLeafNode(&key, true).second;
       std::tie(return_code, node_status) =
           leaf_node->Write(key, key_length, payload, payload_length, index_epoch_);
       if (is_retry && return_code == NodeReturnCode::kFrozen) {
@@ -733,7 +785,7 @@ class BzTree
     StatusWord node_status;
     bool is_retry = false;
     do {
-      leaf_node = SearchLeafNode(key, true);
+      leaf_node = SearchLeafNode(&key, true).second;
       std::tie(return_code, node_status) =
           leaf_node->Insert(key, key_length, payload, payload_length, index_epoch_);
       if (return_code == NodeReturnCode::kKeyExist) {
@@ -796,7 +848,7 @@ class BzTree
     StatusWord node_status;
     bool is_retry = false;
     do {
-      leaf_node = SearchLeafNode(key, true);
+      leaf_node = SearchLeafNode(&key, true).second;
       std::tie(return_code, node_status) =
           leaf_node->Update(key, key_length, payload, payload_length,  //
                             index_epoch_);
@@ -858,7 +910,7 @@ class BzTree
     StatusWord node_status;
     bool is_retry = false;
     do {
-      leaf_node = SearchLeafNode(key, true);
+      leaf_node = SearchLeafNode(&key, true).second;
       std::tie(return_code, node_status) = leaf_node->Delete(key, key_length);
       if (return_code == NodeReturnCode::kKeyNotExist) {
         return ReturnCode::kKeyNotExist;
