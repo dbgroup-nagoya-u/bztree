@@ -757,6 +757,32 @@ class BzTree
   }
 
   ReturnCode
+  Insert(  //
+      const Key &key,
+      const Payload &payload,
+      const size_t payload_length)
+  {
+    return Insert(key, sizeof(Key), payload, payload_length);
+  }
+
+  ReturnCode
+  Insert(  //
+      const Key &key,
+      const size_t key_length,
+      const Payload &payload)
+  {
+    return Insert(key, key_length, payload, sizeof(Payload));
+  }
+
+  ReturnCode
+  Insert(  //
+      const Key &key,
+      const Payload &payload)
+  {
+    return Insert(key, sizeof(Key), payload, sizeof(Payload));
+  }
+
+  ReturnCode
   Update(  //
       const Key &key,
       const size_t key_length,
@@ -795,6 +821,32 @@ class BzTree
   }
 
   ReturnCode
+  Update(  //
+      const Key &key,
+      const Payload &payload,
+      const size_t payload_length)
+  {
+    return Update(key, sizeof(Key), payload, payload_length);
+  }
+
+  ReturnCode
+  Update(  //
+      const Key &key,
+      const size_t key_length,
+      const Payload &payload)
+  {
+    return Update(key, key_length, payload, sizeof(Payload));
+  }
+
+  ReturnCode
+  Update(  //
+      const Key &key,
+      const Payload &payload)
+  {
+    return Update(key, sizeof(Key), payload, sizeof(Payload));
+  }
+
+  ReturnCode
   Delete(  //
       const Key &key,
       const size_t key_length)
@@ -826,6 +878,12 @@ class BzTree
       ConsolidateLeafNode(leaf_node, key, key_length);
     }
     return ReturnCode::kSuccess;
+  }
+
+  ReturnCode
+  Delete(const Key &key)
+  {
+    return Delete(key, sizeof(Key));
   }
 };
 
