@@ -642,11 +642,14 @@ class BzTree
 
   std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
   Scan(  //
-      Key &begin_key,
-      bool begin_is_closed,
+      const Key &begin_key_orig,
+      const bool begin_is_closed_orig,
       const Key &end_key,
       const bool end_is_closed)
   {
+    Key begin_key = begin_key_orig;
+    bool begin_is_closed = begin_is_closed_orig;
+
     std::vector<std::unique_ptr<Record_t>> all_results;
     while (true) {
       auto [return_code, leaf_results] =
@@ -686,9 +689,12 @@ class BzTree
 
   std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
   ScanGreater(  //
-      Key &begin_key,
-      bool begin_is_closed)
+      const Key &begin_key_orig,
+      const bool begin_is_closed_orig)
   {
+    Key begin_key = begin_key_orig;
+    bool begin_is_closed = begin_is_closed_orig;
+
     std::vector<std::unique_ptr<Record_t>> all_results;
     while (true) {
       auto [return_code, leaf_results] = ScanPerLeaf(&begin_key, begin_is_closed, nullptr, false);

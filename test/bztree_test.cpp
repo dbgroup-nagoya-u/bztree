@@ -98,7 +98,7 @@ class BzTreeUInt64Fixture : public testing::Test
     assert(end_index + 1 < kKeyNumForTest);
 
     for (size_t index = begin_index; index <= end_index; ++index) {
-      bztree->Update(keys[index], kKeyLength, payloads[index], kPayloadLength);
+      bztree->Update(keys[index], kKeyLength, payloads[index + 1], kPayloadLength);
     }
   }
 
@@ -410,109 +410,101 @@ TEST_F(BzTreeUInt64Fixture, Delete_DeletedKey_DeletionFailed)
   EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
 }
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Split operation
-//  *------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------
+ * Split operation
+ *------------------------------------------------------------------------------------------------*/
 
-// TEST_F(BzTreeUInt64Fixture, Split_OrderedKeyWrites_ReadWrittenKeys)
-// {
-//   auto bztree =
-//       BzTree_t{kTestNodeSize,          kTestMinNodeSize,    kTestMinFreeSpace,
-//                               kTestExpectedFreeSpace, kTestMaxDeletedSize, kTestMaxMergedSize};
-//   const auto record_count = 1000;
+TEST_F(BzTreeUInt64Fixture, Split_OrderedKeyWrites_ReadWrittenKeys)
+{
+  const auto record_count = 1000;
 
-//   std::thread{&BzTreeUInt64Fixture::WriteOrderedKeys, this, &bztree, 1, record_count}.join();
+  WriteOrderedKeys(&bztree, 1, record_count);
+  // std::thread{&BzTreeUInt64Fixture::WriteOrderedKeys, this, &bztree, 1, record_count}.join();
 
-//   for (size_t index = 1; index <= record_count; ++index) {
-//     std::tie(rc, record) = bztree.Read(key_ptrs[index]);
-//     auto result = record->GetPayload();
-//     EXPECT_EQ(ReturnCode::kSuccess, rc);
-//     EXPECT_EQ(payloads[index], result);
-//   }
+  for (size_t index = 1; index <= record_count; ++index) {
+    std::tie(rc, record) = bztree.Read(keys[index]);
+    auto result = record->GetPayload();
+    EXPECT_EQ(ReturnCode::kSuccess, rc);
+    EXPECT_EQ(payloads[index], result);
+  }
 
-//   auto [rc, scan_results] = bztree.Scan(keys[50], true, keys[100], true);
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   auto index = 50UL;
-//   for (auto&& [key, payload] : scan_results) {
-//     EXPECT_EQ(keys[index], CastToValue(key.get()));
-//     EXPECT_EQ(payloads[index++], CastToValue(payload.get()));
-//   }
-// }
+  auto [rc, scan_results] = bztree.Scan(keys[50], true, keys[100], true);
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  auto index = 50;
+  for (auto&& record : scan_results) {
+    EXPECT_EQ(keys[index], record->GetKey());
+    EXPECT_EQ(payloads[index++], record->GetPayload());
+  }
+}
 
-// TEST_F(BzTreeUInt64Fixture, Split_OrderedKeyInserts_ReadInsertedKeys)
-// {
-//   auto bztree =
-//       BzTree_t{kTestNodeSize,          kTestMinNodeSize,    kTestMinFreeSpace,
-//                               kTestExpectedFreeSpace, kTestMaxDeletedSize, kTestMaxMergedSize};
-//   const auto record_count = 1000;
+TEST_F(BzTreeUInt64Fixture, Split_OrderedKeyInserts_ReadInsertedKeys)
+{
+  const auto record_count = 1000;
 
-//   std::thread{&BzTreeUInt64Fixture::InsertOrderedKeys, this, &bztree, 1, record_count}.join();
+  InsertOrderedKeys(&bztree, 1, record_count);
+  // std::thread{&BzTreeUInt64Fixture::InsertOrderedKeys, this, &bztree, 1, record_count}.join();
 
-//   for (size_t index = 1; index <= record_count; ++index) {
-//     std::tie(rc, record) = bztree.Read(key_ptrs[index]);
-//     auto result = record->GetPayload();
-//     EXPECT_EQ(ReturnCode::kSuccess, rc);
-//     EXPECT_EQ(payloads[index], result);
-//   }
+  for (size_t index = 1; index <= record_count; ++index) {
+    std::tie(rc, record) = bztree.Read(keys[index]);
+    auto result = record->GetPayload();
+    EXPECT_EQ(ReturnCode::kSuccess, rc);
+    EXPECT_EQ(payloads[index], result);
+  }
 
-//   auto [rc, scan_results] = bztree.Scan(keys[50], true, keys[100], true);
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   auto index = 50UL;
-//   for (auto&& [key, payload] : scan_results) {
-//     EXPECT_EQ(keys[index], CastToValue(key.get()));
-//     EXPECT_EQ(payloads[index++], CastToValue(payload.get()));
-//   }
-// }
+  auto [rc, scan_results] = bztree.Scan(keys[50], true, keys[100], true);
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  auto index = 50UL;
+  for (auto&& record : scan_results) {
+    EXPECT_EQ(keys[index], record->GetKey());
+    EXPECT_EQ(payloads[index++], record->GetPayload());
+  }
+}
 
-// TEST_F(BzTreeUInt64Fixture, Split_OrderedKeyInsertsUpdates_ReadLatestKeys)
-// {
-//   auto bztree =
-//       BzTree_t{kTestNodeSize,          kTestMinNodeSize,    kTestMinFreeSpace,
-//                               kTestExpectedFreeSpace, kTestMaxDeletedSize, kTestMaxMergedSize};
-//   const auto record_count = 1000;
+TEST_F(BzTreeUInt64Fixture, Split_OrderedKeyInsertsUpdates_ReadLatestKeys)
+{
+  const auto record_count = 1000;
 
-//   std::thread{&BzTreeUInt64Fixture::InsertOrderedKeys, this, &bztree, 1, record_count}.join();
-//   std::thread{&BzTreeUInt64Fixture::UpdateOrderedKeys, this, &bztree, 1, record_count}.join();
+  InsertOrderedKeys(&bztree, 1, record_count);
+  UpdateOrderedKeys(&bztree, 1, record_count);
+  // std::thread{&BzTreeUInt64Fixture::InsertOrderedKeys, this, &bztree, 1, record_count}.join();
+  // std::thread{&BzTreeUInt64Fixture::UpdateOrderedKeys, this, &bztree, 1, record_count}.join();
 
-//   for (size_t index = 1; index <= record_count; ++index) {
-//     std::tie(rc, record) = bztree.Read(key_ptrs[index]);
-//     auto result = record->GetPayload();
-//     EXPECT_EQ(ReturnCode::kSuccess, rc);
-//     EXPECT_EQ(payloads[index + 1], result);
-//   }
+  for (size_t index = 1; index <= record_count; ++index) {
+    std::tie(rc, record) = bztree.Read(keys[index]);
+    auto result = record->GetPayload();
+    EXPECT_EQ(ReturnCode::kSuccess, rc);
+    EXPECT_EQ(payloads[index + 1], result);
+  }
 
-//   auto [rc, scan_results] = bztree.Scan(keys[50], true, keys[100], true);
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   auto index = 50UL;
-//   for (auto&& [key, payload] : scan_results) {
-//     EXPECT_EQ(keys[index], CastToValue(key.get()));
-//     EXPECT_EQ(payloads[++index], CastToValue(payload.get()));
-//   }
-// }
+  auto [rc, scan_results] = bztree.Scan(keys[50], true, keys[100], true);
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  auto index = 50UL;
+  for (auto&& record : scan_results) {
+    EXPECT_EQ(keys[index], record->GetKey());
+    EXPECT_EQ(payloads[++index], record->GetPayload());
+  }
+}
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Merge operation
-//  *------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------
+ * Merge operation
+ *------------------------------------------------------------------------------------------------*/
 
-// TEST_F(BzTreeUInt64Fixture, Merge_OrderedKeyWritesDeletes_ReadRemainingKey)
-// {
-//   auto bztree =
-//       BzTree_t{kTestNodeSize,          kTestMinNodeSize,    kTestMinFreeSpace,
-//                               kTestExpectedFreeSpace, kTestMaxDeletedSize, kTestMaxMergedSize};
-//   const auto record_count = 1000;
+TEST_F(BzTreeUInt64Fixture, Merge_OrderedKeyWritesDeletes_ReadRemainingKey)
+{
+  const auto record_count = 1000;
 
-//   std::thread{&BzTreeUInt64Fixture::WriteOrderedKeys, this, &bztree, 1, record_count}.join();
-//   std::thread{&BzTreeUInt64Fixture::DeleteOrderedKeys, this, &bztree, 2, record_count}.join();
+  std::thread{&BzTreeUInt64Fixture::WriteOrderedKeys, this, &bztree, 1, record_count}.join();
+  std::thread{&BzTreeUInt64Fixture::DeleteOrderedKeys, this, &bztree, 2, record_count}.join();
 
-//   std::tie(rc, record) = bztree.Read(keys[1]);
-//   auto result = record->GetPayload();
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(payloads[1], result);
+  std::tie(rc, record) = bztree.Read(keys[1]);
+  auto result = record->GetPayload();
+  EXPECT_EQ(ReturnCode::kSuccess, rc);
+  EXPECT_EQ(payloads[1], result);
 
-//   for (size_t index = 2; index <= record_count; ++index) {
-//     std::tie(rc, record) = bztree.Read(key_ptrs[index]);
-//     EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
-//   }
-// }
+  for (size_t index = 2; index <= record_count; ++index) {
+    std::tie(rc, record) = bztree.Read(keys[index]);
+    EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
+  }
+}
 
 }  // namespace dbgroup::index::bztree
