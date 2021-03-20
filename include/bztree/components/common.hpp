@@ -29,7 +29,27 @@ enum ReturnCode
 uintptr_t
 PayloadToUIntptr(const void *payload)
 {
-  return *reinterpret_cast<const uint64_t *>(payload);
+  return *reinterpret_cast<const uintptr_t *>(payload);
+}
+
+/**
+ * @brief Cast a memory address to a target pointer.
+ *
+ * @tparam T a target class
+ * @param addr an original address
+ * @return a pointer of \c T
+ */
+template <class T>
+constexpr T
+CastAddress(const void *addr)
+{
+  static_assert(std::is_pointer_v<T>);
+
+  if constexpr (std::is_const_v<T>) {
+    return static_cast<T>(addr);
+  } else {
+    return static_cast<T>(const_cast<void *>(addr));
+  }
 }
 
 template <class To, class From>
@@ -112,15 +132,14 @@ constexpr size_t kHeaderLength = 2 * kWordLength;
  * @tparam Compare
  * @param obj_1
  * @param obj_2
- * @param comp comparator
  * @return true if a specified objects are equivalent according to `comp` comparator
  * @return false otherwise
  */
-template <class Compare>
+template <class Compare, class Key>
 constexpr bool
-IsEqual(const void *obj_1, const void *obj_2, const Compare &comp)
+IsEqual(const Key &obj_1, const Key &obj_2)
 {
-  return !(comp(obj_1, obj_2) || comp(obj_2, obj_1));
+  return !(Compare{}(obj_1, obj_2) || Compare{}(obj_2, obj_1));
 }
 
 /**
@@ -132,25 +151,31 @@ IsEqual(const void *obj_1, const void *obj_2, const Compare &comp)
  * @param begin_is_closed
  * @param end_key
  * @param end_is_closed
- * @param comp
  * @return true if a specfied key is in an input interval
  * @return false
  */
-template <class Compare>
+template <class Compare, class Key>
 constexpr bool
-IsInRange(const void *key,
-          const void *begin_key,
+IsInRange(const Key &key,
+          const Key *begin_key,
           const bool begin_is_closed,
-          const void *end_key,
-          const bool end_is_closed,
-          const Compare &comp)
+          const Key *end_key,
+          const bool end_is_closed)
 {
-  if (begin_key != nullptr) {
-    return (comp(begin_key, key) && comp(key, end_key))
-           || (begin_is_closed && IsEqual(key, begin_key, comp))
-           || (end_is_closed && IsEqual(key, end_key, comp));
+  if (begin_key == nullptr && end_key == nullptr) {
+    // no range condition
+    return true;
+  } else if (begin_key == nullptr) {
+    // less than or equal to
+    return Compare{}(key, *end_key) || (end_is_closed && IsEqual<Compare>(key, *end_key));
+  } else if (end_key == nullptr) {
+    // greater than or equal to
+    return Compare{}(*begin_key, key) || (begin_is_closed && IsEqual<Compare>(key, *begin_key));
   } else {
-    return comp(key, end_key) || (end_is_closed && IsEqual(key, end_key, comp));
+    // between
+    return (Compare{}(*begin_key, key) && Compare{}(key, *end_key))
+           || (begin_is_closed && IsEqual<Compare>(key, *begin_key))
+           || (end_is_closed && IsEqual<Compare>(key, *end_key));
   }
 }
 
