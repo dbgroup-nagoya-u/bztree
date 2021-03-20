@@ -201,7 +201,7 @@ class Record<Key*, Payload>
       const size_t key_length,
       [[maybe_unused]] const size_t payload_length)
   {
-    auto page = malloc(key_length + sizeof(Payload));
+    auto page = malloc(key_length + sizeof(Payload) + sizeof(size_t));
     return std::unique_ptr<Record>(new (page) Record{src_addr, key_length});
   }
 
@@ -322,7 +322,7 @@ class Record<Key, Payload*>
       [[maybe_unused]] const size_t key_length,
       const size_t payload_length)
   {
-    auto page = malloc(sizeof(Key) + payload_length);
+    auto page = malloc(sizeof(Key) + payload_length + sizeof(size_t));
     return std::unique_ptr<Record>(new (page) Record{src_addr, payload_length});
   }
 
@@ -444,7 +444,7 @@ class Record<Key*, Payload*>
       const size_t key_length,
       const size_t payload_length)
   {
-    auto page = malloc(key_length + payload_length);
+    auto page = malloc(key_length + payload_length + 2 * sizeof(size_t));
     return std::unique_ptr<Record>(new (page) Record{src_addr, key_length, payload_length});
   }
 
