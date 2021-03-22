@@ -69,9 +69,9 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     for (size_t index = begin_index; index < end_index; ++index, ++record_count) {
       const auto meta = original_node->GetMetadata(index);
       // copy a record
-      const auto key = *reinterpret_cast<Key *>(original_node->GetKeyAddr(meta));
+      const auto key = CastKey<Key>(original_node->GetKeyAddr(meta));
       const auto key_length = meta.GetKeyLength();
-      const auto child_addr = PayloadToUIntptr(original_node->GetPayloadAddr(meta));
+      const auto child_addr = PayloadToNodeAddr(original_node->GetPayloadAddr(meta));
       offset = target_node->SetChild(key, key_length, child_addr, offset);
       // copy metadata
       const auto new_meta = meta.UpdateOffset(offset);
@@ -113,7 +113,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
   BaseNode_t *
   GetChildNode(const size_t index) const
   {
-    const auto node_uintptr = PayloadToUIntptr(this->GetPayloadAddr(this->GetMetadata(index)));
+    const auto node_uintptr = PayloadToNodeAddr(this->GetPayloadAddr(this->GetMetadata(index)));
     return reinterpret_cast<BaseNode_t *>(node_uintptr);
   }
 
@@ -248,7 +248,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
 
     // insert a left child node
     const auto left_meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
-    const auto left_key = *reinterpret_cast<Key *>(left_child->GetKeyAddr(left_meta));
+    const auto left_key = CastKey<Key>(left_child->GetKeyAddr(left_meta));
     const auto left_key_length = left_meta.GetKeyLength();
     const auto left_child_addr = reinterpret_cast<uintptr_t>(left_child);
     offset = new_root->SetChild(left_key, left_key_length, left_child_addr, offset);
@@ -258,7 +258,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
 
     // insert a right child node
     const auto right_meta = right_child->GetMetadata(right_child->GetSortedCount() - 1);
-    const auto right_key = *reinterpret_cast<Key *>(right_child->GetKeyAddr(right_meta));
+    const auto right_key = CastKey<Key>(right_child->GetKeyAddr(right_meta));
     const auto right_key_length = right_meta.GetKeyLength();
     const auto right_child_addr = reinterpret_cast<uintptr_t>(right_child);
     offset = new_root->SetChild(right_key, right_key_length, right_child_addr, offset);
@@ -291,9 +291,9 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
       // prepare copying record and metadata
       const auto meta = old_parent->GetMetadata(old_idx);
-      const auto key = *reinterpret_cast<Key *>(old_parent->GetKeyAddr(meta));
+      const auto key = CastKey<Key>(old_parent->GetKeyAddr(meta));
       const auto key_length = meta.GetKeyLength();
-      auto node_addr = PayloadToUIntptr(old_parent->GetPayloadAddr(meta));
+      auto node_addr = PayloadToNodeAddr(old_parent->GetPayloadAddr(meta));
       if (old_idx == split_index) {
         // insert a split left child
         const auto left_addr_uintptr = reinterpret_cast<uintptr_t>(left_addr);
@@ -333,13 +333,13 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
       // prepare copying record and metadata
       auto meta = old_parent->GetMetadata(old_idx);
-      auto key = *reinterpret_cast<Key *>(old_parent->GetKeyAddr(meta));
+      auto key = CastKey<Key>(old_parent->GetKeyAddr(meta));
       auto key_length = meta.GetKeyLength();
-      auto node_addr = PayloadToUIntptr(old_parent->GetPayloadAddr(meta));
+      auto node_addr = PayloadToNodeAddr(old_parent->GetPayloadAddr(meta));
       if (old_idx == deleted_index) {
         // skip a deleted node and insert a merged node
         meta = old_parent->GetMetadata(++old_idx);
-        key = *reinterpret_cast<Key *>(old_parent->GetKeyAddr(meta));
+        key = CastKey<Key>(old_parent->GetKeyAddr(meta));
         key_length = meta.GetKeyLength();
         node_addr = reinterpret_cast<uintptr_t>(merged_child_addr);
       }

@@ -87,7 +87,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     // perform a linear search in revese order
     for (int64_t index = begin_index; index >= sorted_count; --index) {
       const auto meta = this->GetMetadata(index);
-      const auto target_key = *reinterpret_cast<Key *>(this->GetKeyAddr(meta));
+      const auto target_key = CastKey<Key>(this->GetKeyAddr(meta));
       if (IsEqual<Compare>(key, target_key)) {
         if (meta.IsVisible()) {
           return KeyExistence::kExist;
@@ -127,7 +127,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
   {
     for (int64_t index = record_count - 1; index >= end_index; --index) {
       const auto meta = this->GetMetadata(index);
-      const auto target_key = *reinterpret_cast<Key *>(this->GetKeyAddr(meta));
+      const auto target_key = CastKey<Key>(this->GetKeyAddr(meta));
       if (IsEqual<Compare>(key, target_key)) {
         if (meta.IsVisible()) {
           return {KeyExistence::kExist, index};
@@ -257,7 +257,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     // search unsorted metadata in reverse order
     for (int64_t index = record_count - 1; index >= sorted_count; --index) {
       const auto meta = this->GetMetadata(index);
-      const auto key = *reinterpret_cast<Key *>(this->GetKeyAddr(meta));
+      const auto key = CastKey<Key>(this->GetKeyAddr(meta));
       if (IsInRange<Compare>(key, begin_key, begin_is_closed, end_key, end_is_closed)
           && (meta.IsVisible() || meta.IsDeleted())) {
         meta_arr.emplace_back(key, meta);
@@ -269,7 +269,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
         (begin_key == nullptr) ? 0 : this->SearchSortedMetadata(*begin_key, begin_is_closed).second;
     for (int64_t index = begin_index; index < sorted_count; ++index) {
       const auto meta = this->GetMetadata(index);
-      const auto key = *reinterpret_cast<Key *>(this->GetKeyAddr(meta));
+      const auto key = CastKey<Key>(this->GetKeyAddr(meta));
       if (IsInRange<Compare>(key, begin_key, begin_is_closed, end_key, end_is_closed)) {
         meta_arr.emplace_back(key, meta);
         if (end_key != nullptr && end_is_closed && IsEqual<Compare>(key, *end_key)) {
@@ -695,7 +695,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     for (int64_t index = record_count - 1; index >= sorted_count; --index) {
       const auto meta = this->GetMetadata(index);
       if (meta.IsVisible() || meta.IsDeleted()) {
-        const auto key = *reinterpret_cast<Key *>(this->GetKeyAddr(meta));
+        const auto key = CastKey<Key>(this->GetKeyAddr(meta));
         meta_arr.emplace_back(key, meta);
       } else {
         // there is a key, but it is in inserting or corrupted.
@@ -706,7 +706,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     // search sorted metadata
     for (int64_t index = 0; index < sorted_count; ++index) {
       const auto meta = this->GetMetadata(index);
-      const auto key = *reinterpret_cast<Key *>(this->GetKeyAddr(meta));
+      const auto key = CastKey<Key>(this->GetKeyAddr(meta));
       meta_arr.emplace_back(key, meta);
     }
 
