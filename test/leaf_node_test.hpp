@@ -142,7 +142,7 @@ class LeafNodeFixture : public testing::Test
 
 TEST_F(LeafNodeFixture, New_EmptyNode_CorrectlyInitialized)
 {
-  auto status = *BitCast<StatusWord*>(ShiftAddress(node.get(), kWordLength));
+  auto status = *CastAddress<StatusWord*>(ShiftAddress(node.get(), kWordLength));
 
   EXPECT_EQ(kNodeSize, node->GetNodeSize());
   EXPECT_EQ(0, node->GetSortedCount());

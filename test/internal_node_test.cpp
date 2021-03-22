@@ -96,7 +96,7 @@ class InternalNodeFixture : public testing::Test
     auto tmp_leaf_node = LeafNode_t::CreateEmptyNode(kNodeSize);
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
     auto tmp_meta = tmp_leaf_node->GatherSortedLiveMetadata();
-    return BitCast<InternalNode_t*>(LeafNode_t::Consolidate(tmp_leaf_node, tmp_meta));
+    return CastAddress<InternalNode_t*>(LeafNode_t::Consolidate(tmp_leaf_node, tmp_meta));
   }
 
   void
@@ -154,7 +154,7 @@ TEST_F(InternalNodeFixture, Split_TenKeys_SplitNodesHaveCorrectKeysAndPayloads)
   std::unique_ptr<LeafNode_t> target_node;
   NodeReturnCode return_code;
 
-  target_node.reset(BitCast<LeafNode_t*>(left_node_ptr));
+  target_node.reset(CastAddress<LeafNode_t*>(left_node_ptr));
   size_t index = 0;
   for (size_t count = 0; count < expected_record_count; ++count, ++index) {
     auto [rc, record] = target_node->Read(keys[index]);
@@ -163,7 +163,7 @@ TEST_F(InternalNodeFixture, Split_TenKeys_SplitNodesHaveCorrectKeysAndPayloads)
   return_code = target_node->Read(keys[index]).first;
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, return_code);
 
-  target_node.reset(BitCast<LeafNode_t*>(right_node_ptr));
+  target_node.reset(CastAddress<LeafNode_t*>(right_node_ptr));
   for (size_t count = 0; count < expected_record_count; ++count, ++index) {
     auto [rc, record] = target_node->Read(keys[index]);
     EXPECT_EQ(payloads[index], record->GetPayload());
@@ -214,7 +214,7 @@ TEST_F(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectKeysAndPayload
   auto sibling_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(2, 3));
 
   auto merged_node = std::unique_ptr<LeafNode_t>(
-      BitCast<LeafNode_t*>(InternalNode_t::Merge(target_node.get(), sibling_node.get(), true)));
+      CastAddress<LeafNode_t*>(InternalNode_t::Merge(target_node.get(), sibling_node.get(), true)));
 
   auto [rc, scan_results] = merged_node->Scan(&keys[3], true, &keys[5], false);
 
@@ -230,8 +230,8 @@ TEST_F(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectKeysAndPayloa
   auto target_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
   auto sibling_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(7, 8));
 
-  auto merged_node = std::unique_ptr<LeafNode_t>(
-      BitCast<LeafNode_t*>(InternalNode_t::Merge(target_node.get(), sibling_node.get(), false)));
+  auto merged_node = std::unique_ptr<LeafNode_t>(CastAddress<LeafNode_t*>(
+      InternalNode_t::Merge(target_node.get(), sibling_node.get(), false)));
 
   auto [rc, scan_results] = merged_node->Scan(&keys[5], false, &keys[7], true);
 

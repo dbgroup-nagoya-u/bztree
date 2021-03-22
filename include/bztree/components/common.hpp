@@ -26,10 +26,10 @@ enum ReturnCode
   kKeyExist
 };
 
-uintptr_t
-PayloadToUIntptr(const void *payload)
+constexpr uintptr_t
+PayloadToNodeAddr(const void *payload)
 {
-  return *reinterpret_cast<const uintptr_t *>(payload);
+  return *static_cast<const uintptr_t *>(payload);
 }
 
 template <class Key>
@@ -43,7 +43,7 @@ CastKey(const void *addr)
       return static_cast<Key>(const_cast<void *>(addr));
     }
   } else {
-    return *reinterpret_cast<const Key *>(addr);
+    return *static_cast<const Key *>(addr);
   }
 }
 
@@ -67,13 +67,6 @@ CastAddress(const void *addr)
   }
 }
 
-template <class To, class From>
-constexpr To
-BitCast(const From *obj)
-{
-  return static_cast<To>(static_cast<void *>(const_cast<From *>(obj)));
-}
-
 /**
  * @brief Compare binary keys as C_String. The end of every key must be '\\0'.
  *
@@ -88,42 +81,6 @@ struct CompareAsCString {
       return true;
     } else {
       return strcmp(static_cast<const char *>(a), static_cast<const char *>(b)) < 0;
-    }
-  }
-};
-
-/**
- * @brief Compare binary keys as `uint64_t key`. The length of every key must be 8 bytes.
- *
- */
-struct CompareAsUInt64 {
-  constexpr bool
-  operator()(const void *a, const void *b) const noexcept
-  {
-    if (a == nullptr) {
-      return false;
-    } else if (b == nullptr) {
-      return true;
-    } else {
-      return *static_cast<const uint64_t *>(a) < *static_cast<const uint64_t *>(b);
-    }
-  }
-};
-
-/**
- * @brief Compare binary keys as `int64_t key`. The length of every key must be 8 bytes.
- *
- */
-struct CompareAsInt64 {
-  constexpr bool
-  operator()(const void *a, const void *b) const noexcept
-  {
-    if (a == nullptr) {
-      return false;
-    } else if (b == nullptr) {
-      return true;
-    } else {
-      return *static_cast<const int64_t *>(a) < *static_cast<const int64_t *>(b);
     }
   }
 };
@@ -205,7 +162,7 @@ IsInRange(const Key &key,
 constexpr void *
 ShiftAddress(const void *ptr, const size_t offset)
 {
-  return static_cast<void *>(static_cast<std::byte *>(const_cast<void *>(ptr)) + offset);
+  return static_cast<std::byte *>(const_cast<void *>(ptr)) + offset;
 }
 
 constexpr bool
