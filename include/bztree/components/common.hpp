@@ -32,6 +32,21 @@ PayloadToUIntptr(const void *payload)
   return *reinterpret_cast<const uintptr_t *>(payload);
 }
 
+template <class Key>
+constexpr Key
+CastKey(const void *addr)
+{
+  if constexpr (std::is_pointer_v<Key>) {
+    if constexpr (std::is_const_v<Key>) {
+      return static_cast<Key>(addr);
+    } else {
+      return static_cast<Key>(const_cast<void *>(addr));
+    }
+  } else {
+    return *reinterpret_cast<const Key *>(addr);
+  }
+}
+
 /**
  * @brief Cast a memory address to a target pointer.
  *

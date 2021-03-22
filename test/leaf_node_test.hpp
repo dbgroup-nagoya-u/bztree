@@ -16,9 +16,9 @@ namespace dbgroup::index::bztree
 class LeafNodeFixture : public testing::Test
 {
  public:
-  using NodeReturnCode = BaseNode<Key, Payload>::NodeReturnCode;
+  using NodeReturnCode = BaseNode<Key, Payload, Compare>::NodeReturnCode;
   using Record_t = Record<Key, Payload>;
-  using LeafNode_t = LeafNode<Key, Payload>;
+  using LeafNode_t = LeafNode<Key, Payload, Compare>;
 
   static constexpr size_t kNodeSize = 256;
   static constexpr size_t kIndexEpoch = 0;
@@ -26,6 +26,7 @@ class LeafNodeFixture : public testing::Test
   static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;
   static constexpr size_t kNullKeyLength = 8;
   static constexpr size_t kNullPayloadLength = 8;
+  static constexpr size_t kNullRecordLength = kNullKeyLength + kNullPayloadLength;
 
   Key keys[kKeyNumForTest];
   Payload payloads[kKeyNumForTest];
@@ -37,6 +38,7 @@ class LeafNodeFixture : public testing::Test
   size_t expected_record_count;
   size_t expected_block_size;
   size_t expected_deleted_size;
+  size_t expected_occupied_size;
 
   NodeReturnCode rc;
   StatusWord status;
@@ -48,7 +50,8 @@ class LeafNodeFixture : public testing::Test
         index{0},
         expected_record_count{0},
         expected_block_size{0},
-        expected_deleted_size{0}
+        expected_deleted_size{0},
+        expected_occupied_size{kHeaderLength}
   {
   }
 
@@ -62,7 +65,8 @@ class LeafNodeFixture : public testing::Test
     for (size_t index = 0; index < write_num; ++index) {
       node->Write(key_null, kNullKeyLength, payload_null, kNullPayloadLength);
       ++expected_record_count;
-      expected_block_size += kRecordLength;
+      expected_block_size += kNullRecordLength;
+      expected_occupied_size += kWordLength + kNullRecordLength;
     }
   }
 
@@ -82,6 +86,7 @@ class LeafNodeFixture : public testing::Test
       written_keys.emplace_back(key);
       ++expected_record_count;
       expected_block_size += kRecordLength;
+      expected_occupied_size += kWordLength + kRecordLength;
     }
     return written_keys;
   }
@@ -116,6 +121,22 @@ class LeafNodeFixture : public testing::Test
     EXPECT_EQ(expected_record_count, status.GetRecordCount());
     EXPECT_EQ(expected_block_size, status.GetBlockSize());
     EXPECT_EQ(expected_deleted_size, status.GetDeletedSize());
+  }
+
+  void
+  VerifyKey(  //
+      const Key expected,
+      const Key actual)
+  {
+    EXPECT_TRUE(IsEqual<Compare>(expected, actual));
+  }
+
+  void
+  VerifyPayload(  //
+      const Payload expected,
+      const Payload actual)
+  {
+    EXPECT_TRUE(IsEqual<PayloadComparator>(expected, actual));
   }
 };
 
@@ -160,12 +181,12 @@ TEST_F(LeafNodeFixture, Scan_BothClosed_ScanTargetValues)
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(3, scan_results.size());
-  EXPECT_EQ(keys[4], scan_results[0]->GetKey());
-  EXPECT_EQ(payloads[4], scan_results[0]->GetPayload());
-  EXPECT_EQ(keys[5], scan_results[1]->GetKey());
-  EXPECT_EQ(payloads[5], scan_results[1]->GetPayload());
-  EXPECT_EQ(keys[6], scan_results[2]->GetKey());
-  EXPECT_EQ(payloads[6], scan_results[2]->GetPayload());
+  VerifyKey(keys[4], scan_results[0]->GetKey());
+  VerifyPayload(payloads[4], scan_results[0]->GetPayload());
+  VerifyKey(keys[5], scan_results[1]->GetKey());
+  VerifyPayload(payloads[5], scan_results[1]->GetPayload());
+  VerifyKey(keys[6], scan_results[2]->GetKey());
+  VerifyPayload(payloads[6], scan_results[2]->GetPayload());
 }
 
 TEST_F(LeafNodeFixture, Scan_LeftClosed_ScanTargetValues)
@@ -177,10 +198,10 @@ TEST_F(LeafNodeFixture, Scan_LeftClosed_ScanTargetValues)
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
-  EXPECT_EQ(keys[7], scan_results[0]->GetKey());
-  EXPECT_EQ(payloads[7], scan_results[0]->GetPayload());
-  EXPECT_EQ(keys[8], scan_results[1]->GetKey());
-  EXPECT_EQ(payloads[8], scan_results[1]->GetPayload());
+  VerifyKey(keys[7], scan_results[0]->GetKey());
+  VerifyPayload(payloads[7], scan_results[0]->GetPayload());
+  VerifyKey(keys[8], scan_results[1]->GetKey());
+  VerifyPayload(payloads[8], scan_results[1]->GetPayload());
 }
 
 TEST_F(LeafNodeFixture, Scan_RightClosed_ScanTargetValues)
@@ -192,10 +213,10 @@ TEST_F(LeafNodeFixture, Scan_RightClosed_ScanTargetValues)
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
-  EXPECT_EQ(keys[8], scan_results[0]->GetKey());
-  EXPECT_EQ(payloads[8], scan_results[0]->GetPayload());
-  EXPECT_EQ(keys[9], scan_results[1]->GetKey());
-  EXPECT_EQ(payloads[9], scan_results[1]->GetPayload());
+  VerifyKey(keys[8], scan_results[0]->GetKey());
+  VerifyPayload(payloads[8], scan_results[0]->GetPayload());
+  VerifyKey(keys[9], scan_results[1]->GetKey());
+  VerifyPayload(payloads[9], scan_results[1]->GetPayload());
 }
 
 TEST_F(LeafNodeFixture, Scan_BothOpened_ScanTargetValues)
@@ -207,8 +228,8 @@ TEST_F(LeafNodeFixture, Scan_BothOpened_ScanTargetValues)
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(1, scan_results.size());
-  EXPECT_EQ(keys[8], scan_results[0]->GetKey());
-  EXPECT_EQ(payloads[8], scan_results[0]->GetPayload());
+  VerifyKey(keys[8], scan_results[0]->GetKey());
+  VerifyPayload(payloads[8], scan_results[0]->GetPayload());
 }
 
 TEST_F(LeafNodeFixture, Scan_LeftInfinity_ScanTargetValues)
@@ -220,10 +241,10 @@ TEST_F(LeafNodeFixture, Scan_LeftInfinity_ScanTargetValues)
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
-  EXPECT_EQ(keys[0], scan_results[0]->GetKey());
-  EXPECT_EQ(payloads[0], scan_results[0]->GetPayload());
-  EXPECT_EQ(keys[1], scan_results[1]->GetKey());
-  EXPECT_EQ(payloads[1], scan_results[1]->GetPayload());
+  VerifyKey(keys[0], scan_results[0]->GetKey());
+  VerifyPayload(payloads[0], scan_results[0]->GetPayload());
+  VerifyKey(keys[1], scan_results[1]->GetKey());
+  VerifyPayload(payloads[1], scan_results[1]->GetPayload());
 }
 
 TEST_F(LeafNodeFixture, Scan_RightInfinity_ScanTargetValues)
@@ -235,10 +256,10 @@ TEST_F(LeafNodeFixture, Scan_RightInfinity_ScanTargetValues)
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
-  EXPECT_EQ(keys[8], scan_results[0]->GetKey());
-  EXPECT_EQ(payloads[8], scan_results[0]->GetPayload());
-  EXPECT_EQ(keys[9], scan_results[1]->GetKey());
-  EXPECT_EQ(payloads[9], scan_results[1]->GetPayload());
+  VerifyKey(keys[8], scan_results[0]->GetKey());
+  VerifyPayload(payloads[8], scan_results[0]->GetPayload());
+  VerifyKey(keys[9], scan_results[1]->GetKey());
+  VerifyPayload(payloads[9], scan_results[1]->GetPayload());
 }
 
 TEST_F(LeafNodeFixture, Scan_LeftOutsideRange_NoResults)
@@ -271,10 +292,10 @@ TEST_F(LeafNodeFixture, Scan_WithUpdateDelete_ScanLatestValues)
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
-  EXPECT_EQ(keys[2], scan_results[0]->GetKey());
-  EXPECT_EQ(payloads[0], scan_results[0]->GetPayload());
-  EXPECT_EQ(keys[4], scan_results[1]->GetKey());
-  EXPECT_EQ(payloads[4], scan_results[1]->GetPayload());
+  VerifyKey(keys[2], scan_results[0]->GetKey());
+  VerifyPayload(payloads[0], scan_results[0]->GetPayload());
+  VerifyKey(keys[4], scan_results[1]->GetKey());
+  VerifyPayload(payloads[4], scan_results[1]->GetPayload());
 }
 
 TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithinRange_ScanTargetValues)
@@ -288,12 +309,12 @@ TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithinRange_ScanTargetValues)
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(3, scan_results.size());
-  EXPECT_EQ(keys[4], scan_results[0]->GetKey());
-  EXPECT_EQ(payloads[4], scan_results[0]->GetPayload());
-  EXPECT_EQ(keys[5], scan_results[1]->GetKey());
-  EXPECT_EQ(payloads[5], scan_results[1]->GetPayload());
-  EXPECT_EQ(keys[6], scan_results[2]->GetKey());
-  EXPECT_EQ(payloads[6], scan_results[2]->GetPayload());
+  VerifyKey(keys[4], scan_results[0]->GetKey());
+  VerifyPayload(payloads[4], scan_results[0]->GetPayload());
+  VerifyKey(keys[5], scan_results[1]->GetKey());
+  VerifyPayload(payloads[5], scan_results[1]->GetPayload());
+  VerifyKey(keys[6], scan_results[2]->GetKey());
+  VerifyPayload(payloads[6], scan_results[2]->GetPayload());
 }
 
 TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithLeftInfinity_ScanTargetValues)
@@ -307,8 +328,8 @@ TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithLeftInfinity_ScanTargetValues)
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(1, scan_results.size());
-  EXPECT_EQ(keys[3], scan_results[0]->GetKey());
-  EXPECT_EQ(payloads[3], scan_results[0]->GetPayload());
+  VerifyKey(keys[3], scan_results[0]->GetKey());
+  VerifyPayload(payloads[3], scan_results[0]->GetPayload());
 }
 
 TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithRightInfinity_ScanTargetValues)
@@ -322,8 +343,8 @@ TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithRightInfinity_ScanTargetValues)
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(1, scan_results.size());
-  EXPECT_EQ(keys[7], scan_results[0]->GetKey());
-  EXPECT_EQ(payloads[7], scan_results[0]->GetPayload());
+  VerifyKey(keys[7], scan_results[0]->GetKey());
+  VerifyPayload(payloads[7], scan_results[0]->GetPayload());
 }
 
 TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithUpdateDelete_ScanLatestValues)
@@ -339,10 +360,10 @@ TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithUpdateDelete_ScanLatestValues)
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
-  EXPECT_EQ(keys[5], scan_results[0]->GetKey());
-  EXPECT_EQ(payloads[0], scan_results[0]->GetPayload());
-  EXPECT_EQ(keys[6], scan_results[1]->GetKey());
-  EXPECT_EQ(payloads[6], scan_results[1]->GetPayload());
+  VerifyKey(keys[5], scan_results[0]->GetKey());
+  VerifyPayload(payloads[0], scan_results[0]->GetPayload());
+  VerifyKey(keys[6], scan_results[1]->GetKey());
+  VerifyPayload(payloads[6], scan_results[1]->GetPayload());
 }
 
 /*--------------------------------------------------------------------------------------------------
@@ -377,13 +398,13 @@ TEST_F(LeafNodeFixture, Write_TwoKeys_ReadWrittenValues)
   std::tie(rc, record) = node->Read(keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(payloads[1], record->GetPayload());
+  VerifyPayload(payloads[1], record->GetPayload());
 
   // read 2nd input value
   std::tie(rc, record) = node->Read(keys[2]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(payloads[2], record->GetPayload());
+  VerifyPayload(payloads[2], record->GetPayload());
 }
 
 TEST_F(LeafNodeFixture, Write_DuplicateKey_ReadLatestValue)
@@ -394,7 +415,7 @@ TEST_F(LeafNodeFixture, Write_DuplicateKey_ReadLatestValue)
   std::tie(rc, record) = node->Read(keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(payloads[2], record->GetPayload());
+  VerifyPayload(payloads[2], record->GetPayload());
 }
 
 TEST_F(LeafNodeFixture, Write_FilledNode_GetCorrectReturnCodes)
@@ -437,7 +458,7 @@ TEST_F(LeafNodeFixture, Write_ConsolidatedNode_ReadWrittenValue)
   std::tie(rc, record) = node->Read(keys[11]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(payloads[11], record->GetPayload());
+  VerifyPayload(payloads[11], record->GetPayload());
 }
 
 /*--------------------------------------------------------------------------------------------------
@@ -472,13 +493,13 @@ TEST_F(LeafNodeFixture, Insert_TwoKeys_ReadInsertedValues)
   std::tie(rc, record) = node->Read(keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(payloads[1], record->GetPayload());
+  VerifyPayload(payloads[1], record->GetPayload());
 
   // read 2nd input value
   std::tie(rc, record) = node->Read(keys[2]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(payloads[2], record->GetPayload());
+  VerifyPayload(payloads[2], record->GetPayload());
 }
 
 TEST_F(LeafNodeFixture, Insert_DuplicateKey_InsertionFailed)
@@ -496,9 +517,10 @@ TEST_F(LeafNodeFixture, Insert_FilledNode_GetCorrectReturnCodes)
 
   // fill a node
   std::tie(rc, status) = node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  expected_occupied_size += kWordLength + kRecordLength;
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(kNodeSize, status.GetOccupiedSize());
+  EXPECT_EQ(expected_occupied_size, status.GetOccupiedSize());
 
   // insert a filled node with a not present key
   std::tie(rc, status) = node->Insert(keys[2], kKeyLength, payloads[2], kPayloadLength);
@@ -538,7 +560,7 @@ TEST_F(LeafNodeFixture, Insert_ConsolidatedNode_ReadInsertedValue)
   std::tie(rc, record) = node->Read(keys[11]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(payloads[11], record->GetPayload());
+  VerifyPayload(payloads[11], record->GetPayload());
 }
 
 TEST_F(LeafNodeFixture, Insert_ConsolidatedNodeWithDuplicateKey_InsertionFailed)
@@ -581,7 +603,7 @@ TEST_F(LeafNodeFixture, Update_SingleKey_ReadUpdatedValue)
   std::tie(rc, record) = node->Read(keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(payloads[2], record->GetPayload());
+  VerifyPayload(payloads[2], record->GetPayload());
 }
 
 TEST_F(LeafNodeFixture, Update_NotPresentKey_UpdatedFailed)
@@ -607,9 +629,10 @@ TEST_F(LeafNodeFixture, Update_FilledNode_GetCorrectReturnCodes)
 
   // fill a node
   std::tie(rc, status) = node->Update(key_null, kNullKeyLength, payload_null, kNullPayloadLength);
+  expected_occupied_size += kWordLength + kNullRecordLength;
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(kNodeSize, status.GetOccupiedSize());
+  EXPECT_EQ(expected_occupied_size, status.GetOccupiedSize());
 
   // update a filled node with an present key
   std::tie(rc, status) = node->Update(key_null, kNullKeyLength, payload_null, kNullPayloadLength);
@@ -650,7 +673,7 @@ TEST_F(LeafNodeFixture, Update_ConsolidatedNode_ReadUpdatedValue)
   std::tie(rc, record) = node->Read(keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-  EXPECT_EQ(payloads[11], record->GetPayload());
+  VerifyPayload(payloads[11], record->GetPayload());
 }
 
 TEST_F(LeafNodeFixture, Update_ConsolidatedNodeWithNotPresentKey_UpdatedFailed)
@@ -822,7 +845,7 @@ TEST_F(LeafNodeFixture, Consolidate_SortedTenKeys_GatherSortedLiveMetadata)
   EXPECT_EQ(expected_record_count, meta_vec.size());
   for (size_t index = 0; index < meta_vec.size(); index++) {
     auto [key, meta] = meta_vec[index];
-    EXPECT_EQ(written_keys[index], key);
+    VerifyKey(written_keys[index], key);
     EXPECT_TRUE(meta.IsVisible());
   }
 }
@@ -843,7 +866,7 @@ TEST_F(LeafNodeFixture, Consolidate_SortedTenKeysWithDelete_GatherSortedLiveMeta
   EXPECT_EQ(expected_record_count, meta_vec.size());
   for (size_t index = 0; index < meta_vec.size(); index++) {
     auto [key, meta] = meta_vec[index];
-    EXPECT_EQ(written_keys[index], key);
+    VerifyKey(written_keys[index], key);
     EXPECT_TRUE(meta.IsVisible());
   }
 }
@@ -860,7 +883,7 @@ TEST_F(LeafNodeFixture, Consolidate_SortedTenKeysWithUpdate_GatherSortedLiveMeta
   EXPECT_EQ(expected_record_count, meta_vec.size());
   for (size_t index = 0; index < meta_vec.size(); index++) {
     auto [key, meta] = meta_vec[index];
-    EXPECT_EQ(written_keys[index], key);
+    VerifyKey(written_keys[index], key);
     EXPECT_TRUE(meta.IsVisible());
   }
 }
@@ -878,7 +901,7 @@ TEST_F(LeafNodeFixture, Consolidate_UnsortedTenKeys_GatherSortedLiveMetadata)
   EXPECT_EQ(expected_record_count, meta_vec.size());
   for (size_t index = 0; index < meta_vec.size(); index++) {
     auto [key, meta] = meta_vec[index];
-    EXPECT_EQ(written_keys[index], key);
+    VerifyKey(written_keys[index], key);
     EXPECT_TRUE(meta.IsVisible());
   }
 }
@@ -912,6 +935,7 @@ TEST_F(LeafNodeFixture, Consolidate_SortedTenKeysWithUpdate_NodeHasCorrectStatus
   // prepare a consolidated node
   WriteOrderedKeys(0, 8);
   node->Update(keys[2], kKeyLength, payload_null, kNullPayloadLength);
+  expected_block_size += kNullPayloadLength - kPayloadLength;
 
   auto meta_vec = node->GatherSortedLiveMetadata();
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
@@ -967,7 +991,7 @@ TEST_F(LeafNodeFixture, Split_EquallyDivided_NodesHaveCorrectKeyPayloads)
     std::tie(rc, record) = left_node->Read(keys[index]);
 
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-    EXPECT_EQ(payloads[index], record->GetPayload());
+    VerifyPayload(payloads[index], record->GetPayload());
   }
 
   // check a split right node
@@ -975,7 +999,7 @@ TEST_F(LeafNodeFixture, Split_EquallyDivided_NodesHaveCorrectKeyPayloads)
     std::tie(rc, record) = right_node->Read(keys[index]);
 
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-    EXPECT_EQ(payloads[index], record->GetPayload());
+    VerifyPayload(payloads[index], record->GetPayload());
   }
 }
 
@@ -1037,7 +1061,7 @@ TEST_F(LeafNodeFixture, Merge_LeftSiblingNode_NodeHasCorrectKeyPayloads)
     std::tie(rc, record) = node->Read(keys[index]);
 
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-    EXPECT_EQ(payloads[index], record->GetPayload());
+    VerifyPayload(payloads[index], record->GetPayload());
   }
 }
 
@@ -1059,7 +1083,7 @@ TEST_F(LeafNodeFixture, Merge_RightSiblingNode_NodeHasCorrectKeyPayloads)
     std::tie(rc, record) = node->Read(keys[index]);
 
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-    EXPECT_EQ(payloads[index], record->GetPayload());
+    VerifyPayload(payloads[index], record->GetPayload());
   }
 }
 

@@ -43,6 +43,7 @@
     "bztree",
     "bztrees",
     "cpptools",
+    "cstr",
     "glog",
     "gtest",
     "hykin",

@@ -236,7 +236,7 @@ class alignas(kCacheLineSize) BaseNode
   GetKeyAndItsLength(const size_t index) const
   {
     const auto meta = GetMetadata(index);
-    return {*reinterpret_cast<Key *>(GetKeyAddr(meta)), meta.GetKeyLength()};
+    return {CastKey<Key>(GetKeyAddr(meta)), meta.GetKeyLength()};
   }
 
   void
@@ -322,7 +322,7 @@ class alignas(kCacheLineSize) BaseNode
 
     while (begin_index <= end_index && index < sorted_count) {
       const auto meta = GetMetadata(index);
-      const auto index_key = *reinterpret_cast<Key *>(GetKeyAddr(meta));
+      const auto index_key = CastKey<Key>(GetKeyAddr(meta));
       const auto index_key_length = meta.GetKeyLength();
 
       if (index_key_length == 0 || Compare{}(key, index_key)) {
