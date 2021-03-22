@@ -1,6 +1,8 @@
 // Copyright (c) DB Group, Nagoya University. All rights reserved.
 // Licensed under the MIT license.
 
+#pragma once
+
 #include <gtest/gtest.h>
 
 #include <memory>

@@ -72,13 +72,13 @@ class BzTree
     return reinterpret_cast<BaseNode_t *>(ReadMwCASField<uintptr_t>(&root_));
   }
 
-  std::pair<Key *, LeafNode_t *>
+  std::pair<void *, LeafNode_t *>
   SearchLeafNode(  //
       const Key *key,
       const bool range_is_closed)
   {
     auto current_node = GetRoot();
-    Key *node_key = nullptr;
+    void *node_key = nullptr;
     do {
       const auto index =
           (key == nullptr) ? 0 : current_node->SearchSortedMetadata(*key, range_is_closed).second;
@@ -86,7 +86,7 @@ class BzTree
       if (meta.GetKeyLength() == 0) {
         node_key = nullptr;
       } else {
-        node_key = reinterpret_cast<Key *>(current_node->GetKeyAddr(meta));
+        node_key = current_node->GetKeyAddr(meta);
       }
       current_node = BitCast<InternalNode_t *>(current_node)->GetChildNode(index);
     } while (!current_node->IsLeaf());
@@ -157,7 +157,8 @@ class BzTree
 
     if (node_key == nullptr
         || (end_key != nullptr
-            && (Compare{}(*end_key, *node_key) || IsEqual<Compare>(*end_key, *node_key)))) {
+            && (Compare{}(*end_key, CastKey<Key>(node_key))
+                || IsEqual<Compare>(*end_key, CastKey<Key>(node_key))))) {
       return {ReturnCode::kSuccess, std::move(scan_results)};
     } else {
       return {ReturnCode::kScanInProgress, std::move(scan_results)};
@@ -673,14 +674,23 @@ class BzTree
       const Key &end_key,
       const bool end_is_closed)
   {
+    Key tmp_key;
+    Key *begin_key = nullptr;
+    bool begin_is_closed = false;
+
     std::vector<std::unique_ptr<Record_t>> all_results;
     while (true) {
-      auto [return_code, leaf_results] = ScanPerLeaf(nullptr, false, &end_key, end_is_closed);
+      auto [return_code, leaf_results] =
+          ScanPerLeaf(begin_key, begin_is_closed, &end_key, end_is_closed);
       // concatanate scan results for each leaf node
       all_results.reserve(all_results.size() + leaf_results.size());
       all_results.insert(all_results.end(), std::make_move_iterator(leaf_results.begin()),
                          std::make_move_iterator(leaf_results.end()));
-      if (return_code != ReturnCode::kScanInProgress) {
+      if (return_code == ReturnCode::kScanInProgress) {
+        tmp_key = all_results.back()->GetKey();
+        begin_key = &tmp_key;
+        begin_is_closed = false;
+      } else {
         break;
       }
     }
