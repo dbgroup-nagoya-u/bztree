@@ -608,7 +608,7 @@ class BzTree
         expected_free_space_{expected_free_space},
         max_deleted_size_{max_deleted_size},
         max_merged_size_{max_merged_size},
-        index_epoch_{0},
+        index_epoch_{1},
         gc_{1000}
   {
     // initialize a tree structure: one internal node with one leaf node

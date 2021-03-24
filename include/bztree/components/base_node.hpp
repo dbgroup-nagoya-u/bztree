@@ -4,6 +4,7 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <functional>
 #include <map>
 #include <memory>
@@ -61,6 +62,14 @@ class alignas(kCacheLineSize) BaseNode
       const Metadata new_meta)
   {
     meta_array_[index] = new_meta;
+  }
+
+  void
+  SetMetadataByCAS(  //
+      const size_t index,
+      const Metadata new_meta)
+  {
+    CastAddress<std::atomic<Metadata> *>(meta_array_ + index)->store(new_meta, mo_relax);
   }
 
   constexpr void *
@@ -213,7 +222,7 @@ class alignas(kCacheLineSize) BaseNode
     return status_;
   }
 
-  StatusWord
+  constexpr StatusWord
   GetStatusWordProtected() const
   {
     return ReadMwCASField<StatusWord>(&status_);
@@ -223,6 +232,12 @@ class alignas(kCacheLineSize) BaseNode
   GetMetadata(const size_t index) const
   {
     return meta_array_[index];
+  }
+
+  constexpr Metadata
+  GetMetadataProtected(const size_t index) const
+  {
+    return ReadMwCASField<Metadata>(&meta_array_[index]);
   }
 
   constexpr void *

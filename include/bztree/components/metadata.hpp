@@ -80,7 +80,7 @@ class alignas(kWordLength) Metadata
   }
 
   constexpr bool
-  IsCorrupted(const size_t index_epoch) const
+  IsFailedRecord(const size_t index_epoch) const
   {
     return IsInProgress() && (GetOffset() != index_epoch);
   }
