@@ -151,6 +151,7 @@ TEST_F(LeafNodeFixture, Write_MultiThreads_ReadWrittenPayloads)
   EXPECT_EQ(kWriteNumPerThread * kThreadNum, written_indexes.size());
   for (auto&& index : written_indexes) {
     auto [rc, record] = node->Read(keys[index]);
+    EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index], record->GetPayload());
   }
 }
@@ -163,25 +164,42 @@ TEST_F(LeafNodeFixture, Insert_MultiThreads_ReadWrittenPayloads)
   EXPECT_EQ(kWriteNumPerThread * kThreadNum, written_indexes.size() + failed_indexes.size());
   for (auto&& index : written_indexes) {
     auto [rc, record] = node->Read(keys[index]);
+    EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index], record->GetPayload());
   }
   for (auto&& index : failed_indexes) {
     auto [rc, record] = node->Read(keys[index]);
+    EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index], record->GetPayload());
   }
 }
 
 TEST_F(LeafNodeFixture, Update_MultiThreads_ReadWrittenPayloads)
 {
-  RunOverMultiThread(kWriteNumPerThread * 0.25, kThreadNum, kWrite,
+  RunOverMultiThread(kWriteNumPerThread * 0.5, kThreadNum, kWrite,
                      &LeafNodeFixture::WriteRandomKeys);
   auto [written_indexes, failed_indexes] = RunOverMultiThread(
-      kWriteNumPerThread * 0.75, kThreadNum, kUpdate, &LeafNodeFixture::WriteRandomKeys);
+      kWriteNumPerThread * 0.5, kThreadNum, kUpdate, &LeafNodeFixture::WriteRandomKeys);
 
-  EXPECT_EQ(kWriteNumPerThread * kThreadNum * 0.75, written_indexes.size() + failed_indexes.size());
+  EXPECT_EQ(kWriteNumPerThread * kThreadNum * 0.5, written_indexes.size());
   for (auto&& index : written_indexes) {
     auto [rc, record] = node->Read(keys[index]);
+    EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index + 1], record->GetPayload());
+  }
+}
+
+TEST_F(LeafNodeFixture, Delete_MultiThreads_KeysDeleted)
+{
+  RunOverMultiThread(kWriteNumPerThread * 0.5, kThreadNum, kWrite,
+                     &LeafNodeFixture::WriteRandomKeys);
+  auto [written_indexes, failed_indexes] = RunOverMultiThread(
+      kWriteNumPerThread * 0.5, kThreadNum, kDelete, &LeafNodeFixture::WriteRandomKeys);
+
+  EXPECT_EQ(kWriteNumPerThread * kThreadNum * 0.5, written_indexes.size() + failed_indexes.size());
+  for (auto&& index : written_indexes) {
+    auto [rc, record] = node->Read(keys[index]);
+    EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
   }
 }
 
