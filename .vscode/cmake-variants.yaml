@@ -20,18 +20,3 @@ buildType:
       buildType: Release
       settings:
         BZTREE_BUILD_TESTS: on
-
-# backend:
-#   default: volatile
-#   description: Build Types
-#   choices:
-#     volatile:
-#       short: Volatile
-#       long: Use volatile backend
-#       settings:
-#         PMEM_BACKEND: VOLATILE
-#     emulated:
-#       short: Emulated
-#       long: Use volatile backend
-#       settings:
-#         PMEM_BACKEND: EMU

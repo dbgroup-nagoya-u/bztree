@@ -45,29 +45,40 @@ set(
 
 # define function to add unit tests in the same format
 function(ADD_BZTREE_TEST BZTREE_TEST_TARGET)
-  add_executable(${BZTREE_TEST_TARGET}
+  add_executable(
+    ${BZTREE_TEST_TARGET}
     "${CMAKE_CURRENT_SOURCE_DIR}/${BZTREE_TEST_TARGET}.cpp"
   )
-  target_compile_features(${BZTREE_TEST_TARGET} PRIVATE
+  target_compile_features(
+    ${BZTREE_TEST_TARGET} PRIVATE
     "cxx_std_17"
   )
-  target_compile_options(${BZTREE_TEST_TARGET} PRIVATE
+  target_compile_options(
+    ${BZTREE_TEST_TARGET} PRIVATE
     -Wall
     -Wextra
     $<$<STREQUAL:${CMAKE_BUILD_TYPE},"Release">:"-O2 -march=native">
     $<$<STREQUAL:${CMAKE_BUILD_TYPE},"RelWithDebInfo">:"-g3 -Og -pg">
     $<$<STREQUAL:${CMAKE_BUILD_TYPE},"Debug">:"-g3 -O0 -pg">
   )
-  target_include_directories(${BZTREE_TEST_TARGET} PRIVATE
+  target_compile_definitions(
+    ${BZTREE_TEST_TARGET} PRIVATE
+    BZTREE_TEST_THREAD_NUM=${BZTREE_TEST_THREAD_NUM}
+    BZTREE_TEST_WRITE_NUM=${BZTREE_TEST_WRITE_NUM}
+  )
+  target_include_directories(
+    ${BZTREE_TEST_TARGET} PRIVATE
     "${BZTREE_SOURCE_DIR}/include"
   )
-  target_link_libraries(${BZTREE_TEST_TARGET} PRIVATE
+  target_link_libraries(
+    ${BZTREE_TEST_TARGET} PRIVATE
     pthread
     mwcas
     memory_manager
     gtest_main
   )
-  add_dependencies(${BZTREE_TEST_TARGET}
+  add_dependencies(
+    ${BZTREE_TEST_TARGET}
     mwcas
     memory_manager
   )
