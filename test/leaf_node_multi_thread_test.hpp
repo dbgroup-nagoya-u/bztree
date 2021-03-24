@@ -29,7 +29,8 @@ class LeafNodeFixture : public testing::Test
     kWrite,
     kInsert,
     kUpdate,
-    kDelete
+    kDelete,
+    kMixed
   };
 
   static constexpr size_t kRandSeed = 10;
@@ -61,8 +62,8 @@ class LeafNodeFixture : public testing::Test
 
     for (size_t count = 0; count < write_num; ++count) {
       const auto index = rand_engine() % (kKeyNumForTest - 1);
-      NodeReturnCode rc;
-      StatusWord s;
+      NodeReturnCode rc{};
+      StatusWord s{};
       switch (w_type) {
         case kWrite:
           std::tie(rc, s) = node->Write(keys[index], kKeyLength, payloads[index], kPayloadLength);
@@ -76,6 +77,19 @@ class LeafNodeFixture : public testing::Test
           break;
         case kDelete:
           std::tie(rc, s) = node->Delete(keys[index], kKeyLength);
+          break;
+        case kMixed:
+          switch (index % 3) {
+            case 0:
+              node->Insert(keys[0], kKeyLength, payloads[0], kPayloadLength);
+              break;
+            case 1:
+              node->Update(keys[0], kKeyLength, payloads[1], kPayloadLength);
+              break;
+            default:
+              node->Delete(keys[0], kKeyLength);
+              break;
+          }
           break;
       }
       if (rc == NodeReturnCode::kSuccess) {
@@ -201,6 +215,33 @@ TEST_F(LeafNodeFixture, Delete_MultiThreads_KeysDeleted)
     auto [rc, record] = node->Read(keys[index]);
     EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
   }
+}
+
+TEST_F(LeafNodeFixture, InsertUpdateDelete_MultiThreads_ConcurrencyControlCorrupted)
+{
+  RunOverMultiThread(kWriteNumPerThread, kThreadNum, kMixed, &LeafNodeFixture::WriteRandomKeys);
+
+  const auto status = node->GetStatusWord();
+  bool previous_is_update{false};
+  bool concurrency_is_corrupted{false};
+  for (int64_t index = status.GetRecordCount() - 1; index >= 0; --index) {
+    const auto meta = node->GetMetadata(index);
+    if (meta.IsVisible()) {  // insert or update
+      const auto record = node->GetRecord(meta);
+      if (IsEqual<PayloadComparator>(payloads[1], record->GetPayload())) {
+        previous_is_update = true;
+      } else {
+        previous_is_update = false;
+      }
+    } else if (meta.IsDeleted()) {  // delete
+      if (previous_is_update) {
+        concurrency_is_corrupted = true;
+      }
+      previous_is_update = false;
+    }
+  }
+
+  EXPECT_TRUE(concurrency_is_corrupted);
 }
 
 }  // namespace dbgroup::index::bztree

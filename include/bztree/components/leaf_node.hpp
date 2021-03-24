@@ -60,20 +60,6 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
   explicit LeafNode(const size_t node_size) : BaseNode<Key, Payload, Compare>(node_size, true) {}
 
   /*################################################################################################
-   * Internal setter/getter
-   *##############################################################################################*/
-
-  std::unique_ptr<Record_t>
-  GetRecord(const Metadata meta) const
-  {
-    const auto key_addr = this->GetKeyAddr(meta);
-    const auto key_length = meta.GetKeyLength();
-    const auto payload_length = meta.GetPayloadLength();
-
-    return Record_t::Create(key_addr, key_length, payload_length);
-  }
-
-  /*################################################################################################
    * Internal utility functions
    *##############################################################################################*/
 
@@ -209,6 +195,20 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     auto page = calloc(1, node_size);
     auto new_node = new (page) LeafNode{node_size};
     return new_node;
+  }
+
+  /*################################################################################################
+   * Public setter/getter
+   *##############################################################################################*/
+
+  std::unique_ptr<Record_t>
+  GetRecord(const Metadata meta) const
+  {
+    const auto key_addr = this->GetKeyAddr(meta);
+    const auto key_length = meta.GetKeyLength();
+    const auto payload_length = meta.GetPayloadLength();
+
+    return Record_t::Create(key_addr, key_length, payload_length);
   }
 
   /*################################################################################################
