@@ -58,10 +58,14 @@ class LeafNodeFixture : public testing::Test
   void
   WriteRandomKeys(  //
       const size_t write_num,
-      const size_t rand_seed,
+      size_t rand_seed,
       const WriteType w_type,
       std::promise<RunResult> p)
   {
+    if (w_type == WriteType::kInsert) {
+      rand_seed = 0;  // use duplicate keys for insert test
+    }
+
     std::mt19937_64 rand_engine(rand_seed);
 
     std::vector<size_t> written_indexes, failed_indexes;
@@ -183,6 +187,7 @@ TEST_F(LeafNodeFixture, Insert_MultiThreads_ReadWrittenPayloads)
   auto [written_indexes, failed_indexes] = RunOverMultiThread(
       kWriteNumPerThread, kThreadNum, kInsert, &LeafNodeFixture::WriteRandomKeys);
 
+  EXPECT_LE(written_indexes.size(), kWriteNumPerThread);
   EXPECT_EQ(kWriteNumPerThread * kThreadNum, written_indexes.size() + failed_indexes.size());
   for (auto&& index : written_indexes) {
     auto [rc, record] = node->Read(keys[index]);
