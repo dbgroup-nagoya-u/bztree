@@ -229,25 +229,32 @@ TEST_F(LeafNodeFixture, InsertUpdateDelete_MultiThreads_ConcurrencyControlCorrup
 {
   RunOverMultiThread(kWriteNumPerThread, kThreadNum, kMixed, &LeafNodeFixture::WriteRandomKeys);
 
-  const auto status = node->GetStatusWord();
   bool previous_is_update{false};
   bool concurrency_is_corrupted{false};
-  for (int64_t index = status.GetRecordCount() - 1; index >= 0; --index) {
-    const auto meta = node->GetMetadata(index);
-    if (meta.IsVisible()) {  // insert or update
-      const auto record = node->GetRecord(meta);
-      if (IsEqual<PayloadComparator>(payloads[1], record->GetPayload())) {
-        previous_is_update = true;
-      } else {
+  do {
+    const auto status = node->GetStatusWord();
+    for (int64_t index = status.GetRecordCount() - 1; index >= 0; --index) {
+      const auto meta = node->GetMetadata(index);
+      if (meta.IsVisible()) {  // insert or update
+        const auto record = node->GetRecord(meta);
+        if (IsEqual<PayloadComparator>(payloads[1], record->GetPayload())) {
+          previous_is_update = true;
+        } else {
+          previous_is_update = false;
+        }
+      } else if (meta.IsDeleted()) {  // delete
+        if (previous_is_update) {
+          concurrency_is_corrupted = true;
+        }
         previous_is_update = false;
       }
-    } else if (meta.IsDeleted()) {  // delete
-      if (previous_is_update) {
-        concurrency_is_corrupted = true;
-      }
-      previous_is_update = false;
     }
-  }
+
+    if (!concurrency_is_corrupted) {
+      node.reset(LeafNode_t::CreateEmptyNode(kNodeSize));
+      RunOverMultiThread(kWriteNumPerThread, kThreadNum, kMixed, &LeafNodeFixture::WriteRandomKeys);
+    }
+  } while (!concurrency_is_corrupted);
 
   EXPECT_TRUE(concurrency_is_corrupted);
 }
