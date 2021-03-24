@@ -28,6 +28,14 @@ add_subdirectory(${CMAKE_CURRENT_BINARY_DIR}/googletest-src
 # End of copy and paste
 #--------------------------------------------------------------------------------------#
 
+# set compile options for unit tests
+set(
+  BZTREE_TEST_THREAD_NUM
+  "8"
+  CACHE STRING
+  "The maximum number of threads to perform unit tests."
+)
+
 # define function to add unit tests in the same format
 function(ADD_BZTREE_TEST BZTREE_TEST_TARGET)
   add_executable(${BZTREE_TEST_TARGET}
