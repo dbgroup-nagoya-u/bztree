@@ -38,8 +38,12 @@ class LeafNodeFixture : public testing::Test
 #else
   static constexpr size_t kThreadNum = 8;
 #endif
-  static constexpr size_t kRandSeed = 10;
+#ifdef BZTREE_TEST_WRITE_NUM
+  static constexpr size_t kWriteNumPerThread = BZTREE_TEST_WRITE_NUM;
+#else
   static constexpr size_t kWriteNumPerThread = 3000;
+#endif
+  static constexpr size_t kRandSeed = 10;
   static constexpr size_t kKeyNumForTest = 10000;
   static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;
   static constexpr size_t kNodeSize =
