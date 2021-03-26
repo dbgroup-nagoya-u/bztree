@@ -21,7 +21,7 @@ class LeafNodeFixture : public testing::Test
   using LeafNode_t = LeafNode<Key, Payload, Compare>;
 
   static constexpr size_t kNodeSize = 256;
-  static constexpr size_t kIndexEpoch = 0;
+  static constexpr size_t kIndexEpoch = 1;
   static constexpr size_t kKeyNumForTest = 10000;
   static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;
   static constexpr size_t kNullKeyLength = 8;

@@ -48,7 +48,7 @@ class LeafNodeFixture : public testing::Test
   static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;
   static constexpr size_t kNodeSize =
       kHeaderLength + (kWordLength + kRecordLength) * (kWriteNumPerThread * kThreadNum);
-  static constexpr size_t kIndexEpoch = 0;
+  static constexpr size_t kIndexEpoch = 1;
 
   Key keys[kKeyNumForTest];
   Payload payloads[kKeyNumForTest];

@@ -1,9 +1,7 @@
 // Copyright (c) DB Group, Nagoya University. All rights reserved.
 // Licensed under the MIT license.
 
-#include <cstddef>
-#include <cstdint>
-#include <functional>
+#include "bztree/components/common.hpp"
 
 using Key = uint64_t;
 using Payload = uint64_t;
