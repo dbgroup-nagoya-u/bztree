@@ -336,7 +336,7 @@ class alignas(kCacheLineSize) BaseNode
     int64_t index = end_index / 2;
 
     while (begin_index <= end_index && index < sorted_count) {
-      const auto meta = GetMetadata(index);
+      const auto meta = GetMetadataProtected(index);
       const auto index_key = CastKey<Key>(GetKeyAddr(meta));
       const auto index_key_length = meta.GetKeyLength();
 
