@@ -695,7 +695,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
     // search unsorted metadata in reverse order
     for (int64_t index = record_count - 1; index >= sorted_count; --index) {
-      const auto meta = this->GetMetadata(index);
+      const auto meta = this->GetMetadataProtected(index);
       if (meta.IsVisible() || meta.IsDeleted()) {
         const auto key = CastKey<Key>(this->GetKeyAddr(meta));
         meta_arr.emplace_back(key, meta);
@@ -707,7 +707,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
     // search sorted metadata
     for (int64_t index = 0; index < sorted_count; ++index) {
-      const auto meta = this->GetMetadata(index);
+      const auto meta = this->GetMetadataProtected(index);
       const auto key = CastKey<Key>(this->GetKeyAddr(meta));
       meta_arr.emplace_back(key, meta);
     }
