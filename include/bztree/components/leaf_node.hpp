@@ -466,8 +466,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       uniqueness = CheckUniqueness(key, record_count, index_epoch);
       if (uniqueness == KeyExistence::kExist) {
         // delete an inserted record
-        const auto failed_meta = inserting_meta.UpdateOffset(0);
-        this->SetMetadataByCAS(record_count, failed_meta);
+        this->SetMetadataByCAS(record_count, inserting_meta.UpdateOffset(0));
         return {NodeReturnCode::kKeyExist, StatusWord{}};
       }
     }
@@ -476,6 +475,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     do {
       current_status = this->GetStatusWordProtected();
       if (current_status.IsFrozen()) {
+        // delete an inserted record
+        this->SetMetadataByCAS(record_count, inserting_meta.UpdateOffset(0));
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 

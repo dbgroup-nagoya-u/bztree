@@ -804,16 +804,24 @@ class BzTree
       leaf_node = SearchLeafNode(&key, true).second;
       std::tie(return_code, node_status) =
           leaf_node->Insert(key, key_length, payload, payload_length, index_epoch_);
-      if (return_code == NodeReturnCode::kKeyExist) {
-        return ReturnCode::kKeyExist;
-      } else if (is_retry && return_code == NodeReturnCode::kFrozen) {
-        // invoke consolidation in this thread
-        ConsolidateLeafNode(leaf_node, key, key_length);
-        is_retry = false;
-      } else {
-        is_retry = true;
+      switch (return_code) {
+        case NodeReturnCode::kKeyExist:
+          return ReturnCode::kKeyExist;
+        case NodeReturnCode::kFrozen:
+          if (is_retry) {
+            ConsolidateLeafNode(leaf_node, key, key_length);
+            is_retry = false;
+          } else {
+            is_retry = true;
+          }
+          break;
+        case NodeReturnCode::kNoSpace:
+          ConsolidateLeafNode(leaf_node, key, key_length);
+          break;
+        default:
+          break;
       }
-    } while (return_code == NodeReturnCode::kFrozen);
+    } while (return_code != NodeReturnCode::kSuccess);
 
     if (NeedConsolidation(node_status)) {
       // invoke consolidation with a new thread
