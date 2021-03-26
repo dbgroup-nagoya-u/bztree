@@ -71,7 +71,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
       // copy a record
       const auto key = CastKey<Key>(original_node->GetKeyAddr(meta));
       const auto key_length = meta.GetKeyLength();
-      const auto child_addr = PayloadToNodeAddr(original_node->GetPayloadAddr(meta));
+      const auto child_addr = original_node->GetChildAddrProtected(meta);
       offset = target_node->SetChild(key, key_length, child_addr, offset);
       // copy metadata
       const auto new_meta = meta.UpdateOffset(offset);
@@ -110,11 +110,17 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
    * Public getters/setters
    *##############################################################################################*/
 
+  constexpr uintptr_t
+  GetChildAddrProtected(const Metadata meta) const
+  {
+    return ReadMwCASField<uintptr_t>(this->GetPayloadAddr(meta));
+  }
+
   BaseNode_t *
   GetChildNode(const size_t index) const
   {
-    const auto node_uintptr = PayloadToNodeAddr(this->GetPayloadAddr(this->GetMetadata(index)));
-    return reinterpret_cast<BaseNode_t *>(node_uintptr);
+    const auto meta = this->GetMetadata(index);
+    return reinterpret_cast<BaseNode_t *>(this->GetChildAddrProtected(meta));
   }
 
   constexpr bool
@@ -293,7 +299,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
       const auto meta = old_parent->GetMetadata(old_idx);
       const auto key = CastKey<Key>(old_parent->GetKeyAddr(meta));
       const auto key_length = meta.GetKeyLength();
-      auto node_addr = PayloadToNodeAddr(old_parent->GetPayloadAddr(meta));
+      auto node_addr = old_parent->GetChildAddrProtected(meta);
       if (old_idx == split_index) {
         // insert a split left child
         const auto left_addr_uintptr = reinterpret_cast<uintptr_t>(left_addr);
@@ -335,7 +341,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
       auto meta = old_parent->GetMetadata(old_idx);
       auto key = CastKey<Key>(old_parent->GetKeyAddr(meta));
       auto key_length = meta.GetKeyLength();
-      auto node_addr = PayloadToNodeAddr(old_parent->GetPayloadAddr(meta));
+      auto node_addr = old_parent->GetChildAddrProtected(meta);
       if (old_idx == deleted_index) {
         // skip a deleted node and insert a merged node
         meta = old_parent->GetMetadata(++old_idx);
