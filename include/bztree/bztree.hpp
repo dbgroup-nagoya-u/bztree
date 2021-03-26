@@ -762,8 +762,6 @@ class BzTree
 
     if (NeedConsolidation(node_status)) {
       // invoke consolidation with a new thread
-      // std::thread t(&BzTree::ConsolidateLeafNode, this, leaf_node, key, key_length);
-      // t.detach();
       ConsolidateLeafNode(leaf_node, key, key_length);
     }
     return ReturnCode::kSuccess;
@@ -833,8 +831,6 @@ class BzTree
 
     if (NeedConsolidation(node_status)) {
       // invoke consolidation with a new thread
-      // std::thread t(&BzTree::ConsolidateLeafNode, this, leaf_node, key, key_length);
-      // t.detach();
       ConsolidateLeafNode(leaf_node, key, key_length);
     }
     return ReturnCode::kSuccess;
@@ -905,8 +901,6 @@ class BzTree
 
     if (NeedConsolidation(node_status)) {
       // invoke consolidation with a new thread
-      // std::thread t(&BzTree::ConsolidateLeafNode, this, leaf_node, key, key_length);
-      // t.detach();
       ConsolidateLeafNode(leaf_node, key, key_length);
     }
     return ReturnCode::kSuccess;
@@ -963,9 +957,6 @@ class BzTree
             is_retry = true;
           }
           break;
-        case NodeReturnCode::kNoSpace:
-          ConsolidateLeafNode(leaf_node, key, key_length);
-          break;
         default:
           break;
       }
@@ -973,8 +964,6 @@ class BzTree
 
     if (NeedConsolidation(node_status)) {
       // invoke consolidation with a new thread
-      // std::thread t(&BzTree::ConsolidateLeafNode, this, leaf_node, key, key_length);
-      // t.detach();
       ConsolidateLeafNode(leaf_node, key, key_length);
     }
     return ReturnCode::kSuccess;

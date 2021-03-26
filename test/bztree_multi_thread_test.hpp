@@ -36,17 +36,16 @@ class BzTreeFixture : public testing::Test
     kDelete
   };
 
+#ifdef BZTREE_TEST_THREAD_NUM
+  static constexpr size_t kThreadNum = BZTREE_TEST_THREAD_NUM;
+#else
   static constexpr size_t kThreadNum = 8;
-  // #ifdef BZTREE_TEST_THREAD_NUM
-  //   static constexpr size_t kThreadNum = BZTREE_TEST_THREAD_NUM;
-  // #else
-  //   static constexpr size_t kThreadNum = 8;
-  // #endif
-  // #ifdef BZTREE_TEST_WRITE_NUM
-  //   static constexpr size_t kWriteNumPerThread = BZTREE_TEST_WRITE_NUM;
-  // #else
-  static constexpr size_t kWriteNumPerThread = 100000;
-  // #endif
+#endif
+#ifdef BZTREE_TEST_WRITE_NUM
+  static constexpr size_t kWriteNumPerThread = BZTREE_TEST_WRITE_NUM;
+#else
+  static constexpr size_t kWriteNumPerThread = 3000;
+#endif
   static constexpr size_t kRandSeed = 10;
   static constexpr size_t kKeyNumForTest = 10000;
   static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;

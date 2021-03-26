@@ -84,10 +84,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       if (IsEqual<Compare>(key, target_key)) {
         if (meta.IsVisible()) {
           return KeyExistence::kExist;
-        } else if (meta.IsDeleted()) {
-          return KeyExistence::kDeleted;
         }
-        // there is a key, but it is corrupted due to a machine failure
+        return KeyExistence::kDeleted;
       }
     }
     return KeyExistence::kNotExist;
@@ -125,10 +123,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       if (IsEqual<Compare>(key, target_key)) {
         if (meta.IsVisible()) {
           return {KeyExistence::kExist, index};
-        } else if (meta.IsDeleted()) {
-          return {KeyExistence::kDeleted, index};
         }
-        // there is a key, but it is in inserting or corrupted
+        return {KeyExistence::kDeleted, index};
       }
     }
     return {KeyExistence::kNotExist, 0};
