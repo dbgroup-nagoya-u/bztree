@@ -312,7 +312,7 @@ class BzTree
         std::tie(left_node, right_node) = InternalNode_t::Split(target_node, left_record_count);
         new_parent = InternalNode_t::CreateNewRoot(left_node, right_node);
         // push an old root for installation
-        trace.emplace(GetRoot(), 0);
+        trace.emplace(target_node, 0);
         // there is no parent node because the target node is a root
         parent = nullptr;
       } else {
@@ -564,9 +564,9 @@ class BzTree
       const auto frozen_status = status.Freeze();
 
       // install a new internal node by PMwCAS
-      old_internal_node->SetStatusForMwCAS(desc, status, frozen_status);
-      parent_node->SetChildForMwCAS(desc, swapping_index, old_internal_node, new_internal_node);
       parent_node->SetStatusForMwCAS(desc, parent_status, parent_status);  // check concurrent SMOs
+      parent_node->SetChildForMwCAS(desc, swapping_index, old_internal_node, new_internal_node);
+      old_internal_node->SetStatusForMwCAS(desc, status, frozen_status);
     } else {
       /*--------------------------------------------------------------------------------------------
        * Swapping a new root node
