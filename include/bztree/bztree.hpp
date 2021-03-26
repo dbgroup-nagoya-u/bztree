@@ -192,7 +192,7 @@ class BzTree
 
     // install a new node
     auto new_leaf = LeafNode_t::Consolidate(target_node, live_meta);
-    bool mwcas_success;
+    bool mwcas_success{false};
     do {
       // check whether a target node remains
       auto [current_leaf_node, target_index, trace] = TraceTargetNode(target_key, target_node);
@@ -231,7 +231,7 @@ class BzTree
     const auto [split_key, split_meta] = sorted_meta[left_record_count - 1];
     const auto split_key_length = split_meta.GetKeyLength();
 
-    bool install_success;
+    bool install_success{false};
     do {
       // check whether a target node remains
       auto [current_leaf, target_index, trace] = TraceTargetNode(target_key, target_node);
@@ -297,7 +297,7 @@ class BzTree
     const auto [split_key, split_key_length] =
         target_node->GetKeyAndItsLength(left_record_count - 1);
 
-    bool install_success;
+    bool install_success{false};
     do {
       // check whether a target node remains
       std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
@@ -394,7 +394,7 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     InternalNode_t *new_parent;
-    bool install_success;
+    bool install_success{false};
     do {
       // check whether a target node remains
       std::tie(current_leaf, target_index, trace) = TraceTargetNode(target_key, target_node);
@@ -447,7 +447,7 @@ class BzTree
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
 
-    bool mwcas_success;
+    bool mwcas_success{false};
     do {
       // check a target node is not frozen and live
       const auto target_status = target_node->GetStatusWordProtected();
@@ -498,7 +498,7 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     InternalNode_t *new_parent;
-    bool install_success;
+    bool install_success{false};
     do {
       // check whether a target node remains
       auto [current_node, target_index, trace] = TraceTargetNode(target_key, target_node);
