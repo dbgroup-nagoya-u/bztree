@@ -94,22 +94,23 @@ class BzTree
     return {node_key, CastAddress<LeafNode_t *>(current_node)};
   }
 
-  std::tuple<BaseNode_t *, size_t, std::stack<std::pair<BaseNode_t *, size_t>>>
+  std::stack<std::pair<BaseNode_t *, size_t>>
   TraceTargetNode(  //
       const Key &key,
       const void *target_node)
   {
     // trace nodes to a target internal node
     std::stack<std::pair<BaseNode_t *, size_t>> trace;
-    auto index = 0UL;
+    size_t index = 0;
     auto current_node = GetRoot();
     while (!HaveSameAddress(current_node, target_node) && !current_node->IsLeaf()) {
       trace.emplace(current_node, index);
       index = current_node->SearchSortedMetadata(key, true).second;
       current_node = CastAddress<InternalNode_t *>(current_node)->GetChildNode(index);
     }
+    trace.emplace(current_node, index);
 
-    return {current_node, index, std::move(trace)};
+    return trace;
   }
 
   constexpr bool
@@ -192,23 +193,13 @@ class BzTree
     }
 
     // install a new node
-    auto new_leaf = LeafNode_t::Consolidate(target_node, live_meta);
-    bool mwcas_success{false};
+    const auto new_node = LeafNode_t::Consolidate(target_node, live_meta);
     do {
-      // check a parent status
-      auto [current_leaf_node, target_index, trace] = TraceTargetNode(target_key, target_node);
-      auto [parent_node, unused] = trace.top();
-      const auto parent_status = parent_node->GetStatusWordProtected();
-      if (parent_status.IsFrozen()) {
-        continue;
+      auto trace = TraceTargetNode(target_key, target_node);
+      if (InstallNewNode(trace, new_node)) {
+        break;
       }
-
-      // swap a consolidated node for an old one
-      auto desc = MwCASDescriptor{};
-      parent_node->SetStatusForMwCAS(desc, parent_status, parent_status);
-      parent_node->SetChildForMwCAS(desc, target_index, target_node, new_leaf);
-      mwcas_success = desc.MwCAS();
-    } while (!mwcas_success);
+    } while (true);
 
     // Temporal implementation of garbage collection
     gc_.AddGarbage(target_node);
@@ -229,14 +220,16 @@ class BzTree
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
 
-    BaseNode_t *current_node;
     InternalNode_t *parent;
     size_t target_index;
     std::stack<std::pair<BaseNode_t *, size_t>> trace;
-    bool mwcas_success{false};
+    bool success{false};
     do {
+      trace = TraceTargetNode(target_key, target_node);
+
       // check whether it is required to split a parent node
-      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
+      target_index = trace.top().second;
+      trace.pop();
       parent = CastAddress<InternalNode_t *>(trace.top().first);
       if (parent->NeedSplit(split_key_length, kWordLength)) {
         // invoke a parent (internal) node splitting
@@ -244,8 +237,8 @@ class BzTree
         continue;
       }
 
-      mwcas_success = (parent->Freeze() == NodeReturnCode::kSuccess);
-    } while (!mwcas_success);
+      success = (parent->Freeze() == NodeReturnCode::kSuccess);
+    } while (!success);
 
     /*----------------------------------------------------------------------------------------------
      * Phase 2: installation
@@ -259,15 +252,14 @@ class BzTree
 
     do {
       // try installation of new nodes
-      if (InstallNewInternalNode(trace, new_parent)) {
+      if (InstallNewNode(trace, new_parent)) {
         // Temporal implementation of garbage collection
         gc_.AddGarbage(target_node);
         gc_.AddGarbage(parent);
         return;
       }
 
-      // check whether a target node remains
-      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
+      trace = TraceTargetNode(target_key, parent);
     } while (true);
   }
 
@@ -285,7 +277,6 @@ class BzTree
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
 
-    BaseNode_t *current_node = nullptr;
     InternalNode_t *parent = nullptr;
     size_t target_index;
     std::stack<std::pair<BaseNode_t *, size_t>> trace;
@@ -300,9 +291,11 @@ class BzTree
       MwCASDescriptor desc{};
 
       // check whether it is required to split a parent node
-      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
-      if (!trace.empty()) {
+      trace = TraceTargetNode(target_key, target_node);
+      target_index = trace.top().second;
+      if (trace.size() > 1) {
         // target is not a root node (i.e., there is a parent node)
+        trace.pop();
         parent = CastAddress<InternalNode_t *>(trace.top().first);
         if (parent->NeedSplit(split_key_length, kWordLength)) {
           // invoke a parent (internal) node splitting
@@ -329,35 +322,30 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    auto [left_node, right_node] = InternalNode_t::Split(target_node, left_record_count);
+    const auto [left_node, right_node] = InternalNode_t::Split(target_node, left_record_count);
     InternalNode_t *new_parent;
-    if (trace.empty()) {
-      // target is a root node
-      new_parent = InternalNode_t::CreateNewRoot(left_node, right_node);
-      parent = nullptr;
-    } else {
+    if (parent != nullptr) {
+      // target is not a root node
       new_parent = InternalNode_t::NewParentForSplit(parent, split_key, split_key_length, left_node,
                                                      right_node, target_index);
+    } else {
+      new_parent = InternalNode_t::CreateNewRoot(left_node, right_node);
+      parent = target_node;
     }
 
     do {
-      if (trace.empty()) {
-        // set traced nodes to swap a root node
-        trace.emplace(target_node, 0);
-      }
-
       // try installation of new nodes
-      if (InstallNewInternalNode(trace, new_parent)) {
+      if (InstallNewNode(trace, new_parent)) {
         // Temporal implementation of garbage collection
         gc_.AddGarbage(target_node);
-        if (parent != nullptr) {
+        if (parent != target_node) {
           gc_.AddGarbage(parent);
         }
         return;
       }
 
       // check whether a target node remains
-      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
+      trace = TraceTargetNode(target_key, parent);
     } while (true);
   }
 
@@ -373,7 +361,6 @@ class BzTree
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
 
-    BaseNode_t *current_node = nullptr;
     LeafNode_t *sibling_node = nullptr;
     InternalNode_t *parent = nullptr;
     std::stack<std::pair<BaseNode_t *, size_t>> trace;
@@ -381,8 +368,11 @@ class BzTree
     bool sibling_is_left;
     bool mwcas_success{false};
     do {
+      trace = TraceTargetNode(target_key, target_node);
+      target_index = trace.top().second;
+      trace.pop();
+
       // check a parent node is live
-      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
       parent = CastAddress<InternalNode_t *>(trace.top().first);
       const auto parent_status = parent->GetStatusWordProtected();
       if (parent_status.IsFrozen()) {
@@ -436,7 +426,7 @@ class BzTree
 
     do {
       // try installation of new nodes
-      if (InstallNewInternalNode(trace, new_parent)) {
+      if (InstallNewNode(trace, new_parent)) {
         // Temporal implementation of garbage collection
         gc_.AddGarbage(target_node);
         gc_.AddGarbage(parent);
@@ -445,7 +435,7 @@ class BzTree
       }
 
       // check whether a target node remains
-      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
+      trace = TraceTargetNode(target_key, parent);
     } while (true);
 
     // check whether it is required to merge a new parent node
@@ -467,7 +457,6 @@ class BzTree
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
 
-    BaseNode_t *current_node = nullptr;
     InternalNode_t *parent = nullptr, *sibling_node = nullptr;
     std::stack<std::pair<BaseNode_t *, size_t>> trace;
     size_t target_index;
@@ -480,8 +469,11 @@ class BzTree
         return;  // other SMOs are modifying a target node
       }
 
+      trace = TraceTargetNode(target_key, target_node);
+      target_index = trace.top().second;
+      trace.pop();
+
       // check a parent node is live
-      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
       parent = CastAddress<InternalNode_t *>(trace.top().first);
       const auto parent_status = parent->GetStatusWordProtected();
       if (parent_status.IsFrozen()) {
@@ -542,7 +534,7 @@ class BzTree
 
     do {
       // try installation of new nodes
-      if (InstallNewInternalNode(trace, new_parent)) {
+      if (InstallNewNode(trace, new_parent)) {
         // Temporal implementation of garbage collection
         gc_.AddGarbage(target_node);
         gc_.AddGarbage(parent);
@@ -550,8 +542,7 @@ class BzTree
         break;
       }
 
-      // check whether a target node remains
-      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
+      trace = TraceTargetNode(target_key, parent);
     } while (true);
 
     // check whether it is required to merge a parent node
@@ -562,9 +553,9 @@ class BzTree
   }
 
   bool
-  InstallNewInternalNode(  //
+  InstallNewNode(  //
       std::stack<std::pair<BaseNode_t *, size_t>> &trace,
-      const InternalNode_t *new_internal_node)
+      const void *new_node)
   {
     auto desc = MwCASDescriptor{};
     if (trace.size() > 1) {
@@ -573,7 +564,7 @@ class BzTree
        *------------------------------------------------------------------------------------------*/
 
       // prepare installing nodes
-      auto [old_internal_node, swapping_index] = trace.top();
+      auto [old_node, swapping_index] = trace.top();
       trace.pop();
       auto parent_node = trace.top().first;
 
@@ -585,14 +576,14 @@ class BzTree
 
       // install a new internal node by PMwCAS
       parent_node->SetStatusForMwCAS(desc, parent_status, parent_status);  // check concurrent SMOs
-      parent_node->SetChildForMwCAS(desc, swapping_index, old_internal_node, new_internal_node);
+      parent_node->SetChildForMwCAS(desc, swapping_index, old_node, new_node);
     } else {
       /*--------------------------------------------------------------------------------------------
        * Swapping a new root node
        *------------------------------------------------------------------------------------------*/
 
-      auto old_root_node = trace.top().first;
-      SetRootForMwCAS(desc, old_root_node, new_internal_node);
+      auto old_node = trace.top().first;
+      SetRootForMwCAS(desc, old_node, new_node);
     }
 
     return desc.MwCAS();
