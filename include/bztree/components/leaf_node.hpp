@@ -402,7 +402,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       const size_t index_epoch = 1)
   {
     // variables and constants shared in Phase 1 & 2
-    StatusWord current_status;
+    StatusWord current_status, new_status;
     size_t record_count;
     const auto total_length = key_length + payload_length;
     const auto inserting_meta = Metadata::GetInsertingMeta(index_epoch);
@@ -424,7 +424,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       if (uniqueness != KeyExistence::kUncertain) {
         uniqueness = CheckUniqueness(key, record_count, index_epoch);
         if (uniqueness == KeyExistence::kExist) {
-          return {NodeReturnCode::kKeyExist, StatusWord{}};
+          return {NodeReturnCode::kKeyExist, current_status};
         }
       }
 
@@ -433,7 +433,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       }
 
       // prepare new status for MwCAS
-      const auto new_status = current_status.AddRecordInfo(1, total_length, 0);
+      new_status = current_status.AddRecordInfo(1, total_length, 0);
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
@@ -463,7 +463,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       if (uniqueness == KeyExistence::kExist) {
         // delete an inserted record
         this->SetMetadataByCAS(record_count, inserting_meta.UpdateOffset(0));
-        return {NodeReturnCode::kKeyExist, StatusWord{}};
+        return {NodeReturnCode::kKeyExist, new_status};
       }
     }
 
@@ -524,7 +524,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       record_count = current_status.GetRecordCount();
       const auto [existence, updated_index] = SearchMetadataToRead(key, record_count);
       if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
-        return {NodeReturnCode::kKeyNotExist, StatusWord{}};
+        return {NodeReturnCode::kKeyNotExist, current_status};
       }
 
       if (current_status.GetOccupiedSize() + kWordLength + total_length > this->GetNodeSize()) {
@@ -598,7 +598,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       const auto record_count = current_status.GetRecordCount();
       const auto [existence, index] = SearchMetadataToRead(key, record_count);
       if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
-        return {NodeReturnCode::kKeyNotExist, StatusWord{}};
+        return {NodeReturnCode::kKeyNotExist, current_status};
       }
 
       // delete payload infomation from metadata

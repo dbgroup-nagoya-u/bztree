@@ -152,8 +152,7 @@ class BzTree
     const auto guard = gc_.CreateEpochGuard();
 
     auto [node_key, leaf_node] = SearchLeafNode(begin_key, begin_is_closed);
-    auto [return_code, scan_results] =
-        leaf_node->Scan(begin_key, begin_is_closed, end_key, end_is_closed);
+    auto [rc, scan_results] = leaf_node->Scan(begin_key, begin_is_closed, end_key, end_is_closed);
 
     if (node_key == nullptr
         || (end_key != nullptr
@@ -176,7 +175,9 @@ class BzTree
       const size_t target_key_length)
   {
     // freeze a target node and perform consolidation
-    target_node->Freeze();
+    if (target_node->Freeze() != NodeReturnCode::kSuccess) {
+      return;
+    }
 
     // gather sorted live metadata of a targetnode, and check whether split/merge is required
     const auto live_meta = target_node->GatherSortedLiveMetadata();
@@ -194,15 +195,8 @@ class BzTree
     auto new_leaf = LeafNode_t::Consolidate(target_node, live_meta);
     bool mwcas_success{false};
     do {
-      // check whether a target node remains
-      auto [current_leaf_node, target_index, trace] = TraceTargetNode(target_key, target_node);
-      if (!HaveSameAddress(target_node, current_leaf_node)) {
-        // other threads have already performed consolidation
-        delete new_leaf;
-        return;
-      }
-
       // check a parent status
+      auto [current_leaf_node, target_index, trace] = TraceTargetNode(target_key, target_node);
       auto [parent_node, unused] = trace.top();
       const auto parent_status = parent_node->GetStatusWordProtected();
       if (parent_status.IsFrozen()) {
@@ -241,13 +235,8 @@ class BzTree
     std::stack<std::pair<BaseNode_t *, size_t>> trace;
     bool mwcas_success{false};
     do {
-      // check whether a target node remains
-      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
-      if (!HaveSameAddress(target_node, current_node)) {
-        return;  // other threads have already performed SMOs
-      }
-
       // check whether it is required to split a parent node
+      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
       parent = CastAddress<InternalNode_t *>(trace.top().first);
       if (parent->NeedSplit(split_key_length, kWordLength)) {
         // invoke a parent (internal) node splitting
@@ -392,13 +381,8 @@ class BzTree
     bool sibling_is_left;
     bool mwcas_success{false};
     do {
-      // check a target node remians
-      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
-      if (!HaveSameAddress(target_node, current_node)) {
-        return true;  // other threads have already performed merging
-      }
-
       // check a parent node is live
+      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
       parent = CastAddress<InternalNode_t *>(trace.top().first);
       const auto parent_status = parent->GetStatusWordProtected();
       if (parent_status.IsFrozen()) {
@@ -656,8 +640,8 @@ class BzTree
     const auto guard = gc_.CreateEpochGuard();
 
     auto leaf_node = SearchLeafNode(&key, true).second;
-    auto [return_code, payload] = leaf_node->Read(key);
-    if (return_code == NodeReturnCode::kSuccess) {
+    auto [rc, payload] = leaf_node->Read(key);
+    if (rc == NodeReturnCode::kSuccess) {
       return std::pair{ReturnCode::kSuccess, std::move(payload)};
     } else {
       return {ReturnCode::kKeyNotExist, nullptr};
@@ -676,13 +660,12 @@ class BzTree
 
     std::vector<std::unique_ptr<Record_t>> all_results;
     while (true) {
-      auto [return_code, leaf_results] =
-          ScanPerLeaf(&begin_key, begin_is_closed, &end_key, end_is_closed);
+      auto [rc, leaf_results] = ScanPerLeaf(&begin_key, begin_is_closed, &end_key, end_is_closed);
       // concatanate scan results for each leaf node
       all_results.reserve(all_results.size() + leaf_results.size());
       all_results.insert(all_results.end(), std::make_move_iterator(leaf_results.begin()),
                          std::make_move_iterator(leaf_results.end()));
-      if (return_code == ReturnCode::kScanInProgress) {
+      if (rc == ReturnCode::kScanInProgress) {
         begin_key = all_results.back()->GetKey();
         begin_is_closed = false;
       } else {
@@ -703,13 +686,12 @@ class BzTree
 
     std::vector<std::unique_ptr<Record_t>> all_results;
     while (true) {
-      auto [return_code, leaf_results] =
-          ScanPerLeaf(begin_key, begin_is_closed, &end_key, end_is_closed);
+      auto [rc, leaf_results] = ScanPerLeaf(begin_key, begin_is_closed, &end_key, end_is_closed);
       // concatanate scan results for each leaf node
       all_results.reserve(all_results.size() + leaf_results.size());
       all_results.insert(all_results.end(), std::make_move_iterator(leaf_results.begin()),
                          std::make_move_iterator(leaf_results.end()));
-      if (return_code == ReturnCode::kScanInProgress) {
+      if (rc == ReturnCode::kScanInProgress) {
         tmp_key = all_results.back()->GetKey();
         begin_key = &tmp_key;
         begin_is_closed = false;
@@ -730,12 +712,12 @@ class BzTree
 
     std::vector<std::unique_ptr<Record_t>> all_results;
     while (true) {
-      auto [return_code, leaf_results] = ScanPerLeaf(&begin_key, begin_is_closed, nullptr, false);
+      auto [rc, leaf_results] = ScanPerLeaf(&begin_key, begin_is_closed, nullptr, false);
       // concatanate scan results for each leaf node
       all_results.reserve(all_results.size() + leaf_results.size());
       all_results.insert(all_results.end(), std::make_move_iterator(leaf_results.begin()),
                          std::make_move_iterator(leaf_results.end()));
-      if (return_code == ReturnCode::kScanInProgress) {
+      if (rc == ReturnCode::kScanInProgress) {
         begin_key = all_results.back()->GetKey();
         begin_is_closed = false;
       } else {
@@ -759,34 +741,19 @@ class BzTree
     const auto guard = gc_.CreateEpochGuard();
 
     LeafNode_t *leaf_node;
-    NodeReturnCode return_code;
+    NodeReturnCode rc;
     StatusWord node_status;
-    bool is_retry = false;
     do {
       leaf_node = SearchLeafNode(&key, true).second;
-      std::tie(return_code, node_status) =
+      std::tie(rc, node_status) =
           leaf_node->Write(key, key_length, payload, payload_length, index_epoch_);
-      switch (return_code) {
-        case NodeReturnCode::kFrozen:
-          if (is_retry) {
-            // ConsolidateLeafNode(leaf_node, key, key_length);
-            is_retry = false;
-          } else {
-            is_retry = true;
-          }
-          break;
-        case NodeReturnCode::kNoSpace:
-          ConsolidateLeafNode(leaf_node, key, key_length);
-          break;
-        default:
-          break;
-      }
-    } while (return_code != NodeReturnCode::kSuccess);
+    } while (rc != NodeReturnCode::kSuccess);
 
     if (NeedConsolidation(node_status)) {
       // invoke consolidation with a new thread
       ConsolidateLeafNode(leaf_node, key, key_length);
     }
+
     return ReturnCode::kSuccess;
   }
 
@@ -826,35 +793,21 @@ class BzTree
     const auto guard = gc_.CreateEpochGuard();
 
     LeafNode_t *leaf_node;
-    NodeReturnCode return_code;
+    NodeReturnCode rc;
     StatusWord node_status;
-    bool is_retry = false;
     do {
       leaf_node = SearchLeafNode(&key, true).second;
-      std::tie(return_code, node_status) =
+      std::tie(rc, node_status) =
           leaf_node->Insert(key, key_length, payload, payload_length, index_epoch_);
-      switch (return_code) {
-        case NodeReturnCode::kKeyExist:
-          return ReturnCode::kKeyExist;
-        case NodeReturnCode::kFrozen:
-          if (is_retry) {
-            // ConsolidateLeafNode(leaf_node, key, key_length);
-            is_retry = false;
-          } else {
-            is_retry = true;
-          }
-          break;
-        case NodeReturnCode::kNoSpace:
-          ConsolidateLeafNode(leaf_node, key, key_length);
-          break;
-        default:
-          break;
-      }
-    } while (return_code != NodeReturnCode::kSuccess);
+    } while (rc != NodeReturnCode::kSuccess && rc != NodeReturnCode::kKeyExist);
 
     if (NeedConsolidation(node_status)) {
       // invoke consolidation with a new thread
       ConsolidateLeafNode(leaf_node, key, key_length);
+    }
+
+    if (rc == NodeReturnCode::kKeyExist) {
+      return ReturnCode::kKeyExist;
     }
     return ReturnCode::kSuccess;
   }
@@ -895,36 +848,21 @@ class BzTree
     const auto guard = gc_.CreateEpochGuard();
 
     LeafNode_t *leaf_node;
-    NodeReturnCode return_code;
+    NodeReturnCode rc;
     StatusWord node_status;
-    bool is_retry = false;
     do {
       leaf_node = SearchLeafNode(&key, true).second;
-      std::tie(return_code, node_status) =
-          leaf_node->Update(key, key_length, payload, payload_length,  //
-                            index_epoch_);
-      switch (return_code) {
-        case NodeReturnCode::kKeyNotExist:
-          return ReturnCode::kKeyNotExist;
-        case NodeReturnCode::kFrozen:
-          if (is_retry) {
-            // ConsolidateLeafNode(leaf_node, key, key_length);
-            is_retry = false;
-          } else {
-            is_retry = true;
-          }
-          break;
-        case NodeReturnCode::kNoSpace:
-          ConsolidateLeafNode(leaf_node, key, key_length);
-          break;
-        default:
-          break;
-      }
-    } while (return_code != NodeReturnCode::kSuccess);
+      std::tie(rc, node_status) =
+          leaf_node->Update(key, key_length, payload, payload_length, index_epoch_);
+    } while (rc != NodeReturnCode::kSuccess && rc != NodeReturnCode::kKeyNotExist);
 
     if (NeedConsolidation(node_status)) {
       // invoke consolidation with a new thread
       ConsolidateLeafNode(leaf_node, key, key_length);
+    }
+
+    if (rc == NodeReturnCode::kKeyNotExist) {
+      return ReturnCode::kKeyNotExist;
     }
     return ReturnCode::kSuccess;
   }
@@ -963,31 +901,20 @@ class BzTree
     const auto guard = gc_.CreateEpochGuard();
 
     LeafNode_t *leaf_node;
-    NodeReturnCode return_code;
+    NodeReturnCode rc;
     StatusWord node_status;
-    bool is_retry = false;
     do {
       leaf_node = SearchLeafNode(&key, true).second;
-      std::tie(return_code, node_status) = leaf_node->Delete(key, key_length);
-      switch (return_code) {
-        case NodeReturnCode::kKeyNotExist:
-          return ReturnCode::kKeyNotExist;
-        case NodeReturnCode::kFrozen:
-          if (is_retry) {
-            // ConsolidateLeafNode(leaf_node, key, key_length);
-            is_retry = false;
-          } else {
-            is_retry = true;
-          }
-          break;
-        default:
-          break;
-      }
-    } while (return_code != NodeReturnCode::kSuccess);
+      std::tie(rc, node_status) = leaf_node->Delete(key, key_length);
+    } while (rc != NodeReturnCode::kSuccess && rc != NodeReturnCode::kKeyNotExist);
 
     if (NeedConsolidation(node_status)) {
       // invoke consolidation with a new thread
       ConsolidateLeafNode(leaf_node, key, key_length);
+    }
+
+    if (rc == NodeReturnCode::kKeyNotExist) {
+      return ReturnCode::kKeyNotExist;
     }
     return ReturnCode::kSuccess;
   }
