@@ -392,76 +392,93 @@ class BzTree
       const size_t target_size,
       const std::vector<std::pair<Key, Metadata>> &sorted_meta)
   {
-    // variables shared by phase 1 & 2
-    LeafNode_t *sibling_node = nullptr;
-    bool sibling_is_left;
-
     /*----------------------------------------------------------------------------------------------
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
 
-    // check a target node remians
-    auto [current_leaf, target_index, trace] = TraceTargetNode(target_key, target_node);
-    if (!HaveSameAddress(target_node, current_leaf)) {
-      return true;  // other threads have already performed merging
-    }
+    BaseNode_t *current_node = nullptr;
+    LeafNode_t *sibling_node = nullptr;
+    InternalNode_t *parent = nullptr;
+    std::stack<std::pair<BaseNode_t *, size_t>> trace;
+    size_t target_index;
+    bool sibling_is_left;
+    bool mwcas_success{false};
+    do {
+      // check a target node remians
+      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
+      if (!HaveSameAddress(target_node, current_node)) {
+        return true;  // other threads have already performed merging
+      }
 
-    // check a left/right sibling node is not frozen
-    auto parent = CastAddress<InternalNode_t *>(trace.top().first);
-    if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
-      sibling_node = CastAddress<LeafNode_t *>(parent->GetChildNode(target_index - 1));
-      if (sibling_node->Freeze() == NodeReturnCode::kSuccess) {
-        sibling_is_left = true;
-      } else {
-        sibling_node = nullptr;
+      // check a parent node is live
+      parent = CastAddress<InternalNode_t *>(trace.top().first);
+      const auto parent_status = parent->GetStatusWordProtected();
+      if (parent_status.IsFrozen()) {
+        continue;
       }
-    }
-    if (sibling_node == nullptr
-        && parent->CanMergeRightSibling(target_index, target_size, max_merged_size_)) {
-      sibling_node = CastAddress<LeafNode_t *>(parent->GetChildNode(target_index + 1));
-      if (sibling_node->Freeze() == NodeReturnCode::kSuccess) {
-        sibling_is_left = false;
-      } else {
-        sibling_node = nullptr;
+
+      // check a left/right sibling node is live
+      sibling_node = nullptr;
+      if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
+        sibling_node = CastAddress<LeafNode_t *>(parent->GetChildNode(target_index - 1));
+        if (sibling_node->IsLeaf()) {
+          sibling_is_left = true;
+        } else {
+          sibling_node = nullptr;
+        }
       }
-    }
-    if (sibling_node == nullptr) {
-      return false;  // there is no live sibling node
-    }
+      if (parent->CanMergeRightSibling(target_index, target_size, max_merged_size_)) {
+        sibling_node = CastAddress<LeafNode_t *>(parent->GetChildNode(target_index + 1));
+        if (sibling_node->IsLeaf()) {
+          sibling_is_left = false;
+        } else {
+          sibling_node = nullptr;
+        }
+      }
+      if (sibling_node == nullptr) {
+        return false;  // there is no live sibling node
+      }
+      const auto sibling_status = sibling_node->GetStatusWordProtected();
+      if (sibling_status.IsFrozen()) {
+        continue;
+      }
+
+      // perform MwCAS
+      MwCASDescriptor desc;
+      parent->SetStatusForMwCAS(desc, parent_status, parent_status.Freeze());
+      sibling_node->SetStatusForMwCAS(desc, sibling_status, sibling_status.Freeze());
+      mwcas_success = desc.MwCAS();
+    } while (!mwcas_success);
 
     /*----------------------------------------------------------------------------------------------
      * Phase 2: installation
      *--------------------------------------------------------------------------------------------*/
 
-    InternalNode_t *new_parent;
-    bool install_success{false};
+    // create new nodes
+    const auto deleted_index = (sibling_is_left) ? target_index - 1 : target_index;
+    const auto sibling_meta = sibling_node->GatherSortedLiveMetadata();
+    const auto merged_node =
+        LeafNode_t::Merge(target_node, sorted_meta, sibling_node, sibling_meta, sibling_is_left);
+    const auto new_parent = InternalNode_t::NewParentForMerge(parent, merged_node, deleted_index);
+
     do {
-      // check whether a target node remains
-      std::tie(current_leaf, target_index, trace) = TraceTargetNode(target_key, target_node);
-      if (!HaveSameAddress(target_node, current_leaf)) {
-        return true;  // other threads have already performed merging
-      }
-
-      // create new nodes
-      const auto deleted_index = (sibling_is_left) ? target_index - 1 : target_index;
-      const auto sibling_meta = sibling_node->GatherSortedLiveMetadata();
-      const auto merged_node =
-          LeafNode_t::Merge(target_node, sorted_meta, sibling_node, sibling_meta, sibling_is_left);
-      parent = CastAddress<InternalNode_t *>(trace.top().first);
-      new_parent = InternalNode_t::NewParentForMerge(parent, merged_node, deleted_index);
-
       // try installation of new nodes
-      install_success = InstallNewInternalNode(&trace, new_parent);
-      if (install_success) {
+      if (InstallNewInternalNode(trace, new_parent)) {
         // Temporal implementation of garbage collection
         gc_.AddGarbage(target_node);
         gc_.AddGarbage(parent);
         gc_.AddGarbage(sibling_node);
-      } else {
+        break;
+      }
+
+      // check whether a target node remains
+      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
+      if (!HaveSameAddress(target_node, current_node)) {
         delete merged_node;
         delete new_parent;
+        return true;  // other threads have already performed merging
       }
-    } while (!install_success);
+    } while (true);
 
     // check whether it is required to merge a new parent node
     if (!HaveSameAddress(new_parent, GetRoot())
@@ -479,14 +496,15 @@ class BzTree
       const Key &target_key,
       const size_t target_key_length)
   {
-    // variables shared by phase 1 & 2
-    InternalNode_t *sibling_node = nullptr;
-    bool sibling_is_left;
-
     /*----------------------------------------------------------------------------------------------
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
 
+    BaseNode_t *current_node = nullptr;
+    InternalNode_t *parent = nullptr, *sibling_node = nullptr;
+    std::stack<std::pair<BaseNode_t *, size_t>> trace;
+    size_t target_index;
+    bool sibling_is_left;
     bool mwcas_success{false};
     do {
       // check a target node is not frozen and live
@@ -494,29 +512,30 @@ class BzTree
       if (target_status.IsFrozen()) {
         return;  // other SMOs are modifying a target node
       }
-      auto [current_node, target_index, trace] = TraceTargetNode(target_key, target_node);
-      if (!HaveSameAddress(target_node, current_node)) {
-        return;  // a target node is deleted by SMOs
+
+      // check a parent node is live
+      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
+      parent = CastAddress<InternalNode_t *>(trace.top().first);
+      const auto parent_status = parent->GetStatusWordProtected();
+      if (parent_status.IsFrozen()) {
+        continue;
       }
 
-      // check a left/right sibling node is not frozen
-      auto parent = CastAddress<InternalNode_t *>(trace.top().first);
-      const auto target_size = target_node->GetStatusWord().GetOccupiedSize();
-      StatusWord sibling_status;
+      // check a left/right sibling node is live
+      const auto target_size = target_status.GetOccupiedSize();
+      sibling_node = nullptr;
       if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
         sibling_node = CastAddress<InternalNode_t *>(parent->GetChildNode(target_index - 1));
-        sibling_status = sibling_node->GetStatusWordProtected();
-        if (!sibling_status.IsFrozen() && !sibling_node->IsLeaf()) {
+        if (!sibling_node->IsLeaf()) {
           sibling_is_left = true;
         } else {
           sibling_node = nullptr;
         }
       }
-      if (sibling_node == nullptr
+      if (sibling_node != nullptr
           && parent->CanMergeRightSibling(target_index, target_size, max_merged_size_)) {
         sibling_node = CastAddress<InternalNode_t *>(parent->GetChildNode(target_index + 1));
-        sibling_status = sibling_node->GetStatusWordProtected();
-        if (!sibling_status.IsFrozen() && !sibling_node->IsLeaf()) {
+        if (!sibling_node->IsLeaf()) {
           sibling_is_left = false;
         } else {
           sibling_node = nullptr;
@@ -525,9 +544,14 @@ class BzTree
       if (sibling_node == nullptr) {
         return;  // there is no live sibling node
       }
+      const auto sibling_status = sibling_node->GetStatusWordProtected();
+      if (sibling_status.IsFrozen()) {
+        continue;
+      }
 
       // freeze target and sibling nodes
       auto desc = MwCASDescriptor{};
+      parent->SetStatusForMwCAS(desc, parent_status, parent_status.Freeze());
       target_node->SetStatusForMwCAS(desc, target_status, target_status.Freeze());
       sibling_node->SetStatusForMwCAS(desc, sibling_status, sibling_status.Freeze());
       mwcas_success = desc.MwCAS();
@@ -537,37 +561,35 @@ class BzTree
      * Phase 2: installation
      *--------------------------------------------------------------------------------------------*/
 
+    // create new nodes
+    const auto deleted_index = (sibling_is_left) ? target_index - 1 : target_index;
+    const auto merged_node = InternalNode_t::Merge(target_node, sibling_node, sibling_is_left);
     InternalNode_t *new_parent;
-    bool install_success{false};
-    do {
-      // check whether a target node remains
-      auto [current_node, target_index, trace] = TraceTargetNode(target_key, target_node);
-      if (current_node->IsLeaf()) {
-        return;  // other threads have already performed SMOs
-      }
-
-      // create new nodes
-      const auto deleted_index = (sibling_is_left) ? target_index - 1 : target_index;
-      const auto merged_node = InternalNode_t::Merge(target_node, sibling_node, sibling_is_left);
-      const auto parent = CastAddress<InternalNode_t *>(trace.top().first);
+    if (parent->GetSortedCount() > 2) {
       new_parent = InternalNode_t::NewParentForMerge(parent, merged_node, deleted_index);
-      if (new_parent->GetSortedCount() == 1) {
-        // if a merged node is an only child, swap it for a new parent node
-        new_parent = merged_node;
-      }
+    } else {
+      // if a merged node is an only child, swap it for a new parent node
+      new_parent = merged_node;
+    }
 
+    do {
       // try installation of new nodes
-      install_success = InstallNewInternalNode(&trace, new_parent);
-      if (install_success) {
+      if (InstallNewInternalNode(trace, new_parent)) {
         // Temporal implementation of garbage collection
         gc_.AddGarbage(target_node);
         gc_.AddGarbage(parent);
         gc_.AddGarbage(sibling_node);
-      } else {
+        break;
+      }
+
+      // check whether a target node remains
+      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
+      if (!HaveSameAddress(target_node, current_node)) {
         delete merged_node;
         delete new_parent;
+        return;  // other threads have already performed SMOs
       }
-    } while (!install_success);
+    } while (true);
 
     // check whether it is required to merge a parent node
     if (!HaveSameAddress(new_parent, GetRoot())
