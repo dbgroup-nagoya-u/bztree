@@ -231,40 +231,61 @@ class BzTree
     const auto [split_key, split_meta] = sorted_meta[left_record_count - 1];
     const auto split_key_length = split_meta.GetKeyLength();
 
-    bool install_success{false};
+    /*----------------------------------------------------------------------------------------------
+     * Phase 1: preparation
+     *--------------------------------------------------------------------------------------------*/
+
+    BaseNode_t *current_node;
+    InternalNode_t *parent;
+    size_t target_index;
+    std::stack<std::pair<BaseNode_t *, size_t>> trace;
+    bool mwcas_success{false};
     do {
       // check whether a target node remains
-      auto [current_leaf, target_index, trace] = TraceTargetNode(target_key, target_node);
-      if (!HaveSameAddress(target_node, current_leaf)) {
-        return;  // other threads have already performed splitting
+      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
+      if (!HaveSameAddress(target_node, current_node)) {
+        return;  // other threads have already performed SMOs
       }
 
       // check whether it is required to split a parent node
-      const auto parent = CastAddress<InternalNode_t *>(trace.top().first);
+      parent = CastAddress<InternalNode_t *>(trace.top().first);
       if (parent->NeedSplit(split_key_length, kWordLength)) {
         // invoke a parent (internal) node splitting
         SplitInternalNode(parent, target_key);
         continue;
       }
 
-      // create new nodes
-      const auto [left_leaf, right_leaf] =
-          LeafNode_t::Split(target_node, sorted_meta, left_record_count);
-      const auto new_parent = InternalNode_t::NewParentForSplit(
-          parent, split_key, split_key_length, left_leaf, right_leaf, target_index);
+      mwcas_success = (parent->Freeze() == NodeReturnCode::kSuccess);
+    } while (!mwcas_success);
 
+    /*----------------------------------------------------------------------------------------------
+     * Phase 2: installation
+     *--------------------------------------------------------------------------------------------*/
+
+    // create new nodes
+    const auto [left_node, right_node] =
+        LeafNode_t::Split(target_node, sorted_meta, left_record_count);
+    const auto new_parent = InternalNode_t::NewParentForSplit(parent, split_key, split_key_length,
+                                                              left_node, right_node, target_index);
+
+    do {
       // try installation of new nodes
-      install_success = InstallNewInternalNode(&trace, new_parent);
-      if (install_success) {
+      if (InstallNewInternalNode(trace, new_parent)) {
         // Temporal implementation of garbage collection
         gc_.AddGarbage(target_node);
         gc_.AddGarbage(parent);
-      } else {
-        delete left_leaf;
-        delete right_leaf;
-        delete new_parent;
+        return;
       }
-    } while (!install_success);
+
+      // check whether a target node remains
+      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
+      if (!HaveSameAddress(target_node, current_node)) {
+        delete left_node;
+        delete right_node;
+        delete new_parent;
+        return;  // other threads have already performed SMOs
+      }
+    } while (true);
   }
 
   void
@@ -272,76 +293,95 @@ class BzTree
       InternalNode_t *target_node,
       const Key &target_key)
   {
-    /*----------------------------------------------------------------------------------------------
-     * Phase 1: preparation
-     *--------------------------------------------------------------------------------------------*/
-
-    // check whether a target node remains
-    auto [current_node, target_index, trace] = TraceTargetNode(target_key, target_node);
-    if (current_node->IsLeaf()) {
-      return;  // other threads have already performed SMOs
-    }
-
-    // freeze a target node only if it is not a root node
-    if (!HaveSameAddress(target_node, GetRoot())
-        && target_node->Freeze() == NodeReturnCode::kFrozen) {
-      return;  // a target node is modified by concurrent SMOs
-    }
-
-    /*----------------------------------------------------------------------------------------------
-     * Phase 2: installation
-     *--------------------------------------------------------------------------------------------*/
-
     // get a split index and a corresponding key length
     const auto left_record_count = (target_node->GetSortedCount() / 2);
     const auto [split_key, split_key_length] =
         target_node->GetKeyAndItsLength(left_record_count - 1);
 
-    bool install_success{false};
+    /*----------------------------------------------------------------------------------------------
+     * Phase 1: preparation
+     *--------------------------------------------------------------------------------------------*/
+
+    BaseNode_t *current_node = nullptr;
+    InternalNode_t *parent = nullptr;
+    size_t target_index;
+    std::stack<std::pair<BaseNode_t *, size_t>> trace;
+    bool mwcas_success{false};
     do {
-      // check whether a target node remains
-      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
-      if (current_node->IsLeaf()) {
-        return;  // other threads have already performed SMOs
+      // check a target node is live
+      const auto target_status = target_node->GetStatusWordProtected();
+      if (target_status.IsFrozen()) {
+        return;  // a target node is modified by concurrent SMOs
       }
 
-      // create new nodes
-      InternalNode_t *left_node, *right_node, *parent, *new_parent;
-      if (trace.empty()) {
-        // split a root node
-        std::tie(left_node, right_node) = InternalNode_t::Split(target_node, left_record_count);
-        new_parent = InternalNode_t::CreateNewRoot(left_node, right_node);
-        // push an old root for installation
-        trace.emplace(target_node, 0);
-        // there is no parent node because the target node is a root
-        parent = nullptr;
-      } else {
-        // check whether it is required to split a parent node
+      MwCASDescriptor desc{};
+
+      // check whether it is required to split a parent node
+      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
+      if (!trace.empty()) {
+        // target is not a root node (i.e., there is a parent node)
         parent = CastAddress<InternalNode_t *>(trace.top().first);
         if (parent->NeedSplit(split_key_length, kWordLength)) {
           // invoke a parent (internal) node splitting
           SplitInternalNode(parent, target_key);
           continue;
         }
-        std::tie(left_node, right_node) = InternalNode_t::Split(target_node, left_record_count);
-        new_parent = InternalNode_t::NewParentForSplit(parent, split_key, split_key_length,
-                                                       left_node, right_node, target_index);
+
+        // check a parent node is live
+        const auto parent_status = parent->GetStatusWordProtected();
+        if (parent_status.IsFrozen()) {
+          continue;
+        }
+
+        parent->SetStatusForMwCAS(desc, parent_status, parent_status.Freeze());
+      }
+
+      // perform MwCAS
+      target_node->SetStatusForMwCAS(desc, target_status, target_status.Freeze());
+      mwcas_success = desc.MwCAS();
+    } while (!mwcas_success);
+
+    /*----------------------------------------------------------------------------------------------
+     * Phase 2: installation
+     *--------------------------------------------------------------------------------------------*/
+
+    // create new nodes
+    auto [left_node, right_node] = InternalNode_t::Split(target_node, left_record_count);
+    InternalNode_t *new_parent;
+    if (trace.empty()) {
+      // target is a root node
+      new_parent = InternalNode_t::CreateNewRoot(left_node, right_node);
+      parent = nullptr;
+    } else {
+      new_parent = InternalNode_t::NewParentForSplit(parent, split_key, split_key_length, left_node,
+                                                     right_node, target_index);
+    }
+
+    do {
+      if (trace.empty()) {
+        // set traced nodes to swap a root node
+        trace.emplace(target_node, 0);
       }
 
       // try installation of new nodes
-      install_success = InstallNewInternalNode(&trace, new_parent);
-      if (install_success) {
+      if (InstallNewInternalNode(trace, new_parent)) {
         // Temporal implementation of garbage collection
         gc_.AddGarbage(target_node);
         if (parent != nullptr) {
           gc_.AddGarbage(parent);
         }
-      } else {
+        return;
+      }
+
+      // check whether a target node remains
+      std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
+      if (!HaveSameAddress(target_node, current_node)) {
         delete left_node;
         delete right_node;
         delete new_parent;
+        return;  // other threads have already performed SMOs
       }
-    } while (!install_success);
+    } while (true);
   }
 
   bool
@@ -539,52 +579,35 @@ class BzTree
 
   bool
   InstallNewInternalNode(  //
-      std::stack<std::pair<BaseNode_t *, size_t>> *trace,
+      std::stack<std::pair<BaseNode_t *, size_t>> &trace,
       const InternalNode_t *new_internal_node)
   {
     auto desc = MwCASDescriptor{};
-    if (trace->size() > 1) {
+    if (trace.size() > 1) {
       /*--------------------------------------------------------------------------------------------
        * Swapping a new internal node
        *------------------------------------------------------------------------------------------*/
 
       // prepare installing nodes
-      auto [old_internal_node, swapping_index] = trace->top();
-      trace->pop();
-      auto parent_node = trace->top().first;
+      auto [old_internal_node, swapping_index] = trace.top();
+      trace.pop();
+      auto parent_node = trace.top().first;
 
       // check wether related nodes are frozen
-      const auto status = old_internal_node->GetStatusWordProtected();
       const auto parent_status = parent_node->GetStatusWordProtected();
-      if (status.IsFrozen() || parent_status.IsFrozen()) {
+      if (parent_status.IsFrozen()) {
         return false;
       }
-
-      // freeze an old internal node
-      const auto frozen_status = status.Freeze();
 
       // install a new internal node by PMwCAS
       parent_node->SetStatusForMwCAS(desc, parent_status, parent_status);  // check concurrent SMOs
       parent_node->SetChildForMwCAS(desc, swapping_index, old_internal_node, new_internal_node);
-      old_internal_node->SetStatusForMwCAS(desc, status, frozen_status);
     } else {
       /*--------------------------------------------------------------------------------------------
        * Swapping a new root node
        *------------------------------------------------------------------------------------------*/
 
-      auto old_root_node = trace->top().first;
-
-      // check wether an old root node is frozen
-      const auto status = old_root_node->GetStatusWordProtected();
-      if (status.IsFrozen()) {
-        return false;
-      }
-
-      // freeze an old root node
-      const auto frozen_status = status.Freeze();
-
-      // install a new root node by PMwCAS
-      old_root_node->SetStatusForMwCAS(desc, status, frozen_status);
+      auto old_root_node = trace.top().first;
       SetRootForMwCAS(desc, old_root_node, new_internal_node);
     }
 
