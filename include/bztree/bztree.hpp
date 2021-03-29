@@ -279,12 +279,6 @@ class BzTree
 
       // check whether a target node remains
       std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
-      if (!HaveSameAddress(target_node, current_node)) {
-        delete left_node;
-        delete right_node;
-        delete new_parent;
-        return;  // other threads have already performed SMOs
-      }
     } while (true);
   }
 
@@ -375,12 +369,6 @@ class BzTree
 
       // check whether a target node remains
       std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
-      if (!HaveSameAddress(target_node, current_node)) {
-        delete left_node;
-        delete right_node;
-        delete new_parent;
-        return;  // other threads have already performed SMOs
-      }
     } while (true);
   }
 
@@ -473,11 +461,6 @@ class BzTree
 
       // check whether a target node remains
       std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
-      if (!HaveSameAddress(target_node, current_node)) {
-        delete merged_node;
-        delete new_parent;
-        return true;  // other threads have already performed merging
-      }
     } while (true);
 
     // check whether it is required to merge a new parent node
@@ -584,11 +567,6 @@ class BzTree
 
       // check whether a target node remains
       std::tie(current_node, target_index, trace) = TraceTargetNode(target_key, target_node);
-      if (!HaveSameAddress(target_node, current_node)) {
-        delete merged_node;
-        delete new_parent;
-        return;  // other threads have already performed SMOs
-      }
     } while (true);
 
     // check whether it is required to merge a parent node
