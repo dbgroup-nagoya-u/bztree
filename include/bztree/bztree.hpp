@@ -109,7 +109,7 @@ class BzTree
       current_node = CastAddress<InternalNode_t *>(current_node)->GetChildNode(index);
     }
 
-    return {current_node, index, trace};
+    return {current_node, index, std::move(trace)};
   }
 
   constexpr bool
@@ -448,6 +448,7 @@ class BzTree
     const auto merged_node =
         LeafNode_t::Merge(target_node, sorted_meta, sibling_node, sibling_meta, sibling_is_left);
     const auto new_parent = InternalNode_t::NewParentForMerge(parent, merged_node, deleted_index);
+    const auto new_occupied_size = new_parent->GetStatusWord().GetOccupiedSize();
 
     do {
       // try installation of new nodes
@@ -464,8 +465,7 @@ class BzTree
     } while (true);
 
     // check whether it is required to merge a new parent node
-    if (!HaveSameAddress(new_parent, GetRoot())
-        && new_parent->GetStatusWord().GetOccupiedSize() < min_node_size_) {
+    if (!HaveSameAddress(new_parent, GetRoot()) && new_occupied_size < min_node_size_) {
       // invoke a parent (internal) node merging
       MergeInternalNodes(new_parent, target_key, target_key_length);
     }
@@ -554,6 +554,7 @@ class BzTree
       // if a merged node is an only child, swap it for a new parent node
       new_parent = merged_node;
     }
+    const auto new_occupied_size = new_parent->GetStatusWord().GetOccupiedSize();
 
     do {
       // try installation of new nodes
@@ -570,8 +571,7 @@ class BzTree
     } while (true);
 
     // check whether it is required to merge a parent node
-    if (!HaveSameAddress(new_parent, GetRoot())
-        && new_parent->GetStatusWord().GetOccupiedSize() < min_node_size_) {
+    if (!HaveSameAddress(new_parent, GetRoot()) && new_occupied_size < min_node_size_) {
       // invoke a parent (internal) node merging
       MergeInternalNodes(new_parent, target_key, target_key_length);
     }
@@ -769,7 +769,7 @@ class BzTree
       switch (return_code) {
         case NodeReturnCode::kFrozen:
           if (is_retry) {
-            ConsolidateLeafNode(leaf_node, key, key_length);
+            // ConsolidateLeafNode(leaf_node, key, key_length);
             is_retry = false;
           } else {
             is_retry = true;
@@ -838,7 +838,7 @@ class BzTree
           return ReturnCode::kKeyExist;
         case NodeReturnCode::kFrozen:
           if (is_retry) {
-            ConsolidateLeafNode(leaf_node, key, key_length);
+            // ConsolidateLeafNode(leaf_node, key, key_length);
             is_retry = false;
           } else {
             is_retry = true;
@@ -908,7 +908,7 @@ class BzTree
           return ReturnCode::kKeyNotExist;
         case NodeReturnCode::kFrozen:
           if (is_retry) {
-            ConsolidateLeafNode(leaf_node, key, key_length);
+            // ConsolidateLeafNode(leaf_node, key, key_length);
             is_retry = false;
           } else {
             is_retry = true;
@@ -974,7 +974,7 @@ class BzTree
           return ReturnCode::kKeyNotExist;
         case NodeReturnCode::kFrozen:
           if (is_retry) {
-            ConsolidateLeafNode(leaf_node, key, key_length);
+            // ConsolidateLeafNode(leaf_node, key, key_length);
             is_retry = false;
           } else {
             is_retry = true;

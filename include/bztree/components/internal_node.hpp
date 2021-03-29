@@ -155,7 +155,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     if (index == 0) {
       return false;
     } else {
-      const auto data_size = GetChildNode(index - 1)->GetStatusWord().GetLiveDataSize();
+      const auto data_size = GetChildNode(index - 1)->GetStatusWordProtected().GetLiveDataSize();
       return (merged_node_size + data_size) < max_merged_node_size;
     }
   }
@@ -171,7 +171,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     if (index == this->GetSortedCount() - 1) {
       return false;
     } else {
-      const auto data_size = GetChildNode(index + 1)->GetStatusWord().GetLiveDataSize();
+      const auto data_size = GetChildNode(index + 1)->GetStatusWordProtected().GetLiveDataSize();
       return (merged_node_size + data_size) < max_merged_node_size;
     }
   }
