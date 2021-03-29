@@ -128,8 +128,8 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
       const size_t key_length,
       const size_t payload_length) const
   {
-    const auto new_block_size =
-        this->GetStatusWord().GetOccupiedSize() + kWordLength + key_length + payload_length;
+    const auto new_block_size = this->GetStatusWordProtected().GetOccupiedSize() + kWordLength
+                                + key_length + payload_length;
     return new_block_size > this->GetNodeSize();
   }
 
@@ -139,8 +139,8 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
       const size_t payload_length,
       const size_t min_node_size) const
   {
-    const int64_t new_block_size =
-        this->GetStatusWord().GetOccupiedSize() - kWordLength - (key_length + payload_length);
+    const int64_t new_block_size = this->GetStatusWordProtected().GetOccupiedSize() - kWordLength
+                                   - (key_length + payload_length);
     return new_block_size < static_cast<int64_t>(min_node_size);
   }
 
