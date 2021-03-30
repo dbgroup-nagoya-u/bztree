@@ -14,6 +14,8 @@ namespace dbgroup::index::bztree
  * public utility: divide `utility.h` when reconstruct directory structure
  *------------------------------------------------------------------------------------------------*/
 
+constexpr auto mo_relax = std::memory_order_relaxed;
+
 /**
  * @brief Return codes for BzTree.
  *

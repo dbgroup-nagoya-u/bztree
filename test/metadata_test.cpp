@@ -47,8 +47,8 @@ TEST_F(MetadataFixture, InitForInsert_InitMeta_InitWithoutSideEffect)
   EXPECT_EQ(0, test_meta.GetTotalLength());
 
   EXPECT_FALSE(test_meta.IsDeleted());
-  EXPECT_FALSE(test_meta.IsCorrupted(epoch));
-  EXPECT_TRUE(test_meta.IsCorrupted(different_epoch));
+  EXPECT_FALSE(test_meta.IsFailedRecord(epoch));
+  EXPECT_TRUE(test_meta.IsFailedRecord(different_epoch));
   EXPECT_EQ(0, test_meta.GetPayloadLength());
 }
 
@@ -81,7 +81,7 @@ TEST_F(MetadataFixture, SetRecordInfo_InitMeta_SetWithoutSideEffect)
   EXPECT_EQ(total_length, test_meta.GetTotalLength());
 
   EXPECT_FALSE(test_meta.IsDeleted());
-  EXPECT_FALSE(test_meta.IsCorrupted(epoch));
+  EXPECT_FALSE(test_meta.IsFailedRecord(epoch));
   EXPECT_EQ(total_length - key_length, test_meta.GetPayloadLength());
 }
 
@@ -101,7 +101,7 @@ TEST_F(MetadataFixture, SetRecordInfo_InsertedMeta_SetWithoutSideEffect)
   EXPECT_EQ(total_length, test_meta.GetTotalLength());
 
   EXPECT_FALSE(test_meta.IsDeleted());
-  EXPECT_FALSE(test_meta.IsCorrupted(epoch));
+  EXPECT_FALSE(test_meta.IsFailedRecord(epoch));
   EXPECT_EQ(total_length - key_length, test_meta.GetPayloadLength());
 }
 
@@ -122,7 +122,7 @@ TEST_F(MetadataFixture, DeletePayload_InitMeta_DeleteWithoutSideEffect)
   EXPECT_EQ(total_length, test_meta.GetTotalLength());
 
   EXPECT_TRUE(test_meta.IsDeleted());
-  EXPECT_FALSE(test_meta.IsCorrupted(epoch));
+  EXPECT_FALSE(test_meta.IsFailedRecord(epoch));
 }
 
 }  // namespace dbgroup::index::bztree
