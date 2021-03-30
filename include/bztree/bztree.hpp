@@ -219,10 +219,7 @@ class BzTree
     // install a new node
     const auto new_node = LeafNode_t::Consolidate(target_node, live_meta);
     auto trace = TraceTargetNode(target_key, target_node);
-    while (!InstallNewNode(trace, new_node)) {
-      // re-trace a path to a parent node
-      trace = TraceTargetNode(target_key, target_node);
-    }
+    InstallNewNode(trace, new_node, target_key, target_node);
 
     // Temporal implementation of garbage collection
     gc_.AddGarbage(target_node);
@@ -274,10 +271,7 @@ class BzTree
                                                               left_node, right_node, target_index);
 
     // install new nodes
-    while (!InstallNewNode(trace, new_parent)) {
-      // re-trace a path to a parent node
-      trace = TraceTargetNode(target_key, parent);
-    }
+    InstallNewNode(trace, new_parent, target_key, parent);
     gc_.AddGarbage(target_node);
     gc_.AddGarbage(parent);
   }
@@ -353,10 +347,7 @@ class BzTree
     }
 
     // install new nodes
-    while (!InstallNewNode(trace, new_parent)) {
-      // re-trace a path to a parent node
-      trace = TraceTargetNode(target_key, parent);
-    }
+    InstallNewNode(trace, new_parent, target_key, parent);
     gc_.AddGarbage(target_node);
     if (parent != target_node) gc_.AddGarbage(parent);
   }
@@ -424,10 +415,7 @@ class BzTree
     const auto new_occupied_size = new_parent->GetStatusWord().GetOccupiedSize();
 
     // install new nodes
-    while (!InstallNewNode(trace, new_parent)) {
-      // re-trace a path to a parent node
-      trace = TraceTargetNode(target_key, parent);
-    }
+    InstallNewNode(trace, new_parent, target_key, parent);
     gc_.AddGarbage(target_node);
     gc_.AddGarbage(parent);
     gc_.AddGarbage(sibling_node);
@@ -512,10 +500,7 @@ class BzTree
     const auto new_occupied_size = new_parent->GetStatusWord().GetOccupiedSize();
 
     // install new nodes
-    while (!InstallNewNode(trace, new_parent)) {
-      // re-trace a path to a parent node
-      trace = TraceTargetNode(target_key, parent);
-    }
+    InstallNewNode(trace, new_parent, target_key, parent);
     gc_.AddGarbage(target_node);
     gc_.AddGarbage(parent);
     gc_.AddGarbage(sibling_node);
@@ -526,41 +511,48 @@ class BzTree
     }
   }
 
-  bool
+  void
   InstallNewNode(  //
       std::stack<std::pair<BaseNode_t *, size_t>> &trace,
-      const void *new_node)
+      const void *new_node,
+      const Key &target_key,
+      const void *target_node)
   {
-    MwCASDescriptor desc;
-    if (trace.size() > 1) {
-      /*--------------------------------------------------------------------------------------------
-       * Swapping a new internal node
-       *------------------------------------------------------------------------------------------*/
+    while (true) {
+      MwCASDescriptor desc;
+      if (trace.size() > 1) {
+        /*--------------------------------------------------------------------------------------------
+         * Swapping a new internal node
+         *------------------------------------------------------------------------------------------*/
 
-      // prepare installing nodes
-      const auto [old_node, swapping_index] = trace.top();
-      trace.pop();
-      auto parent_node = trace.top().first;
+        // prepare installing nodes
+        const auto [old_node, swapping_index] = trace.top();
+        trace.pop();
+        auto parent_node = trace.top().first;
 
-      // check wether related nodes are frozen
-      const auto parent_status = parent_node->GetStatusWordProtected();
-      if (parent_status.IsFrozen()) {
-        return false;
+        // check wether related nodes are frozen
+        const auto parent_status = parent_node->GetStatusWordProtected();
+        if (parent_status.IsFrozen()) {
+          trace = TraceTargetNode(target_key, target_node);
+          continue;
+        }
+
+        // install a new internal node by PMwCAS
+        parent_node->SetStatusForMwCAS(desc, parent_status, parent_status);
+        parent_node->SetChildForMwCAS(desc, swapping_index, old_node, new_node);
+      } else {
+        /*--------------------------------------------------------------------------------------------
+         * Swapping a new root node
+         *------------------------------------------------------------------------------------------*/
+
+        const auto old_node = trace.top().first;
+        SetRootForMwCAS(desc, old_node, new_node);
       }
 
-      // install a new internal node by PMwCAS
-      parent_node->SetStatusForMwCAS(desc, parent_status, parent_status);  // check concurrent SMOs
-      parent_node->SetChildForMwCAS(desc, swapping_index, old_node, new_node);
-    } else {
-      /*--------------------------------------------------------------------------------------------
-       * Swapping a new root node
-       *------------------------------------------------------------------------------------------*/
+      if (desc.MwCAS()) return;
 
-      const auto old_node = trace.top().first;
-      SetRootForMwCAS(desc, old_node, new_node);
+      trace = TraceTargetNode(target_key, target_node);
     }
-
-    return desc.MwCAS();
   }
 
  public:
