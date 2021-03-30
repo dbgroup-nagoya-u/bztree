@@ -40,12 +40,8 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
       const uintptr_t child_addr,
       size_t offset)
   {
-    offset -= kWordLength;
-    const auto pad_length = key_length % kWordLength;
-    if (pad_length != 0) {
-      // align memory address
-      offset -= pad_length;
-    }
+    // align memory address
+    offset -= kWordLength + offset % kWordLength;
     memcpy(ShiftAddress(this, offset), &child_addr, kWordLength);
 
     if (key_length > 0) {
