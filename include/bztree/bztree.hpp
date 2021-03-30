@@ -165,6 +165,30 @@ class BzTree
     }
   }
 
+  std::pair<BaseNode_t *, bool>
+  GetMergeableSibling(  //
+      InternalNode_t *parent,
+      const size_t target_index,
+      const size_t target_size,
+      const bool is_leaf)
+  {
+    if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
+      const auto sibling_node = parent->GetChildNode(target_index - 1);
+      if ((is_leaf && sibling_node->IsLeaf()) || (!is_leaf && !sibling_node->IsLeaf())) {
+        return {sibling_node, true};
+      }
+    }
+
+    if (parent->CanMergeRightSibling(target_index, target_size, max_merged_size_)) {
+      const auto sibling_node = parent->GetChildNode(target_index + 1);
+      if ((is_leaf && sibling_node->IsLeaf()) || (!is_leaf && !sibling_node->IsLeaf())) {
+        return {sibling_node, false};
+      }
+    }
+
+    return {nullptr, true};
+  }
+
   /*################################################################################################
    * Internal structure modification functoins
    *##############################################################################################*/
@@ -368,26 +392,13 @@ class BzTree
       }
 
       // check a left/right sibling node is live
-      sibling_node = nullptr;
-      if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
-        sibling_node = CastAddress<LeafNode_t *>(parent->GetChildNode(target_index - 1));
-        if (sibling_node->IsLeaf()) {
-          sibling_is_left = true;
-        } else {
-          sibling_node = nullptr;
-        }
-      }
-      if (parent->CanMergeRightSibling(target_index, target_size, max_merged_size_)) {
-        sibling_node = CastAddress<LeafNode_t *>(parent->GetChildNode(target_index + 1));
-        if (sibling_node->IsLeaf()) {
-          sibling_is_left = false;
-        } else {
-          sibling_node = nullptr;
-        }
-      }
-      if (sibling_node == nullptr) {
+      BaseNode_t *tmp_node;
+      std::tie(tmp_node, sibling_is_left) =
+          GetMergeableSibling(parent, target_index, target_size, true);
+      if (tmp_node == nullptr) {
         return false;  // there is no live sibling node
       }
+      sibling_node = CastAddress<LeafNode_t *>(tmp_node);
       const auto sibling_status = sibling_node->GetStatusWordProtected();
       if (sibling_status.IsFrozen()) {
         continue;
@@ -464,27 +475,13 @@ class BzTree
 
       // check a left/right sibling node is live
       const auto target_size = target_status.GetOccupiedSize();
-      sibling_node = nullptr;
-      if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
-        sibling_node = CastAddress<InternalNode_t *>(parent->GetChildNode(target_index - 1));
-        if (!sibling_node->IsLeaf()) {
-          sibling_is_left = true;
-        } else {
-          sibling_node = nullptr;
-        }
-      }
-      if (sibling_node != nullptr
-          && parent->CanMergeRightSibling(target_index, target_size, max_merged_size_)) {
-        sibling_node = CastAddress<InternalNode_t *>(parent->GetChildNode(target_index + 1));
-        if (!sibling_node->IsLeaf()) {
-          sibling_is_left = false;
-        } else {
-          sibling_node = nullptr;
-        }
-      }
-      if (sibling_node == nullptr) {
+      BaseNode_t *tmp_node;
+      std::tie(tmp_node, sibling_is_left) =
+          GetMergeableSibling(parent, target_index, target_size, true);
+      if (tmp_node == nullptr) {
         return;  // there is no live sibling node
       }
+      sibling_node = CastAddress<InternalNode_t *>(tmp_node);
       const auto sibling_status = sibling_node->GetStatusWordProtected();
       if (sibling_status.IsFrozen()) {
         continue;
