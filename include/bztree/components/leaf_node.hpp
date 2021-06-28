@@ -46,7 +46,7 @@ class LeafNode
   struct PairComp {
     PairComp() {}
 
-    bool
+    constexpr bool
     operator()(  //
         const std::pair<Key, Metadata> &a,
         const std::pair<Key, Metadata> &b) const noexcept
@@ -58,7 +58,7 @@ class LeafNode
   struct PairEqual {
     PairEqual() {}
 
-    bool
+    constexpr bool
     operator()(  //
         const std::pair<Key, Metadata> &a,
         const std::pair<Key, Metadata> &b) const noexcept
@@ -156,7 +156,7 @@ class LeafNode
     }
   }
 
-  static void
+  static constexpr void
   CopyRecordsViaMetadata(  //
       BaseNode_t *copied_node,
       const BaseNode_t *original_node,

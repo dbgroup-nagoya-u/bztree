@@ -60,7 +60,7 @@ class InternalNode
     return offset;
   }
 
-  static void
+  static constexpr void
   CopySortedRecords(  //
       BaseNode_t *target_node,
       const BaseNode_t *original_node,

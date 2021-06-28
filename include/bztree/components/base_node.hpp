@@ -40,9 +40,9 @@ class alignas(kCacheLineSize) BaseNode
 {
   using Record_t = Record<Key, Payload>;
 
- protected:
+ private:
   /*################################################################################################
-   * Internal inherited variables
+   * Internal variables
    *##############################################################################################*/
 
   uint64_t node_size_ : 32;
@@ -58,10 +58,10 @@ class alignas(kCacheLineSize) BaseNode
   Metadata meta_array_[0];
 
   /*################################################################################################
-   * Internally inherited constructors
+   * Internal constructors
    *##############################################################################################*/
 
-  BaseNode(  //
+  constexpr BaseNode(  //
       const size_t node_size,
       const bool is_leaf)
       : node_size_{node_size}, is_leaf_{is_leaf}, sorted_count_{0}, status_{}
@@ -110,7 +110,7 @@ class alignas(kCacheLineSize) BaseNode
    * Public builders
    *##############################################################################################*/
 
-  static BaseNode *
+  constexpr static BaseNode *
   CreateEmptyNode(  //
       const size_t node_size,
       const bool is_leaf)
@@ -175,7 +175,7 @@ class alignas(kCacheLineSize) BaseNode
     return ShiftAddress(this, offset);
   }
 
-  std::pair<Key, size_t>
+  constexpr std::pair<Key, size_t>
   GetKeyAndItsLength(const size_t index) const
   {
     const auto meta = GetMetadata(index);
@@ -189,7 +189,7 @@ class alignas(kCacheLineSize) BaseNode
     return ShiftAddress(this, offset);
   }
 
-  std::unique_ptr<Record_t>
+  constexpr std::unique_ptr<Record_t>
   GetRecord(const Metadata meta) const
   {
     const auto key_addr = this->GetKeyAddr(meta);
@@ -255,7 +255,7 @@ class alignas(kCacheLineSize) BaseNode
     }
   }
 
-  size_t
+  constexpr size_t
   SetRecord(  //
       const Key &key,
       const size_t key_length,
@@ -272,7 +272,7 @@ class alignas(kCacheLineSize) BaseNode
     return offset;
   }
 
-  size_t
+  constexpr size_t
   CopyRecord(  //
       const BaseNode *original_node,
       const Metadata meta,
@@ -330,7 +330,7 @@ class alignas(kCacheLineSize) BaseNode
    * 1) `kSuccess` if the function successfully freeze this node, or
    * 2) `kFrozen` if this node is already frozen.
    */
-  NodeReturnCode
+  constexpr NodeReturnCode
   Freeze()
   {
     bool mwcas_success;
@@ -358,7 +358,7 @@ class alignas(kCacheLineSize) BaseNode
    * @param comp
    * @return std::pair<KeyExistence, size_t>
    */
-  std::pair<KeyExistence, size_t>
+  constexpr std::pair<KeyExistence, size_t>
   SearchSortedMetadata(  //
       const Key &key,
       const bool range_is_closed) const

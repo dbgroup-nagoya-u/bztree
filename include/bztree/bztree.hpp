@@ -79,13 +79,13 @@ class BzTree
    * Internal utility functions
    *##############################################################################################*/
 
-  BaseNode_t *
+  constexpr BaseNode_t *
   GetRoot()
   {
     return reinterpret_cast<BaseNode_t *>(ReadMwCASField<uintptr_t>(&root_));
   }
 
-  std::pair<void *, BaseNode_t *>
+  constexpr std::pair<void *, BaseNode_t *>
   SearchLeafNode(  //
       const Key *key,
       const bool range_is_closed)
@@ -107,7 +107,7 @@ class BzTree
     return {node_key, current_node};
   }
 
-  std::stack<std::pair<BaseNode_t *, size_t>>
+  constexpr std::stack<std::pair<BaseNode_t *, size_t>>
   TraceTargetNode(  //
       const Key &key,
       const void *target_node)
@@ -145,7 +145,7 @@ class BzTree
     return block_size;
   }
 
-  void
+  constexpr void
   SetRootForMwCAS(  //
       MwCASDescriptor &desc,
       const void *old_root_node,
@@ -156,7 +156,7 @@ class BzTree
                         reinterpret_cast<uintptr_t>(new_root_node));
   }
 
-  std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
+  constexpr std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
   ScanPerLeaf(  //
       const Key *begin_key,
       const bool begin_is_closed,
@@ -179,7 +179,7 @@ class BzTree
     }
   }
 
-  std::pair<BaseNode_t *, bool>
+  constexpr std::pair<BaseNode_t *, bool>
   GetMergeableSibling(  //
       BaseNode_t *parent,
       const size_t target_index,
@@ -207,7 +207,7 @@ class BzTree
    * Internal structure modification functoins
    *##############################################################################################*/
 
-  void
+  constexpr void
   ConsolidateLeafNode(  //
       BaseNode_t *target_node,
       const Key &target_key,
@@ -239,7 +239,7 @@ class BzTree
     gc_.AddGarbage(target_node);
   }
 
-  void
+  constexpr void
   SplitLeafNode(  //
       const BaseNode_t *target_node,
       const Key &target_key,
@@ -290,7 +290,7 @@ class BzTree
     gc_.AddGarbage(parent);
   }
 
-  void
+  constexpr void
   SplitInternalNode(  //
       BaseNode_t *target_node,
       const Key &target_key)
@@ -366,7 +366,7 @@ class BzTree
     if (parent != target_node) gc_.AddGarbage(parent);
   }
 
-  bool
+  constexpr bool
   MergeLeafNodes(  //
       const BaseNode_t *target_node,
       const Key &target_key,
@@ -439,7 +439,7 @@ class BzTree
     return true;
   }
 
-  void
+  constexpr void
   MergeInternalNodes(  //
       BaseNode_t *target_node,
       const Key &target_key,
@@ -520,7 +520,7 @@ class BzTree
     }
   }
 
-  void
+  constexpr void
   InstallNewNode(  //
       std::stack<std::pair<BaseNode_t *, size_t>> &trace,
       const void *new_node,
@@ -600,7 +600,7 @@ class BzTree
    * Public read APIs
    *##############################################################################################*/
 
-  std::pair<ReturnCode, std::unique_ptr<Record_t>>
+  constexpr std::pair<ReturnCode, std::unique_ptr<Record_t>>
   Read(const Key &key)
   {
     const auto guard = gc_.CreateEpochGuard();
@@ -614,7 +614,7 @@ class BzTree
     }
   }
 
-  std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
+  constexpr std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
   Scan(  //
       const Key &begin_key_orig,
       const bool begin_is_closed_orig,
@@ -641,7 +641,7 @@ class BzTree
     return {ReturnCode::kSuccess, std::move(all_results)};
   }
 
-  std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
+  constexpr std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
   ScanLess(  //
       const Key &end_key,
       const bool end_is_closed)
@@ -668,7 +668,7 @@ class BzTree
     return {ReturnCode::kSuccess, std::move(all_results)};
   }
 
-  std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
+  constexpr std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
   ScanGreater(  //
       const Key &begin_key_orig,
       const bool begin_is_closed_orig)
@@ -697,7 +697,7 @@ class BzTree
    * Public write APIs
    *##############################################################################################*/
 
-  ReturnCode
+  constexpr ReturnCode
   Write(  //
       const Key &key,
       const size_t key_length,
@@ -723,7 +723,7 @@ class BzTree
     return ReturnCode::kSuccess;
   }
 
-  ReturnCode
+  constexpr ReturnCode
   Write(  //
       const Key &key,
       const Payload &payload,
@@ -732,7 +732,7 @@ class BzTree
     return Write(key, sizeof(Key), payload, payload_length);
   }
 
-  ReturnCode
+  constexpr ReturnCode
   Write(  //
       const Key &key,
       const size_t key_length,
@@ -741,7 +741,7 @@ class BzTree
     return Write(key, key_length, payload, sizeof(Payload));
   }
 
-  ReturnCode
+  constexpr ReturnCode
   Write(  //
       const Key &key,
       const Payload &payload)
@@ -749,7 +749,7 @@ class BzTree
     return Write(key, sizeof(Key), payload, sizeof(Payload));
   }
 
-  ReturnCode
+  constexpr ReturnCode
   Insert(  //
       const Key &key,
       const size_t key_length,
@@ -778,7 +778,7 @@ class BzTree
     return ReturnCode::kSuccess;
   }
 
-  ReturnCode
+  constexpr ReturnCode
   Insert(  //
       const Key &key,
       const Payload &payload,
@@ -787,7 +787,7 @@ class BzTree
     return Insert(key, sizeof(Key), payload, payload_length);
   }
 
-  ReturnCode
+  constexpr ReturnCode
   Insert(  //
       const Key &key,
       const size_t key_length,
@@ -796,7 +796,7 @@ class BzTree
     return Insert(key, key_length, payload, sizeof(Payload));
   }
 
-  ReturnCode
+  constexpr ReturnCode
   Insert(  //
       const Key &key,
       const Payload &payload)
@@ -804,7 +804,7 @@ class BzTree
     return Insert(key, sizeof(Key), payload, sizeof(Payload));
   }
 
-  ReturnCode
+  constexpr ReturnCode
   Update(  //
       const Key &key,
       const size_t key_length,
@@ -833,7 +833,7 @@ class BzTree
     return ReturnCode::kSuccess;
   }
 
-  ReturnCode
+  constexpr ReturnCode
   Update(  //
       const Key &key,
       const Payload &payload,
@@ -842,7 +842,7 @@ class BzTree
     return Update(key, sizeof(Key), payload, payload_length);
   }
 
-  ReturnCode
+  constexpr ReturnCode
   Update(  //
       const Key &key,
       const size_t key_length,
@@ -851,7 +851,7 @@ class BzTree
     return Update(key, key_length, payload, sizeof(Payload));
   }
 
-  ReturnCode
+  constexpr ReturnCode
   Update(  //
       const Key &key,
       const Payload &payload)
@@ -859,7 +859,7 @@ class BzTree
     return Update(key, sizeof(Key), payload, sizeof(Payload));
   }
 
-  ReturnCode
+  constexpr ReturnCode
   Delete(  //
       const Key &key,
       const size_t key_length)
@@ -885,7 +885,7 @@ class BzTree
     return ReturnCode::kSuccess;
   }
 
-  ReturnCode
+  constexpr ReturnCode
   Delete(const Key &key)
   {
     return Delete(key, sizeof(Key));

@@ -65,10 +65,10 @@ class alignas(kWordLength) Metadata
 
   ~Metadata() = default;
 
-  Metadata(const Metadata &) = default;
-  Metadata &operator=(const Metadata &) = default;
-  Metadata(Metadata &&) = default;
-  Metadata &operator=(Metadata &&) = default;
+  constexpr Metadata(const Metadata &) = default;
+  constexpr Metadata &operator=(const Metadata &) = default;
+  constexpr Metadata(Metadata &&) = default;
+  constexpr Metadata &operator=(Metadata &&) = default;
 
   /*################################################################################################
    * Public getters/setters
