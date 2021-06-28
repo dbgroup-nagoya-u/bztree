@@ -1,6 +1,7 @@
 #--------------------------------------------------------------------------------------#
-# Copy and paste from GoogleTest doc.
+# Configure GoogleTest
 #--------------------------------------------------------------------------------------#
+
 configure_file(CMakeLists.txt.in googletest-download/CMakeLists.txt)
 execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
   RESULT_VARIABLE result
@@ -24,8 +25,9 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 add_subdirectory(${CMAKE_CURRENT_BINARY_DIR}/googletest-src
                  ${CMAKE_CURRENT_BINARY_DIR}/googletest-build
                  EXCLUDE_FROM_ALL)
+
 #--------------------------------------------------------------------------------------#
-# End of copy and paste
+# Build Unit Tests
 #--------------------------------------------------------------------------------------#
 
 # set compile options for unit tests
@@ -76,11 +78,6 @@ function(ADD_BZTREE_TEST BZTREE_TEST_TARGET)
     mwcas
     memory_manager
     gtest_main
-  )
-  add_dependencies(
-    ${BZTREE_TEST_TARGET}
-    mwcas
-    memory_manager
   )
   add_test(
     NAME ${BZTREE_TEST_TARGET}
