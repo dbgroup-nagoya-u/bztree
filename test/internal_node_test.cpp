@@ -51,7 +51,7 @@ class InternalNodeFixture : public testing::Test
   Key key_null = 0;          // null key must have 8 bytes to fill a node
   Payload payload_null = 0;  // null payload must have 8 bytes to fill a node
 
-  std::unique_ptr<InternalNode_t> node;
+  std::unique_ptr<BaseNode_t> node;
 
   size_t expected_record_count;
   size_t expected_block_size;
@@ -61,7 +61,7 @@ class InternalNodeFixture : public testing::Test
   void
   SetUp() override
   {
-    node.reset(InternalNode_t::CreateEmptyNode(kNodeSize));
+    node.reset(BaseNode_t::CreateEmptyNode(kNodeSize, false));
 
     expected_record_count = 0;
     expected_block_size = 0;
@@ -101,7 +101,7 @@ class InternalNodeFixture : public testing::Test
     }
   }
 
-  InternalNode_t*
+  BaseNode_t*
   CreateInternalNodeWithOrderedKeys(  //
       const size_t begin_index,
       const size_t end_index)
@@ -109,7 +109,7 @@ class InternalNodeFixture : public testing::Test
     auto tmp_leaf_node = BaseNode_t::CreateEmptyNode(kNodeSize, true);
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
     auto tmp_meta = LeafNode_t::GatherSortedLiveMetadata(tmp_leaf_node);
-    return CastAddress<InternalNode_t*>(LeafNode_t::Consolidate(tmp_leaf_node, tmp_meta));
+    return LeafNode_t::Consolidate(tmp_leaf_node, tmp_meta);
   }
 
   void
@@ -205,8 +205,8 @@ TEST_F(InternalNodeFixture, NeedMerge_FilledNode_MergeNotRequired)
 
 TEST_F(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectStatus)
 {
-  auto target_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
-  auto sibling_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(2, 3));
+  auto target_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
+  auto sibling_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(2, 3));
 
   node.reset(InternalNode_t::Merge(target_node.get(), sibling_node.get(), true));
   expected_record_count = 5;
@@ -217,8 +217,8 @@ TEST_F(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectStatus)
 
 TEST_F(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectStatus)
 {
-  auto target_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
-  auto sibling_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(7, 8));
+  auto target_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
+  auto sibling_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 8));
 
   node.reset(InternalNode_t::Merge(target_node.get(), sibling_node.get(), false));
   expected_record_count = 5;
@@ -229,8 +229,8 @@ TEST_F(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectStatus)
 
 TEST_F(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectKeysAndPayloads)
 {
-  auto target_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
-  auto sibling_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(2, 3));
+  auto target_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
+  auto sibling_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(2, 3));
 
   auto merged_node = std::unique_ptr<BaseNode_t>(
       CastAddress<BaseNode_t*>(InternalNode_t::Merge(target_node.get(), sibling_node.get(), true)));
@@ -246,8 +246,8 @@ TEST_F(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectKeysAndPayload
 
 TEST_F(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectKeysAndPayloads)
 {
-  auto target_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
-  auto sibling_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(7, 8));
+  auto target_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
+  auto sibling_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 8));
 
   auto merged_node = std::unique_ptr<BaseNode_t>(CastAddress<BaseNode_t*>(
       InternalNode_t::Merge(target_node.get(), sibling_node.get(), false)));
@@ -263,8 +263,8 @@ TEST_F(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectKeysAndPayloa
 
 TEST_F(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectStatus)
 {
-  auto left_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(0, 4));
-  auto right_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(5, 9));
+  auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(0, 4));
+  auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(5, 9));
 
   node.reset(InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
   expected_record_count = 2;
@@ -275,8 +275,8 @@ TEST_F(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectStatus)
 
 TEST_F(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectPointersToChildren)
 {
-  auto left_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(0, 4));
-  auto right_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(5, 9));
+  auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(0, 4));
+  auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(5, 9));
 
   node.reset(InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
 
@@ -290,20 +290,20 @@ TEST_F(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectPointersToChildren)
 TEST_F(InternalNodeFixture, NewParent_AfterSplit_HasCorrectStatus)
 {
   // prepare an old parent
-  auto left_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
-  auto right_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
-  auto old_parent = std::unique_ptr<InternalNode_t>(
-      InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
+  auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
+  auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
+  auto old_parent =
+      std::unique_ptr<BaseNode_t>(InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
 
   // prepare a split node
   auto [tmp_left, tmp_right] = InternalNode_t::Split(left_node.get(), 3);
-  auto split_left = std::unique_ptr<InternalNode_t>(tmp_left);
-  auto split_right = std::unique_ptr<InternalNode_t>(tmp_right);
+  auto split_left = std::unique_ptr<BaseNode_t>(tmp_left);
+  auto split_right = std::unique_ptr<BaseNode_t>(tmp_right);
   auto new_key = keys[3];
   auto split_index = 1;
 
   // create a new parent node
-  auto new_parent = std::unique_ptr<InternalNode_t>(InternalNode_t::NewParentForSplit(
+  auto new_parent = std::unique_ptr<BaseNode_t>(InternalNode_t::NewParentForSplit(
       old_parent.get(), new_key, kKeyLength, split_left.get(), split_right.get(), split_index));
 
   auto status = new_parent->GetStatusWord();
@@ -321,20 +321,20 @@ TEST_F(InternalNodeFixture, NewParent_AfterSplit_HasCorrectStatus)
 TEST_F(InternalNodeFixture, NewParent_AfterSplit_HasCorrectPointersToChildren)
 {
   // prepare an old parent
-  auto left_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
-  auto right_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
-  auto old_parent = std::unique_ptr<InternalNode_t>(
-      InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
+  auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
+  auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
+  auto old_parent =
+      std::unique_ptr<BaseNode_t>(InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
 
   // prepare a split node
   auto [tmp_left, tmp_right] = InternalNode_t::Split(left_node.get(), 3);
-  auto split_left = std::unique_ptr<InternalNode_t>(tmp_left);
-  auto split_right = std::unique_ptr<InternalNode_t>(tmp_right);
+  auto split_left = std::unique_ptr<BaseNode_t>(tmp_left);
+  auto split_right = std::unique_ptr<BaseNode_t>(tmp_right);
   auto new_key = keys[3];
   auto split_index = 1;
 
   // create a new parent node
-  auto new_parent = std::unique_ptr<InternalNode_t>(InternalNode_t::NewParentForSplit(
+  auto new_parent = std::unique_ptr<BaseNode_t>(InternalNode_t::NewParentForSplit(
       old_parent.get(), new_key, kKeyLength, split_left.get(), split_right.get(), split_index));
 
   auto read_addr = InternalNode_t::GetChildNode(new_parent.get(), 0);
@@ -350,14 +350,14 @@ TEST_F(InternalNodeFixture, NewParent_AfterSplit_HasCorrectPointersToChildren)
 TEST_F(InternalNodeFixture, NewParent_AfterMerge_HasCorrectStatus)
 {
   // prepare an old parent
-  auto left_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
-  auto right_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
-  auto old_parent = std::unique_ptr<InternalNode_t>(
-      InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
+  auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
+  auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
+  auto old_parent =
+      std::unique_ptr<BaseNode_t>(InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
 
   // prepare a merged node
-  auto merged_node = std::unique_ptr<InternalNode_t>(
-      InternalNode_t::Merge(left_node.get(), right_node.get(), false));
+  auto merged_node =
+      std::unique_ptr<BaseNode_t>(InternalNode_t::Merge(left_node.get(), right_node.get(), false));
   auto deleted_index = 0;
 
   // create a new parent node
@@ -371,14 +371,14 @@ TEST_F(InternalNodeFixture, NewParent_AfterMerge_HasCorrectStatus)
 TEST_F(InternalNodeFixture, NewParent_AfterMerge_HasCorrectPointersToChildren)
 {
   // prepare an old parent
-  auto left_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
-  auto right_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
-  auto old_parent = std::unique_ptr<InternalNode_t>(
-      InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
+  auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
+  auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
+  auto old_parent =
+      std::unique_ptr<BaseNode_t>(InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
 
   // prepare a merged node
-  auto merged_node = std::unique_ptr<InternalNode_t>(
-      InternalNode_t::Merge(left_node.get(), right_node.get(), false));
+  auto merged_node =
+      std::unique_ptr<BaseNode_t>(InternalNode_t::Merge(left_node.get(), right_node.get(), false));
   auto deleted_index = 0;
 
   // create a new parent node
@@ -391,8 +391,8 @@ TEST_F(InternalNodeFixture, NewParent_AfterMerge_HasCorrectPointersToChildren)
 TEST_F(InternalNodeFixture, CanMergeLeftSibling_SiblingHasSufficentSpace_CanBeMerged)
 {
   // prepare an old parent
-  auto left_n = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(1, 3));  // 72B
-  auto right_n = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(4, 9));
+  auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 3));  // 72B
+  auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 9));
   node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
 
   // prepare merging information
@@ -407,8 +407,8 @@ TEST_F(InternalNodeFixture, CanMergeLeftSibling_SiblingHasSufficentSpace_CanBeMe
 TEST_F(InternalNodeFixture, CanMergeLeftSibling_SiblingHasSmallSpace_CannotBeMerged)
 {
   // prepare an old parent
-  auto left_n = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));  // 144B
-  auto right_n = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
+  auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));  // 144B
+  auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
   node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
 
   // prepare merging information
@@ -423,8 +423,8 @@ TEST_F(InternalNodeFixture, CanMergeLeftSibling_SiblingHasSmallSpace_CannotBeMer
 TEST_F(InternalNodeFixture, CanMergeLeftSibling_NoSibling_CannotBeMerged)
 {
   // prepare an old parent
-  auto left_n = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));  // 144B
-  auto right_n = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
+  auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));  // 144B
+  auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
   node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
 
   // prepare merging information
@@ -439,8 +439,8 @@ TEST_F(InternalNodeFixture, CanMergeLeftSibling_NoSibling_CannotBeMerged)
 TEST_F(InternalNodeFixture, CanMergeRightSibling_SiblingHasSufficentSpace_CanBeMerged)
 {
   // prepare an old parent
-  auto left_n = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
-  auto right_n = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));  // 72B
+  auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
+  auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));  // 72B
   node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
 
   // prepare merging information
@@ -455,8 +455,8 @@ TEST_F(InternalNodeFixture, CanMergeRightSibling_SiblingHasSufficentSpace_CanBeM
 TEST_F(InternalNodeFixture, CanMergeRightSibling_SiblingHasSmallSpace_CannotBeMerged)
 {
   // prepare an old parent
-  auto left_n = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(1, 3));
-  auto right_n = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(4, 9));  // 144B
+  auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 3));
+  auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 9));  // 144B
   node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
 
   // prepare merging information
@@ -471,8 +471,8 @@ TEST_F(InternalNodeFixture, CanMergeRightSibling_SiblingHasSmallSpace_CannotBeMe
 TEST_F(InternalNodeFixture, CanMergeRightSibling_NoSibling_CannotBeMerged)
 {
   // prepare an old parent
-  auto left_n = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
-  auto right_n = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));  // 72B
+  auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
+  auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));  // 72B
   node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
 
   // prepare merging information

@@ -181,7 +181,7 @@ class BzTree
 
   std::pair<BaseNode_t *, bool>
   GetMergeableSibling(  //
-      InternalNode_t *parent,
+      BaseNode_t *parent,
       const size_t target_index,
       const size_t target_size,
       const bool is_leaf)
@@ -255,7 +255,7 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     std::stack<std::pair<BaseNode_t *, size_t>> trace;
-    InternalNode_t *parent = nullptr;
+    BaseNode_t *parent = nullptr;
     size_t target_index = 0;
     while (true) {
       // trace and get the embedded index of a target node
@@ -264,7 +264,7 @@ class BzTree
       trace.pop();
 
       // check whether it is required to split a parent node
-      parent = CastAddress<InternalNode_t *>(trace.top().first);
+      parent = trace.top().first;
       if (InternalNode_t::NeedSplit(parent, split_key_length, kWordLength)) {
         SplitInternalNode(parent, target_key);
         continue;
@@ -292,7 +292,7 @@ class BzTree
 
   void
   SplitInternalNode(  //
-      InternalNode_t *target_node,
+      BaseNode_t *target_node,
       const Key &target_key)
   {
     // get a split index and a corresponding key length
@@ -305,7 +305,7 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     std::stack<std::pair<BaseNode_t *, size_t>> trace;
-    InternalNode_t *parent = nullptr;
+    BaseNode_t *parent = nullptr;
     size_t target_index = 0;
     while (true) {
       // check a target node is live
@@ -322,7 +322,7 @@ class BzTree
       MwCASDescriptor desc;
       if (trace.size() > 1) {  // target is not a root node (i.e., there is a parent node)
         trace.pop();
-        parent = CastAddress<InternalNode_t *>(trace.top().first);
+        parent = trace.top().first;
         if (InternalNode_t::NeedSplit(parent, split_key_length, kWordLength)) {
           SplitInternalNode(parent, target_key);
           continue;
@@ -349,7 +349,7 @@ class BzTree
 
     // create new nodes
     const auto [left_node, right_node] = InternalNode_t::Split(target_node, left_record_count);
-    InternalNode_t *new_parent;
+    BaseNode_t *new_parent;
     if (parent != nullptr) {
       // target is not a root node
       new_parent = InternalNode_t::NewParentForSplit(parent, split_key, split_key_length, left_node,
@@ -379,8 +379,7 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     std::stack<std::pair<BaseNode_t *, size_t>> trace;
-    InternalNode_t *parent = nullptr;
-    BaseNode_t *sibling_node = nullptr;
+    BaseNode_t *parent = nullptr, *sibling_node = nullptr;
     bool sibling_is_left = true;
     size_t target_index = 0;
     while (true) {
@@ -390,7 +389,7 @@ class BzTree
       trace.pop();
 
       // check a parent node is live
-      parent = CastAddress<InternalNode_t *>(trace.top().first);
+      parent = trace.top().first;
       const auto parent_status = parent->GetStatusWordProtected();
       if (parent_status.IsFrozen()) {
         continue;
@@ -442,7 +441,7 @@ class BzTree
 
   void
   MergeInternalNodes(  //
-      InternalNode_t *target_node,
+      BaseNode_t *target_node,
       const Key &target_key,
       const size_t target_key_length)
   {
@@ -451,7 +450,7 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     std::stack<std::pair<BaseNode_t *, size_t>> trace;
-    InternalNode_t *parent = nullptr, *sibling_node = nullptr;
+    BaseNode_t *parent = nullptr, *sibling_node = nullptr;
     bool sibling_is_left;
     size_t target_index = 0;
     while (true) {
@@ -467,7 +466,7 @@ class BzTree
       trace.pop();
 
       // check a parent node is live
-      parent = CastAddress<InternalNode_t *>(trace.top().first);
+      parent = trace.top().first;
       const auto parent_status = parent->GetStatusWordProtected();
       if (parent_status.IsFrozen()) {
         continue;
@@ -475,13 +474,11 @@ class BzTree
 
       // check a left/right sibling node is live
       const auto target_size = target_status.GetOccupiedSize();
-      BaseNode_t *tmp_node;
-      std::tie(tmp_node, sibling_is_left) =
+      std::tie(sibling_node, sibling_is_left) =
           GetMergeableSibling(parent, target_index, target_size, true);
-      if (tmp_node == nullptr) {
+      if (sibling_node == nullptr) {
         return;  // there is no live sibling node
       }
-      sibling_node = CastAddress<InternalNode_t *>(tmp_node);
       const auto sibling_status = sibling_node->GetStatusWordProtected();
       if (sibling_status.IsFrozen()) {
         continue;
@@ -502,7 +499,7 @@ class BzTree
     // create new nodes
     const auto deleted_index = (sibling_is_left) ? target_index - 1 : target_index;
     const auto merged_node = InternalNode_t::Merge(target_node, sibling_node, sibling_is_left);
-    InternalNode_t *new_parent = nullptr;
+    BaseNode_t *new_parent = nullptr;
     if (parent->GetSortedCount() > 2) {
       new_parent = InternalNode_t::NewParentForMerge(parent, merged_node, deleted_index);
     } else {

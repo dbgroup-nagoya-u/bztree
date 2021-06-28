@@ -24,16 +24,10 @@
 namespace dbgroup::index::bztree
 {
 template <class Key, class Payload, class Compare = std::less<Key>>
-class InternalNode : public BaseNode<Key, Payload, Compare>
+class InternalNode
 {
  private:
   using BaseNode_t = BaseNode<Key, Payload, Compare>;
-
-  /*################################################################################################
-   * Internal constructor/destructor
-   *##############################################################################################*/
-
-  explicit InternalNode(const size_t node_size) : BaseNode_t{node_size, false} {}
 
   /*################################################################################################
    * Internal utility functions
@@ -68,8 +62,8 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
 
   static void
   CopySortedRecords(  //
-      InternalNode *target_node,
-      const InternalNode *original_node,
+      BaseNode_t *target_node,
+      const BaseNode_t *original_node,
       const size_t begin_index,
       const size_t end_index)
   {
@@ -87,35 +81,11 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
       const auto new_meta = meta.UpdateOffset(offset);
       target_node->SetMetadata(record_count, new_meta);
     }
-    target_node->sorted_count_ = record_count;
-    target_node->status_ = StatusWord{}.AddRecordInfo(record_count, node_size - offset, 0);
+    target_node->SetSortedCount(record_count);
+    target_node->SetStatus(StatusWord{}.AddRecordInfo(record_count, node_size - offset, 0));
   }
 
  public:
-  /*################################################################################################
-   * Public constructor/destructor
-   *##############################################################################################*/
-
-  InternalNode(const InternalNode &) = delete;
-  InternalNode &operator=(const InternalNode &) = delete;
-  InternalNode(InternalNode &&) = default;
-  InternalNode &operator=(InternalNode &&) = default;
-  ~InternalNode() = default;
-
-  /*################################################################################################
-   * Public builders
-   *##############################################################################################*/
-
-  static InternalNode *
-  CreateEmptyNode(const size_t node_size)
-  {
-    assert((node_size % kWordLength) == 0);
-
-    auto page = calloc(1, node_size);
-    auto new_node = new (page) InternalNode{node_size};
-    return new_node;
-  }
-
   /*################################################################################################
    * Public getters/setters
    *##############################################################################################*/
@@ -200,10 +170,10 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
    * Public structure modification operations
    *##############################################################################################*/
 
-  static constexpr InternalNode *
+  static constexpr BaseNode_t *
   CreateInitialRoot(const size_t node_size)
   {
-    auto root = CreateEmptyNode(node_size);
+    auto root = BaseNode_t::CreateEmptyNode(node_size, false);
     const auto leaf_node = BaseNode_t::CreateEmptyNode(node_size, true);
 
     constexpr auto key = Key{};  // act as a positive infinity value
@@ -217,60 +187,59 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     root->SetMetadata(0, meta);
 
     // set a new header
-    root->sorted_count_ = 1;
-    root->status_ = StatusWord{}.AddRecordInfo(1, node_size - offset, 0);
+    root->SetSortedCount(1);
+    root->SetStatus(StatusWord{}.AddRecordInfo(1, node_size - offset, 0));
 
     return root;
   }
 
-  static constexpr std::pair<InternalNode *, InternalNode *>
+  static constexpr std::pair<BaseNode_t *, BaseNode_t *>
   Split(  //
-      const InternalNode *target_node,
+      const BaseNode_t *target_node,
       const size_t left_record_count)
   {
     const auto node_size = target_node->GetNodeSize();
 
     // create a split left node
-    auto left_node = CreateEmptyNode(node_size);
-    left_node->CopySortedRecords(left_node, target_node, 0, left_record_count);
+    auto left_node = BaseNode_t::CreateEmptyNode(node_size, false);
+    CopySortedRecords(left_node, target_node, 0, left_record_count);
 
     // create a split right node
-    auto right_node = CreateEmptyNode(node_size);
-    right_node->CopySortedRecords(right_node, target_node, left_record_count,
-                                  target_node->GetSortedCount());
+    auto right_node = BaseNode_t::CreateEmptyNode(node_size, false);
+    CopySortedRecords(right_node, target_node, left_record_count, target_node->GetSortedCount());
 
     return {left_node, right_node};
   }
 
-  static constexpr InternalNode *
+  static constexpr BaseNode_t *
   Merge(  //
-      const InternalNode *target_node,
-      const InternalNode *sibling_node,
+      const BaseNode_t *target_node,
+      const BaseNode_t *sibling_node,
       const bool sibling_is_left)
   {
     const auto node_size = target_node->GetNodeSize();
 
     // create a merged node
-    auto merged_node = CreateEmptyNode(node_size);
+    auto merged_node = BaseNode_t::CreateEmptyNode(node_size, false);
     if (sibling_is_left) {
-      merged_node->CopySortedRecords(merged_node, sibling_node, 0, sibling_node->GetSortedCount());
-      merged_node->CopySortedRecords(merged_node, target_node, 0, target_node->GetSortedCount());
+      CopySortedRecords(merged_node, sibling_node, 0, sibling_node->GetSortedCount());
+      CopySortedRecords(merged_node, target_node, 0, target_node->GetSortedCount());
     } else {
-      merged_node->CopySortedRecords(merged_node, target_node, 0, target_node->GetSortedCount());
-      merged_node->CopySortedRecords(merged_node, sibling_node, 0, sibling_node->GetSortedCount());
+      CopySortedRecords(merged_node, target_node, 0, target_node->GetSortedCount());
+      CopySortedRecords(merged_node, sibling_node, 0, sibling_node->GetSortedCount());
     }
 
     return merged_node;
   }
 
-  static constexpr InternalNode *
+  static constexpr BaseNode_t *
   CreateNewRoot(  //
-      const InternalNode *left_child,
-      const InternalNode *right_child)
+      const BaseNode_t *left_child,
+      const BaseNode_t *right_child)
   {
     const auto node_size = left_child->GetNodeSize();
     auto offset = node_size;
-    auto new_root = CreateEmptyNode(offset);
+    auto new_root = BaseNode_t::CreateEmptyNode(offset, false);
 
     // insert a left child node
     const auto left_meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
@@ -293,15 +262,15 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     new_root->SetMetadata(1, new_right_meta);
 
     // set a new header
-    new_root->sorted_count_ = 2;
-    new_root->status_ = StatusWord{}.AddRecordInfo(2, node_size - offset, 0);
+    new_root->SetSortedCount(2);
+    new_root->SetStatus(StatusWord{}.AddRecordInfo(2, node_size - offset, 0));
 
     return new_root;
   }
 
-  static constexpr InternalNode *
+  static constexpr BaseNode_t *
   NewParentForSplit(  //
-      const InternalNode *old_parent,
+      const BaseNode_t *old_parent,
       const Key &new_key,
       const size_t new_key_length,
       const void *left_addr,
@@ -310,7 +279,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
   {
     const auto node_size = old_parent->GetNodeSize();
     auto offset = node_size;
-    auto new_parent = CreateEmptyNode(offset);
+    auto new_parent = BaseNode_t::CreateEmptyNode(offset, false);
 
     // copy child nodes with inserting new split ones
     auto record_count = old_parent->GetSortedCount();
@@ -338,21 +307,21 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     }
 
     // set a new header
-    new_parent->sorted_count_ = ++record_count;
-    new_parent->status_ = StatusWord{}.AddRecordInfo(record_count, node_size - offset, 0);
+    new_parent->SetSortedCount(++record_count);
+    new_parent->SetStatus(StatusWord{}.AddRecordInfo(record_count, node_size - offset, 0));
 
     return new_parent;
   }
 
-  static constexpr InternalNode *
+  static constexpr BaseNode_t *
   NewParentForMerge(  //
-      const InternalNode *old_parent,
+      const BaseNode_t *old_parent,
       const void *merged_child_addr,
       const size_t deleted_index)
   {
     const auto node_size = old_parent->GetNodeSize();
     auto offset = node_size;
-    auto new_parent = CreateEmptyNode(offset);
+    auto new_parent = BaseNode_t::CreateEmptyNode(offset, false);
 
     // copy child nodes with deleting a merging target node
     auto record_count = old_parent->GetSortedCount();
@@ -376,8 +345,8 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     }
 
     // set a new header
-    new_parent->sorted_count_ = --record_count;
-    new_parent->status_ = StatusWord{}.AddRecordInfo(record_count, node_size - offset, 0);
+    new_parent->SetSortedCount(--record_count);
+    new_parent->SetStatus(StatusWord{}.AddRecordInfo(record_count, node_size - offset, 0));
 
     return new_parent;
   }
