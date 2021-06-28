@@ -46,8 +46,9 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     return (pad_length == 0) ? key_length : key_length + (kWordLength - pad_length);
   }
 
-  size_t
+  static constexpr size_t
   SetChild(  //
+      BaseNode_t *node,
       const Key &key,
       const size_t key_length,
       const uintptr_t child_addr,
@@ -55,11 +56,11 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
   {
     // align memory address
     offset -= kWordLength + offset % kWordLength;
-    memcpy(ShiftAddress(this, offset), &child_addr, kWordLength);
+    memcpy(ShiftAddress(node, offset), &child_addr, kWordLength);
 
     if (key_length > 0) {
       offset -= key_length;
-      this->SetKey(key, key_length, offset);
+      node->SetKey(key, key_length, offset);
     }
 
     return offset;
@@ -81,7 +82,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
       const auto key = CastKey<Key>(original_node->GetKeyAddr(meta));
       const auto key_length = meta.GetKeyLength();
       const auto child_addr = original_node->GetChildAddrProtected(meta);
-      offset = target_node->SetChild(key, key_length, child_addr, offset);
+      offset = SetChild(target_node, key, key_length, child_addr, offset);
       // copy metadata
       const auto new_meta = meta.UpdateOffset(offset);
       target_node->SetMetadata(record_count, new_meta);
@@ -201,7 +202,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     constexpr auto total_length = kWordLength;
 
     // set an inital leaf node
-    const auto offset = root->SetChild(key, key_length, leaf_addr, node_size);
+    const auto offset = SetChild(root, key, key_length, leaf_addr, node_size);
     const auto meta = Metadata{}.SetRecordInfo(offset, key_length, total_length);
     root->SetMetadata(0, meta);
 
@@ -266,7 +267,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     const auto left_key = CastKey<Key>(left_child->GetKeyAddr(left_meta));
     const auto left_key_length = left_meta.GetKeyLength();
     const auto left_child_addr = reinterpret_cast<uintptr_t>(left_child);
-    offset = new_root->SetChild(left_key, left_key_length, left_child_addr, offset);
+    offset = SetChild(new_root, left_key, left_key_length, left_child_addr, offset);
     const auto new_left_meta =
         Metadata{}.SetRecordInfo(offset, left_key_length, left_key_length + kWordLength);
     new_root->SetMetadata(0, new_left_meta);
@@ -276,7 +277,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     const auto right_key = CastKey<Key>(right_child->GetKeyAddr(right_meta));
     const auto right_key_length = right_meta.GetKeyLength();
     const auto right_child_addr = reinterpret_cast<uintptr_t>(right_child);
-    offset = new_root->SetChild(right_key, right_key_length, right_child_addr, offset);
+    offset = SetChild(new_root, right_key, right_key_length, right_child_addr, offset);
     const auto new_right_meta =
         Metadata{}.SetRecordInfo(offset, right_key_length, right_key_length + kWordLength);
     new_root->SetMetadata(1, new_right_meta);
@@ -313,7 +314,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
         // insert a split left child
         const auto left_addr_uintptr = reinterpret_cast<uintptr_t>(left_addr);
         const auto prev_offset = offset;
-        offset = new_parent->SetChild(new_key, new_key_length, left_addr_uintptr, offset);
+        offset = SetChild(new_parent, new_key, new_key_length, left_addr_uintptr, offset);
         const auto total_length = prev_offset - offset;
         const auto left_meta = Metadata{}.SetRecordInfo(offset, new_key_length, total_length);
         new_parent->SetMetadata(new_idx++, left_meta);
@@ -321,7 +322,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
         node_addr = reinterpret_cast<uintptr_t>(right_addr);
       }
       // copy a child node
-      offset = new_parent->SetChild(key, key_length, node_addr, offset);
+      offset = SetChild(new_parent, key, key_length, node_addr, offset);
       const auto new_meta = meta.UpdateOffset(offset);
       new_parent->SetMetadata(new_idx, new_meta);
     }
@@ -359,7 +360,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
         node_addr = reinterpret_cast<uintptr_t>(merged_child_addr);
       }
       // copy a child node
-      offset = new_parent->SetChild(key, key_length, node_addr, offset);
+      offset = SetChild(new_parent, key, key_length, node_addr, offset);
       const auto new_meta = meta.UpdateOffset(offset);
       new_parent->SetMetadata(new_idx, new_meta);
     }
