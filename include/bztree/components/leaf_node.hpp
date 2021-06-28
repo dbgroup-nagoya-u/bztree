@@ -33,8 +33,9 @@ namespace dbgroup::index::bztree
 template <class Key, class Payload, class Compare = std::less<Key>>
 class LeafNode : public BaseNode<Key, Payload, Compare>
 {
-  using KeyExistence = typename BaseNode<Key, Payload, Compare>::KeyExistence;
-  using NodeReturnCode = typename BaseNode<Key, Payload, Compare>::NodeReturnCode;
+  using BaseNode_t = BaseNode<Key, Payload, Compare>;
+  using KeyExistence = typename BaseNode_t::KeyExistence;
+  using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
   using Record_t = Record<Key, Payload>;
 
  private:
@@ -76,16 +77,17 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * Internal utility functions
    *##############################################################################################*/
 
-  KeyExistence
+  static constexpr KeyExistence
   SearchUnsortedMetaToWrite(  //
+      const BaseNode_t *node,
       const Key &key,
       const int64_t begin_index,
       const int64_t sorted_count,
-      const size_t index_epoch) const
+      const size_t index_epoch)
   {
     // perform a linear search in revese order
     for (int64_t index = begin_index; index >= sorted_count; --index) {
-      const auto meta = this->GetMetadataProtected(index);
+      const auto meta = node->GetMetadataProtected(index);
       if (meta.IsInProgress()) {
         if (meta.GetOffset() == index_epoch) {
           return KeyExistence::kUncertain;
@@ -93,7 +95,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
         continue;  // failed record
       }
 
-      const auto target_key = CastKey<Key>(this->GetKeyAddr(meta));
+      const auto target_key = CastKey<Key>(node->GetKeyAddr(meta));
       if (IsEqual<Compare>(key, target_key)) {
         if (meta.IsVisible()) {
           return KeyExistence::kExist;
@@ -104,35 +106,37 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     return KeyExistence::kNotExist;
   }
 
-  KeyExistence
+  static constexpr KeyExistence
   CheckUniqueness(  //
+      const BaseNode_t *node,
       const Key &key,
       const int64_t record_count,
-      const size_t index_epoch) const
+      const size_t index_epoch)
   {
     const auto existence =
-        SearchUnsortedMetaToWrite(key, record_count - 1, this->GetSortedCount(), index_epoch);
+        SearchUnsortedMetaToWrite(node, key, record_count - 1, node->GetSortedCount(), index_epoch);
     if (existence == KeyExistence::kNotExist) {
       // there is no key in unsorted metadata, so search a sorted region
-      return this->SearchSortedMetadata(key, true).first;
+      return node->SearchSortedMetadata(key, true).first;
     } else {
       return existence;
     }
   }
 
-  std::pair<KeyExistence, size_t>
+  static constexpr std::pair<KeyExistence, size_t>
   SearchUnsortedMetaToRead(  //
+      const BaseNode_t *node,
       const Key &key,
       const int64_t end_index,
-      const int64_t record_count) const
+      const int64_t record_count)
   {
     for (int64_t index = record_count - 1; index >= end_index; --index) {
-      const auto meta = this->GetMetadataProtected(index);
+      const auto meta = node->GetMetadataProtected(index);
       if (meta.IsInProgress()) {
         continue;
       }
 
-      const auto target_key = CastKey<Key>(this->GetKeyAddr(meta));
+      const auto target_key = CastKey<Key>(node->GetKeyAddr(meta));
       if (IsEqual<Compare>(key, target_key)) {
         if (meta.IsVisible()) {
           return {KeyExistence::kExist, index};
@@ -143,17 +147,18 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     return {KeyExistence::kNotExist, 0};
   }
 
-  std::pair<KeyExistence, size_t>
+  static constexpr std::pair<KeyExistence, size_t>
   SearchMetadataToRead(  //
+      const BaseNode_t *node,
       const Key &key,
-      const size_t record_count) const
+      const size_t record_count)
   {
     const auto [existence, index] =
-        SearchUnsortedMetaToRead(key, this->GetSortedCount(), record_count);
+        SearchUnsortedMetaToRead(node, key, node->GetSortedCount(), record_count);
     if (existence == KeyExistence::kExist || existence == KeyExistence::kDeleted) {
       return {existence, index};
     } else {
-      return this->SearchSortedMetadata(key, true);
+      return node->SearchSortedMetadata(key, true);
     }
   }
 
@@ -236,7 +241,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
   Read(const Key &key)
   {
     const auto status = this->GetStatusWordProtected();
-    const auto [existence, index] = SearchMetadataToRead(key, status.GetRecordCount());
+    const auto [existence, index] = SearchMetadataToRead(this, key, status.GetRecordCount());
     if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
       return {NodeReturnCode::kKeyNotExist, nullptr};
     } else {
@@ -435,7 +440,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
       record_count = current_status.GetRecordCount();
       if (uniqueness != KeyExistence::kUncertain) {
-        uniqueness = CheckUniqueness(key, record_count, index_epoch);
+        uniqueness = CheckUniqueness(this, key, record_count, index_epoch);
         if (uniqueness == KeyExistence::kExist) {
           return {NodeReturnCode::kKeyExist, current_status};
         }
@@ -472,7 +477,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
     // recheck uniqueness
     while (uniqueness == KeyExistence::kUncertain) {
-      uniqueness = CheckUniqueness(key, record_count, index_epoch);
+      uniqueness = CheckUniqueness(this, key, record_count, index_epoch);
       if (uniqueness == KeyExistence::kExist) {
         // delete an inserted record
         this->SetMetadataByCAS(record_count, inserting_meta.UpdateOffset(0));
@@ -535,7 +540,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       }
 
       record_count = current_status.GetRecordCount();
-      const auto [existence, updated_index] = SearchMetadataToRead(key, record_count);
+      const auto [existence, updated_index] = SearchMetadataToRead(this, key, record_count);
       if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
         return {NodeReturnCode::kKeyNotExist, current_status};
       }
@@ -609,7 +614,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       }
 
       const auto record_count = current_status.GetRecordCount();
-      const auto [existence, index] = SearchMetadataToRead(key, record_count);
+      const auto [existence, index] = SearchMetadataToRead(this, key, record_count);
       if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
         return {NodeReturnCode::kKeyNotExist, current_status};
       }
