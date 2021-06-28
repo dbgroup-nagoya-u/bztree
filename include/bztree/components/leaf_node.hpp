@@ -164,8 +164,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
   static void
   CopyRecordsViaMetadata(  //
-      LeafNode *copied_node,
-      const LeafNode *original_node,
+      BaseNode_t *copied_node,
+      const BaseNode_t *original_node,
       const typename std::vector<std::pair<Key, Metadata>>::const_iterator begin_iter,
       const typename std::vector<std::pair<Key, Metadata>>::const_iterator end_iter)
   {
@@ -181,8 +181,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       const auto new_meta = meta.UpdateOffset(offset);
       copied_node->SetMetadata(record_count, new_meta);
     }
-    copied_node->status_ = StatusWord{}.AddRecordInfo(record_count, node_size - offset, 0);
-    copied_node->sorted_count_ = record_count;
+    copied_node->SetStatus(StatusWord{}.AddRecordInfo(record_count, node_size - offset, 0));
+    copied_node->SetSortedCount(record_count);
   }
 
  public:

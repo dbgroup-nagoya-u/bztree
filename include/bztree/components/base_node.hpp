@@ -65,94 +65,6 @@ class alignas(kCacheLineSize) BaseNode
   {
   }
 
-  /*################################################################################################
-   * Internally inherited getters/setters
-   *##############################################################################################*/
-
-  void
-  SetMetadata(  //
-      const size_t index,
-      const Metadata new_meta)
-  {
-    meta_array_[index] = new_meta;
-  }
-
-  void
-  SetMetadataByCAS(  //
-      const size_t index,
-      const Metadata new_meta)
-  {
-    CastAddress<std::atomic<Metadata> *>(meta_array_ + index)->store(new_meta, mo_relax);
-  }
-
-  constexpr void *
-  GetPayloadAddr(const Metadata meta) const
-  {
-    const auto offset = meta.GetOffset() + meta.GetKeyLength();
-    return ShiftAddress(this, offset);
-  }
-
-  void
-  SetKey(  //
-      const Key &key,
-      const size_t key_length,
-      const size_t offset)
-  {
-    const auto key_ptr = ShiftAddress(this, offset);
-    if constexpr (std::is_pointer_v<Key>) {
-      memcpy(key_ptr, key, key_length);
-    } else {
-      memcpy(key_ptr, &key, key_length);
-    }
-  }
-
-  void
-  SetPayload(  //
-      const Payload &payload,
-      const size_t payload_length,
-      const size_t offset)
-  {
-    const auto payload_ptr = ShiftAddress(this, offset);
-    if constexpr (std::is_pointer_v<Payload>) {
-      memcpy(payload_ptr, payload, payload_length);
-    } else {
-      memcpy(payload_ptr, &payload, payload_length);
-    }
-  }
-
-  size_t
-  SetRecord(  //
-      const Key &key,
-      const size_t key_length,
-      const Payload &payload,
-      const size_t payload_length,
-      size_t offset)
-  {
-    offset -= payload_length;
-    SetPayload(payload, payload_length, offset);
-    if (key_length > 0) {
-      offset -= key_length;
-      SetKey(key, key_length, offset);
-    }
-    return offset;
-  }
-
-  size_t
-  CopyRecord(  //
-      const BaseNode *original_node,
-      const Metadata meta,
-      size_t offset)
-  {
-    const auto total_length = meta.GetTotalLength();
-
-    offset -= total_length;
-    const auto dest = ShiftAddress(this, offset);
-    const auto src = original_node->GetKeyAddr(meta);
-    memcpy(dest, src, total_length);
-
-    return offset;
-  }
-
  public:
   /*################################################################################################
    * Public enum and constants
@@ -265,6 +177,102 @@ class alignas(kCacheLineSize) BaseNode
   {
     const auto meta = GetMetadata(index);
     return {CastKey<Key>(GetKeyAddr(meta)), meta.GetKeyLength()};
+  }
+
+  constexpr void *
+  GetPayloadAddr(const Metadata meta) const
+  {
+    const auto offset = meta.GetOffset() + meta.GetKeyLength();
+    return ShiftAddress(this, offset);
+  }
+
+  void
+  SetSortedCount(const size_t sorted_count)
+  {
+    sorted_count_ = sorted_count;
+  }
+
+  void
+  SetStatus(const StatusWord status)
+  {
+    status_ = status;
+  }
+
+  void
+  SetMetadata(  //
+      const size_t index,
+      const Metadata new_meta)
+  {
+    meta_array_[index] = new_meta;
+  }
+
+  void
+  SetMetadataByCAS(  //
+      const size_t index,
+      const Metadata new_meta)
+  {
+    CastAddress<std::atomic<Metadata> *>(meta_array_ + index)->store(new_meta, mo_relax);
+  }
+
+  void
+  SetKey(  //
+      const Key &key,
+      const size_t key_length,
+      const size_t offset)
+  {
+    const auto key_ptr = ShiftAddress(this, offset);
+    if constexpr (std::is_pointer_v<Key>) {
+      memcpy(key_ptr, key, key_length);
+    } else {
+      memcpy(key_ptr, &key, key_length);
+    }
+  }
+
+  void
+  SetPayload(  //
+      const Payload &payload,
+      const size_t payload_length,
+      const size_t offset)
+  {
+    const auto payload_ptr = ShiftAddress(this, offset);
+    if constexpr (std::is_pointer_v<Payload>) {
+      memcpy(payload_ptr, payload, payload_length);
+    } else {
+      memcpy(payload_ptr, &payload, payload_length);
+    }
+  }
+
+  size_t
+  SetRecord(  //
+      const Key &key,
+      const size_t key_length,
+      const Payload &payload,
+      const size_t payload_length,
+      size_t offset)
+  {
+    offset -= payload_length;
+    SetPayload(payload, payload_length, offset);
+    if (key_length > 0) {
+      offset -= key_length;
+      SetKey(key, key_length, offset);
+    }
+    return offset;
+  }
+
+  size_t
+  CopyRecord(  //
+      const BaseNode *original_node,
+      const Metadata meta,
+      size_t offset)
+  {
+    const auto total_length = meta.GetTotalLength();
+
+    offset -= total_length;
+    const auto dest = ShiftAddress(this, offset);
+    const auto src = original_node->GetKeyAddr(meta);
+    memcpy(dest, src, total_length);
+
+    return offset;
   }
 
   void
