@@ -253,16 +253,17 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * @return std::pair<NodeReturnCode,
    *         std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>>>
    */
-  std::pair<NodeReturnCode, std::vector<std::unique_ptr<Record_t>>>
+  static constexpr std::pair<NodeReturnCode, std::vector<std::unique_ptr<Record_t>>>
   Scan(  //
+      const BaseNode_t *node,
       const Key *begin_key,
       const bool begin_is_closed,
       const Key *end_key,
       const bool end_is_closed)
   {
-    const auto status = this->GetStatusWordProtected();
+    const auto status = node->GetStatusWordProtected();
     const int64_t record_count = status.GetRecordCount();
-    const int64_t sorted_count = this->GetSortedCount();
+    const int64_t sorted_count = node->GetSortedCount();
 
     // gather valid (live or deleted) records
     std::vector<std::pair<Key, Metadata>> meta_arr;
@@ -270,8 +271,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
     // search unsorted metadata in reverse order
     for (int64_t index = record_count - 1; index >= sorted_count; --index) {
-      const auto meta = this->GetMetadataProtected(index);
-      const auto key = CastKey<Key>(this->GetKeyAddr(meta));
+      const auto meta = node->GetMetadataProtected(index);
+      const auto key = CastKey<Key>(node->GetKeyAddr(meta));
       if (IsInRange<Compare>(key, begin_key, begin_is_closed, end_key, end_is_closed)
           && (meta.IsVisible() || meta.IsDeleted())) {
         meta_arr.emplace_back(key, meta);
@@ -280,10 +281,10 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
     // search sorted metadata
     const auto begin_index =
-        (begin_key == nullptr) ? 0 : this->SearchSortedMetadata(*begin_key, begin_is_closed).second;
+        (begin_key == nullptr) ? 0 : node->SearchSortedMetadata(*begin_key, begin_is_closed).second;
     for (int64_t index = begin_index; index < sorted_count; ++index) {
-      const auto meta = this->GetMetadataProtected(index);
-      const auto key = CastKey<Key>(this->GetKeyAddr(meta));
+      const auto meta = node->GetMetadataProtected(index);
+      const auto key = CastKey<Key>(node->GetKeyAddr(meta));
       if (IsInRange<Compare>(key, begin_key, begin_is_closed, end_key, end_is_closed)) {
         meta_arr.emplace_back(key, meta);
         if (end_key != nullptr && end_is_closed && IsEqual<Compare>(key, *end_key)) {
@@ -304,7 +305,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     scan_results.reserve(meta_arr.size());
     for (auto &&[key, meta] : meta_arr) {
       if (meta.IsVisible()) {
-        scan_results.emplace_back(this->GetRecord(meta));
+        scan_results.emplace_back(node->GetRecord(meta));
       }
     }
     return {NodeReturnCode::kSuccess, std::move(scan_results)};

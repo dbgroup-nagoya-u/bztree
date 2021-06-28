@@ -233,7 +233,7 @@ TEST_F(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectKeysAndPayload
   auto merged_node = std::unique_ptr<LeafNode_t>(
       CastAddress<LeafNode_t*>(InternalNode_t::Merge(target_node.get(), sibling_node.get(), true)));
 
-  auto [rc, scan_results] = merged_node->Scan(&keys[3], true, &keys[5], false);
+  auto [rc, scan_results] = LeafNode_t::Scan(merged_node.get(), &keys[3], true, &keys[5], false);
 
   ASSERT_EQ(2, scan_results.size());
   EXPECT_EQ(keys[3], scan_results[0]->GetKey());
@@ -250,7 +250,7 @@ TEST_F(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectKeysAndPayloa
   auto merged_node = std::unique_ptr<LeafNode_t>(CastAddress<LeafNode_t*>(
       InternalNode_t::Merge(target_node.get(), sibling_node.get(), false)));
 
-  auto [rc, scan_results] = merged_node->Scan(&keys[5], false, &keys[7], true);
+  auto [rc, scan_results] = LeafNode_t::Scan(merged_node.get(), &keys[5], false, &keys[7], true);
 
   ASSERT_EQ(2, scan_results.size());
   EXPECT_EQ(keys[6], scan_results[0]->GetKey());

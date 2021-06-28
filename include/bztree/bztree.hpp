@@ -166,7 +166,8 @@ class BzTree
     const auto guard = gc_.CreateEpochGuard();
 
     auto [node_key, leaf_node] = SearchLeafNode(begin_key, begin_is_closed);
-    auto [rc, scan_results] = leaf_node->Scan(begin_key, begin_is_closed, end_key, end_is_closed);
+    auto [rc, scan_results] =
+        LeafNode_t::Scan(leaf_node, begin_key, begin_is_closed, end_key, end_is_closed);
 
     if (node_key == nullptr
         || (end_key != nullptr

@@ -180,7 +180,7 @@ TEST_F(LeafNodeFixture, Read_NotPresentKey_ReadFailed)
 
 TEST_F(LeafNodeFixture, Scan_EmptyNode_NoResult)
 {
-  auto [rc, scan_results] = node->Scan(&keys[0], true, &keys[9], true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[0], true, &keys[9], true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(0, scan_results.size());
@@ -191,7 +191,7 @@ TEST_F(LeafNodeFixture, Scan_BothClosed_ScanTargetValues)
   WriteOrderedKeys(4, 9);
   WriteOrderedKeys(0, 3);
 
-  auto [rc, scan_results] = node->Scan(&keys[4], true, &keys[6], true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[4], true, &keys[6], true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(3, scan_results.size());
@@ -208,7 +208,7 @@ TEST_F(LeafNodeFixture, Scan_LeftClosed_ScanTargetValues)
   WriteOrderedKeys(4, 9);
   WriteOrderedKeys(0, 3);
 
-  auto [rc, scan_results] = node->Scan(&keys[7], true, &keys[9], false);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[7], true, &keys[9], false);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
@@ -223,7 +223,7 @@ TEST_F(LeafNodeFixture, Scan_RightClosed_ScanTargetValues)
   WriteOrderedKeys(4, 9);
   WriteOrderedKeys(0, 3);
 
-  auto [rc, scan_results] = node->Scan(&keys[7], false, &keys[9], true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[7], false, &keys[9], true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
@@ -238,7 +238,7 @@ TEST_F(LeafNodeFixture, Scan_BothOpened_ScanTargetValues)
   WriteOrderedKeys(4, 9);
   WriteOrderedKeys(0, 3);
 
-  auto [rc, scan_results] = node->Scan(&keys[7], false, &keys[9], false);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[7], false, &keys[9], false);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(1, scan_results.size());
@@ -251,7 +251,7 @@ TEST_F(LeafNodeFixture, Scan_LeftInfinity_ScanTargetValues)
   WriteOrderedKeys(4, 9);
   WriteOrderedKeys(0, 3);
 
-  auto [rc, scan_results] = node->Scan(nullptr, false, &keys[1], true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), nullptr, false, &keys[1], true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
@@ -266,7 +266,7 @@ TEST_F(LeafNodeFixture, Scan_RightInfinity_ScanTargetValues)
   WriteOrderedKeys(4, 9);
   WriteOrderedKeys(0, 3);
 
-  auto [rc, scan_results] = node->Scan(&keys[8], true, nullptr, false);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[8], true, nullptr, false);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
@@ -280,7 +280,7 @@ TEST_F(LeafNodeFixture, Scan_LeftOutsideRange_NoResults)
 {
   WriteOrderedKeys(4, 9);
 
-  auto [rc, scan_results] = node->Scan(nullptr, false, &keys[3], false);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), nullptr, false, &keys[3], false);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(0, scan_results.size());
@@ -290,7 +290,7 @@ TEST_F(LeafNodeFixture, Scan_RightOutsideRange_NoResults)
 {
   WriteOrderedKeys(0, 3);
 
-  auto [rc, scan_results] = node->Scan(&keys[5], false, nullptr, false);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[5], false, nullptr, false);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(0, scan_results.size());
@@ -302,7 +302,7 @@ TEST_F(LeafNodeFixture, Scan_WithUpdateDelete_ScanLatestValues)
   node->Update(keys[2], kKeyLength, payloads[0], kPayloadLength);
   node->Delete(keys[3], kKeyLength);
 
-  auto [rc, scan_results] = node->Scan(&keys[2], true, &keys[4], true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[2], true, &keys[4], true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
@@ -319,7 +319,7 @@ TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithinRange_ScanTargetValues)
   auto meta_vec = node->GatherSortedLiveMetadata();
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  auto [rc, scan_results] = node->Scan(&keys[4], true, &keys[6], true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[4], true, &keys[6], true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(3, scan_results.size());
@@ -338,7 +338,7 @@ TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithLeftInfinity_ScanTargetValues)
   auto meta_vec = node->GatherSortedLiveMetadata();
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  auto [rc, scan_results] = node->Scan(nullptr, true, &keys[3], true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), nullptr, true, &keys[3], true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(1, scan_results.size());
@@ -353,7 +353,7 @@ TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithRightInfinity_ScanTargetValues)
   auto meta_vec = node->GatherSortedLiveMetadata();
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  auto [rc, scan_results] = node->Scan(&keys[7], true, nullptr, true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[7], true, nullptr, true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(1, scan_results.size());
@@ -370,7 +370,7 @@ TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithUpdateDelete_ScanLatestValues)
   node->Update(keys[5], kKeyLength, payloads[0], kPayloadLength);
   node->Delete(keys[7], kKeyLength);
 
-  auto [rc, scan_results] = node->Scan(&keys[5], true, &keys[7], true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[5], true, &keys[7], true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
