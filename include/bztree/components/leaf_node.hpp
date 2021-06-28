@@ -594,8 +594,9 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * @param descriptor_pool
    * @return NodeReturnCode
    */
-  std::pair<NodeReturnCode, StatusWord>
+  static constexpr std::pair<NodeReturnCode, StatusWord>
   Delete(  //
+      BaseNode_t *node,
       const Key &key,
       const size_t key_length)
   {
@@ -604,19 +605,19 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
     bool mwcas_success;
     do {
-      const auto current_status = this->GetStatusWordProtected();
+      const auto current_status = node->GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
       const auto record_count = current_status.GetRecordCount();
-      const auto [existence, index] = SearchMetadataToRead(this, key, record_count);
+      const auto [existence, index] = SearchMetadataToRead(node, key, record_count);
       if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
         return {NodeReturnCode::kKeyNotExist, current_status};
       }
 
       // delete payload infomation from metadata
-      const auto current_meta = this->GetMetadataProtected(index);
+      const auto current_meta = node->GetMetadataProtected(index);
       const auto deleted_meta = current_meta.DeleteRecordInfo();
 
       // prepare new status
@@ -625,8 +626,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
-      this->SetStatusForMwCAS(desc, current_status, new_status);
-      this->SetMetadataForMwCAS(desc, index, current_meta, deleted_meta);
+      node->SetStatusForMwCAS(desc, current_status, new_status);
+      node->SetMetadataForMwCAS(desc, index, current_meta, deleted_meta);
       mwcas_success = desc.MwCAS();
     } while (!mwcas_success);
 

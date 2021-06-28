@@ -104,7 +104,7 @@ class LeafNodeFixture : public testing::Test
                                                payloads[index + 1], kPayloadLength);
           break;
         case kDelete:
-          std::tie(rc, s) = node->Delete(keys[index], kKeyLength);
+          std::tie(rc, s) = LeafNode_t::Delete(node.get(), keys[index], kKeyLength);
           break;
         case kMixed:
           switch (index % 3) {
@@ -115,7 +115,7 @@ class LeafNodeFixture : public testing::Test
               LeafNode_t::Update(node.get(), keys[0], kKeyLength, payloads[1], kPayloadLength);
               break;
             default:
-              node->Delete(keys[0], kKeyLength);
+              LeafNode_t::Delete(node.get(), keys[0], kKeyLength);
               break;
           }
           break;

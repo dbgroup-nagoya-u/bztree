@@ -876,7 +876,7 @@ class BzTree
     StatusWord node_status;
     do {
       leaf_node = SearchLeafNode(&key, true).second;
-      std::tie(rc, node_status) = leaf_node->Delete(key, key_length);
+      std::tie(rc, node_status) = LeafNode_t::Delete(leaf_node, key, key_length);
     } while (rc != NodeReturnCode::kSuccess && rc != NodeReturnCode::kKeyNotExist);
 
     if (NeedConsolidation(node_status)) {

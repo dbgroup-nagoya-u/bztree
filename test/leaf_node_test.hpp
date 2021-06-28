@@ -300,7 +300,7 @@ TEST_F(LeafNodeFixture, Scan_WithUpdateDelete_ScanLatestValues)
 {
   WriteOrderedKeys(0, 4);
   LeafNode_t::Update(node.get(), keys[2], kKeyLength, payloads[0], kPayloadLength);
-  node->Delete(keys[3], kKeyLength);
+  LeafNode_t::Delete(node.get(), keys[3], kKeyLength);
 
   auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[2], true, &keys[4], true);
 
@@ -368,7 +368,7 @@ TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithUpdateDelete_ScanLatestValues)
   auto meta_vec = node->GatherSortedLiveMetadata();
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
   LeafNode_t::Update(node.get(), keys[5], kKeyLength, payloads[0], kPayloadLength);
-  node->Delete(keys[7], kKeyLength);
+  LeafNode_t::Delete(node.get(), keys[7], kKeyLength);
 
   auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[5], true, &keys[7], true);
 
@@ -645,7 +645,7 @@ TEST_F(LeafNodeFixture, Update_NotPresentKey_UpdatedFailed)
 TEST_F(LeafNodeFixture, Update_DeletedKey_UpdateFailed)
 {
   LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[2], kPayloadLength);
-  node->Delete(keys[1], kKeyLength);
+  LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
 
   std::tie(rc, status) =
       LeafNode_t::Update(node.get(), keys[1], kKeyLength, payloads[2], kPayloadLength);
@@ -730,7 +730,7 @@ TEST_F(LeafNodeFixture, Update_ConsolidatedNodeWithDeletedKey_UpdatedFailed)
   auto meta_vec = node->GatherSortedLiveMetadata();
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  node->Delete(keys[1], kKeyLength);
+  LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
   std::tie(rc, status) =
       LeafNode_t::Update(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
 
@@ -750,14 +750,14 @@ TEST_F(LeafNodeFixture, Delete_TwoKeys_MetadataCorrectlyUpdated)
   expected_record_count += 2;
   expected_block_size += 2 * kRecordLength;
 
-  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
   expected_deleted_size += kWordLength + kRecordLength;
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyMetadata(node->GetMetadata(index++), kRecordIsVisible);
   VerifyStatusWord(status);
 
-  std::tie(rc, status) = node->Delete(keys[2], kKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[2], kKeyLength);
   expected_deleted_size += kWordLength + kRecordLength;
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
@@ -769,7 +769,7 @@ TEST_F(LeafNodeFixture, Delete_PresentKey_DeletionSucceed)
 {
   LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
 
-  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
 }
@@ -777,7 +777,7 @@ TEST_F(LeafNodeFixture, Delete_PresentKey_DeletionSucceed)
 TEST_F(LeafNodeFixture, Delete_PresentKey_ReadFailed)
 {
   LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
-  node->Delete(keys[1], kKeyLength);
+  LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
 
   std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[1]);
 
@@ -786,7 +786,7 @@ TEST_F(LeafNodeFixture, Delete_PresentKey_ReadFailed)
 
 TEST_F(LeafNodeFixture, Delete_NotPresentKey_DeletionFailed)
 {
-  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
@@ -794,9 +794,9 @@ TEST_F(LeafNodeFixture, Delete_NotPresentKey_DeletionFailed)
 TEST_F(LeafNodeFixture, Delete_DeletedKey_DeletionFailed)
 {
   LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
-  node->Delete(keys[1], kKeyLength);
+  LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
 
-  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
@@ -805,11 +805,11 @@ TEST_F(LeafNodeFixture, Delete_FilledNode_GetCorrectReturnCodes)
 {
   WriteNullKey(10);
 
-  std::tie(rc, status) = node->Delete(key_null, kNullKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), key_null, kNullKeyLength);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
 
-  std::tie(rc, status) = node->Delete(key_null, kNullKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), key_null, kNullKeyLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
@@ -821,7 +821,7 @@ TEST_F(LeafNodeFixture, Delete_ConsolidatedNode_MetadataCorrectlyUpdated)
   auto meta_vec = node->GatherSortedLiveMetadata();
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
   expected_deleted_size += kWordLength + kRecordLength;
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
@@ -836,7 +836,7 @@ TEST_F(LeafNodeFixture, Delete_ConsolidatedNode_DeletionSucceed)
   auto meta_vec = node->GatherSortedLiveMetadata();
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
 }
@@ -848,7 +848,7 @@ TEST_F(LeafNodeFixture, Delete_ConsolidatedNodeWithNotPresentKey_DeletionFailed)
   auto meta_vec = node->GatherSortedLiveMetadata();
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  std::tie(rc, status) = node->Delete(key_null, kNullKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), key_null, kNullKeyLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
@@ -860,8 +860,8 @@ TEST_F(LeafNodeFixture, Delete_ConsolidatedNodeWithDeletedKey_DeletionFailed)
   auto meta_vec = node->GatherSortedLiveMetadata();
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  node->Delete(keys[1], kKeyLength);
-  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
+  LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
@@ -892,7 +892,7 @@ TEST_F(LeafNodeFixture, Consolidate_SortedTenKeysWithDelete_GatherSortedLiveMeta
   auto written_keys = WriteOrderedKeys(0, 9);
 
   // delete a key
-  node->Delete(keys[2], kKeyLength);
+  LeafNode_t::Delete(node.get(), keys[2], kKeyLength);
   --expected_record_count;
   written_keys.erase(std::find(written_keys.begin(), written_keys.end(), keys[2]));
 
@@ -956,7 +956,7 @@ TEST_F(LeafNodeFixture, Consolidate_SortedTenKeysWithDelete_NodeHasCorrectStatus
 {
   // prepare a consolidated node
   WriteOrderedKeys(0, 9);
-  node->Delete(keys[2], kKeyLength);
+  LeafNode_t::Delete(node.get(), keys[2], kKeyLength);
   expected_record_count -= 1;
   expected_block_size -= kRecordLength;
 

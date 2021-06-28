@@ -208,7 +208,7 @@ TEST_F(BaseNodeFixture, SearchSortedMeta_SearchDeletedKey_FindKeyIndex)
   node.reset(CreateSortedLeafNodeWithOrderedKeys(0, 9));
   auto target_index = 7;
   auto target_key = keys[target_index];
-  node->Delete(target_key, kKeyLength);
+  LeafNode_t::Delete(node.get(), target_key, kKeyLength);
 
   auto [rc, index] = node->SearchSortedMetadata(target_key, true);
 
@@ -217,7 +217,7 @@ TEST_F(BaseNodeFixture, SearchSortedMeta_SearchDeletedKey_FindKeyIndex)
 
   target_index = 3;
   target_key = keys[target_index];
-  node->Delete(target_key, kKeyLength);
+  LeafNode_t::Delete(node.get(), target_key, kKeyLength);
 
   std::tie(rc, index) = node->SearchSortedMetadata(target_key, false);
 
