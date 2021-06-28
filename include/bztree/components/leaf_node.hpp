@@ -638,43 +638,43 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * Public structure modification operations
    *##############################################################################################*/
 
-  static LeafNode *
+  static constexpr LeafNode *
   Consolidate(  //
-      const LeafNode *target_node,
+      const BaseNode_t *node,
       const std::vector<std::pair<Key, Metadata>> &live_meta)
   {
     // create a new node and copy records
-    auto new_node = CreateEmptyNode(target_node->GetNodeSize());
-    CopyRecordsViaMetadata(new_node, target_node, live_meta.begin(), live_meta.end());
+    auto new_node = CreateEmptyNode(node->GetNodeSize());
+    CopyRecordsViaMetadata(new_node, node, live_meta.begin(), live_meta.end());
 
     return new_node;
   }
 
-  static std::pair<LeafNode *, LeafNode *>
+  static constexpr std::pair<LeafNode *, LeafNode *>
   Split(  //
-      const LeafNode *target_node,
+      const BaseNode_t *node,
       const std::vector<std::pair<Key, Metadata>> &sorted_meta,
       const size_t left_record_count)
   {
-    const auto node_size = target_node->GetNodeSize();
+    const auto node_size = node->GetNodeSize();
     const auto split_iter = sorted_meta.begin() + left_record_count;
 
     // create a split left node
     auto left_node = CreateEmptyNode(node_size);
-    CopyRecordsViaMetadata(left_node, target_node, sorted_meta.begin(), split_iter);
+    CopyRecordsViaMetadata(left_node, node, sorted_meta.begin(), split_iter);
 
     // create a split right node
     auto right_node = CreateEmptyNode(node_size);
-    CopyRecordsViaMetadata(right_node, target_node, split_iter, sorted_meta.end());
+    CopyRecordsViaMetadata(right_node, node, split_iter, sorted_meta.end());
 
     return {left_node, right_node};
   }
 
-  static LeafNode *
+  static constexpr LeafNode *
   Merge(  //
-      const LeafNode *target_node,
-      const std::vector<std::pair<Key, Metadata>> &this_meta,
-      const LeafNode *sibling_node,
+      const BaseNode_t *target_node,
+      const std::vector<std::pair<Key, Metadata>> &target_meta,
+      const BaseNode_t *sibling_node,
       const std::vector<std::pair<Key, Metadata>> &sibling_meta,
       const bool sibling_is_left)
   {
@@ -682,9 +682,9 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     auto merged_node = CreateEmptyNode(target_node->GetNodeSize());
     if (sibling_is_left) {
       CopyRecordsViaMetadata(merged_node, sibling_node, sibling_meta.begin(), sibling_meta.end());
-      CopyRecordsViaMetadata(merged_node, target_node, this_meta.begin(), this_meta.end());
+      CopyRecordsViaMetadata(merged_node, target_node, target_meta.begin(), target_meta.end());
     } else {
-      CopyRecordsViaMetadata(merged_node, target_node, this_meta.begin(), this_meta.end());
+      CopyRecordsViaMetadata(merged_node, target_node, target_meta.begin(), target_meta.end());
       CopyRecordsViaMetadata(merged_node, sibling_node, sibling_meta.begin(), sibling_meta.end());
     }
 
@@ -695,11 +695,11 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * Public utility functions
    *##############################################################################################*/
 
-  std::vector<std::pair<Key, Metadata>>
-  GatherSortedLiveMetadata() const
+  static constexpr std::vector<std::pair<Key, Metadata>>
+  GatherSortedLiveMetadata(const BaseNode_t *node)
   {
-    const auto record_count = this->GetStatusWord().GetRecordCount();
-    const int64_t sorted_count = this->GetSortedCount();
+    const auto record_count = node->GetStatusWord().GetRecordCount();
+    const int64_t sorted_count = node->GetSortedCount();
 
     // gather valid (live or deleted) records
     std::vector<std::pair<Key, Metadata>> meta_arr;
@@ -707,9 +707,9 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
     // search unsorted metadata in reverse order
     for (int64_t index = record_count - 1; index >= sorted_count; --index) {
-      const auto meta = this->GetMetadataProtected(index);
+      const auto meta = node->GetMetadataProtected(index);
       if (meta.IsVisible() || meta.IsDeleted()) {
-        const auto key = CastKey<Key>(this->GetKeyAddr(meta));
+        const auto key = CastKey<Key>(node->GetKeyAddr(meta));
         meta_arr.emplace_back(key, meta);
       } else {
         // there is a key, but it is in inserting or corrupted.
@@ -719,8 +719,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
     // search sorted metadata
     for (int64_t index = 0; index < sorted_count; ++index) {
-      const auto meta = this->GetMetadataProtected(index);
-      const auto key = CastKey<Key>(this->GetKeyAddr(meta));
+      const auto meta = node->GetMetadataProtected(index);
+      const auto key = CastKey<Key>(node->GetKeyAddr(meta));
       meta_arr.emplace_back(key, meta);
     }
 

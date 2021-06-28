@@ -219,7 +219,7 @@ class BzTree
     }
 
     // gather sorted live metadata of a targetnode, and check whether split/merge is required
-    const auto live_meta = target_node->GatherSortedLiveMetadata();
+    const auto live_meta = LeafNode_t::GatherSortedLiveMetadata(target_node);
     const auto occupied_size = ComputeOccupiedSize(live_meta);
     if (occupied_size + expected_free_space_ > node_size_) {
       SplitLeafNode(target_node, target_key, live_meta);
@@ -422,7 +422,7 @@ class BzTree
 
     // create new nodes
     const auto deleted_index = (sibling_is_left) ? target_index - 1 : target_index;
-    const auto sibling_meta = sibling_node->GatherSortedLiveMetadata();
+    const auto sibling_meta = LeafNode_t::GatherSortedLiveMetadata(sibling_node);
     const auto merged_node =
         LeafNode_t::Merge(target_node, sorted_meta, sibling_node, sibling_meta, sibling_is_left);
     const auto new_parent = InternalNode_t::NewParentForMerge(parent, merged_node, deleted_index);

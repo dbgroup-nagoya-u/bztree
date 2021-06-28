@@ -98,7 +98,7 @@ class BaseNodeFixture : public testing::Test
   {
     auto tmp_leaf_node = LeafNode_t::CreateEmptyNode(kNodeSize);
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
-    auto tmp_meta = tmp_leaf_node->GatherSortedLiveMetadata();
+    auto tmp_meta = LeafNode_t::GatherSortedLiveMetadata(tmp_leaf_node);
     return LeafNode_t::Consolidate(tmp_leaf_node, tmp_meta);
   }
 };
@@ -181,7 +181,7 @@ TEST_F(BaseNodeFixture, SearchSortedMeta_SearchNotPresentKey_FindNextIndex)
   LeafNode_t::Write(tmp_node.get(), keys[5], kKeyLength, payloads[5], kPayloadLength);
   LeafNode_t::Write(tmp_node.get(), keys[7], kKeyLength, payloads[7], kPayloadLength);
   LeafNode_t::Write(tmp_node.get(), keys[8], kKeyLength, payloads[8], kPayloadLength);
-  auto tmp_meta = tmp_node->GatherSortedLiveMetadata();
+  auto tmp_meta = LeafNode_t::GatherSortedLiveMetadata(tmp_node.get());
 
   node.reset(LeafNode_t::Consolidate(tmp_node.get(), tmp_meta));
 

@@ -108,7 +108,7 @@ class InternalNodeFixture : public testing::Test
   {
     auto tmp_leaf_node = LeafNode_t::CreateEmptyNode(kNodeSize);
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
-    auto tmp_meta = tmp_leaf_node->GatherSortedLiveMetadata();
+    auto tmp_meta = LeafNode_t::GatherSortedLiveMetadata(tmp_leaf_node);
     return CastAddress<InternalNode_t*>(LeafNode_t::Consolidate(tmp_leaf_node, tmp_meta));
   }
 
