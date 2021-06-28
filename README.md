@@ -24,22 +24,3 @@ cmake -DCMAKE_BUILD_TYPE=Release -DBZTREE_BUILD_TESTS=on ..
 make -j
 ctest -C Release
 ```
-
-## For Developers
-
-### Recommended Extensions for VS Code
-
-- `ms-vscode.cpptools`
-- `ms-vscode.cmake-tools`
-- `twxs.cmake`
-- (optional) `mine.cpplint`
-- (optional) `jeff-hykin.better-cpp-syntax`
-- (optional) `matepek.vscode-catch2-test-adapter`
-
-### Prerequisites
-
-```bash
-sudo apt install -y build-essential cmake gdb
-cd <_workspace>
-git clone --recurse-submodules git@github.com:dbgroup-nagoya-u/bztree.git
-```

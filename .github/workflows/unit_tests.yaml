@@ -16,20 +16,8 @@ jobs:
 
     - name: Clone Main Repository
       uses: actions/checkout@v2
-
-    - name: Clone Submodule - MwCAS
-      uses: actions/checkout@v2
       with:
-        repository: dbgroup-nagoya-u/mwcas
-        path: external/mwcas
-        ssh-key: ${{secrets.SSH_KEY_FOR_ACTIONS}}
-        persist-credentials: false
-
-    - name: Clone Submodule - Memory Manager
-      uses: actions/checkout@v2
-      with:
-        repository: dbgroup-nagoya-u/memory-manager
-        path: external/memory-manager
+        submodules: recursive
         ssh-key: ${{secrets.SSH_KEY_FOR_ACTIONS}}
         persist-credentials: false
 
