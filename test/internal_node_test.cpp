@@ -80,7 +80,7 @@ class InternalNodeFixture : public testing::Test
 
   void
   WriteNullKey(  //
-      LeafNode_t* target_node,
+      BaseNode_t* target_node,
       const size_t write_num)
   {
     for (size_t index = 0; index < write_num; ++index) {
@@ -90,7 +90,7 @@ class InternalNodeFixture : public testing::Test
 
   void
   WriteOrderedKeys(  //
-      LeafNode_t* target_node,
+      BaseNode_t* target_node,
       const size_t begin_index,
       const size_t end_index)
   {
@@ -106,7 +106,7 @@ class InternalNodeFixture : public testing::Test
       const size_t begin_index,
       const size_t end_index)
   {
-    auto tmp_leaf_node = LeafNode_t::CreateEmptyNode(kNodeSize);
+    auto tmp_leaf_node = BaseNode_t::CreateEmptyNode(kNodeSize, true);
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
     auto tmp_meta = LeafNode_t::GatherSortedLiveMetadata(tmp_leaf_node);
     return CastAddress<InternalNode_t*>(LeafNode_t::Consolidate(tmp_leaf_node, tmp_meta));
@@ -230,8 +230,8 @@ TEST_F(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectKeysAndPayload
   auto target_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
   auto sibling_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(2, 3));
 
-  auto merged_node = std::unique_ptr<LeafNode_t>(
-      CastAddress<LeafNode_t*>(InternalNode_t::Merge(target_node.get(), sibling_node.get(), true)));
+  auto merged_node = std::unique_ptr<BaseNode_t>(
+      CastAddress<BaseNode_t*>(InternalNode_t::Merge(target_node.get(), sibling_node.get(), true)));
 
   auto [rc, scan_results] = LeafNode_t::Scan(merged_node.get(), &keys[3], true, &keys[5], false);
 
@@ -247,7 +247,7 @@ TEST_F(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectKeysAndPayloa
   auto target_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
   auto sibling_node = std::unique_ptr<InternalNode_t>(CreateInternalNodeWithOrderedKeys(7, 8));
 
-  auto merged_node = std::unique_ptr<LeafNode_t>(CastAddress<LeafNode_t*>(
+  auto merged_node = std::unique_ptr<BaseNode_t>(CastAddress<BaseNode_t*>(
       InternalNode_t::Merge(target_node.get(), sibling_node.get(), false)));
 
   auto [rc, scan_results] = LeafNode_t::Scan(merged_node.get(), &keys[5], false, &keys[7], true);

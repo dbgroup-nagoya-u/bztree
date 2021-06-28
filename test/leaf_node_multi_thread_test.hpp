@@ -67,7 +67,7 @@ class LeafNodeFixture : public testing::Test
   Key keys[kKeyNumForTest];
   Payload payloads[kKeyNumForTest];
 
-  std::unique_ptr<LeafNode_t> node;
+  std::unique_ptr<BaseNode_t> node;
 
   void
   WriteRandomKeys(  //
@@ -131,7 +131,7 @@ class LeafNodeFixture : public testing::Test
   }
 
  protected:
-  LeafNodeFixture() : node{LeafNode_t::CreateEmptyNode(kNodeSize)} {}
+  LeafNodeFixture() : node{BaseNode_t::CreateEmptyNode(kNodeSize, true)} {}
 
   void SetUp() override;
 
@@ -272,7 +272,7 @@ TEST_F(LeafNodeFixture, InsertUpdateDelete_MultiThreads_ConcurrencyControlCorrup
     }
 
     if (!concurrency_is_corrupted) {
-      node.reset(LeafNode_t::CreateEmptyNode(kNodeSize));
+      node.reset(BaseNode_t::CreateEmptyNode(kNodeSize, true));
       RunOverMultiThread(kWriteNumPerThread, kThreadNum, kMixed, &LeafNodeFixture::WriteRandomKeys);
     }
   } while (!concurrency_is_corrupted);

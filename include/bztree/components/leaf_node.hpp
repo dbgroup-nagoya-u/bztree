@@ -31,7 +31,7 @@
 namespace dbgroup::index::bztree
 {
 template <class Key, class Payload, class Compare = std::less<Key>>
-class LeafNode : public BaseNode<Key, Payload, Compare>
+class LeafNode
 {
   using BaseNode_t = BaseNode<Key, Payload, Compare>;
   using KeyExistence = typename BaseNode_t::KeyExistence;
@@ -66,12 +66,6 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       return IsEqual<Compare>(a.first, b.first);
     }
   };
-
-  /*################################################################################################
-   * Internal constructors
-   *##############################################################################################*/
-
-  explicit LeafNode(const size_t node_size) : BaseNode<Key, Payload, Compare>(node_size, true) {}
 
   /*################################################################################################
    * Internal utility functions
@@ -186,35 +180,6 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
   }
 
  public:
-  /*################################################################################################
-   * Public constructor/destructor
-   *##############################################################################################*/
-
-  ~LeafNode() = default;
-
-  LeafNode(const LeafNode &) = delete;
-  LeafNode &operator=(const LeafNode &) = delete;
-  LeafNode(LeafNode &&) = default;
-  LeafNode &operator=(LeafNode &&) = default;
-
-  /*################################################################################################
-   * Public builders
-   *##############################################################################################*/
-
-  static LeafNode *
-  CreateEmptyNode(const size_t node_size)
-  {
-    assert((node_size % kWordLength) == 0);
-
-    auto page = calloc(1, node_size);
-    auto new_node = new (page) LeafNode{node_size};
-    return new_node;
-  }
-
-  /*################################################################################################
-   * Public setter/getter
-   *##############################################################################################*/
-
   /*################################################################################################
    * Read operations
    *##############################################################################################*/
@@ -638,19 +603,19 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * Public structure modification operations
    *##############################################################################################*/
 
-  static constexpr LeafNode *
+  static constexpr BaseNode_t *
   Consolidate(  //
       const BaseNode_t *node,
       const std::vector<std::pair<Key, Metadata>> &live_meta)
   {
     // create a new node and copy records
-    auto new_node = CreateEmptyNode(node->GetNodeSize());
+    auto new_node = BaseNode_t::CreateEmptyNode(node->GetNodeSize(), true);
     CopyRecordsViaMetadata(new_node, node, live_meta.begin(), live_meta.end());
 
     return new_node;
   }
 
-  static constexpr std::pair<LeafNode *, LeafNode *>
+  static constexpr std::pair<BaseNode_t *, BaseNode_t *>
   Split(  //
       const BaseNode_t *node,
       const std::vector<std::pair<Key, Metadata>> &sorted_meta,
@@ -660,17 +625,17 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     const auto split_iter = sorted_meta.begin() + left_record_count;
 
     // create a split left node
-    auto left_node = CreateEmptyNode(node_size);
+    auto left_node = BaseNode_t::CreateEmptyNode(node_size, true);
     CopyRecordsViaMetadata(left_node, node, sorted_meta.begin(), split_iter);
 
     // create a split right node
-    auto right_node = CreateEmptyNode(node_size);
+    auto right_node = BaseNode_t::CreateEmptyNode(node_size, true);
     CopyRecordsViaMetadata(right_node, node, split_iter, sorted_meta.end());
 
     return {left_node, right_node};
   }
 
-  static constexpr LeafNode *
+  static constexpr BaseNode_t *
   Merge(  //
       const BaseNode_t *target_node,
       const std::vector<std::pair<Key, Metadata>> &target_meta,
@@ -679,7 +644,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       const bool sibling_is_left)
   {
     // create a merged node
-    auto merged_node = CreateEmptyNode(target_node->GetNodeSize());
+    auto merged_node = BaseNode_t::CreateEmptyNode(target_node->GetNodeSize(), true);
     if (sibling_is_left) {
       CopyRecordsViaMetadata(merged_node, sibling_node, sibling_meta.begin(), sibling_meta.end());
       CopyRecordsViaMetadata(merged_node, target_node, target_meta.begin(), target_meta.end());

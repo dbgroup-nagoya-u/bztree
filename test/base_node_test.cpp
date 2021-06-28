@@ -49,13 +49,13 @@ class BaseNodeFixture : public testing::Test
   Key key_null = 0;          // null key must have 8 bytes to fill a node
   Payload payload_null = 0;  // null payload must have 8 bytes to fill a node
 
-  std::unique_ptr<LeafNode_t> node;
+  std::unique_ptr<BaseNode_t> node;
 
  protected:
   void
   SetUp() override
   {
-    node.reset(LeafNode_t::CreateEmptyNode(kNodeSize));
+    node.reset(BaseNode_t::CreateEmptyNode(kNodeSize, true));
 
     for (size_t index = 0; index < kKeyNumForTest; index++) {
       keys[index] = index + 1;
@@ -70,7 +70,7 @@ class BaseNodeFixture : public testing::Test
 
   void
   WriteNullKey(  //
-      LeafNode_t* target_node,
+      BaseNode_t* target_node,
       const size_t write_num)
   {
     for (size_t index = 0; index < write_num; ++index) {
@@ -80,7 +80,7 @@ class BaseNodeFixture : public testing::Test
 
   void
   WriteOrderedKeys(  //
-      LeafNode_t* target_node,
+      BaseNode_t* target_node,
       const size_t begin_index,
       const size_t end_index)
   {
@@ -91,12 +91,12 @@ class BaseNodeFixture : public testing::Test
     }
   }
 
-  LeafNode_t*
+  BaseNode_t*
   CreateSortedLeafNodeWithOrderedKeys(  //
       const size_t begin_index,
       const size_t end_index)
   {
-    auto tmp_leaf_node = LeafNode_t::CreateEmptyNode(kNodeSize);
+    auto tmp_leaf_node = BaseNode_t::CreateEmptyNode(kNodeSize, true);
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
     auto tmp_meta = LeafNode_t::GatherSortedLiveMetadata(tmp_leaf_node);
     return LeafNode_t::Consolidate(tmp_leaf_node, tmp_meta);
@@ -174,7 +174,7 @@ TEST_F(BaseNodeFixture, SearchSortedMeta_SearchPresentKeyWithOpenedRange_FindNex
 TEST_F(BaseNodeFixture, SearchSortedMeta_SearchNotPresentKey_FindNextIndex)
 {
   // prepare a target node
-  auto tmp_node = std::unique_ptr<LeafNode_t>(LeafNode_t::CreateEmptyNode(kNodeSize));
+  auto tmp_node = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
   LeafNode_t::Write(tmp_node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
   LeafNode_t::Write(tmp_node.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
   LeafNode_t::Write(tmp_node.get(), keys[4], kKeyLength, payloads[4], kPayloadLength);

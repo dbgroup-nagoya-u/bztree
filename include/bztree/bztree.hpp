@@ -85,7 +85,7 @@ class BzTree
     return reinterpret_cast<BaseNode_t *>(ReadMwCASField<uintptr_t>(&root_));
   }
 
-  std::pair<void *, LeafNode_t *>
+  std::pair<void *, BaseNode_t *>
   SearchLeafNode(  //
       const Key *key,
       const bool range_is_closed)
@@ -104,7 +104,7 @@ class BzTree
       current_node = CastAddress<InternalNode_t *>(current_node)->GetChildNode(index);
     } while (!current_node->IsLeaf());
 
-    return {node_key, CastAddress<LeafNode_t *>(current_node)};
+    return {node_key, current_node};
   }
 
   std::stack<std::pair<BaseNode_t *, size_t>>
@@ -209,7 +209,7 @@ class BzTree
 
   void
   ConsolidateLeafNode(  //
-      LeafNode_t *target_node,
+      BaseNode_t *target_node,
       const Key &target_key,
       const size_t target_key_length)
   {
@@ -241,7 +241,7 @@ class BzTree
 
   void
   SplitLeafNode(  //
-      const LeafNode_t *target_node,
+      const BaseNode_t *target_node,
       const Key &target_key,
       const std::vector<std::pair<Key, Metadata>> &sorted_meta)
   {
@@ -368,7 +368,7 @@ class BzTree
 
   bool
   MergeLeafNodes(  //
-      const LeafNode_t *target_node,
+      const BaseNode_t *target_node,
       const Key &target_key,
       const size_t target_key_length,
       const size_t target_size,
@@ -380,7 +380,7 @@ class BzTree
 
     std::stack<std::pair<BaseNode_t *, size_t>> trace;
     InternalNode_t *parent = nullptr;
-    LeafNode_t *sibling_node = nullptr;
+    BaseNode_t *sibling_node = nullptr;
     bool sibling_is_left = true;
     size_t target_index = 0;
     while (true) {
@@ -397,13 +397,11 @@ class BzTree
       }
 
       // check a left/right sibling node is live
-      BaseNode_t *tmp_node;
-      std::tie(tmp_node, sibling_is_left) =
+      std::tie(sibling_node, sibling_is_left) =
           GetMergeableSibling(parent, target_index, target_size, true);
-      if (tmp_node == nullptr) {
+      if (sibling_node == nullptr) {
         return false;  // there is no live sibling node
       }
-      sibling_node = CastAddress<LeafNode_t *>(tmp_node);
       const auto sibling_status = sibling_node->GetStatusWordProtected();
       if (sibling_status.IsFrozen()) {
         continue;
@@ -711,7 +709,7 @@ class BzTree
   {
     const auto guard = gc_.CreateEpochGuard();
 
-    LeafNode_t *leaf_node;
+    BaseNode_t *leaf_node;
     NodeReturnCode rc;
     StatusWord node_status;
     do {
@@ -763,7 +761,7 @@ class BzTree
   {
     const auto guard = gc_.CreateEpochGuard();
 
-    LeafNode_t *leaf_node;
+    BaseNode_t *leaf_node;
     NodeReturnCode rc;
     StatusWord node_status;
     do {
@@ -818,7 +816,7 @@ class BzTree
   {
     const auto guard = gc_.CreateEpochGuard();
 
-    LeafNode_t *leaf_node;
+    BaseNode_t *leaf_node;
     NodeReturnCode rc;
     StatusWord node_status;
     do {
@@ -871,7 +869,7 @@ class BzTree
   {
     const auto guard = gc_.CreateEpochGuard();
 
-    LeafNode_t *leaf_node;
+    BaseNode_t *leaf_node;
     NodeReturnCode rc;
     StatusWord node_status;
     do {
