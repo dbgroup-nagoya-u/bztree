@@ -137,57 +137,61 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     return reinterpret_cast<BaseNode_t *>(GetChildAddrProtected(node, meta));
   }
 
-  constexpr bool
+  static constexpr bool
   NeedSplit(  //
+      const BaseNode_t *node,
       const size_t key_length,
-      const size_t payload_length) const
+      const size_t payload_length)
   {
-    const auto new_block_size = this->GetStatusWordProtected().GetOccupiedSize() + kWordLength
+    const auto new_block_size = node->GetStatusWordProtected().GetOccupiedSize() + kWordLength
                                 + key_length + payload_length;
-    return new_block_size > this->GetNodeSize();
+    return new_block_size > node->GetNodeSize();
   }
 
-  constexpr bool
+  static constexpr bool
   NeedMerge(  //
+      const BaseNode_t *node,
       const size_t key_length,
       const size_t payload_length,
-      const size_t min_node_size) const
+      const size_t min_node_size)
   {
-    const int64_t new_block_size = this->GetStatusWordProtected().GetOccupiedSize() - kWordLength
+    const int64_t new_block_size = node->GetStatusWordProtected().GetOccupiedSize() - kWordLength
                                    - (key_length + payload_length);
     return new_block_size < static_cast<int64_t>(min_node_size);
   }
 
-  constexpr bool
+  static constexpr bool
   CanMergeLeftSibling(  //
+      const BaseNode_t *node,
       const size_t index,
       const size_t merged_node_size,
-      const size_t max_merged_node_size) const
+      const size_t max_merged_node_size)
   {
-    assert(index < this->GetSortedCount());  // an input index must be within range
+    assert(index < node->GetSortedCount());  // an input index must be within range
 
     if (index == 0) {
       return false;
     } else {
       const auto data_size =
-          GetChildNode(this, index - 1)->GetStatusWordProtected().GetLiveDataSize();
+          GetChildNode(node, index - 1)->GetStatusWordProtected().GetLiveDataSize();
       return (merged_node_size + data_size) < max_merged_node_size;
     }
   }
 
-  constexpr bool
+  static constexpr bool
   CanMergeRightSibling(  //
+      const BaseNode_t *node,
       const size_t index,
       const size_t merged_node_size,
-      const size_t max_merged_node_size) const
+      const size_t max_merged_node_size)
   {
-    assert(index < this->GetSortedCount());  // an input index must be within range
+    assert(index < node->GetSortedCount());  // an input index must be within range
 
-    if (index == this->GetSortedCount() - 1) {
+    if (index == node->GetSortedCount() - 1) {
       return false;
     } else {
       const auto data_size =
-          GetChildNode(this, index + 1)->GetStatusWordProtected().GetLiveDataSize();
+          GetChildNode(node, index + 1)->GetStatusWordProtected().GetLiveDataSize();
       return (merged_node_size + data_size) < max_merged_node_size;
     }
   }
@@ -196,7 +200,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
    * Public structure modification operations
    *##############################################################################################*/
 
-  static InternalNode *
+  static constexpr InternalNode *
   CreateInitialRoot(const size_t node_size)
   {
     auto root = CreateEmptyNode(node_size);
@@ -219,7 +223,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     return root;
   }
 
-  static std::pair<InternalNode *, InternalNode *>
+  static constexpr std::pair<InternalNode *, InternalNode *>
   Split(  //
       const InternalNode *target_node,
       const size_t left_record_count)
@@ -238,7 +242,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     return {left_node, right_node};
   }
 
-  static InternalNode *
+  static constexpr InternalNode *
   Merge(  //
       const InternalNode *target_node,
       const InternalNode *sibling_node,
@@ -259,7 +263,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     return merged_node;
   }
 
-  static InternalNode *
+  static constexpr InternalNode *
   CreateNewRoot(  //
       const InternalNode *left_child,
       const InternalNode *right_child)
@@ -295,7 +299,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     return new_root;
   }
 
-  static InternalNode *
+  static constexpr InternalNode *
   NewParentForSplit(  //
       const InternalNode *old_parent,
       const Key &new_key,
@@ -340,7 +344,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     return new_parent;
   }
 
-  static InternalNode *
+  static constexpr InternalNode *
   NewParentForMerge(  //
       const InternalNode *old_parent,
       const void *merged_child_addr,

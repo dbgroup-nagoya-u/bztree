@@ -186,14 +186,14 @@ class BzTree
       const size_t target_size,
       const bool is_leaf)
   {
-    if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
+    if (InternalNode_t::CanMergeLeftSibling(parent, target_index, target_size, max_merged_size_)) {
       const auto sibling_node = InternalNode_t::GetChildNode(parent, target_index - 1);
       if ((is_leaf && sibling_node->IsLeaf()) || (!is_leaf && !sibling_node->IsLeaf())) {
         return {sibling_node, true};
       }
     }
 
-    if (parent->CanMergeRightSibling(target_index, target_size, max_merged_size_)) {
+    if (InternalNode_t::CanMergeRightSibling(parent, target_index, target_size, max_merged_size_)) {
       const auto sibling_node = InternalNode_t::GetChildNode(parent, target_index + 1);
       if ((is_leaf && sibling_node->IsLeaf()) || (!is_leaf && !sibling_node->IsLeaf())) {
         return {sibling_node, false};
@@ -265,7 +265,7 @@ class BzTree
 
       // check whether it is required to split a parent node
       parent = CastAddress<InternalNode_t *>(trace.top().first);
-      if (parent->NeedSplit(split_key_length, kWordLength)) {
+      if (InternalNode_t::NeedSplit(parent, split_key_length, kWordLength)) {
         SplitInternalNode(parent, target_key);
         continue;
       }
@@ -323,7 +323,7 @@ class BzTree
       if (trace.size() > 1) {  // target is not a root node (i.e., there is a parent node)
         trace.pop();
         parent = CastAddress<InternalNode_t *>(trace.top().first);
-        if (parent->NeedSplit(split_key_length, kWordLength)) {
+        if (InternalNode_t::NeedSplit(parent, split_key_length, kWordLength)) {
           SplitInternalNode(parent, target_key);
           continue;
         }
