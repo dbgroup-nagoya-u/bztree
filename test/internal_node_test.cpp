@@ -278,10 +278,10 @@ TEST_F(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectPointersToChildren)
 
   node.reset(InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
 
-  auto read_left_addr = node->GetChildNode(0);
+  auto read_left_addr = InternalNode_t::GetChildNode(node.get(), 0);
   EXPECT_TRUE(HaveSameAddress(left_node.get(), read_left_addr));
 
-  auto read_right_addr = node->GetChildNode(1);
+  auto read_right_addr = InternalNode_t::GetChildNode(node.get(), 1);
   EXPECT_TRUE(HaveSameAddress(right_node.get(), read_right_addr));
 }
 
@@ -335,13 +335,13 @@ TEST_F(InternalNodeFixture, NewParent_AfterSplit_HasCorrectPointersToChildren)
   auto new_parent = std::unique_ptr<InternalNode_t>(InternalNode_t::NewParentForSplit(
       old_parent.get(), new_key, kKeyLength, split_left.get(), split_right.get(), split_index));
 
-  auto read_addr = new_parent->GetChildNode(0);
+  auto read_addr = InternalNode_t::GetChildNode(new_parent.get(), 0);
   EXPECT_TRUE(HaveSameAddress(left_node.get(), read_addr));
 
-  read_addr = new_parent->GetChildNode(1);
+  read_addr = InternalNode_t::GetChildNode(new_parent.get(), 1);
   EXPECT_TRUE(HaveSameAddress(split_left.get(), read_addr));
 
-  read_addr = new_parent->GetChildNode(2);
+  read_addr = InternalNode_t::GetChildNode(new_parent.get(), 2);
   EXPECT_TRUE(HaveSameAddress(split_right.get(), read_addr));
 }
 
@@ -382,7 +382,7 @@ TEST_F(InternalNodeFixture, NewParent_AfterMerge_HasCorrectPointersToChildren)
   // create a new parent node
   node.reset(InternalNode_t::NewParentForMerge(old_parent.get(), merged_node.get(), deleted_index));
 
-  auto read_addr = node->GetChildNode(0);
+  auto read_addr = InternalNode_t::GetChildNode(node.get(), 0);
   EXPECT_TRUE(HaveSameAddress(merged_node.get(), read_addr));
 }
 

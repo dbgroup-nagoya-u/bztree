@@ -101,7 +101,7 @@ class BzTree
       } else {
         node_key = current_node->GetKeyAddr(meta);
       }
-      current_node = CastAddress<InternalNode_t *>(current_node)->GetChildNode(index);
+      current_node = InternalNode_t::GetChildNode(current_node, index);
     } while (!current_node->IsLeaf());
 
     return {node_key, current_node};
@@ -119,7 +119,7 @@ class BzTree
     while (!HaveSameAddress(current_node, target_node) && !current_node->IsLeaf()) {
       trace.emplace(current_node, index);
       index = current_node->SearchSortedMetadata(key, true).second;
-      current_node = CastAddress<InternalNode_t *>(current_node)->GetChildNode(index);
+      current_node = InternalNode_t::GetChildNode(current_node, index);
     }
     trace.emplace(current_node, index);
 
@@ -187,14 +187,14 @@ class BzTree
       const bool is_leaf)
   {
     if (parent->CanMergeLeftSibling(target_index, target_size, max_merged_size_)) {
-      const auto sibling_node = parent->GetChildNode(target_index - 1);
+      const auto sibling_node = InternalNode_t::GetChildNode(parent, target_index - 1);
       if ((is_leaf && sibling_node->IsLeaf()) || (!is_leaf && !sibling_node->IsLeaf())) {
         return {sibling_node, true};
       }
     }
 
     if (parent->CanMergeRightSibling(target_index, target_size, max_merged_size_)) {
-      const auto sibling_node = parent->GetChildNode(target_index + 1);
+      const auto sibling_node = InternalNode_t::GetChildNode(parent, target_index + 1);
       if ((is_leaf && sibling_node->IsLeaf()) || (!is_leaf && !sibling_node->IsLeaf())) {
         return {sibling_node, false};
       }

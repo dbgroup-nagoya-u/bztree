@@ -81,7 +81,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
       // copy a record
       const auto key = CastKey<Key>(original_node->GetKeyAddr(meta));
       const auto key_length = meta.GetKeyLength();
-      const auto child_addr = original_node->GetChildAddrProtected(meta);
+      const auto child_addr = GetChildAddrProtected(original_node, meta);
       offset = SetChild(target_node, key, key_length, child_addr, offset);
       // copy metadata
       const auto new_meta = meta.UpdateOffset(offset);
@@ -120,17 +120,21 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
    * Public getters/setters
    *##############################################################################################*/
 
-  constexpr uintptr_t
-  GetChildAddrProtected(const Metadata meta) const
+  static constexpr uintptr_t
+  GetChildAddrProtected(  //
+      const BaseNode_t *node,
+      const Metadata meta)
   {
-    return ReadMwCASField<uintptr_t>(this->GetPayloadAddr(meta));
+    return ReadMwCASField<uintptr_t>(node->GetPayloadAddr(meta));
   }
 
-  BaseNode_t *
-  GetChildNode(const size_t index) const
+  static constexpr BaseNode_t *
+  GetChildNode(  //
+      const BaseNode_t *node,
+      const size_t index)
   {
-    const auto meta = this->GetMetadata(index);
-    return reinterpret_cast<BaseNode_t *>(this->GetChildAddrProtected(meta));
+    const auto meta = node->GetMetadata(index);
+    return reinterpret_cast<BaseNode_t *>(GetChildAddrProtected(node, meta));
   }
 
   constexpr bool
@@ -165,7 +169,8 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     if (index == 0) {
       return false;
     } else {
-      const auto data_size = GetChildNode(index - 1)->GetStatusWordProtected().GetLiveDataSize();
+      const auto data_size =
+          GetChildNode(this, index - 1)->GetStatusWordProtected().GetLiveDataSize();
       return (merged_node_size + data_size) < max_merged_node_size;
     }
   }
@@ -181,7 +186,8 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
     if (index == this->GetSortedCount() - 1) {
       return false;
     } else {
-      const auto data_size = GetChildNode(index + 1)->GetStatusWordProtected().GetLiveDataSize();
+      const auto data_size =
+          GetChildNode(this, index + 1)->GetStatusWordProtected().GetLiveDataSize();
       return (merged_node_size + data_size) < max_merged_node_size;
     }
   }
@@ -309,7 +315,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
       const auto meta = old_parent->GetMetadata(old_idx);
       const auto key = CastKey<Key>(old_parent->GetKeyAddr(meta));
       const auto key_length = meta.GetKeyLength();
-      auto node_addr = old_parent->GetChildAddrProtected(meta);
+      auto node_addr = GetChildAddrProtected(old_parent, meta);
       if (old_idx == split_index) {
         // insert a split left child
         const auto left_addr_uintptr = reinterpret_cast<uintptr_t>(left_addr);
@@ -351,7 +357,7 @@ class InternalNode : public BaseNode<Key, Payload, Compare>
       auto meta = old_parent->GetMetadata(old_idx);
       auto key = CastKey<Key>(old_parent->GetKeyAddr(meta));
       auto key_length = meta.GetKeyLength();
-      auto node_addr = old_parent->GetChildAddrProtected(meta);
+      auto node_addr = GetChildAddrProtected(old_parent, meta);
       if (old_idx == deleted_index) {
         // skip a deleted node and insert a merged node
         meta = old_parent->GetMetadata(++old_idx);
