@@ -27,6 +27,7 @@
 
 #include "metadata.hpp"
 #include "mwcas/mwcas_descriptor.hpp"
+#include "record.hpp"
 #include "status_word.hpp"
 
 namespace dbgroup::index::bztree
@@ -37,6 +38,8 @@ using dbgroup::atomic::mwcas::ReadMwCASField;
 template <class Key, class Payload, class Compare = std::less<Key>>
 class alignas(kCacheLineSize) BaseNode
 {
+  using Record_t = Record<Key, Payload>;
+
  protected:
   /*################################################################################################
    * Internal inherited variables
@@ -184,6 +187,16 @@ class alignas(kCacheLineSize) BaseNode
   {
     const auto offset = meta.GetOffset() + meta.GetKeyLength();
     return ShiftAddress(this, offset);
+  }
+
+  std::unique_ptr<Record_t>
+  GetRecord(const Metadata meta) const
+  {
+    const auto key_addr = this->GetKeyAddr(meta);
+    const auto key_length = meta.GetKeyLength();
+    const auto payload_length = meta.GetPayloadLength();
+
+    return Record_t::Create(key_addr, key_length, payload_length);
   }
 
   void

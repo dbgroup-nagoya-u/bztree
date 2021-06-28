@@ -610,7 +610,7 @@ class BzTree
     const auto guard = gc_.CreateEpochGuard();
 
     auto leaf_node = SearchLeafNode(&key, true).second;
-    auto [rc, payload] = leaf_node->Read(key);
+    auto [rc, payload] = LeafNode_t::Read(leaf_node, key);
     if (rc == NodeReturnCode::kSuccess) {
       return std::pair{ReturnCode::kSuccess, std::move(payload)};
     } else {

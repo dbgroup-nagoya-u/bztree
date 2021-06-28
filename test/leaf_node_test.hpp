@@ -31,6 +31,7 @@ class LeafNodeFixture : public testing::Test
  public:
   using NodeReturnCode = BaseNode<Key, Payload, Compare>::NodeReturnCode;
   using Record_t = Record<Key, Payload>;
+  using BaseNode_t = BaseNode<Key, Payload, Compare>;
   using LeafNode_t = LeafNode<Key, Payload, Compare>;
 
   static constexpr size_t kNodeSize = 256;
@@ -168,7 +169,7 @@ TEST_F(LeafNodeFixture, New_EmptyNode_CorrectlyInitialized)
 
 TEST_F(LeafNodeFixture, Read_NotPresentKey_ReadFailed)
 {
-  std::tie(rc, record) = node->Read(keys[1]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
@@ -408,13 +409,13 @@ TEST_F(LeafNodeFixture, Write_TwoKeys_ReadWrittenValues)
   node->Write(keys[2], kKeyLength, payloads[2], kPayloadLength);
 
   // read 1st input value
-  std::tie(rc, record) = node->Read(keys[1]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[1], record->GetPayload());
 
   // read 2nd input value
-  std::tie(rc, record) = node->Read(keys[2]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[2]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[2], record->GetPayload());
@@ -425,7 +426,7 @@ TEST_F(LeafNodeFixture, Write_DuplicateKey_ReadLatestValue)
   node->Write(keys[1], kKeyLength, payloads[1], kPayloadLength);
   node->Write(keys[1], kKeyLength, payloads[2], kPayloadLength);
 
-  std::tie(rc, record) = node->Read(keys[1]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[2], record->GetPayload());
@@ -468,7 +469,7 @@ TEST_F(LeafNodeFixture, Write_ConsolidatedNode_ReadWrittenValue)
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
   node->Write(keys[11], kKeyLength, payloads[11], kPayloadLength);
-  std::tie(rc, record) = node->Read(keys[11]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[11]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[11], record->GetPayload());
@@ -503,13 +504,13 @@ TEST_F(LeafNodeFixture, Insert_TwoKeys_ReadInsertedValues)
   node->Insert(keys[2], kKeyLength, payloads[2], kPayloadLength);
 
   // read 1st input value
-  std::tie(rc, record) = node->Read(keys[1]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[1], record->GetPayload());
 
   // read 2nd input value
-  std::tie(rc, record) = node->Read(keys[2]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[2]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[2], record->GetPayload());
@@ -570,7 +571,7 @@ TEST_F(LeafNodeFixture, Insert_ConsolidatedNode_ReadInsertedValue)
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
   node->Insert(keys[11], kKeyLength, payloads[11], kPayloadLength);
-  std::tie(rc, record) = node->Read(keys[11]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[11]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[11], record->GetPayload());
@@ -613,7 +614,7 @@ TEST_F(LeafNodeFixture, Update_SingleKey_ReadUpdatedValue)
   node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
   node->Update(keys[1], kKeyLength, payloads[2], kPayloadLength);
 
-  std::tie(rc, record) = node->Read(keys[1]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[2], record->GetPayload());
@@ -683,7 +684,7 @@ TEST_F(LeafNodeFixture, Update_ConsolidatedNode_ReadUpdatedValue)
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
   node->Update(keys[1], kKeyLength, payloads[11], kPayloadLength);
-  std::tie(rc, record) = node->Read(keys[1]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[11], record->GetPayload());
@@ -756,7 +757,7 @@ TEST_F(LeafNodeFixture, Delete_PresentKey_ReadFailed)
   node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
   node->Delete(keys[1], kKeyLength);
 
-  std::tie(rc, record) = node->Read(keys[1]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
@@ -1001,7 +1002,7 @@ TEST_F(LeafNodeFixture, Split_EquallyDivided_NodesHaveCorrectKeyPayloads)
   // check a split left node
   size_t index = 0;
   for (; index < left_record_count; ++index) {
-    std::tie(rc, record) = left_node->Read(keys[index]);
+    std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(left_node), keys[index]);
 
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index], record->GetPayload());
@@ -1009,7 +1010,7 @@ TEST_F(LeafNodeFixture, Split_EquallyDivided_NodesHaveCorrectKeyPayloads)
 
   // check a split right node
   for (; index < expected_record_count; ++index) {
-    std::tie(rc, record) = right_node->Read(keys[index]);
+    std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(right_node), keys[index]);
 
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index], record->GetPayload());
@@ -1071,7 +1072,7 @@ TEST_F(LeafNodeFixture, Merge_LeftSiblingNode_NodeHasCorrectKeyPayloads)
 
   // check keys and payloads
   for (size_t index = 3; index <= 4; ++index) {
-    std::tie(rc, record) = node->Read(keys[index]);
+    std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
 
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index], record->GetPayload());
@@ -1093,7 +1094,7 @@ TEST_F(LeafNodeFixture, Merge_RightSiblingNode_NodeHasCorrectKeyPayloads)
 
   // check keys and payloads
   for (size_t index = 2; index <= 3; ++index) {
-    std::tie(rc, record) = node->Read(keys[index]);
+    std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
 
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index], record->GetPayload());

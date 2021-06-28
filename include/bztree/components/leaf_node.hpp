@@ -215,16 +215,6 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * Public setter/getter
    *##############################################################################################*/
 
-  std::unique_ptr<Record_t>
-  GetRecord(const Metadata meta) const
-  {
-    const auto key_addr = this->GetKeyAddr(meta);
-    const auto key_length = meta.GetKeyLength();
-    const auto payload_length = meta.GetPayloadLength();
-
-    return Record_t::Create(key_addr, key_length, payload_length);
-  }
-
   /*################################################################################################
    * Read operations
    *##############################################################################################*/
@@ -237,16 +227,18 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * @param key_length
    * @return std::pair<NodeReturnCode, std::unique_ptr<std::byte[]>>
    */
-  std::pair<NodeReturnCode, std::unique_ptr<Record_t>>
-  Read(const Key &key)
+  static constexpr std::pair<NodeReturnCode, std::unique_ptr<Record_t>>
+  Read(  //
+      const BaseNode_t *node,
+      const Key &key)
   {
-    const auto status = this->GetStatusWordProtected();
-    const auto [existence, index] = SearchMetadataToRead(this, key, status.GetRecordCount());
+    const auto status = node->GetStatusWordProtected();
+    const auto [existence, index] = SearchMetadataToRead(node, key, status.GetRecordCount());
     if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
       return {NodeReturnCode::kKeyNotExist, nullptr};
     } else {
-      const auto meta = this->GetMetadataProtected(index);
-      return {NodeReturnCode::kSuccess, GetRecord(meta)};
+      const auto meta = node->GetMetadataProtected(index);
+      return {NodeReturnCode::kSuccess, node->GetRecord(meta)};
     }
   }
 
@@ -312,7 +304,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     scan_results.reserve(meta_arr.size());
     for (auto &&[key, meta] : meta_arr) {
       if (meta.IsVisible()) {
-        scan_results.emplace_back(GetRecord(meta));
+        scan_results.emplace_back(this->GetRecord(meta));
       }
     }
     return {NodeReturnCode::kSuccess, std::move(scan_results)};

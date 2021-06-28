@@ -34,6 +34,7 @@ class LeafNodeFixture : public testing::Test
  public:
   using NodeReturnCode = BaseNode<Key, Payload, Compare>::NodeReturnCode;
   using Record_t = Record<Key, Payload>;
+  using BaseNode_t = BaseNode<Key, Payload, Compare>;
   using LeafNode_t = LeafNode<Key, Payload, Compare>;
   using RunResult = std::pair<std::vector<size_t>, std::vector<size_t>>;
 
@@ -189,7 +190,7 @@ TEST_F(LeafNodeFixture, Write_MultiThreads_ReadWrittenPayloads)
 
   EXPECT_EQ(kWriteNumPerThread * kThreadNum, written_indexes.size());
   for (auto&& index : written_indexes) {
-    auto [rc, record] = node->Read(keys[index]);
+    auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index], record->GetPayload());
   }
@@ -203,12 +204,12 @@ TEST_F(LeafNodeFixture, Insert_MultiThreads_ReadWrittenPayloads)
   EXPECT_LE(written_indexes.size(), kWriteNumPerThread);
   EXPECT_EQ(kWriteNumPerThread * kThreadNum, written_indexes.size() + failed_indexes.size());
   for (auto&& index : written_indexes) {
-    auto [rc, record] = node->Read(keys[index]);
+    auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index], record->GetPayload());
   }
   for (auto&& index : failed_indexes) {
-    auto [rc, record] = node->Read(keys[index]);
+    auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index], record->GetPayload());
   }
@@ -223,7 +224,7 @@ TEST_F(LeafNodeFixture, Update_MultiThreads_ReadWrittenPayloads)
 
   EXPECT_EQ(kWriteNumPerThread * kThreadNum * 0.5, written_indexes.size());
   for (auto&& index : written_indexes) {
-    auto [rc, record] = node->Read(keys[index]);
+    auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index + 1], record->GetPayload());
   }
@@ -238,7 +239,7 @@ TEST_F(LeafNodeFixture, Delete_MultiThreads_KeysDeleted)
 
   EXPECT_EQ(kWriteNumPerThread * kThreadNum * 0.5, written_indexes.size() + failed_indexes.size());
   for (auto&& index : written_indexes) {
-    auto [rc, record] = node->Read(keys[index]);
+    auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
     EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
   }
 }
