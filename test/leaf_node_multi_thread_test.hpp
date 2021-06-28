@@ -100,8 +100,8 @@ class LeafNodeFixture : public testing::Test
                                                kPayloadLength);
           break;
         case kUpdate:
-          std::tie(rc, s) =
-              node->Update(keys[index], kKeyLength, payloads[index + 1], kPayloadLength);
+          std::tie(rc, s) = LeafNode_t::Update(node.get(), keys[index], kKeyLength,
+                                               payloads[index + 1], kPayloadLength);
           break;
         case kDelete:
           std::tie(rc, s) = node->Delete(keys[index], kKeyLength);
@@ -112,7 +112,7 @@ class LeafNodeFixture : public testing::Test
               LeafNode_t::Insert(node.get(), keys[0], kKeyLength, payloads[0], kPayloadLength);
               break;
             case 1:
-              node->Update(keys[0], kKeyLength, payloads[1], kPayloadLength);
+              LeafNode_t::Update(node.get(), keys[0], kKeyLength, payloads[1], kPayloadLength);
               break;
             default:
               node->Delete(keys[0], kKeyLength);
