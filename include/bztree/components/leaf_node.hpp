@@ -405,8 +405,9 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * @param descriptor_pool
    * @return NodeReturnCode
    */
-  std::pair<NodeReturnCode, StatusWord>
+  static constexpr std::pair<NodeReturnCode, StatusWord>
   Insert(  //
+      BaseNode_t *node,
       const Key &key,
       const size_t key_length,
       const Payload &payload,
@@ -427,20 +428,20 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
      *--------------------------------------------------------------------------------------------*/
     bool mwcas_success;
     do {
-      current_status = this->GetStatusWordProtected();
+      current_status = node->GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
       record_count = current_status.GetRecordCount();
       if (uniqueness != KeyExistence::kUncertain) {
-        uniqueness = CheckUniqueness(this, key, record_count, index_epoch);
+        uniqueness = CheckUniqueness(node, key, record_count, index_epoch);
         if (uniqueness == KeyExistence::kExist) {
           return {NodeReturnCode::kKeyExist, current_status};
         }
       }
 
-      if (current_status.GetOccupiedSize() + kWordLength + total_length > this->GetNodeSize()) {
+      if (current_status.GetOccupiedSize() + kWordLength + total_length > node->GetNodeSize()) {
         return {NodeReturnCode::kNoSpace, StatusWord{}};
       }
 
@@ -449,8 +450,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
-      this->SetStatusForMwCAS(desc, current_status, new_status);
-      this->SetMetadataForMwCAS(desc, record_count, Metadata{}, inserting_meta);
+      node->SetStatusForMwCAS(desc, current_status, new_status);
+      node->SetMetadataForMwCAS(desc, record_count, Metadata{}, inserting_meta);
       mwcas_success = desc.MwCAS();
 
       if (!mwcas_success) {
@@ -463,35 +464,35 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
      *--------------------------------------------------------------------------------------------*/
 
     // insert a record
-    auto offset = this->GetNodeSize() - current_status.GetBlockSize();
-    offset = this->SetRecord(key, key_length, payload, payload_length, offset);
+    auto offset = node->GetNodeSize() - current_status.GetBlockSize();
+    offset = node->SetRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = inserting_meta.SetRecordInfo(offset, key_length, total_length);
 
     // recheck uniqueness
     while (uniqueness == KeyExistence::kUncertain) {
-      uniqueness = CheckUniqueness(this, key, record_count, index_epoch);
+      uniqueness = CheckUniqueness(node, key, record_count, index_epoch);
       if (uniqueness == KeyExistence::kExist) {
         // delete an inserted record
-        this->SetMetadataByCAS(record_count, inserting_meta.UpdateOffset(0));
+        node->SetMetadataByCAS(record_count, inserting_meta.UpdateOffset(0));
         return {NodeReturnCode::kKeyExist, new_status};
       }
     }
 
     // check concurrent SMOs
     do {
-      current_status = this->GetStatusWordProtected();
+      current_status = node->GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         // delete an inserted record
-        this->SetMetadataByCAS(record_count, inserting_meta.UpdateOffset(0));
+        node->SetMetadataByCAS(record_count, inserting_meta.UpdateOffset(0));
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
       // perform MwCAS to complete an insert
       auto desc = MwCASDescriptor{};
-      this->SetStatusForMwCAS(desc, current_status, current_status);
-      this->SetMetadataForMwCAS(desc, record_count, inserting_meta, inserted_meta);
+      node->SetStatusForMwCAS(desc, current_status, current_status);
+      node->SetMetadataForMwCAS(desc, record_count, inserting_meta, inserted_meta);
       mwcas_success = desc.MwCAS();
     } while (!mwcas_success);
 

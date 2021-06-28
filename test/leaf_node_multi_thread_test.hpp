@@ -96,7 +96,8 @@ class LeafNodeFixture : public testing::Test
                                               kPayloadLength);
           break;
         case kInsert:
-          std::tie(rc, s) = node->Insert(keys[index], kKeyLength, payloads[index], kPayloadLength);
+          std::tie(rc, s) = LeafNode_t::Insert(node.get(), keys[index], kKeyLength, payloads[index],
+                                               kPayloadLength);
           break;
         case kUpdate:
           std::tie(rc, s) =
@@ -108,7 +109,7 @@ class LeafNodeFixture : public testing::Test
         case kMixed:
           switch (index % 3) {
             case 0:
-              node->Insert(keys[0], kKeyLength, payloads[0], kPayloadLength);
+              LeafNode_t::Insert(node.get(), keys[0], kKeyLength, payloads[0], kPayloadLength);
               break;
             case 1:
               node->Update(keys[0], kKeyLength, payloads[1], kPayloadLength);

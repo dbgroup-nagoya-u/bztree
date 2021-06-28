@@ -769,7 +769,7 @@ class BzTree
     do {
       leaf_node = SearchLeafNode(&key, true).second;
       std::tie(rc, node_status) =
-          leaf_node->Insert(key, key_length, payload, payload_length, index_epoch_);
+          LeafNode_t::Insert(leaf_node, key, key_length, payload, payload_length, index_epoch_);
     } while (rc != NodeReturnCode::kSuccess && rc != NodeReturnCode::kKeyExist);
 
     if (NeedConsolidation(node_status)) {
