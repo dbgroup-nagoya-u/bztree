@@ -54,7 +54,7 @@ class Record
    *
    * @param src_addr a source address to copy record data
    */
-  explicit Record(const void* src_addr)
+  constexpr explicit Record(const void* src_addr)
   {
     // keys and payloads must be trivially copyable
     static_assert(std::is_trivially_copyable_v<Key>);
@@ -88,7 +88,7 @@ class Record
    * @param payload_length the length of a payload
    * @return a \c std::unique_ptr of \c Record
    */
-  static std::unique_ptr<Record>
+  static constexpr std::unique_ptr<Record>
   Create(  //
       const void* src_addr,
       [[maybe_unused]] const size_t key_length,
@@ -170,7 +170,7 @@ class Record<Key*, Payload>
    *
    * @param src_addr a source address to copy record data
    */
-  Record(  //
+  constexpr Record(  //
       const void* src_addr,
       const size_t key_length)
       : key_length_{key_length}
@@ -208,7 +208,7 @@ class Record<Key*, Payload>
    * @param payload_length the length of a payload
    * @return a \c std::unique_ptr of \c Record
    */
-  static std::unique_ptr<Record>
+  static constexpr std::unique_ptr<Record>
   Create(  //
       const void* src_addr,
       const size_t key_length,
@@ -291,7 +291,7 @@ class Record<Key, Payload*>
    *
    * @param src_addr a source address to copy record data
    */
-  Record(  //
+  constexpr Record(  //
       const void* src_addr,
       const size_t payload_length)
       : payload_length_{payload_length}
@@ -329,7 +329,7 @@ class Record<Key, Payload*>
    * @param payload_length the length of a payload
    * @return a \c std::unique_ptr of \c Record
    */
-  static std::unique_ptr<Record>
+  static constexpr std::unique_ptr<Record>
   Create(  //
       const void* src_addr,
       [[maybe_unused]] const size_t key_length,
@@ -415,7 +415,7 @@ class Record<Key*, Payload*>
    *
    * @param src_addr a source address to copy record data
    */
-  Record(  //
+  constexpr Record(  //
       const void* src_addr,
       const size_t key_length,
       const size_t payload_length)
@@ -451,7 +451,7 @@ class Record<Key*, Payload*>
    * @param payload_length the length of a payload
    * @return a \c std::unique_ptr of \c Record
    */
-  static std::unique_ptr<Record>
+  static constexpr std::unique_ptr<Record>
   Create(  //
       const void* src_addr,
       const size_t key_length,

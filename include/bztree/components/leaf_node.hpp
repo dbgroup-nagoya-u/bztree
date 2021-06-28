@@ -31,10 +31,11 @@
 namespace dbgroup::index::bztree
 {
 template <class Key, class Payload, class Compare = std::less<Key>>
-class LeafNode : public BaseNode<Key, Payload, Compare>
+class LeafNode
 {
-  using KeyExistence = typename BaseNode<Key, Payload, Compare>::KeyExistence;
-  using NodeReturnCode = typename BaseNode<Key, Payload, Compare>::NodeReturnCode;
+  using BaseNode_t = BaseNode<Key, Payload, Compare>;
+  using KeyExistence = typename BaseNode_t::KeyExistence;
+  using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
   using Record_t = Record<Key, Payload>;
 
  private:
@@ -45,7 +46,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
   struct PairComp {
     PairComp() {}
 
-    bool
+    constexpr bool
     operator()(  //
         const std::pair<Key, Metadata> &a,
         const std::pair<Key, Metadata> &b) const noexcept
@@ -57,7 +58,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
   struct PairEqual {
     PairEqual() {}
 
-    bool
+    constexpr bool
     operator()(  //
         const std::pair<Key, Metadata> &a,
         const std::pair<Key, Metadata> &b) const noexcept
@@ -67,25 +68,20 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
   };
 
   /*################################################################################################
-   * Internal constructors
-   *##############################################################################################*/
-
-  explicit LeafNode(const size_t node_size) : BaseNode<Key, Payload, Compare>(node_size, true) {}
-
-  /*################################################################################################
    * Internal utility functions
    *##############################################################################################*/
 
-  KeyExistence
+  static constexpr KeyExistence
   SearchUnsortedMetaToWrite(  //
+      const BaseNode_t *node,
       const Key &key,
       const int64_t begin_index,
       const int64_t sorted_count,
-      const size_t index_epoch) const
+      const size_t index_epoch)
   {
     // perform a linear search in revese order
     for (int64_t index = begin_index; index >= sorted_count; --index) {
-      const auto meta = this->GetMetadataProtected(index);
+      const auto meta = node->GetMetadataProtected(index);
       if (meta.IsInProgress()) {
         if (meta.GetOffset() == index_epoch) {
           return KeyExistence::kUncertain;
@@ -93,7 +89,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
         continue;  // failed record
       }
 
-      const auto target_key = CastKey<Key>(this->GetKeyAddr(meta));
+      const auto target_key = CastKey<Key>(node->GetKeyAddr(meta));
       if (IsEqual<Compare>(key, target_key)) {
         if (meta.IsVisible()) {
           return KeyExistence::kExist;
@@ -104,35 +100,37 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     return KeyExistence::kNotExist;
   }
 
-  KeyExistence
+  static constexpr KeyExistence
   CheckUniqueness(  //
+      const BaseNode_t *node,
       const Key &key,
       const int64_t record_count,
-      const size_t index_epoch) const
+      const size_t index_epoch)
   {
     const auto existence =
-        SearchUnsortedMetaToWrite(key, record_count - 1, this->GetSortedCount(), index_epoch);
+        SearchUnsortedMetaToWrite(node, key, record_count - 1, node->GetSortedCount(), index_epoch);
     if (existence == KeyExistence::kNotExist) {
       // there is no key in unsorted metadata, so search a sorted region
-      return this->SearchSortedMetadata(key, true).first;
+      return node->SearchSortedMetadata(key, true).first;
     } else {
       return existence;
     }
   }
 
-  std::pair<KeyExistence, size_t>
+  static constexpr std::pair<KeyExistence, size_t>
   SearchUnsortedMetaToRead(  //
+      const BaseNode_t *node,
       const Key &key,
       const int64_t end_index,
-      const int64_t record_count) const
+      const int64_t record_count)
   {
     for (int64_t index = record_count - 1; index >= end_index; --index) {
-      const auto meta = this->GetMetadataProtected(index);
+      const auto meta = node->GetMetadataProtected(index);
       if (meta.IsInProgress()) {
         continue;
       }
 
-      const auto target_key = CastKey<Key>(this->GetKeyAddr(meta));
+      const auto target_key = CastKey<Key>(node->GetKeyAddr(meta));
       if (IsEqual<Compare>(key, target_key)) {
         if (meta.IsVisible()) {
           return {KeyExistence::kExist, index};
@@ -143,24 +141,25 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     return {KeyExistence::kNotExist, 0};
   }
 
-  std::pair<KeyExistence, size_t>
+  static constexpr std::pair<KeyExistence, size_t>
   SearchMetadataToRead(  //
+      const BaseNode_t *node,
       const Key &key,
-      const size_t record_count) const
+      const size_t record_count)
   {
     const auto [existence, index] =
-        SearchUnsortedMetaToRead(key, this->GetSortedCount(), record_count);
+        SearchUnsortedMetaToRead(node, key, node->GetSortedCount(), record_count);
     if (existence == KeyExistence::kExist || existence == KeyExistence::kDeleted) {
       return {existence, index};
     } else {
-      return this->SearchSortedMetadata(key, true);
+      return node->SearchSortedMetadata(key, true);
     }
   }
 
-  static void
+  static constexpr void
   CopyRecordsViaMetadata(  //
-      LeafNode *copied_node,
-      const LeafNode *original_node,
+      BaseNode_t *copied_node,
+      const BaseNode_t *original_node,
       const typename std::vector<std::pair<Key, Metadata>>::const_iterator begin_iter,
       const typename std::vector<std::pair<Key, Metadata>>::const_iterator end_iter)
   {
@@ -176,50 +175,11 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
       const auto new_meta = meta.UpdateOffset(offset);
       copied_node->SetMetadata(record_count, new_meta);
     }
-    copied_node->status_ = StatusWord{}.AddRecordInfo(record_count, node_size - offset, 0);
-    copied_node->sorted_count_ = record_count;
+    copied_node->SetStatus(StatusWord{}.AddRecordInfo(record_count, node_size - offset, 0));
+    copied_node->SetSortedCount(record_count);
   }
 
  public:
-  /*################################################################################################
-   * Public constructor/destructor
-   *##############################################################################################*/
-
-  ~LeafNode() = default;
-
-  LeafNode(const LeafNode &) = delete;
-  LeafNode &operator=(const LeafNode &) = delete;
-  LeafNode(LeafNode &&) = default;
-  LeafNode &operator=(LeafNode &&) = default;
-
-  /*################################################################################################
-   * Public builders
-   *##############################################################################################*/
-
-  static LeafNode *
-  CreateEmptyNode(const size_t node_size)
-  {
-    assert((node_size % kWordLength) == 0);
-
-    auto page = calloc(1, node_size);
-    auto new_node = new (page) LeafNode{node_size};
-    return new_node;
-  }
-
-  /*################################################################################################
-   * Public setter/getter
-   *##############################################################################################*/
-
-  std::unique_ptr<Record_t>
-  GetRecord(const Metadata meta) const
-  {
-    const auto key_addr = this->GetKeyAddr(meta);
-    const auto key_length = meta.GetKeyLength();
-    const auto payload_length = meta.GetPayloadLength();
-
-    return Record_t::Create(key_addr, key_length, payload_length);
-  }
-
   /*################################################################################################
    * Read operations
    *##############################################################################################*/
@@ -232,16 +192,18 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * @param key_length
    * @return std::pair<NodeReturnCode, std::unique_ptr<std::byte[]>>
    */
-  std::pair<NodeReturnCode, std::unique_ptr<Record_t>>
-  Read(const Key &key)
+  static constexpr std::pair<NodeReturnCode, std::unique_ptr<Record_t>>
+  Read(  //
+      const BaseNode_t *node,
+      const Key &key)
   {
-    const auto status = this->GetStatusWordProtected();
-    const auto [existence, index] = SearchMetadataToRead(key, status.GetRecordCount());
+    const auto status = node->GetStatusWordProtected();
+    const auto [existence, index] = SearchMetadataToRead(node, key, status.GetRecordCount());
     if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
       return {NodeReturnCode::kKeyNotExist, nullptr};
     } else {
-      const auto meta = this->GetMetadataProtected(index);
-      return {NodeReturnCode::kSuccess, GetRecord(meta)};
+      const auto meta = node->GetMetadataProtected(index);
+      return {NodeReturnCode::kSuccess, node->GetRecord(meta)};
     }
   }
 
@@ -256,16 +218,17 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * @return std::pair<NodeReturnCode,
    *         std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>>>
    */
-  std::pair<NodeReturnCode, std::vector<std::unique_ptr<Record_t>>>
+  static constexpr std::pair<NodeReturnCode, std::vector<std::unique_ptr<Record_t>>>
   Scan(  //
+      const BaseNode_t *node,
       const Key *begin_key,
       const bool begin_is_closed,
       const Key *end_key,
       const bool end_is_closed)
   {
-    const auto status = this->GetStatusWordProtected();
+    const auto status = node->GetStatusWordProtected();
     const int64_t record_count = status.GetRecordCount();
-    const int64_t sorted_count = this->GetSortedCount();
+    const int64_t sorted_count = node->GetSortedCount();
 
     // gather valid (live or deleted) records
     std::vector<std::pair<Key, Metadata>> meta_arr;
@@ -273,8 +236,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
     // search unsorted metadata in reverse order
     for (int64_t index = record_count - 1; index >= sorted_count; --index) {
-      const auto meta = this->GetMetadataProtected(index);
-      const auto key = CastKey<Key>(this->GetKeyAddr(meta));
+      const auto meta = node->GetMetadataProtected(index);
+      const auto key = CastKey<Key>(node->GetKeyAddr(meta));
       if (IsInRange<Compare>(key, begin_key, begin_is_closed, end_key, end_is_closed)
           && (meta.IsVisible() || meta.IsDeleted())) {
         meta_arr.emplace_back(key, meta);
@@ -283,10 +246,10 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
     // search sorted metadata
     const auto begin_index =
-        (begin_key == nullptr) ? 0 : this->SearchSortedMetadata(*begin_key, begin_is_closed).second;
+        (begin_key == nullptr) ? 0 : node->SearchSortedMetadata(*begin_key, begin_is_closed).second;
     for (int64_t index = begin_index; index < sorted_count; ++index) {
-      const auto meta = this->GetMetadataProtected(index);
-      const auto key = CastKey<Key>(this->GetKeyAddr(meta));
+      const auto meta = node->GetMetadataProtected(index);
+      const auto key = CastKey<Key>(node->GetKeyAddr(meta));
       if (IsInRange<Compare>(key, begin_key, begin_is_closed, end_key, end_is_closed)) {
         meta_arr.emplace_back(key, meta);
         if (end_key != nullptr && end_is_closed && IsEqual<Compare>(key, *end_key)) {
@@ -307,7 +270,7 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
     scan_results.reserve(meta_arr.size());
     for (auto &&[key, meta] : meta_arr) {
       if (meta.IsVisible()) {
-        scan_results.emplace_back(GetRecord(meta));
+        scan_results.emplace_back(node->GetRecord(meta));
       }
     }
     return {NodeReturnCode::kSuccess, std::move(scan_results)};
@@ -328,8 +291,9 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * @param descriptor_pool
    * @return NodeReturnCode
    */
-  std::pair<NodeReturnCode, StatusWord>
+  static constexpr std::pair<NodeReturnCode, StatusWord>
   Write(  //
+      BaseNode_t *node,
       const Key &key,
       const size_t key_length,
       const Payload &payload,
@@ -347,12 +311,12 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
      *--------------------------------------------------------------------------------------------*/
     bool mwcas_success;
     do {
-      current_status = this->GetStatusWordProtected();
+      current_status = node->GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
-      if (current_status.GetOccupiedSize() + kWordLength + total_length > this->GetNodeSize()) {
+      if (current_status.GetOccupiedSize() + kWordLength + total_length > node->GetNodeSize()) {
         return {NodeReturnCode::kNoSpace, StatusWord{}};
       }
 
@@ -362,8 +326,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
-      this->SetStatusForMwCAS(desc, current_status, new_status);
-      this->SetMetadataForMwCAS(desc, record_count, Metadata{}, inserting_meta);
+      node->SetStatusForMwCAS(desc, current_status, new_status);
+      node->SetMetadataForMwCAS(desc, record_count, Metadata{}, inserting_meta);
       mwcas_success = desc.MwCAS();
     } while (!mwcas_success);
 
@@ -372,23 +336,23 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
      *--------------------------------------------------------------------------------------------*/
 
     // insert a record
-    auto offset = this->GetNodeSize() - current_status.GetBlockSize();
-    offset = this->SetRecord(key, key_length, payload, payload_length, offset);
+    auto offset = node->GetNodeSize() - current_status.GetBlockSize();
+    offset = node->SetRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = inserting_meta.SetRecordInfo(offset, key_length, total_length);
 
     // check conflicts (concurrent SMOs)
     do {
-      current_status = this->GetStatusWordProtected();
+      current_status = node->GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
       // perform MwCAS to complete a write
       auto desc = MwCASDescriptor{};
-      this->SetStatusForMwCAS(desc, current_status, current_status);
-      this->SetMetadataForMwCAS(desc, record_count, inserting_meta, inserted_meta);
+      node->SetStatusForMwCAS(desc, current_status, current_status);
+      node->SetMetadataForMwCAS(desc, record_count, inserting_meta, inserted_meta);
       mwcas_success = desc.MwCAS();
     } while (!mwcas_success);
 
@@ -406,8 +370,9 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * @param descriptor_pool
    * @return NodeReturnCode
    */
-  std::pair<NodeReturnCode, StatusWord>
+  static constexpr std::pair<NodeReturnCode, StatusWord>
   Insert(  //
+      BaseNode_t *node,
       const Key &key,
       const size_t key_length,
       const Payload &payload,
@@ -428,20 +393,20 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
      *--------------------------------------------------------------------------------------------*/
     bool mwcas_success;
     do {
-      current_status = this->GetStatusWordProtected();
+      current_status = node->GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
       record_count = current_status.GetRecordCount();
       if (uniqueness != KeyExistence::kUncertain) {
-        uniqueness = CheckUniqueness(key, record_count, index_epoch);
+        uniqueness = CheckUniqueness(node, key, record_count, index_epoch);
         if (uniqueness == KeyExistence::kExist) {
           return {NodeReturnCode::kKeyExist, current_status};
         }
       }
 
-      if (current_status.GetOccupiedSize() + kWordLength + total_length > this->GetNodeSize()) {
+      if (current_status.GetOccupiedSize() + kWordLength + total_length > node->GetNodeSize()) {
         return {NodeReturnCode::kNoSpace, StatusWord{}};
       }
 
@@ -450,8 +415,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
-      this->SetStatusForMwCAS(desc, current_status, new_status);
-      this->SetMetadataForMwCAS(desc, record_count, Metadata{}, inserting_meta);
+      node->SetStatusForMwCAS(desc, current_status, new_status);
+      node->SetMetadataForMwCAS(desc, record_count, Metadata{}, inserting_meta);
       mwcas_success = desc.MwCAS();
 
       if (!mwcas_success) {
@@ -464,35 +429,35 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
      *--------------------------------------------------------------------------------------------*/
 
     // insert a record
-    auto offset = this->GetNodeSize() - current_status.GetBlockSize();
-    offset = this->SetRecord(key, key_length, payload, payload_length, offset);
+    auto offset = node->GetNodeSize() - current_status.GetBlockSize();
+    offset = node->SetRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = inserting_meta.SetRecordInfo(offset, key_length, total_length);
 
     // recheck uniqueness
     while (uniqueness == KeyExistence::kUncertain) {
-      uniqueness = CheckUniqueness(key, record_count, index_epoch);
+      uniqueness = CheckUniqueness(node, key, record_count, index_epoch);
       if (uniqueness == KeyExistence::kExist) {
         // delete an inserted record
-        this->SetMetadataByCAS(record_count, inserting_meta.UpdateOffset(0));
+        node->SetMetadataByCAS(record_count, inserting_meta.UpdateOffset(0));
         return {NodeReturnCode::kKeyExist, new_status};
       }
     }
 
     // check concurrent SMOs
     do {
-      current_status = this->GetStatusWordProtected();
+      current_status = node->GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         // delete an inserted record
-        this->SetMetadataByCAS(record_count, inserting_meta.UpdateOffset(0));
+        node->SetMetadataByCAS(record_count, inserting_meta.UpdateOffset(0));
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
       // perform MwCAS to complete an insert
       auto desc = MwCASDescriptor{};
-      this->SetStatusForMwCAS(desc, current_status, current_status);
-      this->SetMetadataForMwCAS(desc, record_count, inserting_meta, inserted_meta);
+      node->SetStatusForMwCAS(desc, current_status, current_status);
+      node->SetMetadataForMwCAS(desc, record_count, inserting_meta, inserted_meta);
       mwcas_success = desc.MwCAS();
     } while (!mwcas_success);
 
@@ -510,8 +475,9 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * @param descriptor_pool
    * @return NodeReturnCode
    */
-  std::pair<NodeReturnCode, StatusWord>
+  static constexpr std::pair<NodeReturnCode, StatusWord>
   Update(  //
+      BaseNode_t *node,
       const Key &key,
       const size_t key_length,
       const Payload &payload,
@@ -529,30 +495,30 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
      *--------------------------------------------------------------------------------------------*/
     bool mwcas_success;
     do {
-      current_status = this->GetStatusWordProtected();
+      current_status = node->GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
       record_count = current_status.GetRecordCount();
-      const auto [existence, updated_index] = SearchMetadataToRead(key, record_count);
+      const auto [existence, updated_index] = SearchMetadataToRead(node, key, record_count);
       if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
         return {NodeReturnCode::kKeyNotExist, current_status};
       }
 
-      if (current_status.GetOccupiedSize() + kWordLength + total_length > this->GetNodeSize()) {
+      if (current_status.GetOccupiedSize() + kWordLength + total_length > node->GetNodeSize()) {
         return {NodeReturnCode::kNoSpace, StatusWord{}};
       }
 
       // prepare new status for MwCAS
-      const auto updated_meta = this->GetMetadataProtected(updated_index);
+      const auto updated_meta = node->GetMetadataProtected(updated_index);
       const auto deleted_size = kWordLength + updated_meta.GetTotalLength();
       const auto new_status = current_status.AddRecordInfo(1, total_length, deleted_size);
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
-      this->SetStatusForMwCAS(desc, current_status, new_status);
-      this->SetMetadataForMwCAS(desc, record_count, Metadata{}, inserting_meta);
+      node->SetStatusForMwCAS(desc, current_status, new_status);
+      node->SetMetadataForMwCAS(desc, record_count, Metadata{}, inserting_meta);
       mwcas_success = desc.MwCAS();
     } while (!mwcas_success);
 
@@ -561,23 +527,23 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
      *--------------------------------------------------------------------------------------------*/
 
     // insert a record
-    auto offset = this->GetNodeSize() - current_status.GetBlockSize();
-    offset = this->SetRecord(key, key_length, payload, payload_length, offset);
+    auto offset = node->GetNodeSize() - current_status.GetBlockSize();
+    offset = node->SetRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = inserting_meta.SetRecordInfo(offset, key_length, total_length);
 
     // check conflicts (concurrent SMOs)
     do {
-      current_status = this->GetStatusWordProtected();
+      current_status = node->GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
       // perform MwCAS to complete an update
       auto desc = MwCASDescriptor{};
-      this->SetStatusForMwCAS(desc, current_status, current_status);
-      this->SetMetadataForMwCAS(desc, record_count, inserting_meta, inserted_meta);
+      node->SetStatusForMwCAS(desc, current_status, current_status);
+      node->SetMetadataForMwCAS(desc, record_count, inserting_meta, inserted_meta);
       mwcas_success = desc.MwCAS();
     } while (!mwcas_success);
 
@@ -593,8 +559,9 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * @param descriptor_pool
    * @return NodeReturnCode
    */
-  std::pair<NodeReturnCode, StatusWord>
+  static constexpr std::pair<NodeReturnCode, StatusWord>
   Delete(  //
+      BaseNode_t *node,
       const Key &key,
       const size_t key_length)
   {
@@ -603,19 +570,19 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
     bool mwcas_success;
     do {
-      const auto current_status = this->GetStatusWordProtected();
+      const auto current_status = node->GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
       const auto record_count = current_status.GetRecordCount();
-      const auto [existence, index] = SearchMetadataToRead(key, record_count);
+      const auto [existence, index] = SearchMetadataToRead(node, key, record_count);
       if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
         return {NodeReturnCode::kKeyNotExist, current_status};
       }
 
       // delete payload infomation from metadata
-      const auto current_meta = this->GetMetadataProtected(index);
+      const auto current_meta = node->GetMetadataProtected(index);
       const auto deleted_meta = current_meta.DeleteRecordInfo();
 
       // prepare new status
@@ -624,8 +591,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
-      this->SetStatusForMwCAS(desc, current_status, new_status);
-      this->SetMetadataForMwCAS(desc, index, current_meta, deleted_meta);
+      node->SetStatusForMwCAS(desc, current_status, new_status);
+      node->SetMetadataForMwCAS(desc, index, current_meta, deleted_meta);
       mwcas_success = desc.MwCAS();
     } while (!mwcas_success);
 
@@ -636,53 +603,53 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * Public structure modification operations
    *##############################################################################################*/
 
-  static LeafNode *
+  static constexpr BaseNode_t *
   Consolidate(  //
-      const LeafNode *target_node,
+      const BaseNode_t *node,
       const std::vector<std::pair<Key, Metadata>> &live_meta)
   {
     // create a new node and copy records
-    auto new_node = CreateEmptyNode(target_node->GetNodeSize());
-    CopyRecordsViaMetadata(new_node, target_node, live_meta.begin(), live_meta.end());
+    auto new_node = BaseNode_t::CreateEmptyNode(node->GetNodeSize(), true);
+    CopyRecordsViaMetadata(new_node, node, live_meta.begin(), live_meta.end());
 
     return new_node;
   }
 
-  static std::pair<LeafNode *, LeafNode *>
+  static constexpr std::pair<BaseNode_t *, BaseNode_t *>
   Split(  //
-      const LeafNode *target_node,
+      const BaseNode_t *node,
       const std::vector<std::pair<Key, Metadata>> &sorted_meta,
       const size_t left_record_count)
   {
-    const auto node_size = target_node->GetNodeSize();
+    const auto node_size = node->GetNodeSize();
     const auto split_iter = sorted_meta.begin() + left_record_count;
 
     // create a split left node
-    auto left_node = CreateEmptyNode(node_size);
-    CopyRecordsViaMetadata(left_node, target_node, sorted_meta.begin(), split_iter);
+    auto left_node = BaseNode_t::CreateEmptyNode(node_size, true);
+    CopyRecordsViaMetadata(left_node, node, sorted_meta.begin(), split_iter);
 
     // create a split right node
-    auto right_node = CreateEmptyNode(node_size);
-    CopyRecordsViaMetadata(right_node, target_node, split_iter, sorted_meta.end());
+    auto right_node = BaseNode_t::CreateEmptyNode(node_size, true);
+    CopyRecordsViaMetadata(right_node, node, split_iter, sorted_meta.end());
 
     return {left_node, right_node};
   }
 
-  static LeafNode *
+  static constexpr BaseNode_t *
   Merge(  //
-      const LeafNode *target_node,
-      const std::vector<std::pair<Key, Metadata>> &this_meta,
-      const LeafNode *sibling_node,
+      const BaseNode_t *target_node,
+      const std::vector<std::pair<Key, Metadata>> &target_meta,
+      const BaseNode_t *sibling_node,
       const std::vector<std::pair<Key, Metadata>> &sibling_meta,
       const bool sibling_is_left)
   {
     // create a merged node
-    auto merged_node = CreateEmptyNode(target_node->GetNodeSize());
+    auto merged_node = BaseNode_t::CreateEmptyNode(target_node->GetNodeSize(), true);
     if (sibling_is_left) {
       CopyRecordsViaMetadata(merged_node, sibling_node, sibling_meta.begin(), sibling_meta.end());
-      CopyRecordsViaMetadata(merged_node, target_node, this_meta.begin(), this_meta.end());
+      CopyRecordsViaMetadata(merged_node, target_node, target_meta.begin(), target_meta.end());
     } else {
-      CopyRecordsViaMetadata(merged_node, target_node, this_meta.begin(), this_meta.end());
+      CopyRecordsViaMetadata(merged_node, target_node, target_meta.begin(), target_meta.end());
       CopyRecordsViaMetadata(merged_node, sibling_node, sibling_meta.begin(), sibling_meta.end());
     }
 
@@ -693,11 +660,11 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * Public utility functions
    *##############################################################################################*/
 
-  std::vector<std::pair<Key, Metadata>>
-  GatherSortedLiveMetadata() const
+  static constexpr std::vector<std::pair<Key, Metadata>>
+  GatherSortedLiveMetadata(const BaseNode_t *node)
   {
-    const auto record_count = this->GetStatusWord().GetRecordCount();
-    const int64_t sorted_count = this->GetSortedCount();
+    const auto record_count = node->GetStatusWord().GetRecordCount();
+    const int64_t sorted_count = node->GetSortedCount();
 
     // gather valid (live or deleted) records
     std::vector<std::pair<Key, Metadata>> meta_arr;
@@ -705,9 +672,9 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
     // search unsorted metadata in reverse order
     for (int64_t index = record_count - 1; index >= sorted_count; --index) {
-      const auto meta = this->GetMetadataProtected(index);
+      const auto meta = node->GetMetadataProtected(index);
       if (meta.IsVisible() || meta.IsDeleted()) {
-        const auto key = CastKey<Key>(this->GetKeyAddr(meta));
+        const auto key = CastKey<Key>(node->GetKeyAddr(meta));
         meta_arr.emplace_back(key, meta);
       } else {
         // there is a key, but it is in inserting or corrupted.
@@ -717,8 +684,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
     // search sorted metadata
     for (int64_t index = 0; index < sorted_count; ++index) {
-      const auto meta = this->GetMetadataProtected(index);
-      const auto key = CastKey<Key>(this->GetKeyAddr(meta));
+      const auto meta = node->GetMetadataProtected(index);
+      const auto key = CastKey<Key>(node->GetKeyAddr(meta));
       meta_arr.emplace_back(key, meta);
     }
 

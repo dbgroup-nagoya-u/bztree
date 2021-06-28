@@ -49,13 +49,13 @@ class BaseNodeFixture : public testing::Test
   Key key_null = 0;          // null key must have 8 bytes to fill a node
   Payload payload_null = 0;  // null payload must have 8 bytes to fill a node
 
-  std::unique_ptr<LeafNode_t> node;
+  std::unique_ptr<BaseNode_t> node;
 
  protected:
   void
   SetUp() override
   {
-    node.reset(LeafNode_t::CreateEmptyNode(kNodeSize));
+    node.reset(BaseNode_t::CreateEmptyNode(kNodeSize, true));
 
     for (size_t index = 0; index < kKeyNumForTest; index++) {
       keys[index] = index + 1;
@@ -70,35 +70,35 @@ class BaseNodeFixture : public testing::Test
 
   void
   WriteNullKey(  //
-      LeafNode_t* target_node,
+      BaseNode_t* target_node,
       const size_t write_num)
   {
     for (size_t index = 0; index < write_num; ++index) {
-      target_node->Write(key_null, kKeyLength, payload_null, kPayloadLength);
+      LeafNode_t::Write(target_node, key_null, kKeyLength, payload_null, kPayloadLength);
     }
   }
 
   void
   WriteOrderedKeys(  //
-      LeafNode_t* target_node,
+      BaseNode_t* target_node,
       const size_t begin_index,
       const size_t end_index)
   {
     assert(end_index < kKeyNumForTest);
 
     for (size_t index = begin_index; index <= end_index; ++index) {
-      target_node->Write(keys[index], kKeyLength, payloads[index], kPayloadLength);
+      LeafNode_t::Write(target_node, keys[index], kKeyLength, payloads[index], kPayloadLength);
     }
   }
 
-  LeafNode_t*
+  BaseNode_t*
   CreateSortedLeafNodeWithOrderedKeys(  //
       const size_t begin_index,
       const size_t end_index)
   {
-    auto tmp_leaf_node = LeafNode_t::CreateEmptyNode(kNodeSize);
+    auto tmp_leaf_node = BaseNode_t::CreateEmptyNode(kNodeSize, true);
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
-    auto tmp_meta = tmp_leaf_node->GatherSortedLiveMetadata();
+    auto tmp_meta = LeafNode_t::GatherSortedLiveMetadata(tmp_leaf_node);
     return LeafNode_t::Consolidate(tmp_leaf_node, tmp_meta);
   }
 };
@@ -174,14 +174,14 @@ TEST_F(BaseNodeFixture, SearchSortedMeta_SearchPresentKeyWithOpenedRange_FindNex
 TEST_F(BaseNodeFixture, SearchSortedMeta_SearchNotPresentKey_FindNextIndex)
 {
   // prepare a target node
-  auto tmp_node = std::unique_ptr<LeafNode_t>(LeafNode_t::CreateEmptyNode(kNodeSize));
-  tmp_node->Write(keys[1], kKeyLength, payloads[1], kPayloadLength);
-  tmp_node->Write(keys[2], kKeyLength, payloads[2], kPayloadLength);
-  tmp_node->Write(keys[4], kKeyLength, payloads[4], kPayloadLength);
-  tmp_node->Write(keys[5], kKeyLength, payloads[5], kPayloadLength);
-  tmp_node->Write(keys[7], kKeyLength, payloads[7], kPayloadLength);
-  tmp_node->Write(keys[8], kKeyLength, payloads[8], kPayloadLength);
-  auto tmp_meta = tmp_node->GatherSortedLiveMetadata();
+  auto tmp_node = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  LeafNode_t::Write(tmp_node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
+  LeafNode_t::Write(tmp_node.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
+  LeafNode_t::Write(tmp_node.get(), keys[4], kKeyLength, payloads[4], kPayloadLength);
+  LeafNode_t::Write(tmp_node.get(), keys[5], kKeyLength, payloads[5], kPayloadLength);
+  LeafNode_t::Write(tmp_node.get(), keys[7], kKeyLength, payloads[7], kPayloadLength);
+  LeafNode_t::Write(tmp_node.get(), keys[8], kKeyLength, payloads[8], kPayloadLength);
+  auto tmp_meta = LeafNode_t::GatherSortedLiveMetadata(tmp_node.get());
 
   node.reset(LeafNode_t::Consolidate(tmp_node.get(), tmp_meta));
 
@@ -208,7 +208,7 @@ TEST_F(BaseNodeFixture, SearchSortedMeta_SearchDeletedKey_FindKeyIndex)
   node.reset(CreateSortedLeafNodeWithOrderedKeys(0, 9));
   auto target_index = 7;
   auto target_key = keys[target_index];
-  node->Delete(target_key, kKeyLength);
+  LeafNode_t::Delete(node.get(), target_key, kKeyLength);
 
   auto [rc, index] = node->SearchSortedMetadata(target_key, true);
 
@@ -217,7 +217,7 @@ TEST_F(BaseNodeFixture, SearchSortedMeta_SearchDeletedKey_FindKeyIndex)
 
   target_index = 3;
   target_key = keys[target_index];
-  node->Delete(target_key, kKeyLength);
+  LeafNode_t::Delete(node.get(), target_key, kKeyLength);
 
   std::tie(rc, index) = node->SearchSortedMetadata(target_key, false);
 

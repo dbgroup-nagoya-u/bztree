@@ -34,6 +34,7 @@ class LeafNodeFixture : public testing::Test
  public:
   using NodeReturnCode = BaseNode<Key, Payload, Compare>::NodeReturnCode;
   using Record_t = Record<Key, Payload>;
+  using BaseNode_t = BaseNode<Key, Payload, Compare>;
   using LeafNode_t = LeafNode<Key, Payload, Compare>;
   using RunResult = std::pair<std::vector<size_t>, std::vector<size_t>>;
 
@@ -66,7 +67,7 @@ class LeafNodeFixture : public testing::Test
   Key keys[kKeyNumForTest];
   Payload payloads[kKeyNumForTest];
 
-  std::unique_ptr<LeafNode_t> node;
+  std::unique_ptr<BaseNode_t> node;
 
   void
   WriteRandomKeys(  //
@@ -91,28 +92,30 @@ class LeafNodeFixture : public testing::Test
       StatusWord s{};
       switch (w_type) {
         case kWrite:
-          std::tie(rc, s) = node->Write(keys[index], kKeyLength, payloads[index], kPayloadLength);
+          std::tie(rc, s) = LeafNode_t::Write(node.get(), keys[index], kKeyLength, payloads[index],
+                                              kPayloadLength);
           break;
         case kInsert:
-          std::tie(rc, s) = node->Insert(keys[index], kKeyLength, payloads[index], kPayloadLength);
+          std::tie(rc, s) = LeafNode_t::Insert(node.get(), keys[index], kKeyLength, payloads[index],
+                                               kPayloadLength);
           break;
         case kUpdate:
-          std::tie(rc, s) =
-              node->Update(keys[index], kKeyLength, payloads[index + 1], kPayloadLength);
+          std::tie(rc, s) = LeafNode_t::Update(node.get(), keys[index], kKeyLength,
+                                               payloads[index + 1], kPayloadLength);
           break;
         case kDelete:
-          std::tie(rc, s) = node->Delete(keys[index], kKeyLength);
+          std::tie(rc, s) = LeafNode_t::Delete(node.get(), keys[index], kKeyLength);
           break;
         case kMixed:
           switch (index % 3) {
             case 0:
-              node->Insert(keys[0], kKeyLength, payloads[0], kPayloadLength);
+              LeafNode_t::Insert(node.get(), keys[0], kKeyLength, payloads[0], kPayloadLength);
               break;
             case 1:
-              node->Update(keys[0], kKeyLength, payloads[1], kPayloadLength);
+              LeafNode_t::Update(node.get(), keys[0], kKeyLength, payloads[1], kPayloadLength);
               break;
             default:
-              node->Delete(keys[0], kKeyLength);
+              LeafNode_t::Delete(node.get(), keys[0], kKeyLength);
               break;
           }
           break;
@@ -128,7 +131,7 @@ class LeafNodeFixture : public testing::Test
   }
 
  protected:
-  LeafNodeFixture() : node{LeafNode_t::CreateEmptyNode(kNodeSize)} {}
+  LeafNodeFixture() : node{BaseNode_t::CreateEmptyNode(kNodeSize, true)} {}
 
   void SetUp() override;
 
@@ -189,7 +192,7 @@ TEST_F(LeafNodeFixture, Write_MultiThreads_ReadWrittenPayloads)
 
   EXPECT_EQ(kWriteNumPerThread * kThreadNum, written_indexes.size());
   for (auto&& index : written_indexes) {
-    auto [rc, record] = node->Read(keys[index]);
+    auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index], record->GetPayload());
   }
@@ -203,12 +206,12 @@ TEST_F(LeafNodeFixture, Insert_MultiThreads_ReadWrittenPayloads)
   EXPECT_LE(written_indexes.size(), kWriteNumPerThread);
   EXPECT_EQ(kWriteNumPerThread * kThreadNum, written_indexes.size() + failed_indexes.size());
   for (auto&& index : written_indexes) {
-    auto [rc, record] = node->Read(keys[index]);
+    auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index], record->GetPayload());
   }
   for (auto&& index : failed_indexes) {
-    auto [rc, record] = node->Read(keys[index]);
+    auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index], record->GetPayload());
   }
@@ -223,7 +226,7 @@ TEST_F(LeafNodeFixture, Update_MultiThreads_ReadWrittenPayloads)
 
   EXPECT_EQ(kWriteNumPerThread * kThreadNum * 0.5, written_indexes.size());
   for (auto&& index : written_indexes) {
-    auto [rc, record] = node->Read(keys[index]);
+    auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index + 1], record->GetPayload());
   }
@@ -238,7 +241,7 @@ TEST_F(LeafNodeFixture, Delete_MultiThreads_KeysDeleted)
 
   EXPECT_EQ(kWriteNumPerThread * kThreadNum * 0.5, written_indexes.size() + failed_indexes.size());
   for (auto&& index : written_indexes) {
-    auto [rc, record] = node->Read(keys[index]);
+    auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
     EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
   }
 }
@@ -269,7 +272,7 @@ TEST_F(LeafNodeFixture, InsertUpdateDelete_MultiThreads_ConcurrencyControlCorrup
     }
 
     if (!concurrency_is_corrupted) {
-      node.reset(LeafNode_t::CreateEmptyNode(kNodeSize));
+      node.reset(BaseNode_t::CreateEmptyNode(kNodeSize, true));
       RunOverMultiThread(kWriteNumPerThread, kThreadNum, kMixed, &LeafNodeFixture::WriteRandomKeys);
     }
   } while (!concurrency_is_corrupted);

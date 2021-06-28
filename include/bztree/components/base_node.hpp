@@ -27,6 +27,7 @@
 
 #include "metadata.hpp"
 #include "mwcas/mwcas_descriptor.hpp"
+#include "record.hpp"
 #include "status_word.hpp"
 
 namespace dbgroup::index::bztree
@@ -37,9 +38,11 @@ using dbgroup::atomic::mwcas::ReadMwCASField;
 template <class Key, class Payload, class Compare = std::less<Key>>
 class alignas(kCacheLineSize) BaseNode
 {
- protected:
+  using Record_t = Record<Key, Payload>;
+
+ private:
   /*################################################################################################
-   * Internal inherited variables
+   * Internal variables
    *##############################################################################################*/
 
   uint64_t node_size_ : 32;
@@ -55,102 +58,14 @@ class alignas(kCacheLineSize) BaseNode
   Metadata meta_array_[0];
 
   /*################################################################################################
-   * Internally inherited constructors
+   * Internal constructors
    *##############################################################################################*/
 
-  BaseNode(  //
+  constexpr BaseNode(  //
       const size_t node_size,
       const bool is_leaf)
       : node_size_{node_size}, is_leaf_{is_leaf}, sorted_count_{0}, status_{}
   {
-  }
-
-  /*################################################################################################
-   * Internally inherited getters/setters
-   *##############################################################################################*/
-
-  void
-  SetMetadata(  //
-      const size_t index,
-      const Metadata new_meta)
-  {
-    meta_array_[index] = new_meta;
-  }
-
-  void
-  SetMetadataByCAS(  //
-      const size_t index,
-      const Metadata new_meta)
-  {
-    CastAddress<std::atomic<Metadata> *>(meta_array_ + index)->store(new_meta, mo_relax);
-  }
-
-  constexpr void *
-  GetPayloadAddr(const Metadata meta) const
-  {
-    const auto offset = meta.GetOffset() + meta.GetKeyLength();
-    return ShiftAddress(this, offset);
-  }
-
-  void
-  SetKey(  //
-      const Key &key,
-      const size_t key_length,
-      const size_t offset)
-  {
-    const auto key_ptr = ShiftAddress(this, offset);
-    if constexpr (std::is_pointer_v<Key>) {
-      memcpy(key_ptr, key, key_length);
-    } else {
-      memcpy(key_ptr, &key, key_length);
-    }
-  }
-
-  void
-  SetPayload(  //
-      const Payload &payload,
-      const size_t payload_length,
-      const size_t offset)
-  {
-    const auto payload_ptr = ShiftAddress(this, offset);
-    if constexpr (std::is_pointer_v<Payload>) {
-      memcpy(payload_ptr, payload, payload_length);
-    } else {
-      memcpy(payload_ptr, &payload, payload_length);
-    }
-  }
-
-  size_t
-  SetRecord(  //
-      const Key &key,
-      const size_t key_length,
-      const Payload &payload,
-      const size_t payload_length,
-      size_t offset)
-  {
-    offset -= payload_length;
-    SetPayload(payload, payload_length, offset);
-    if (key_length > 0) {
-      offset -= key_length;
-      SetKey(key, key_length, offset);
-    }
-    return offset;
-  }
-
-  size_t
-  CopyRecord(  //
-      const BaseNode *original_node,
-      const Metadata meta,
-      size_t offset)
-  {
-    const auto total_length = meta.GetTotalLength();
-
-    offset -= total_length;
-    const auto dest = ShiftAddress(this, offset);
-    const auto src = original_node->GetKeyAddr(meta);
-    memcpy(dest, src, total_length);
-
-    return offset;
   }
 
  public:
@@ -195,7 +110,7 @@ class alignas(kCacheLineSize) BaseNode
    * Public builders
    *##############################################################################################*/
 
-  static BaseNode *
+  constexpr static BaseNode *
   CreateEmptyNode(  //
       const size_t node_size,
       const bool is_leaf)
@@ -260,11 +175,117 @@ class alignas(kCacheLineSize) BaseNode
     return ShiftAddress(this, offset);
   }
 
-  std::pair<Key, size_t>
+  constexpr std::pair<Key, size_t>
   GetKeyAndItsLength(const size_t index) const
   {
     const auto meta = GetMetadata(index);
     return {CastKey<Key>(GetKeyAddr(meta)), meta.GetKeyLength()};
+  }
+
+  constexpr void *
+  GetPayloadAddr(const Metadata meta) const
+  {
+    const auto offset = meta.GetOffset() + meta.GetKeyLength();
+    return ShiftAddress(this, offset);
+  }
+
+  constexpr std::unique_ptr<Record_t>
+  GetRecord(const Metadata meta) const
+  {
+    const auto key_addr = this->GetKeyAddr(meta);
+    const auto key_length = meta.GetKeyLength();
+    const auto payload_length = meta.GetPayloadLength();
+
+    return Record_t::Create(key_addr, key_length, payload_length);
+  }
+
+  void
+  SetSortedCount(const size_t sorted_count)
+  {
+    sorted_count_ = sorted_count;
+  }
+
+  void
+  SetStatus(const StatusWord status)
+  {
+    status_ = status;
+  }
+
+  void
+  SetMetadata(  //
+      const size_t index,
+      const Metadata new_meta)
+  {
+    meta_array_[index] = new_meta;
+  }
+
+  void
+  SetMetadataByCAS(  //
+      const size_t index,
+      const Metadata new_meta)
+  {
+    CastAddress<std::atomic<Metadata> *>(meta_array_ + index)->store(new_meta, mo_relax);
+  }
+
+  void
+  SetKey(  //
+      const Key &key,
+      const size_t key_length,
+      const size_t offset)
+  {
+    const auto key_ptr = ShiftAddress(this, offset);
+    if constexpr (std::is_pointer_v<Key>) {
+      memcpy(key_ptr, key, key_length);
+    } else {
+      memcpy(key_ptr, &key, key_length);
+    }
+  }
+
+  void
+  SetPayload(  //
+      const Payload &payload,
+      const size_t payload_length,
+      const size_t offset)
+  {
+    const auto payload_ptr = ShiftAddress(this, offset);
+    if constexpr (std::is_pointer_v<Payload>) {
+      memcpy(payload_ptr, payload, payload_length);
+    } else {
+      memcpy(payload_ptr, &payload, payload_length);
+    }
+  }
+
+  constexpr size_t
+  SetRecord(  //
+      const Key &key,
+      const size_t key_length,
+      const Payload &payload,
+      const size_t payload_length,
+      size_t offset)
+  {
+    offset -= payload_length;
+    SetPayload(payload, payload_length, offset);
+    if (key_length > 0) {
+      offset -= key_length;
+      SetKey(key, key_length, offset);
+    }
+    return offset;
+  }
+
+  constexpr size_t
+  CopyRecord(  //
+      const BaseNode *original_node,
+      const Metadata meta,
+      size_t offset)
+  {
+    const auto total_length = meta.GetTotalLength();
+
+    offset -= total_length;
+    const auto dest = ShiftAddress(this, offset);
+    const auto src = original_node->GetKeyAddr(meta);
+    memcpy(dest, src, total_length);
+
+    return offset;
   }
 
   void
@@ -309,7 +330,7 @@ class alignas(kCacheLineSize) BaseNode
    * 1) `kSuccess` if the function successfully freeze this node, or
    * 2) `kFrozen` if this node is already frozen.
    */
-  NodeReturnCode
+  constexpr NodeReturnCode
   Freeze()
   {
     bool mwcas_success;
@@ -337,7 +358,7 @@ class alignas(kCacheLineSize) BaseNode
    * @param comp
    * @return std::pair<KeyExistence, size_t>
    */
-  std::pair<KeyExistence, size_t>
+  constexpr std::pair<KeyExistence, size_t>
   SearchSortedMetadata(  //
       const Key &key,
       const bool range_is_closed) const

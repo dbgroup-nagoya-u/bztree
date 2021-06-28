@@ -31,6 +31,7 @@ class LeafNodeFixture : public testing::Test
  public:
   using NodeReturnCode = BaseNode<Key, Payload, Compare>::NodeReturnCode;
   using Record_t = Record<Key, Payload>;
+  using BaseNode_t = BaseNode<Key, Payload, Compare>;
   using LeafNode_t = LeafNode<Key, Payload, Compare>;
 
   static constexpr size_t kNodeSize = 256;
@@ -46,7 +47,7 @@ class LeafNodeFixture : public testing::Test
   Key key_null;          // null key must have 8 bytes to fill a node
   Payload payload_null;  // null payload must have 8 bytes to fill a node
 
-  std::unique_ptr<LeafNode_t> node;
+  std::unique_ptr<BaseNode_t> node;
   size_t index;
   size_t expected_record_count;
   size_t expected_block_size;
@@ -59,7 +60,7 @@ class LeafNodeFixture : public testing::Test
 
  protected:
   LeafNodeFixture()
-      : node{LeafNode_t::CreateEmptyNode(kNodeSize)},
+      : node{BaseNode_t::CreateEmptyNode(kNodeSize, true)},
         index{0},
         expected_record_count{0},
         expected_block_size{0},
@@ -76,7 +77,7 @@ class LeafNodeFixture : public testing::Test
   WriteNullKey(const size_t write_num)
   {
     for (size_t index = 0; index < write_num; ++index) {
-      node->Write(key_null, kNullKeyLength, payload_null, kNullPayloadLength);
+      LeafNode_t::Write(node.get(), key_null, kNullKeyLength, payload_null, kNullPayloadLength);
       ++expected_record_count;
       expected_block_size += kNullRecordLength;
       expected_occupied_size += kWordLength + kNullRecordLength;
@@ -94,7 +95,7 @@ class LeafNodeFixture : public testing::Test
     for (size_t index = begin_index; index <= end_index; ++index) {
       auto key = keys[index];
       auto payload = payloads[index];
-      node->Write(key, kKeyLength, payload, kPayloadLength);
+      LeafNode_t::Write(node.get(), key, kKeyLength, payload, kPayloadLength);
 
       written_keys.emplace_back(key);
       ++expected_record_count;
@@ -168,7 +169,7 @@ TEST_F(LeafNodeFixture, New_EmptyNode_CorrectlyInitialized)
 
 TEST_F(LeafNodeFixture, Read_NotPresentKey_ReadFailed)
 {
-  std::tie(rc, record) = node->Read(keys[1]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
@@ -179,7 +180,7 @@ TEST_F(LeafNodeFixture, Read_NotPresentKey_ReadFailed)
 
 TEST_F(LeafNodeFixture, Scan_EmptyNode_NoResult)
 {
-  auto [rc, scan_results] = node->Scan(&keys[0], true, &keys[9], true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[0], true, &keys[9], true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(0, scan_results.size());
@@ -190,7 +191,7 @@ TEST_F(LeafNodeFixture, Scan_BothClosed_ScanTargetValues)
   WriteOrderedKeys(4, 9);
   WriteOrderedKeys(0, 3);
 
-  auto [rc, scan_results] = node->Scan(&keys[4], true, &keys[6], true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[4], true, &keys[6], true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(3, scan_results.size());
@@ -207,7 +208,7 @@ TEST_F(LeafNodeFixture, Scan_LeftClosed_ScanTargetValues)
   WriteOrderedKeys(4, 9);
   WriteOrderedKeys(0, 3);
 
-  auto [rc, scan_results] = node->Scan(&keys[7], true, &keys[9], false);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[7], true, &keys[9], false);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
@@ -222,7 +223,7 @@ TEST_F(LeafNodeFixture, Scan_RightClosed_ScanTargetValues)
   WriteOrderedKeys(4, 9);
   WriteOrderedKeys(0, 3);
 
-  auto [rc, scan_results] = node->Scan(&keys[7], false, &keys[9], true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[7], false, &keys[9], true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
@@ -237,7 +238,7 @@ TEST_F(LeafNodeFixture, Scan_BothOpened_ScanTargetValues)
   WriteOrderedKeys(4, 9);
   WriteOrderedKeys(0, 3);
 
-  auto [rc, scan_results] = node->Scan(&keys[7], false, &keys[9], false);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[7], false, &keys[9], false);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(1, scan_results.size());
@@ -250,7 +251,7 @@ TEST_F(LeafNodeFixture, Scan_LeftInfinity_ScanTargetValues)
   WriteOrderedKeys(4, 9);
   WriteOrderedKeys(0, 3);
 
-  auto [rc, scan_results] = node->Scan(nullptr, false, &keys[1], true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), nullptr, false, &keys[1], true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
@@ -265,7 +266,7 @@ TEST_F(LeafNodeFixture, Scan_RightInfinity_ScanTargetValues)
   WriteOrderedKeys(4, 9);
   WriteOrderedKeys(0, 3);
 
-  auto [rc, scan_results] = node->Scan(&keys[8], true, nullptr, false);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[8], true, nullptr, false);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
@@ -279,7 +280,7 @@ TEST_F(LeafNodeFixture, Scan_LeftOutsideRange_NoResults)
 {
   WriteOrderedKeys(4, 9);
 
-  auto [rc, scan_results] = node->Scan(nullptr, false, &keys[3], false);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), nullptr, false, &keys[3], false);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(0, scan_results.size());
@@ -289,7 +290,7 @@ TEST_F(LeafNodeFixture, Scan_RightOutsideRange_NoResults)
 {
   WriteOrderedKeys(0, 3);
 
-  auto [rc, scan_results] = node->Scan(&keys[5], false, nullptr, false);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[5], false, nullptr, false);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(0, scan_results.size());
@@ -298,10 +299,10 @@ TEST_F(LeafNodeFixture, Scan_RightOutsideRange_NoResults)
 TEST_F(LeafNodeFixture, Scan_WithUpdateDelete_ScanLatestValues)
 {
   WriteOrderedKeys(0, 4);
-  node->Update(keys[2], kKeyLength, payloads[0], kPayloadLength);
-  node->Delete(keys[3], kKeyLength);
+  LeafNode_t::Update(node.get(), keys[2], kKeyLength, payloads[0], kPayloadLength);
+  LeafNode_t::Delete(node.get(), keys[3], kKeyLength);
 
-  auto [rc, scan_results] = node->Scan(&keys[2], true, &keys[4], true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[2], true, &keys[4], true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
@@ -315,10 +316,10 @@ TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithinRange_ScanTargetValues)
 {
   // prepare a consolidated node
   WriteOrderedKeys(3, 7);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  auto [rc, scan_results] = node->Scan(&keys[4], true, &keys[6], true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[4], true, &keys[6], true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(3, scan_results.size());
@@ -334,10 +335,10 @@ TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithLeftInfinity_ScanTargetValues)
 {
   // prepare a consolidated node
   WriteOrderedKeys(3, 7);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  auto [rc, scan_results] = node->Scan(nullptr, true, &keys[3], true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), nullptr, true, &keys[3], true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(1, scan_results.size());
@@ -349,10 +350,10 @@ TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithRightInfinity_ScanTargetValues)
 {
   // prepare a consolidated node
   WriteOrderedKeys(3, 7);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  auto [rc, scan_results] = node->Scan(&keys[7], true, nullptr, true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[7], true, nullptr, true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(1, scan_results.size());
@@ -364,12 +365,12 @@ TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithUpdateDelete_ScanLatestValues)
 {
   // prepare a consolidated node
   WriteOrderedKeys(3, 7);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
-  node->Update(keys[5], kKeyLength, payloads[0], kPayloadLength);
-  node->Delete(keys[7], kKeyLength);
+  LeafNode_t::Update(node.get(), keys[5], kKeyLength, payloads[0], kPayloadLength);
+  LeafNode_t::Delete(node.get(), keys[7], kKeyLength);
 
-  auto [rc, scan_results] = node->Scan(&keys[5], true, &keys[7], true);
+  auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[5], true, &keys[7], true);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(2, scan_results.size());
@@ -385,7 +386,8 @@ TEST_F(LeafNodeFixture, Scan_ConsolidatedNodeWithUpdateDelete_ScanLatestValues)
 
 TEST_F(LeafNodeFixture, Write_TwoKeys_MetadataCorrectlyUpdated)
 {
-  std::tie(rc, status) = node->Write(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Write(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
   expected_record_count += 1;
   expected_block_size += kRecordLength;
 
@@ -393,7 +395,8 @@ TEST_F(LeafNodeFixture, Write_TwoKeys_MetadataCorrectlyUpdated)
   VerifyMetadata(node->GetMetadata(index++));
   VerifyStatusWord(status);
 
-  std::tie(rc, status) = node->Write(keys[2], kKeyLength, payloads[2], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Write(node.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
   expected_record_count += 1;
   expected_block_size += kRecordLength;
 
@@ -404,17 +407,17 @@ TEST_F(LeafNodeFixture, Write_TwoKeys_MetadataCorrectlyUpdated)
 
 TEST_F(LeafNodeFixture, Write_TwoKeys_ReadWrittenValues)
 {
-  node->Write(keys[1], kKeyLength, payloads[1], kPayloadLength);
-  node->Write(keys[2], kKeyLength, payloads[2], kPayloadLength);
+  LeafNode_t::Write(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
+  LeafNode_t::Write(node.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
 
   // read 1st input value
-  std::tie(rc, record) = node->Read(keys[1]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[1], record->GetPayload());
 
   // read 2nd input value
-  std::tie(rc, record) = node->Read(keys[2]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[2]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[2], record->GetPayload());
@@ -422,10 +425,10 @@ TEST_F(LeafNodeFixture, Write_TwoKeys_ReadWrittenValues)
 
 TEST_F(LeafNodeFixture, Write_DuplicateKey_ReadLatestValue)
 {
-  node->Write(keys[1], kKeyLength, payloads[1], kPayloadLength);
-  node->Write(keys[1], kKeyLength, payloads[2], kPayloadLength);
+  LeafNode_t::Write(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
+  LeafNode_t::Write(node.get(), keys[1], kKeyLength, payloads[2], kPayloadLength);
 
-  std::tie(rc, record) = node->Read(keys[1]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[2], record->GetPayload());
@@ -435,11 +438,13 @@ TEST_F(LeafNodeFixture, Write_FilledNode_GetCorrectReturnCodes)
 {
   WriteNullKey(9);
 
-  std::tie(rc, status) = node->Write(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Write(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
 
-  std::tie(rc, status) = node->Write(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Write(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
 
   EXPECT_EQ(NodeReturnCode::kNoSpace, rc);
 }
@@ -448,10 +453,11 @@ TEST_F(LeafNodeFixture, Write_ConsolidatedNode_MetadataCorrectlyUpdated)
 {
   // prepare a consolidated node
   WriteOrderedKeys(0, 4);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  std::tie(rc, status) = node->Write(keys[11], kKeyLength, payloads[11], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Write(node.get(), keys[11], kKeyLength, payloads[11], kPayloadLength);
   expected_record_count += 1;
   expected_block_size += kRecordLength;
 
@@ -464,11 +470,11 @@ TEST_F(LeafNodeFixture, Write_ConsolidatedNode_ReadWrittenValue)
 {
   // prepare a consolidated node
   WriteOrderedKeys(0, 4);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  node->Write(keys[11], kKeyLength, payloads[11], kPayloadLength);
-  std::tie(rc, record) = node->Read(keys[11]);
+  LeafNode_t::Write(node.get(), keys[11], kKeyLength, payloads[11], kPayloadLength);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[11]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[11], record->GetPayload());
@@ -480,7 +486,8 @@ TEST_F(LeafNodeFixture, Write_ConsolidatedNode_ReadWrittenValue)
 
 TEST_F(LeafNodeFixture, Insert_TwoKeys_MetadataCorrectlyUpdated)
 {
-  std::tie(rc, status) = node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
   expected_record_count += 1;
   expected_block_size += kRecordLength;
 
@@ -488,7 +495,8 @@ TEST_F(LeafNodeFixture, Insert_TwoKeys_MetadataCorrectlyUpdated)
   VerifyMetadata(node->GetMetadata(index++));
   VerifyStatusWord(status);
 
-  std::tie(rc, status) = node->Insert(keys[2], kKeyLength, payloads[2], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Insert(node.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
   expected_record_count += 1;
   expected_block_size += kRecordLength;
 
@@ -499,17 +507,17 @@ TEST_F(LeafNodeFixture, Insert_TwoKeys_MetadataCorrectlyUpdated)
 
 TEST_F(LeafNodeFixture, Insert_TwoKeys_ReadInsertedValues)
 {
-  node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
-  node->Insert(keys[2], kKeyLength, payloads[2], kPayloadLength);
+  LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
+  LeafNode_t::Insert(node.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
 
   // read 1st input value
-  std::tie(rc, record) = node->Read(keys[1]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[1], record->GetPayload());
 
   // read 2nd input value
-  std::tie(rc, record) = node->Read(keys[2]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[2]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[2], record->GetPayload());
@@ -517,9 +525,10 @@ TEST_F(LeafNodeFixture, Insert_TwoKeys_ReadInsertedValues)
 
 TEST_F(LeafNodeFixture, Insert_DuplicateKey_InsertionFailed)
 {
-  node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
 
-  std::tie(rc, status) = node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyExist, rc);
 }
@@ -529,19 +538,22 @@ TEST_F(LeafNodeFixture, Insert_FilledNode_GetCorrectReturnCodes)
   WriteNullKey(9);
 
   // fill a node
-  std::tie(rc, status) = node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
   expected_occupied_size += kWordLength + kRecordLength;
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(expected_occupied_size, status.GetOccupiedSize());
 
   // insert a filled node with a not present key
-  std::tie(rc, status) = node->Insert(keys[2], kKeyLength, payloads[2], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Insert(node.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
 
   EXPECT_EQ(NodeReturnCode::kNoSpace, rc);
 
   // insert a filled node with an present key
-  std::tie(rc, status) = node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyExist, rc);
 }
@@ -550,10 +562,11 @@ TEST_F(LeafNodeFixture, Insert_ConsolidatedNode_MetadataCorrectlyUpdated)
 {
   // prepare a consolidated node
   WriteOrderedKeys(0, 4);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  std::tie(rc, status) = node->Insert(keys[11], kKeyLength, payloads[11], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Insert(node.get(), keys[11], kKeyLength, payloads[11], kPayloadLength);
   expected_record_count += 1;
   expected_block_size += kRecordLength;
 
@@ -566,11 +579,11 @@ TEST_F(LeafNodeFixture, Insert_ConsolidatedNode_ReadInsertedValue)
 {
   // prepare a consolidated node
   WriteOrderedKeys(0, 4);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  node->Insert(keys[11], kKeyLength, payloads[11], kPayloadLength);
-  std::tie(rc, record) = node->Read(keys[11]);
+  LeafNode_t::Insert(node.get(), keys[11], kKeyLength, payloads[11], kPayloadLength);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[11]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[11], record->GetPayload());
@@ -580,10 +593,11 @@ TEST_F(LeafNodeFixture, Insert_ConsolidatedNodeWithDuplicateKey_InsertionFailed)
 {
   // prepare a consolidated node
   WriteOrderedKeys(0, 4);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  std::tie(rc, status) = node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyExist, rc);
 }
@@ -594,11 +608,12 @@ TEST_F(LeafNodeFixture, Insert_ConsolidatedNodeWithDuplicateKey_InsertionFailed)
 
 TEST_F(LeafNodeFixture, Update_SingleKey_MetadataCorrectlyUpdated)
 {
-  node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
   expected_record_count += 1;
   expected_block_size += kRecordLength;
 
-  std::tie(rc, status) = node->Update(keys[1], kKeyLength, payloads[2], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Update(node.get(), keys[1], kKeyLength, payloads[2], kPayloadLength);
   expected_record_count += 1;
   expected_block_size += kRecordLength;
   expected_deleted_size += kWordLength + kRecordLength;
@@ -610,10 +625,10 @@ TEST_F(LeafNodeFixture, Update_SingleKey_MetadataCorrectlyUpdated)
 
 TEST_F(LeafNodeFixture, Update_SingleKey_ReadUpdatedValue)
 {
-  node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
-  node->Update(keys[1], kKeyLength, payloads[2], kPayloadLength);
+  LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
+  LeafNode_t::Update(node.get(), keys[1], kKeyLength, payloads[2], kPayloadLength);
 
-  std::tie(rc, record) = node->Read(keys[1]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[2], record->GetPayload());
@@ -621,17 +636,19 @@ TEST_F(LeafNodeFixture, Update_SingleKey_ReadUpdatedValue)
 
 TEST_F(LeafNodeFixture, Update_NotPresentKey_UpdatedFailed)
 {
-  std::tie(rc, status) = node->Update(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Update(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
 
 TEST_F(LeafNodeFixture, Update_DeletedKey_UpdateFailed)
 {
-  node->Insert(keys[1], kKeyLength, payloads[2], kPayloadLength);
-  node->Delete(keys[1], kKeyLength);
+  LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[2], kPayloadLength);
+  LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
 
-  std::tie(rc, status) = node->Update(keys[1], kKeyLength, payloads[2], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Update(node.get(), keys[1], kKeyLength, payloads[2], kPayloadLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
@@ -641,19 +658,22 @@ TEST_F(LeafNodeFixture, Update_FilledNode_GetCorrectReturnCodes)
   WriteNullKey(9);
 
   // fill a node
-  std::tie(rc, status) = node->Update(key_null, kNullKeyLength, payload_null, kNullPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Update(node.get(), key_null, kNullKeyLength, payload_null, kNullPayloadLength);
   expected_occupied_size += kWordLength + kNullRecordLength;
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_EQ(expected_occupied_size, status.GetOccupiedSize());
 
   // update a filled node with an present key
-  std::tie(rc, status) = node->Update(key_null, kNullKeyLength, payload_null, kNullPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Update(node.get(), key_null, kNullKeyLength, payload_null, kNullPayloadLength);
 
   EXPECT_EQ(NodeReturnCode::kNoSpace, rc);
 
   // update a filled node with a not present key
-  std::tie(rc, status) = node->Update(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Update(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
@@ -662,10 +682,11 @@ TEST_F(LeafNodeFixture, Update_ConsolidatedNode_MetadataCorrectlyUpdated)
 {
   // prepare a consolidated node
   WriteOrderedKeys(0, 4);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  std::tie(rc, status) = node->Update(keys[1], kKeyLength, payloads[11], kPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Update(node.get(), keys[1], kKeyLength, payloads[11], kPayloadLength);
   expected_record_count += 1;
   expected_block_size += kRecordLength;
   expected_deleted_size += kWordLength + kRecordLength;
@@ -679,11 +700,11 @@ TEST_F(LeafNodeFixture, Update_ConsolidatedNode_ReadUpdatedValue)
 {
   // prepare a consolidated node
   WriteOrderedKeys(0, 4);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  node->Update(keys[1], kKeyLength, payloads[11], kPayloadLength);
-  std::tie(rc, record) = node->Read(keys[1]);
+  LeafNode_t::Update(node.get(), keys[1], kKeyLength, payloads[11], kPayloadLength);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyPayload(payloads[11], record->GetPayload());
@@ -693,10 +714,11 @@ TEST_F(LeafNodeFixture, Update_ConsolidatedNodeWithNotPresentKey_UpdatedFailed)
 {
   // prepare a consolidated node
   WriteOrderedKeys(0, 4);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  std::tie(rc, status) = node->Update(key_null, kNullKeyLength, payload_null, kNullPayloadLength);
+  std::tie(rc, status) =
+      LeafNode_t::Update(node.get(), key_null, kNullKeyLength, payload_null, kNullPayloadLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
@@ -705,11 +727,12 @@ TEST_F(LeafNodeFixture, Update_ConsolidatedNodeWithDeletedKey_UpdatedFailed)
 {
   // prepare a consolidated node
   WriteOrderedKeys(0, 4);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  node->Delete(keys[1], kKeyLength);
-  std::tie(rc, status) = node->Update(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
+  std::tie(rc, status) =
+      LeafNode_t::Update(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
@@ -722,19 +745,19 @@ TEST_F(LeafNodeFixture, Delete_TwoKeys_MetadataCorrectlyUpdated)
 {
   constexpr bool kRecordIsVisible = false;
 
-  node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
-  node->Insert(keys[2], kKeyLength, payloads[2], kPayloadLength);
+  LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
+  LeafNode_t::Insert(node.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
   expected_record_count += 2;
   expected_block_size += 2 * kRecordLength;
 
-  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
   expected_deleted_size += kWordLength + kRecordLength;
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   VerifyMetadata(node->GetMetadata(index++), kRecordIsVisible);
   VerifyStatusWord(status);
 
-  std::tie(rc, status) = node->Delete(keys[2], kKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[2], kKeyLength);
   expected_deleted_size += kWordLength + kRecordLength;
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
@@ -744,36 +767,36 @@ TEST_F(LeafNodeFixture, Delete_TwoKeys_MetadataCorrectlyUpdated)
 
 TEST_F(LeafNodeFixture, Delete_PresentKey_DeletionSucceed)
 {
-  node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
+  LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
 
-  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
 }
 
 TEST_F(LeafNodeFixture, Delete_PresentKey_ReadFailed)
 {
-  node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
-  node->Delete(keys[1], kKeyLength);
+  LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
+  LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
 
-  std::tie(rc, record) = node->Read(keys[1]);
+  std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[1]);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
 
 TEST_F(LeafNodeFixture, Delete_NotPresentKey_DeletionFailed)
 {
-  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
 
 TEST_F(LeafNodeFixture, Delete_DeletedKey_DeletionFailed)
 {
-  node->Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
-  node->Delete(keys[1], kKeyLength);
+  LeafNode_t::Insert(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
+  LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
 
-  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
@@ -782,11 +805,11 @@ TEST_F(LeafNodeFixture, Delete_FilledNode_GetCorrectReturnCodes)
 {
   WriteNullKey(10);
 
-  std::tie(rc, status) = node->Delete(key_null, kNullKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), key_null, kNullKeyLength);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
 
-  std::tie(rc, status) = node->Delete(key_null, kNullKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), key_null, kNullKeyLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
@@ -795,10 +818,10 @@ TEST_F(LeafNodeFixture, Delete_ConsolidatedNode_MetadataCorrectlyUpdated)
 {
   // prepare a consolidated node
   WriteOrderedKeys(0, 4);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
   expected_deleted_size += kWordLength + kRecordLength;
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
@@ -810,10 +833,10 @@ TEST_F(LeafNodeFixture, Delete_ConsolidatedNode_DeletionSucceed)
 {
   // prepare a consolidated node
   WriteOrderedKeys(0, 4);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
 }
@@ -822,10 +845,10 @@ TEST_F(LeafNodeFixture, Delete_ConsolidatedNodeWithNotPresentKey_DeletionFailed)
 {
   // prepare a consolidated node
   WriteOrderedKeys(0, 4);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  std::tie(rc, status) = node->Delete(key_null, kNullKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), key_null, kNullKeyLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
@@ -834,11 +857,11 @@ TEST_F(LeafNodeFixture, Delete_ConsolidatedNodeWithDeletedKey_DeletionFailed)
 {
   // prepare a consolidated node
   WriteOrderedKeys(0, 4);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
-  node->Delete(keys[1], kKeyLength);
-  std::tie(rc, status) = node->Delete(keys[1], kKeyLength);
+  LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
+  std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
 
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
 }
@@ -853,7 +876,7 @@ TEST_F(LeafNodeFixture, Consolidate_SortedTenKeys_GatherSortedLiveMetadata)
   auto written_keys = WriteOrderedKeys(0, 9);
 
   // gather live metadata and check equality
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
 
   EXPECT_EQ(expected_record_count, meta_vec.size());
   for (size_t index = 0; index < meta_vec.size(); index++) {
@@ -869,12 +892,12 @@ TEST_F(LeafNodeFixture, Consolidate_SortedTenKeysWithDelete_GatherSortedLiveMeta
   auto written_keys = WriteOrderedKeys(0, 9);
 
   // delete a key
-  node->Delete(keys[2], kKeyLength);
+  LeafNode_t::Delete(node.get(), keys[2], kKeyLength);
   --expected_record_count;
   written_keys.erase(std::find(written_keys.begin(), written_keys.end(), keys[2]));
 
   // gather live metadata and check equality
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
 
   EXPECT_EQ(expected_record_count, meta_vec.size());
   for (size_t index = 0; index < meta_vec.size(); index++) {
@@ -888,10 +911,10 @@ TEST_F(LeafNodeFixture, Consolidate_SortedTenKeysWithUpdate_GatherSortedLiveMeta
 {
   // fill a node with ordered keys
   auto written_keys = WriteOrderedKeys(0, 8);
-  node->Update(keys[2], kKeyLength, payload_null, kNullPayloadLength);
+  LeafNode_t::Update(node.get(), keys[2], kKeyLength, payload_null, kNullPayloadLength);
 
   // gather live metadata and check equality
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
 
   EXPECT_EQ(expected_record_count, meta_vec.size());
   for (size_t index = 0; index < meta_vec.size(); index++) {
@@ -909,7 +932,7 @@ TEST_F(LeafNodeFixture, Consolidate_UnsortedTenKeys_GatherSortedLiveMetadata)
   written_keys.insert(written_keys.end(), tmp_keys.begin(), tmp_keys.end());
 
   // gather live metadata and check equality
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
 
   EXPECT_EQ(expected_record_count, meta_vec.size());
   for (size_t index = 0; index < meta_vec.size(); index++) {
@@ -923,7 +946,7 @@ TEST_F(LeafNodeFixture, Consolidate_SortedTenKeys_NodeHasCorrectStatus)
 {
   // prepare a consolidated node
   WriteOrderedKeys(0, 9);
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
   VerifyStatusWord(node->GetStatusWord());
@@ -933,11 +956,11 @@ TEST_F(LeafNodeFixture, Consolidate_SortedTenKeysWithDelete_NodeHasCorrectStatus
 {
   // prepare a consolidated node
   WriteOrderedKeys(0, 9);
-  node->Delete(keys[2], kKeyLength);
+  LeafNode_t::Delete(node.get(), keys[2], kKeyLength);
   expected_record_count -= 1;
   expected_block_size -= kRecordLength;
 
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
   VerifyStatusWord(node->GetStatusWord());
@@ -947,10 +970,10 @@ TEST_F(LeafNodeFixture, Consolidate_SortedTenKeysWithUpdate_NodeHasCorrectStatus
 {
   // prepare a consolidated node
   WriteOrderedKeys(0, 8);
-  node->Update(keys[2], kKeyLength, payload_null, kNullPayloadLength);
+  LeafNode_t::Update(node.get(), keys[2], kKeyLength, payload_null, kNullPayloadLength);
   expected_block_size += kNullPayloadLength - kPayloadLength;
 
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
   VerifyStatusWord(node->GetStatusWord());
@@ -962,7 +985,7 @@ TEST_F(LeafNodeFixture, Consolidate_UnsortedTenKeys_NodeHasCorrectStatus)
   WriteOrderedKeys(4, 9);
   WriteOrderedKeys(0, 3);
 
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
   VerifyStatusWord(node->GetStatusWord());
@@ -977,7 +1000,7 @@ TEST_F(LeafNodeFixture, Split_EquallyDivided_NodesHaveCorrectStatus)
   // prepare split nodes
   WriteOrderedKeys(0, 9);
   const auto left_record_count = 5;
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
 
   auto [left_node, right_node] = LeafNode_t::Split(node.get(), meta_vec, left_record_count);
   expected_record_count = 5;
@@ -995,13 +1018,13 @@ TEST_F(LeafNodeFixture, Split_EquallyDivided_NodesHaveCorrectKeyPayloads)
   // prepare split nodes
   WriteOrderedKeys(0, 9);
   const auto left_record_count = 5;
-  auto meta_vec = node->GatherSortedLiveMetadata();
+  auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
   auto [left_node, right_node] = LeafNode_t::Split(node.get(), meta_vec, left_record_count);
 
   // check a split left node
   size_t index = 0;
   for (; index < left_record_count; ++index) {
-    std::tie(rc, record) = left_node->Read(keys[index]);
+    std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(left_node), keys[index]);
 
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index], record->GetPayload());
@@ -1009,7 +1032,7 @@ TEST_F(LeafNodeFixture, Split_EquallyDivided_NodesHaveCorrectKeyPayloads)
 
   // check a split right node
   for (; index < expected_record_count; ++index) {
-    std::tie(rc, record) = right_node->Read(keys[index]);
+    std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(right_node), keys[index]);
 
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index], record->GetPayload());
@@ -1023,13 +1046,13 @@ TEST_F(LeafNodeFixture, Split_EquallyDivided_NodesHaveCorrectKeyPayloads)
 TEST_F(LeafNodeFixture, Merge_LeftSiblingNode_NodeHasCorrectStatus)
 {
   // prepare a merged node
-  auto target = std::unique_ptr<LeafNode_t>(LeafNode_t::CreateEmptyNode(kNodeSize));
-  target->Write(keys[4], kKeyLength, payloads[4], kPayloadLength);
-  auto target_meta = target->GatherSortedLiveMetadata();
+  auto target = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  LeafNode_t::Write(target.get(), keys[4], kKeyLength, payloads[4], kPayloadLength);
+  auto target_meta = LeafNode_t::GatherSortedLiveMetadata(target.get());
 
-  auto sibling = std::unique_ptr<LeafNode_t>(LeafNode_t::CreateEmptyNode(kNodeSize));
-  sibling->Write(keys[3], kKeyLength, payloads[3], kPayloadLength);
-  auto sibling_meta = sibling->GatherSortedLiveMetadata();
+  auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  LeafNode_t::Write(sibling.get(), keys[3], kKeyLength, payloads[3], kPayloadLength);
+  auto sibling_meta = LeafNode_t::GatherSortedLiveMetadata(sibling.get());
 
   node.reset(LeafNode_t::Merge(target.get(), target_meta, sibling.get(), sibling_meta, true));
   expected_record_count = 2;
@@ -1041,13 +1064,13 @@ TEST_F(LeafNodeFixture, Merge_LeftSiblingNode_NodeHasCorrectStatus)
 TEST_F(LeafNodeFixture, Merge_RightSiblingNode_NodeHasCorrectStatus)
 {
   // prepare a merged node
-  auto target = std::unique_ptr<LeafNode_t>(LeafNode_t::CreateEmptyNode(kNodeSize));
-  target->Write(keys[2], kKeyLength, payloads[2], kPayloadLength);
-  auto target_meta = target->GatherSortedLiveMetadata();
+  auto target = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  LeafNode_t::Write(target.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
+  auto target_meta = LeafNode_t::GatherSortedLiveMetadata(target.get());
 
-  auto sibling = std::unique_ptr<LeafNode_t>(LeafNode_t::CreateEmptyNode(kNodeSize));
-  sibling->Write(keys[3], kKeyLength, payloads[3], kPayloadLength);
-  auto sibling_meta = sibling->GatherSortedLiveMetadata();
+  auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  LeafNode_t::Write(sibling.get(), keys[3], kKeyLength, payloads[3], kPayloadLength);
+  auto sibling_meta = LeafNode_t::GatherSortedLiveMetadata(sibling.get());
 
   node.reset(LeafNode_t::Merge(target.get(), target_meta, sibling.get(), sibling_meta, false));
   expected_record_count = 2;
@@ -1059,19 +1082,19 @@ TEST_F(LeafNodeFixture, Merge_RightSiblingNode_NodeHasCorrectStatus)
 TEST_F(LeafNodeFixture, Merge_LeftSiblingNode_NodeHasCorrectKeyPayloads)
 {
   // prepare a merged node
-  auto target = std::unique_ptr<LeafNode_t>(LeafNode_t::CreateEmptyNode(kNodeSize));
-  target->Write(keys[4], kKeyLength, payloads[4], kPayloadLength);
-  auto target_meta = target->GatherSortedLiveMetadata();
+  auto target = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  LeafNode_t::Write(target.get(), keys[4], kKeyLength, payloads[4], kPayloadLength);
+  auto target_meta = LeafNode_t::GatherSortedLiveMetadata(target.get());
 
-  auto sibling = std::unique_ptr<LeafNode_t>(LeafNode_t::CreateEmptyNode(kNodeSize));
-  sibling->Write(keys[3], kKeyLength, payloads[3], kPayloadLength);
-  auto sibling_meta = sibling->GatherSortedLiveMetadata();
+  auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  LeafNode_t::Write(sibling.get(), keys[3], kKeyLength, payloads[3], kPayloadLength);
+  auto sibling_meta = LeafNode_t::GatherSortedLiveMetadata(sibling.get());
 
   node.reset(LeafNode_t::Merge(target.get(), target_meta, sibling.get(), sibling_meta, true));
 
   // check keys and payloads
   for (size_t index = 3; index <= 4; ++index) {
-    std::tie(rc, record) = node->Read(keys[index]);
+    std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
 
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index], record->GetPayload());
@@ -1081,19 +1104,19 @@ TEST_F(LeafNodeFixture, Merge_LeftSiblingNode_NodeHasCorrectKeyPayloads)
 TEST_F(LeafNodeFixture, Merge_RightSiblingNode_NodeHasCorrectKeyPayloads)
 {
   // prepare a merged node
-  auto target = std::unique_ptr<LeafNode_t>(LeafNode_t::CreateEmptyNode(kNodeSize));
-  target->Write(keys[2], kKeyLength, payloads[2], kPayloadLength);
-  auto target_meta = target->GatherSortedLiveMetadata();
+  auto target = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  LeafNode_t::Write(target.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
+  auto target_meta = LeafNode_t::GatherSortedLiveMetadata(target.get());
 
-  auto sibling = std::unique_ptr<LeafNode_t>(LeafNode_t::CreateEmptyNode(kNodeSize));
-  sibling->Write(keys[3], kKeyLength, payloads[3], kPayloadLength);
-  auto sibling_meta = sibling->GatherSortedLiveMetadata();
+  auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  LeafNode_t::Write(sibling.get(), keys[3], kKeyLength, payloads[3], kPayloadLength);
+  auto sibling_meta = LeafNode_t::GatherSortedLiveMetadata(sibling.get());
 
   node.reset(LeafNode_t::Merge(target.get(), target_meta, sibling.get(), sibling_meta, false));
 
   // check keys and payloads
   for (size_t index = 2; index <= 3; ++index) {
-    std::tie(rc, record) = node->Read(keys[index]);
+    std::tie(rc, record) = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
 
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
     VerifyPayload(payloads[index], record->GetPayload());

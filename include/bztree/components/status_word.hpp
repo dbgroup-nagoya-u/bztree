@@ -49,10 +49,10 @@ class alignas(kWordLength) StatusWord
 
   ~StatusWord() = default;
 
-  StatusWord(const StatusWord &) = default;
-  StatusWord &operator=(const StatusWord &) = default;
-  StatusWord(StatusWord &&) = default;
-  StatusWord &operator=(StatusWord &&) = default;
+  constexpr StatusWord(const StatusWord &) = default;
+  constexpr StatusWord &operator=(const StatusWord &) = default;
+  constexpr StatusWord(StatusWord &&) = default;
+  constexpr StatusWord &operator=(StatusWord &&) = default;
 
   constexpr bool
   operator==(const StatusWord &comp) const
