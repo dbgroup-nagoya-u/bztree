@@ -84,7 +84,7 @@ class InternalNodeFixture : public testing::Test
       const size_t write_num)
   {
     for (size_t index = 0; index < write_num; ++index) {
-      target_node->Write(key_null, kKeyLength, payload_null, kPayloadLength);
+      LeafNode_t::Write(target_node, key_null, kKeyLength, payload_null, kPayloadLength);
     }
   }
 
@@ -97,7 +97,7 @@ class InternalNodeFixture : public testing::Test
     assert(end_index < kKeyNumForTest);
 
     for (size_t index = begin_index; index <= end_index; ++index) {
-      target_node->Write(keys[index], kKeyLength, payloads[index], kPayloadLength);
+      LeafNode_t::Write(target_node, keys[index], kKeyLength, payloads[index], kPayloadLength);
     }
   }
 

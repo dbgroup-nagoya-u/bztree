@@ -92,7 +92,8 @@ class LeafNodeFixture : public testing::Test
       StatusWord s{};
       switch (w_type) {
         case kWrite:
-          std::tie(rc, s) = node->Write(keys[index], kKeyLength, payloads[index], kPayloadLength);
+          std::tie(rc, s) = LeafNode_t::Write(node.get(), keys[index], kKeyLength, payloads[index],
+                                              kPayloadLength);
           break;
         case kInsert:
           std::tie(rc, s) = node->Insert(keys[index], kKeyLength, payloads[index], kPayloadLength);

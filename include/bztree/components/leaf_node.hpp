@@ -326,8 +326,9 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
    * @param descriptor_pool
    * @return NodeReturnCode
    */
-  std::pair<NodeReturnCode, StatusWord>
+  static constexpr std::pair<NodeReturnCode, StatusWord>
   Write(  //
+      BaseNode_t *node,
       const Key &key,
       const size_t key_length,
       const Payload &payload,
@@ -345,12 +346,12 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
      *--------------------------------------------------------------------------------------------*/
     bool mwcas_success;
     do {
-      current_status = this->GetStatusWordProtected();
+      current_status = node->GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
-      if (current_status.GetOccupiedSize() + kWordLength + total_length > this->GetNodeSize()) {
+      if (current_status.GetOccupiedSize() + kWordLength + total_length > node->GetNodeSize()) {
         return {NodeReturnCode::kNoSpace, StatusWord{}};
       }
 
@@ -360,8 +361,8 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
-      this->SetStatusForMwCAS(desc, current_status, new_status);
-      this->SetMetadataForMwCAS(desc, record_count, Metadata{}, inserting_meta);
+      node->SetStatusForMwCAS(desc, current_status, new_status);
+      node->SetMetadataForMwCAS(desc, record_count, Metadata{}, inserting_meta);
       mwcas_success = desc.MwCAS();
     } while (!mwcas_success);
 
@@ -370,23 +371,23 @@ class LeafNode : public BaseNode<Key, Payload, Compare>
      *--------------------------------------------------------------------------------------------*/
 
     // insert a record
-    auto offset = this->GetNodeSize() - current_status.GetBlockSize();
-    offset = this->SetRecord(key, key_length, payload, payload_length, offset);
+    auto offset = node->GetNodeSize() - current_status.GetBlockSize();
+    offset = node->SetRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = inserting_meta.SetRecordInfo(offset, key_length, total_length);
 
     // check conflicts (concurrent SMOs)
     do {
-      current_status = this->GetStatusWordProtected();
+      current_status = node->GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
       // perform MwCAS to complete a write
       auto desc = MwCASDescriptor{};
-      this->SetStatusForMwCAS(desc, current_status, current_status);
-      this->SetMetadataForMwCAS(desc, record_count, inserting_meta, inserted_meta);
+      node->SetStatusForMwCAS(desc, current_status, current_status);
+      node->SetMetadataForMwCAS(desc, record_count, inserting_meta, inserted_meta);
       mwcas_success = desc.MwCAS();
     } while (!mwcas_success);
 

@@ -717,7 +717,7 @@ class BzTree
     do {
       leaf_node = SearchLeafNode(&key, true).second;
       std::tie(rc, node_status) =
-          leaf_node->Write(key, key_length, payload, payload_length, index_epoch_);
+          LeafNode_t::Write(leaf_node, key, key_length, payload, payload_length, index_epoch_);
     } while (rc != NodeReturnCode::kSuccess);
 
     if (NeedConsolidation(node_status)) {

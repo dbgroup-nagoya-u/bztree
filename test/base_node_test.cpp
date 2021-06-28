@@ -74,7 +74,7 @@ class BaseNodeFixture : public testing::Test
       const size_t write_num)
   {
     for (size_t index = 0; index < write_num; ++index) {
-      target_node->Write(key_null, kKeyLength, payload_null, kPayloadLength);
+      LeafNode_t::Write(target_node, key_null, kKeyLength, payload_null, kPayloadLength);
     }
   }
 
@@ -87,7 +87,7 @@ class BaseNodeFixture : public testing::Test
     assert(end_index < kKeyNumForTest);
 
     for (size_t index = begin_index; index <= end_index; ++index) {
-      target_node->Write(keys[index], kKeyLength, payloads[index], kPayloadLength);
+      LeafNode_t::Write(target_node, keys[index], kKeyLength, payloads[index], kPayloadLength);
     }
   }
 
@@ -175,12 +175,12 @@ TEST_F(BaseNodeFixture, SearchSortedMeta_SearchNotPresentKey_FindNextIndex)
 {
   // prepare a target node
   auto tmp_node = std::unique_ptr<LeafNode_t>(LeafNode_t::CreateEmptyNode(kNodeSize));
-  tmp_node->Write(keys[1], kKeyLength, payloads[1], kPayloadLength);
-  tmp_node->Write(keys[2], kKeyLength, payloads[2], kPayloadLength);
-  tmp_node->Write(keys[4], kKeyLength, payloads[4], kPayloadLength);
-  tmp_node->Write(keys[5], kKeyLength, payloads[5], kPayloadLength);
-  tmp_node->Write(keys[7], kKeyLength, payloads[7], kPayloadLength);
-  tmp_node->Write(keys[8], kKeyLength, payloads[8], kPayloadLength);
+  LeafNode_t::Write(tmp_node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
+  LeafNode_t::Write(tmp_node.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
+  LeafNode_t::Write(tmp_node.get(), keys[4], kKeyLength, payloads[4], kPayloadLength);
+  LeafNode_t::Write(tmp_node.get(), keys[5], kKeyLength, payloads[5], kPayloadLength);
+  LeafNode_t::Write(tmp_node.get(), keys[7], kKeyLength, payloads[7], kPayloadLength);
+  LeafNode_t::Write(tmp_node.get(), keys[8], kKeyLength, payloads[8], kPayloadLength);
   auto tmp_meta = tmp_node->GatherSortedLiveMetadata();
 
   node.reset(LeafNode_t::Consolidate(tmp_node.get(), tmp_meta));
