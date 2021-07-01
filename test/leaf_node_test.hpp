@@ -39,6 +39,8 @@ class LeafNodeFixture : public testing::Test
   static constexpr size_t kNullKeyLength = 8;
   static constexpr size_t kNullPayloadLength = 8;
   static constexpr size_t kNullRecordLength = kNullKeyLength + kNullPayloadLength;
+  static constexpr size_t kMaxRecordNum =
+      (kPageSize - kHeaderLength) / (kNullRecordLength + kWordLength);
 
   Key keys[kKeyNumForTest];
   Payload payloads[kKeyNumForTest];
@@ -434,7 +436,7 @@ TEST_F(LeafNodeFixture, Write_DuplicateKey_ReadLatestValue)
 
 TEST_F(LeafNodeFixture, Write_FilledNode_GetCorrectReturnCodes)
 {
-  WriteNullKey(9);
+  WriteNullKey(kMaxRecordNum - 1);
 
   std::tie(rc, status) =
       LeafNode_t::Write(node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
@@ -533,7 +535,7 @@ TEST_F(LeafNodeFixture, Insert_DuplicateKey_InsertionFailed)
 
 TEST_F(LeafNodeFixture, Insert_FilledNode_GetCorrectReturnCodes)
 {
-  WriteNullKey(9);
+  WriteNullKey(kMaxRecordNum - 1);
 
   // fill a node
   std::tie(rc, status) =
@@ -653,7 +655,7 @@ TEST_F(LeafNodeFixture, Update_DeletedKey_UpdateFailed)
 
 TEST_F(LeafNodeFixture, Update_FilledNode_GetCorrectReturnCodes)
 {
-  WriteNullKey(9);
+  WriteNullKey(kMaxRecordNum - 1);
 
   // fill a node
   std::tie(rc, status) =

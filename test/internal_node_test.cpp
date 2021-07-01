@@ -21,30 +21,29 @@
 #include "bztree/components/leaf_node.hpp"
 #include "gtest/gtest.h"
 
-using std::byte;
-
 namespace dbgroup::index::bztree
 {
-using Key = uint64_t;
-using Payload = uint64_t;
-using Record_t = Record<Key, Payload>;
-using BaseNode_t = BaseNode<Key, Payload>;
-using LeafNode_t = LeafNode<Key, Payload>;
-using InternalNode_t = InternalNode<Key, Payload>;
-using NodeReturnCode = BaseNode<Key, Payload>::NodeReturnCode;
-using KeyExistence = BaseNode<Key, Payload>::KeyExistence;
-
-static constexpr size_t kNodeSize = 256;
-static constexpr size_t kIndexEpoch = 0;
-static constexpr size_t kKeyNumForTest = 10000;
-static constexpr size_t kKeyLength = sizeof(Key);
-static constexpr size_t kPayloadLength = sizeof(Payload);
-static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;
-static constexpr size_t kDefaultMinNodeSizeThreshold = 128;
-
 class InternalNodeFixture : public testing::Test
 {
  public:
+  using Key = uint64_t;
+  using Payload = uint64_t;
+  using Record_t = Record<Key, Payload>;
+  using BaseNode_t = BaseNode<Key, Payload>;
+  using LeafNode_t = LeafNode<Key, Payload>;
+  using InternalNode_t = InternalNode<Key, Payload>;
+  using NodeReturnCode = BaseNode<Key, Payload>::NodeReturnCode;
+  using KeyExistence = BaseNode<Key, Payload>::KeyExistence;
+
+  static constexpr size_t kIndexEpoch = 0;
+  static constexpr size_t kKeyNumForTest = 10000;
+  static constexpr size_t kKeyLength = sizeof(Key);
+  static constexpr size_t kPayloadLength = sizeof(Payload);
+  static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;
+  static constexpr size_t kDefaultMinNodeSizeThreshold = 128;
+  static constexpr size_t kMaxRecordNum =
+      (kPageSize - kHeaderLength) / (kRecordLength + kWordLength);
+
   Key keys[kKeyNumForTest];
   Payload payloads[kKeyNumForTest];
   Key key_null = 0;          // null key must have 8 bytes to fill a node
@@ -135,7 +134,7 @@ TEST_F(InternalNodeFixture, NeedSplit_EmptyNode_SplitNotRequired)
 
 TEST_F(InternalNodeFixture, NeedSplit_FilledNode_SplitRequired)
 {
-  node.reset(CreateInternalNodeWithOrderedKeys(0, 9));
+  node.reset(CreateInternalNodeWithOrderedKeys(0, kMaxRecordNum));
 
   EXPECT_TRUE(InternalNode_t::NeedSplit(node.get(), kKeyLength, kPayloadLength));
 }
