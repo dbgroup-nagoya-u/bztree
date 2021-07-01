@@ -563,27 +563,31 @@ class LeafNode
   Delete(  //
       BaseNode_t *node,
       const Key &key,
-      const size_t key_length)
+      const size_t key_length,
+      const size_t index_epoch = 1)
   {
     // variables and constants
-    StatusWord current_status;
+    StatusWord new_status;
     size_t record_count;
     auto uniqueness = KeyExistence::kNotExist;
-    const auto inserting_meta = Metadata::GetInsertingMeta(index_epoch);
+    const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: reserve free space to insert a null record
      *--------------------------------------------------------------------------------------------*/
     while (true) {
-      current_status = node->GetStatusWordProtected();
+      const auto current_status = node->GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
       record_count = current_status.GetRecordCount();
-      const auto [existence, target_index] = SearchMetadataToRead(node, key, record_count);
-      if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
-        return {NodeReturnCode::kKeyNotExist, current_status};
+      size_t target_index;
+      if (uniqueness != KeyExistence::kUncertain) {
+        std::tie(uniqueness, target_index) = CheckUniqueness(node, key, record_count, index_epoch);
+        if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
+          return {NodeReturnCode::kKeyNotExist, current_status};
+        }
       }
 
       if (current_status.GetOccupiedSize() + kWordLength + key_length > node->GetNodeSize()) {
@@ -592,44 +596,55 @@ class LeafNode
 
       // prepare new status for MwCAS
       const auto target_meta = node->GetMetadataProtected(target_index);
-      const auto deleted_size = kWordLength + target_meta.GetTotalLength();
-      const auto new_status = current_status.AddRecordInfo(1, total_length, deleted_size);
+      const auto deleted_block_size = kWordLength + key_length + target_meta.GetPayloadLength();
+      new_status = current_status.AddRecordInfo(1, key_length, deleted_block_size);
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
       node->SetStatusForMwCAS(desc, current_status, new_status);
-      node->SetMetadataForMwCAS(desc, record_count, Metadata{}, inserting_meta);
+      node->SetMetadataForMwCAS(desc, record_count, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
     }
 
+    /*----------------------------------------------------------------------------------------------
+     * Phase 2: insert a record and check conflicts
+     *--------------------------------------------------------------------------------------------*/
+
+    // insert a null record
+    auto offset = node->GetNodeSize() - new_status.GetBlockSize();
+    node->SetKey(key, key_length, offset);
+    offset += key_length;
+
+    // prepare record metadata for MwCAS
+    const auto deleted_meta = in_progress_meta.SetDeleteInfo(offset, key_length, key_length);
+
+    // recheck uniqueness
+    while (uniqueness == KeyExistence::kUncertain) {
+      uniqueness = CheckUniqueness(node, key, record_count, index_epoch).first;
+      if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
+        // delete an inserted record
+        node->SetMetadataByCAS(record_count, in_progress_meta.UpdateOffset(0));
+        return {NodeReturnCode::kKeyNotExist, new_status};
+      }
+    }
+
+    // check concurrent SMOs
     while (true) {
       const auto current_status = node->GetStatusWordProtected();
       if (current_status.IsFrozen()) {
+        // delete an inserted record
+        node->SetMetadataByCAS(record_count, in_progress_meta.UpdateOffset(0));
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
-      const auto record_count = current_status.GetRecordCount();
-      const auto [existence, index] = SearchMetadataToRead(node, key, record_count);
-      if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
-        return {NodeReturnCode::kKeyNotExist, current_status};
-      }
-
-      // delete payload infomation from metadata
-      const auto current_meta = node->GetMetadataProtected(index);
-      const auto deleted_meta = current_meta.DeleteRecordInfo();
-
-      // prepare new status
-      const auto deleted_block_size = kWordLength + key_length + current_meta.GetPayloadLength();
-      new_status = current_status.AddRecordInfo(0, 0, deleted_block_size);
-
-      // perform MwCAS to reserve space
+      // perform MwCAS to complete an insert
       auto desc = MwCASDescriptor{};
-      node->SetStatusForMwCAS(desc, current_status, new_status);
-      node->SetMetadataForMwCAS(desc, index, current_meta, deleted_meta);
+      node->SetStatusForMwCAS(desc, current_status, current_status);
+      node->SetMetadataForMwCAS(desc, record_count, in_progress_meta, deleted_meta);
       if (desc.MwCAS()) break;
     }
 
-    return {NodeReturnCode::kSuccess, current_status};
+    return {NodeReturnCode::kSuccess, new_status};
   }
 
   /*################################################################################################
