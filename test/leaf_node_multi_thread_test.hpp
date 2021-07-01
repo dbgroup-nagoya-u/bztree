@@ -51,15 +51,13 @@ class LeafNodeFixture : public testing::Test
 #else
   static constexpr size_t kThreadNum = 8;
 #endif
-#ifdef BZTREE_TEST_WRITE_NUM
-  static constexpr size_t kWriteNumPerThread = BZTREE_TEST_WRITE_NUM;
-#else
-  static constexpr size_t kWriteNumPerThread = 3000;
-#endif
   static constexpr size_t kRandSeed = 10;
   static constexpr size_t kKeyNumForTest = 10000;
   static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;
   static constexpr size_t kIndexEpoch = 1;
+  static constexpr size_t kMaxRecordNum =
+      (kPageSize - kHeaderLength) / (kRecordLength + kWordLength);
+  static constexpr size_t kWriteNumPerThread = kMaxRecordNum / kThreadNum;
 
   Key keys[kKeyNumForTest];
   Payload payloads[kKeyNumForTest];
@@ -245,10 +243,11 @@ TEST_F(LeafNodeFixture, Delete_MultiThreads_KeysDeleted)
 
 TEST_F(LeafNodeFixture, InsertUpdateDelete_MultiThreads_ConcurrencyControlCorrupted)
 {
-  for (size_t i = 0; i < 10; ++i) {
+  constexpr size_t kWriteNumForTwoThreads = kMaxRecordNum / 2;
+  for (size_t i = 0; i < 100; ++i) {
     // insert/update/delete the same key by multi-threads
     node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
-    RunOverMultiThread(kWriteNumPerThread, kThreadNum, kMixed, &LeafNodeFixture::WriteRandomKeys);
+    RunOverMultiThread(kWriteNumForTwoThreads, 2, kMixed, &LeafNodeFixture::WriteRandomKeys);
     bool previous_is_update = false;
     bool concurrency_is_corrupted = false;
 
