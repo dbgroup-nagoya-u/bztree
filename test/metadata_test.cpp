@@ -118,14 +118,13 @@ TEST_F(MetadataFixture, SetRecordInfo_InsertedMeta_SetWithoutSideEffect)
   EXPECT_EQ(total_length - key_length, test_meta.GetPayloadLength());
 }
 
-TEST_F(MetadataFixture, DeletePayload_InitMeta_DeleteWithoutSideEffect)
+TEST_F(MetadataFixture, SetDeleteInfo_InitMeta_DeleteWithoutSideEffect)
 {
   const Metadata meta;
   const auto epoch = 0;
   const auto offset = 256, key_length = 16, total_length = 32;
-  const auto test_meta = Metadata::GetInsertingMeta(epoch)
-                             .SetRecordInfo(offset, key_length, total_length)
-                             .DeleteRecordInfo();
+  const auto test_meta =
+      Metadata::GetInsertingMeta(epoch).SetDeleteInfo(offset, key_length, total_length);
 
   EXPECT_EQ(kWordLength, sizeof(test_meta));
   EXPECT_FALSE(test_meta.IsVisible());

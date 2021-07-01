@@ -113,12 +113,13 @@ class LeafNodeFixture : public testing::Test
     if (record_is_visible) {
       EXPECT_TRUE(meta.IsVisible());
       EXPECT_FALSE(meta.IsDeleted());
+      EXPECT_EQ(kPayloadLength, meta.GetPayloadLength());
     } else {
       EXPECT_FALSE(meta.IsVisible());
       EXPECT_TRUE(meta.IsDeleted());
+      EXPECT_EQ(0, meta.GetPayloadLength());
     }
     EXPECT_EQ(kKeyLength, meta.GetKeyLength());
-    EXPECT_EQ(kPayloadLength, meta.GetPayloadLength());
   }
 
   void
@@ -749,8 +750,11 @@ TEST_F(LeafNodeFixture, Delete_TwoKeys_MetadataCorrectlyUpdated)
   LeafNode_t::Insert(node.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
   expected_record_count += 2;
   expected_block_size += 2 * kRecordLength;
+  index += 2;
 
   std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
+  expected_record_count += 1;
+  expected_block_size += kKeyLength;
   expected_deleted_size += kWordLength + kRecordLength;
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
@@ -758,6 +762,8 @@ TEST_F(LeafNodeFixture, Delete_TwoKeys_MetadataCorrectlyUpdated)
   VerifyStatusWord(status);
 
   std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[2], kKeyLength);
+  expected_record_count += 1;
+  expected_block_size += kKeyLength;
   expected_deleted_size += kWordLength + kRecordLength;
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
@@ -803,7 +809,7 @@ TEST_F(LeafNodeFixture, Delete_DeletedKey_DeletionFailed)
 
 TEST_F(LeafNodeFixture, Delete_FilledNode_GetCorrectReturnCodes)
 {
-  WriteNullKey(10);
+  WriteNullKey(9);
 
   std::tie(rc, status) = LeafNode_t::Delete(node.get(), key_null, kNullKeyLength);
 
@@ -822,6 +828,8 @@ TEST_F(LeafNodeFixture, Delete_ConsolidatedNode_MetadataCorrectlyUpdated)
   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
 
   std::tie(rc, status) = LeafNode_t::Delete(node.get(), keys[1], kKeyLength);
+  expected_record_count += 1;
+  expected_block_size += kKeyLength;
   expected_deleted_size += kWordLength + kRecordLength;
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
@@ -889,7 +897,7 @@ TEST_F(LeafNodeFixture, Consolidate_SortedTenKeys_GatherSortedLiveMetadata)
 TEST_F(LeafNodeFixture, Consolidate_SortedTenKeysWithDelete_GatherSortedLiveMetadata)
 {
   // fill a node with ordered keys
-  auto written_keys = WriteOrderedKeys(0, 9);
+  auto written_keys = WriteOrderedKeys(0, 8);
 
   // delete a key
   LeafNode_t::Delete(node.get(), keys[2], kKeyLength);
@@ -955,7 +963,7 @@ TEST_F(LeafNodeFixture, Consolidate_SortedTenKeys_NodeHasCorrectStatus)
 TEST_F(LeafNodeFixture, Consolidate_SortedTenKeysWithDelete_NodeHasCorrectStatus)
 {
   // prepare a consolidated node
-  WriteOrderedKeys(0, 9);
+  WriteOrderedKeys(0, 8);
   LeafNode_t::Delete(node.get(), keys[2], kKeyLength);
   expected_record_count -= 1;
   expected_block_size -= kRecordLength;

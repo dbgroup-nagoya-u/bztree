@@ -158,11 +158,16 @@ class alignas(kWordLength) Metadata
   }
 
   constexpr Metadata
-  DeleteRecordInfo() const
+  SetDeleteInfo(  //
+      const size_t offset,
+      const size_t key_length,
+      const size_t total_length) const
   {
     auto new_meta = *this;
-    new_meta.visible_ = 0;
     new_meta.in_progress_ = 0;
+    new_meta.offset_ = offset;
+    new_meta.key_length_ = key_length;
+    new_meta.total_length_ = total_length;
     return new_meta;
   }
 };

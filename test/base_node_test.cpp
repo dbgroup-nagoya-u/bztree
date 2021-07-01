@@ -203,28 +203,6 @@ TEST_F(BaseNodeFixture, SearchSortedMeta_SearchNotPresentKey_FindNextIndex)
   EXPECT_EQ(target_index - 2, index);
 }
 
-TEST_F(BaseNodeFixture, SearchSortedMeta_SearchDeletedKey_FindKeyIndex)
-{
-  node.reset(CreateSortedLeafNodeWithOrderedKeys(0, 9));
-  auto target_index = 7;
-  auto target_key = keys[target_index];
-  LeafNode_t::Delete(node.get(), target_key, kKeyLength);
-
-  auto [rc, index] = node->SearchSortedMetadata(target_key, true);
-
-  EXPECT_EQ(KeyExistence::kDeleted, rc);
-  EXPECT_EQ(target_index, index);
-
-  target_index = 3;
-  target_key = keys[target_index];
-  LeafNode_t::Delete(node.get(), target_key, kKeyLength);
-
-  std::tie(rc, index) = node->SearchSortedMetadata(target_key, false);
-
-  EXPECT_EQ(KeyExistence::kDeleted, rc);
-  EXPECT_EQ(target_index, index);
-}
-
 TEST_F(BaseNodeFixture, SearchSortedMeta_SearchOutOfNodeKey_FindBorderIndex)
 {
   node.reset(CreateSortedLeafNodeWithOrderedKeys(0, 9));

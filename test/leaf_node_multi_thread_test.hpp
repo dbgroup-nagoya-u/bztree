@@ -248,36 +248,40 @@ TEST_F(LeafNodeFixture, Delete_MultiThreads_KeysDeleted)
 
 TEST_F(LeafNodeFixture, InsertUpdateDelete_MultiThreads_ConcurrencyControlCorrupted)
 {
-  RunOverMultiThread(kWriteNumPerThread, kThreadNum, kMixed, &LeafNodeFixture::WriteRandomKeys);
+  for (size_t i = 0; i < 10; ++i) {
+    // insert/update/delete the same key by multi-threads
+    node.reset(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+    RunOverMultiThread(kWriteNumPerThread, kThreadNum, kMixed, &LeafNodeFixture::WriteRandomKeys);
+    bool previous_is_update = false;
+    bool concurrency_is_corrupted = false;
 
-  bool previous_is_update{false};
-  bool concurrency_is_corrupted{false};
-  do {
     const auto status = node->GetStatusWord();
+    // check inserted/updated/deleted records linearly
     for (int64_t index = status.GetRecordCount() - 1; index >= 0; --index) {
       const auto meta = node->GetMetadata(index);
-      if (meta.IsVisible()) {  // insert or update
+      if (meta.IsVisible()) {
+        // an inserted or updated record
         const auto record = node->GetRecord(meta);
         if (IsEqual<PayloadComparator>(payloads[1], record->GetPayload())) {
+          // 1 is an updated value
           previous_is_update = true;
         } else {
+          // 0 is an inserted value
           previous_is_update = false;
         }
-      } else if (meta.IsDeleted()) {  // delete
+      } else if (meta.IsDeleted()) {
+        // a deleted record
         if (previous_is_update) {
+          // updating a deleted value is invalid
           concurrency_is_corrupted = true;
         }
         previous_is_update = false;
       }
     }
 
-    if (!concurrency_is_corrupted) {
-      node.reset(BaseNode_t::CreateEmptyNode(kNodeSize, true));
-      RunOverMultiThread(kWriteNumPerThread, kThreadNum, kMixed, &LeafNodeFixture::WriteRandomKeys);
-    }
-  } while (!concurrency_is_corrupted);
-
-  EXPECT_TRUE(concurrency_is_corrupted);
+    EXPECT_FALSE(concurrency_is_corrupted);
+    if (concurrency_is_corrupted) break;
+  }
 }
 
 }  // namespace dbgroup::index::bztree
