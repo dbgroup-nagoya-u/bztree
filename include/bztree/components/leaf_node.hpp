@@ -163,10 +163,8 @@ class LeafNode
       const typename std::vector<std::pair<Key, Metadata>>::const_iterator begin_iter,
       const typename std::vector<std::pair<Key, Metadata>>::const_iterator end_iter)
   {
-    const auto node_size = original_node->GetNodeSize();
-
     auto record_count = copied_node->GetSortedCount();
-    auto offset = node_size - copied_node->GetStatusWord().GetBlockSize();
+    auto offset = kPageSize - copied_node->GetStatusWord().GetBlockSize();
     for (auto iter = begin_iter; iter != end_iter; ++record_count, ++iter) {
       // copy a record
       const auto [key, meta] = *iter;
@@ -175,7 +173,7 @@ class LeafNode
       const auto new_meta = meta.UpdateOffset(offset);
       copied_node->SetMetadata(record_count, new_meta);
     }
-    copied_node->SetStatus(StatusWord{}.AddRecordInfo(record_count, node_size - offset, 0));
+    copied_node->SetStatus(StatusWord{}.AddRecordInfo(record_count, kPageSize - offset, 0));
     copied_node->SetSortedCount(record_count);
   }
 
@@ -316,7 +314,7 @@ class LeafNode
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
-      if (current_status.GetOccupiedSize() + kWordLength + total_length > node->GetNodeSize()) {
+      if (current_status.GetOccupiedSize() + kWordLength + total_length > kPageSize) {
         return {NodeReturnCode::kNoSpace, StatusWord{}};
       }
 
@@ -336,7 +334,7 @@ class LeafNode
      *--------------------------------------------------------------------------------------------*/
 
     // insert a record
-    auto offset = node->GetNodeSize() - current_status.GetBlockSize();
+    auto offset = kPageSize - current_status.GetBlockSize();
     offset = node->SetRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
@@ -406,7 +404,7 @@ class LeafNode
         }
       }
 
-      if (current_status.GetOccupiedSize() + kWordLength + total_length > node->GetNodeSize()) {
+      if (current_status.GetOccupiedSize() + kWordLength + total_length > kPageSize) {
         return {NodeReturnCode::kNoSpace, StatusWord{}};
       }
 
@@ -429,7 +427,7 @@ class LeafNode
      *--------------------------------------------------------------------------------------------*/
 
     // insert a record
-    auto offset = node->GetNodeSize() - current_status.GetBlockSize();
+    auto offset = kPageSize - current_status.GetBlockSize();
     offset = node->SetRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
@@ -508,7 +506,7 @@ class LeafNode
         }
       }
 
-      if (current_status.GetOccupiedSize() + kWordLength + total_length > node->GetNodeSize()) {
+      if (current_status.GetOccupiedSize() + kWordLength + total_length > kPageSize) {
         return {NodeReturnCode::kNoSpace, StatusWord{}};
       }
 
@@ -529,7 +527,7 @@ class LeafNode
      *--------------------------------------------------------------------------------------------*/
 
     // insert a record
-    auto offset = node->GetNodeSize() - current_status.GetBlockSize();
+    auto offset = kPageSize - current_status.GetBlockSize();
     offset = node->SetRecord(key, key_length, payload, payload_length, offset);
 
     // prepare record metadata for MwCAS
@@ -601,7 +599,7 @@ class LeafNode
         }
       }
 
-      if (current_status.GetOccupiedSize() + kWordLength + key_length > node->GetNodeSize()) {
+      if (current_status.GetOccupiedSize() + kWordLength + key_length > kPageSize) {
         return {NodeReturnCode::kNoSpace, StatusWord{}};
       }
 
@@ -622,7 +620,7 @@ class LeafNode
      *--------------------------------------------------------------------------------------------*/
 
     // insert a null record
-    auto offset = node->GetNodeSize() - new_status.GetBlockSize();
+    auto offset = kPageSize - new_status.GetBlockSize();
     node->SetKey(key, key_length, offset);
 
     // prepare record metadata for MwCAS
@@ -667,7 +665,7 @@ class LeafNode
       const std::vector<std::pair<Key, Metadata>> &live_meta)
   {
     // create a new node and copy records
-    auto new_node = BaseNode_t::CreateEmptyNode(node->GetNodeSize(), true);
+    auto new_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
     CopyRecordsViaMetadata(new_node, node, live_meta.begin(), live_meta.end());
 
     return new_node;
@@ -679,15 +677,14 @@ class LeafNode
       const std::vector<std::pair<Key, Metadata>> &sorted_meta,
       const size_t left_record_count)
   {
-    const auto node_size = node->GetNodeSize();
     const auto split_iter = sorted_meta.begin() + left_record_count;
 
     // create a split left node
-    auto left_node = BaseNode_t::CreateEmptyNode(node_size, true);
+    auto left_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
     CopyRecordsViaMetadata(left_node, node, sorted_meta.begin(), split_iter);
 
     // create a split right node
-    auto right_node = BaseNode_t::CreateEmptyNode(node_size, true);
+    auto right_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
     CopyRecordsViaMetadata(right_node, node, split_iter, sorted_meta.end());
 
     return {left_node, right_node};
@@ -702,7 +699,7 @@ class LeafNode
       const bool sibling_is_left)
   {
     // create a merged node
-    auto merged_node = BaseNode_t::CreateEmptyNode(target_node->GetNodeSize(), true);
+    auto merged_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
     if (sibling_is_left) {
       CopyRecordsViaMetadata(merged_node, sibling_node, sibling_meta.begin(), sibling_meta.end());
       CopyRecordsViaMetadata(merged_node, target_node, target_meta.begin(), target_meta.end());

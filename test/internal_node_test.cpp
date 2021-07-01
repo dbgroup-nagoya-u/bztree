@@ -61,7 +61,7 @@ class InternalNodeFixture : public testing::Test
   void
   SetUp() override
   {
-    node.reset(BaseNode_t::CreateEmptyNode(kNodeSize, false));
+    node.reset(BaseNode_t::CreateEmptyNode(kInternalFlag));
 
     expected_record_count = 0;
     expected_block_size = 0;
@@ -106,7 +106,7 @@ class InternalNodeFixture : public testing::Test
       const size_t begin_index,
       const size_t end_index)
   {
-    auto tmp_leaf_node = BaseNode_t::CreateEmptyNode(kNodeSize, true);
+    auto tmp_leaf_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
     auto tmp_meta = LeafNode_t::GatherSortedLiveMetadata(tmp_leaf_node);
     return LeafNode_t::Consolidate(tmp_leaf_node, tmp_meta);
@@ -311,7 +311,6 @@ TEST_F(InternalNodeFixture, NewParent_AfterSplit_HasCorrectStatus)
   auto block_size = (kWordLength * 2) * record_count;
   auto deleted_size = 0;
 
-  EXPECT_EQ(kNodeSize, new_parent->GetNodeSize());
   EXPECT_EQ(record_count, new_parent->GetSortedCount());
   EXPECT_EQ(record_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());

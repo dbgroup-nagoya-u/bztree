@@ -55,7 +55,7 @@ class BaseNodeFixture : public testing::Test
   void
   SetUp() override
   {
-    node.reset(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+    node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
 
     for (size_t index = 0; index < kKeyNumForTest; index++) {
       keys[index] = index + 1;
@@ -96,7 +96,7 @@ class BaseNodeFixture : public testing::Test
       const size_t begin_index,
       const size_t end_index)
   {
-    auto tmp_leaf_node = BaseNode_t::CreateEmptyNode(kNodeSize, true);
+    auto tmp_leaf_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
     auto tmp_meta = LeafNode_t::GatherSortedLiveMetadata(tmp_leaf_node);
     return LeafNode_t::Consolidate(tmp_leaf_node, tmp_meta);
@@ -107,7 +107,6 @@ TEST_F(BaseNodeFixture, New_EmptyNode_CorrectlyInitialized)
 {
   auto status = *CastAddress<StatusWord*>(ShiftAddress(node.get(), kWordLength));
 
-  EXPECT_EQ(kNodeSize, node->GetNodeSize());
   EXPECT_EQ(0, node->GetSortedCount());
   EXPECT_EQ(status, node->GetStatusWord());
 }
@@ -174,7 +173,7 @@ TEST_F(BaseNodeFixture, SearchSortedMeta_SearchPresentKeyWithOpenedRange_FindNex
 TEST_F(BaseNodeFixture, SearchSortedMeta_SearchNotPresentKey_FindNextIndex)
 {
   // prepare a target node
-  auto tmp_node = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  auto tmp_node = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
   LeafNode_t::Write(tmp_node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
   LeafNode_t::Write(tmp_node.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
   LeafNode_t::Write(tmp_node.get(), keys[4], kKeyLength, payloads[4], kPayloadLength);

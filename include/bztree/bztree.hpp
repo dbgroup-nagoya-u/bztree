@@ -48,9 +48,6 @@ class BzTree
    * Internal member variables
    *##############################################################################################*/
 
-  /// an entire node size in bytes
-  const size_t node_size_;
-
   /// if an occupied size of a consolidated node is less than this threshold, invoke merging
   const size_t min_node_size_;
 
@@ -129,7 +126,7 @@ class BzTree
   constexpr bool
   NeedConsolidation(const StatusWord status) const
   {
-    return status.GetOccupiedSize() + min_free_space_ > node_size_
+    return status.GetOccupiedSize() + min_free_space_ > kPageSize
            || status.GetDeletedSize() > max_deleted_size_;
   }
 
@@ -221,7 +218,7 @@ class BzTree
     // gather sorted live metadata of a targetnode, and check whether split/merge is required
     const auto live_meta = LeafNode_t::GatherSortedLiveMetadata(target_node);
     const auto occupied_size = ComputeOccupiedSize(live_meta);
-    if (occupied_size + expected_free_space_ > node_size_) {
+    if (occupied_size + expected_free_space_ > kPageSize) {
       SplitLeafNode(target_node, target_key, live_meta);
       return;
     } else if (occupied_size < min_node_size_) {
@@ -569,14 +566,12 @@ class BzTree
    * Public constructor/destructor
    *##############################################################################################*/
 
-  explicit BzTree(const size_t node_size = 4096,
-                  const size_t min_node_size = 256,
+  explicit BzTree(const size_t min_node_size = 256,
                   const size_t min_free_space = 256,
                   const size_t expected_free_space = 1024,
                   const size_t max_deleted_size = 1024,
                   const size_t max_merged_size = 2048)
-      : node_size_{node_size},
-        min_node_size_{min_node_size},
+      : min_node_size_{min_node_size},
         min_free_space_{min_free_space},
         expected_free_space_{expected_free_space},
         max_deleted_size_{max_deleted_size},
@@ -585,7 +580,7 @@ class BzTree
         gc_{1000}
   {
     // initialize a tree structure: one internal node with one leaf node
-    const auto root_node = InternalNode_t::CreateInitialRoot(node_size_);
+    const auto root_node = InternalNode_t::CreateInitialRoot();
     root_ = reinterpret_cast<uintptr_t>(root_node);
   }
 

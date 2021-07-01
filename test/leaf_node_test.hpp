@@ -34,7 +34,6 @@ class LeafNodeFixture : public testing::Test
   using BaseNode_t = BaseNode<Key, Payload, Compare>;
   using LeafNode_t = LeafNode<Key, Payload, Compare>;
 
-  static constexpr size_t kNodeSize = 256;
   static constexpr size_t kIndexEpoch = 1;
   static constexpr size_t kKeyNumForTest = 10000;
   static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;
@@ -60,7 +59,7 @@ class LeafNodeFixture : public testing::Test
 
  protected:
   LeafNodeFixture()
-      : node{BaseNode_t::CreateEmptyNode(kNodeSize, true)},
+      : node{BaseNode_t::CreateEmptyNode(kLeafFlag)},
         index{0},
         expected_record_count{0},
         expected_block_size{0},
@@ -159,7 +158,6 @@ TEST_F(LeafNodeFixture, New_EmptyNode_CorrectlyInitialized)
 {
   auto status = *CastAddress<StatusWord*>(ShiftAddress(node.get(), kWordLength));
 
-  EXPECT_EQ(kNodeSize, node->GetNodeSize());
   EXPECT_EQ(0, node->GetSortedCount());
   EXPECT_EQ(status, node->GetStatusWord());
 }
@@ -1054,11 +1052,11 @@ TEST_F(LeafNodeFixture, Split_EquallyDivided_NodesHaveCorrectKeyPayloads)
 TEST_F(LeafNodeFixture, Merge_LeftSiblingNode_NodeHasCorrectStatus)
 {
   // prepare a merged node
-  auto target = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  auto target = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
   LeafNode_t::Write(target.get(), keys[4], kKeyLength, payloads[4], kPayloadLength);
   auto target_meta = LeafNode_t::GatherSortedLiveMetadata(target.get());
 
-  auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
   LeafNode_t::Write(sibling.get(), keys[3], kKeyLength, payloads[3], kPayloadLength);
   auto sibling_meta = LeafNode_t::GatherSortedLiveMetadata(sibling.get());
 
@@ -1072,11 +1070,11 @@ TEST_F(LeafNodeFixture, Merge_LeftSiblingNode_NodeHasCorrectStatus)
 TEST_F(LeafNodeFixture, Merge_RightSiblingNode_NodeHasCorrectStatus)
 {
   // prepare a merged node
-  auto target = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  auto target = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
   LeafNode_t::Write(target.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
   auto target_meta = LeafNode_t::GatherSortedLiveMetadata(target.get());
 
-  auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
   LeafNode_t::Write(sibling.get(), keys[3], kKeyLength, payloads[3], kPayloadLength);
   auto sibling_meta = LeafNode_t::GatherSortedLiveMetadata(sibling.get());
 
@@ -1090,11 +1088,11 @@ TEST_F(LeafNodeFixture, Merge_RightSiblingNode_NodeHasCorrectStatus)
 TEST_F(LeafNodeFixture, Merge_LeftSiblingNode_NodeHasCorrectKeyPayloads)
 {
   // prepare a merged node
-  auto target = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  auto target = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
   LeafNode_t::Write(target.get(), keys[4], kKeyLength, payloads[4], kPayloadLength);
   auto target_meta = LeafNode_t::GatherSortedLiveMetadata(target.get());
 
-  auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
   LeafNode_t::Write(sibling.get(), keys[3], kKeyLength, payloads[3], kPayloadLength);
   auto sibling_meta = LeafNode_t::GatherSortedLiveMetadata(sibling.get());
 
@@ -1112,11 +1110,11 @@ TEST_F(LeafNodeFixture, Merge_LeftSiblingNode_NodeHasCorrectKeyPayloads)
 TEST_F(LeafNodeFixture, Merge_RightSiblingNode_NodeHasCorrectKeyPayloads)
 {
   // prepare a merged node
-  auto target = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  auto target = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
   LeafNode_t::Write(target.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
   auto target_meta = LeafNode_t::GatherSortedLiveMetadata(target.get());
 
-  auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+  auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
   LeafNode_t::Write(sibling.get(), keys[3], kKeyLength, payloads[3], kPayloadLength);
   auto sibling_meta = LeafNode_t::GatherSortedLiveMetadata(sibling.get());
 

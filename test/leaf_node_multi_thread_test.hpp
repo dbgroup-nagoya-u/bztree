@@ -60,8 +60,6 @@ class LeafNodeFixture : public testing::Test
   static constexpr size_t kRandSeed = 10;
   static constexpr size_t kKeyNumForTest = 10000;
   static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;
-  static constexpr size_t kNodeSize =
-      kHeaderLength + (kWordLength + kRecordLength) * (kWriteNumPerThread * kThreadNum);
   static constexpr size_t kIndexEpoch = 1;
 
   Key keys[kKeyNumForTest];
@@ -131,7 +129,7 @@ class LeafNodeFixture : public testing::Test
   }
 
  protected:
-  LeafNodeFixture() : node{BaseNode_t::CreateEmptyNode(kNodeSize, true)} {}
+  LeafNodeFixture() : node{BaseNode_t::CreateEmptyNode(kLeafFlag)} {}
 
   void SetUp() override;
 
@@ -250,7 +248,7 @@ TEST_F(LeafNodeFixture, InsertUpdateDelete_MultiThreads_ConcurrencyControlCorrup
 {
   for (size_t i = 0; i < 10; ++i) {
     // insert/update/delete the same key by multi-threads
-    node.reset(BaseNode_t::CreateEmptyNode(kNodeSize, true));
+    node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
     RunOverMultiThread(kWriteNumPerThread, kThreadNum, kMixed, &LeafNodeFixture::WriteRandomKeys);
     bool previous_is_update = false;
     bool concurrency_is_corrupted = false;

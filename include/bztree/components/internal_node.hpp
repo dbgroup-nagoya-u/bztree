@@ -67,9 +67,8 @@ class InternalNode
       const size_t begin_index,
       const size_t end_index)
   {
-    const auto node_size = target_node->GetNodeSize();
     auto record_count = target_node->GetSortedCount();
-    auto offset = node_size - target_node->GetStatusWord().GetBlockSize();
+    auto offset = kPageSize - target_node->GetStatusWord().GetBlockSize();
     for (size_t index = begin_index; index < end_index; ++index, ++record_count) {
       const auto meta = original_node->GetMetadata(index);
       // copy a record
@@ -82,7 +81,7 @@ class InternalNode
       target_node->SetMetadata(record_count, new_meta);
     }
     target_node->SetSortedCount(record_count);
-    target_node->SetStatus(StatusWord{}.AddRecordInfo(record_count, node_size - offset, 0));
+    target_node->SetStatus(StatusWord{}.AddRecordInfo(record_count, kPageSize - offset, 0));
   }
 
  public:
@@ -115,7 +114,7 @@ class InternalNode
   {
     const auto new_block_size = node->GetStatusWordProtected().GetOccupiedSize() + kWordLength
                                 + key_length + payload_length;
-    return new_block_size > node->GetNodeSize();
+    return new_block_size > kPageSize;
   }
 
   static constexpr bool
@@ -171,10 +170,10 @@ class InternalNode
    *##############################################################################################*/
 
   static constexpr BaseNode_t *
-  CreateInitialRoot(const size_t node_size)
+  CreateInitialRoot()
   {
-    auto root = BaseNode_t::CreateEmptyNode(node_size, false);
-    const auto leaf_node = BaseNode_t::CreateEmptyNode(node_size, true);
+    auto root = BaseNode_t::CreateEmptyNode(kInternalFlag);
+    const auto leaf_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
 
     constexpr auto key = Key{};  // act as a positive infinity value
     constexpr auto key_length = 0;
@@ -182,13 +181,13 @@ class InternalNode
     constexpr auto total_length = kWordLength;
 
     // set an inital leaf node
-    const auto offset = SetChild(root, key, key_length, leaf_addr, node_size);
+    const auto offset = SetChild(root, key, key_length, leaf_addr, kPageSize);
     const auto meta = Metadata{}.SetRecordInfo(offset, key_length, total_length);
     root->SetMetadata(0, meta);
 
     // set a new header
     root->SetSortedCount(1);
-    root->SetStatus(StatusWord{}.AddRecordInfo(1, node_size - offset, 0));
+    root->SetStatus(StatusWord{}.AddRecordInfo(1, kPageSize - offset, 0));
 
     return root;
   }
@@ -198,14 +197,12 @@ class InternalNode
       const BaseNode_t *target_node,
       const size_t left_record_count)
   {
-    const auto node_size = target_node->GetNodeSize();
-
     // create a split left node
-    auto left_node = BaseNode_t::CreateEmptyNode(node_size, false);
+    auto left_node = BaseNode_t::CreateEmptyNode(kInternalFlag);
     CopySortedRecords(left_node, target_node, 0, left_record_count);
 
     // create a split right node
-    auto right_node = BaseNode_t::CreateEmptyNode(node_size, false);
+    auto right_node = BaseNode_t::CreateEmptyNode(kInternalFlag);
     CopySortedRecords(right_node, target_node, left_record_count, target_node->GetSortedCount());
 
     return {left_node, right_node};
@@ -217,10 +214,8 @@ class InternalNode
       const BaseNode_t *sibling_node,
       const bool sibling_is_left)
   {
-    const auto node_size = target_node->GetNodeSize();
-
     // create a merged node
-    auto merged_node = BaseNode_t::CreateEmptyNode(node_size, false);
+    auto merged_node = BaseNode_t::CreateEmptyNode(kInternalFlag);
     if (sibling_is_left) {
       CopySortedRecords(merged_node, sibling_node, 0, sibling_node->GetSortedCount());
       CopySortedRecords(merged_node, target_node, 0, target_node->GetSortedCount());
@@ -237,9 +232,8 @@ class InternalNode
       const BaseNode_t *left_child,
       const BaseNode_t *right_child)
   {
-    const auto node_size = left_child->GetNodeSize();
-    auto offset = node_size;
-    auto new_root = BaseNode_t::CreateEmptyNode(offset, false);
+    auto offset = kPageSize;
+    auto new_root = BaseNode_t::CreateEmptyNode(kInternalFlag);
 
     // insert a left child node
     const auto left_meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
@@ -263,7 +257,7 @@ class InternalNode
 
     // set a new header
     new_root->SetSortedCount(2);
-    new_root->SetStatus(StatusWord{}.AddRecordInfo(2, node_size - offset, 0));
+    new_root->SetStatus(StatusWord{}.AddRecordInfo(2, kPageSize - offset, 0));
 
     return new_root;
   }
@@ -277,9 +271,8 @@ class InternalNode
       const void *right_addr,
       const size_t split_index)
   {
-    const auto node_size = old_parent->GetNodeSize();
-    auto offset = node_size;
-    auto new_parent = BaseNode_t::CreateEmptyNode(offset, false);
+    auto offset = kPageSize;
+    auto new_parent = BaseNode_t::CreateEmptyNode(kInternalFlag);
 
     // copy child nodes with inserting new split ones
     auto record_count = old_parent->GetSortedCount();
@@ -308,7 +301,7 @@ class InternalNode
 
     // set a new header
     new_parent->SetSortedCount(++record_count);
-    new_parent->SetStatus(StatusWord{}.AddRecordInfo(record_count, node_size - offset, 0));
+    new_parent->SetStatus(StatusWord{}.AddRecordInfo(record_count, kPageSize - offset, 0));
 
     return new_parent;
   }
@@ -319,9 +312,8 @@ class InternalNode
       const void *merged_child_addr,
       const size_t deleted_index)
   {
-    const auto node_size = old_parent->GetNodeSize();
-    auto offset = node_size;
-    auto new_parent = BaseNode_t::CreateEmptyNode(offset, false);
+    auto offset = kPageSize;
+    auto new_parent = BaseNode_t::CreateEmptyNode(kInternalFlag);
 
     // copy child nodes with deleting a merging target node
     auto record_count = old_parent->GetSortedCount();
@@ -346,7 +338,7 @@ class InternalNode
 
     // set a new header
     new_parent->SetSortedCount(--record_count);
-    new_parent->SetStatus(StatusWord{}.AddRecordInfo(record_count, node_size - offset, 0));
+    new_parent->SetStatus(StatusWord{}.AddRecordInfo(record_count, kPageSize - offset, 0));
 
     return new_parent;
   }
