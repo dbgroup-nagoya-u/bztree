@@ -19,6 +19,17 @@ set(MWCAS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/mwcas")
 set(MEMORY_MANAGER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/memory-manager")
 
 #--------------------------------------------------------------------------------------#
+# Compile options
+#--------------------------------------------------------------------------------------#
+
+set(
+  BZTREE_PAGE_SIZE
+  "8192"
+  CACHE STRING
+  "The byte length of each node page"
+)
+
+#--------------------------------------------------------------------------------------#
 # Configure external libraries
 #--------------------------------------------------------------------------------------#
 
@@ -45,6 +56,10 @@ target_compile_options(
   $<$<STREQUAL:${CMAKE_BUILD_TYPE},"Release">:"-O2 -march=native">
   $<$<STREQUAL:${CMAKE_BUILD_TYPE},"RelWithDebInfo">:"-g3 -Og -pg">
   $<$<STREQUAL:${CMAKE_BUILD_TYPE},"Debug">:"-g3 -O0 -pg">
+)
+target_compile_definitions(
+  bztree INTERFACE
+  BZTREE_PAGE_SIZE=${BZTREE_PAGE_SIZE}
 )
 target_include_directories(
   bztree INTERFACE

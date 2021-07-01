@@ -113,6 +113,13 @@ constexpr size_t kCacheLineSize = 64;
 /// Header length in bytes
 constexpr size_t kHeaderLength = 2 * kWordLength;
 
+#ifdef BZTREE_PAGE_SIZE
+/// The page size of each node
+constexpr size_t kPageSize = BZTREE_PAGE_SIZE;
+#else
+constexpr size_t kPageSize = 8192;
+#endif
+
 /**
  * @brief
  *
