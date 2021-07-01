@@ -16,8 +16,6 @@
 
 #pragma once
 
-#include <gtest/gtest.h>
-
 #include <future>
 #include <memory>
 #include <random>
@@ -26,6 +24,7 @@
 #include <vector>
 
 #include "bztree/components/leaf_node.hpp"
+#include "gtest/gtest.h"
 
 namespace dbgroup::index::bztree
 {

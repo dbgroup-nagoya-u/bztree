@@ -16,13 +16,12 @@
 
 #pragma once
 
-#include <gtest/gtest.h>
-
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "bztree/components/leaf_node.hpp"
+#include "gtest/gtest.h"
 
 namespace dbgroup::index::bztree
 {

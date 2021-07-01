@@ -16,12 +16,11 @@
 
 #pragma once
 
-#include <gtest/gtest.h>
-
 #include <memory>
 #include <thread>
 
 #include "bztree/bztree.hpp"
+#include "gtest/gtest.h"
 
 using std::byte;
 

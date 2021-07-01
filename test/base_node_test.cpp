@@ -16,11 +16,10 @@
 
 #include "bztree/components/base_node.hpp"
 
-#include <gtest/gtest.h>
-
 #include <memory>
 
 #include "bztree/components/leaf_node.hpp"
+#include "gtest/gtest.h"
 
 using std::byte;
 
