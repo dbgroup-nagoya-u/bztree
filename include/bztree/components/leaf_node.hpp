@@ -71,7 +71,7 @@ class LeafNode
    * Internal utility functions
    *##############################################################################################*/
 
-  static constexpr KeyExistence
+  static constexpr std::pair<KeyExistence, size_t>
   SearchUnsortedMetaToWrite(  //
       const BaseNode_t *node,
       const Key &key,
@@ -84,7 +84,7 @@ class LeafNode
       const auto meta = node->GetMetadataProtected(index);
       if (meta.IsInProgress()) {
         if (meta.GetOffset() == index_epoch) {
-          return KeyExistence::kUncertain;
+          return {KeyExistence::kUncertain, index};
         }
         continue;  // failed record
       }
@@ -92,28 +92,28 @@ class LeafNode
       const auto target_key = CastKey<Key>(node->GetKeyAddr(meta));
       if (IsEqual<Compare>(key, target_key)) {
         if (meta.IsVisible()) {
-          return KeyExistence::kExist;
+          return {KeyExistence::kExist, index};
         }
-        return KeyExistence::kDeleted;
+        return {KeyExistence::kDeleted, index};
       }
     }
-    return KeyExistence::kNotExist;
+    return {KeyExistence::kNotExist, 0};
   }
 
-  static constexpr KeyExistence
+  static constexpr std::pair<KeyExistence, size_t>
   CheckUniqueness(  //
       const BaseNode_t *node,
       const Key &key,
       const int64_t record_count,
       const size_t index_epoch)
   {
-    const auto existence =
+    const auto [existence, index] =
         SearchUnsortedMetaToWrite(node, key, record_count - 1, node->GetSortedCount(), index_epoch);
     if (existence == KeyExistence::kNotExist) {
       // there is no key in unsorted metadata, so search a sorted region
-      return node->SearchSortedMetadata(key, true).first;
+      return node->SearchSortedMetadata(key, true);
     } else {
-      return existence;
+      return {existence, index};
     }
   }
 
@@ -400,7 +400,7 @@ class LeafNode
 
       record_count = current_status.GetRecordCount();
       if (uniqueness != KeyExistence::kUncertain) {
-        uniqueness = CheckUniqueness(node, key, record_count, index_epoch);
+        uniqueness = CheckUniqueness(node, key, record_count, index_epoch).first;
         if (uniqueness == KeyExistence::kExist) {
           return {NodeReturnCode::kKeyExist, current_status};
         }
@@ -437,7 +437,7 @@ class LeafNode
 
     // recheck uniqueness
     while (uniqueness == KeyExistence::kUncertain) {
-      uniqueness = CheckUniqueness(node, key, record_count, index_epoch);
+      uniqueness = CheckUniqueness(node, key, record_count, index_epoch).first;
       if (uniqueness == KeyExistence::kExist) {
         // delete an inserted record
         node->SetMetadataByCAS(record_count, inserting_meta.UpdateOffset(0));
@@ -566,10 +566,43 @@ class LeafNode
       const size_t key_length)
   {
     // variables and constants
-    StatusWord new_status;
+    StatusWord current_status;
+    size_t record_count;
+    auto uniqueness = KeyExistence::kNotExist;
+    const auto inserting_meta = Metadata::GetInsertingMeta(index_epoch);
 
-    bool mwcas_success;
-    do {
+    /*----------------------------------------------------------------------------------------------
+     * Phase 1: reserve free space to insert a null record
+     *--------------------------------------------------------------------------------------------*/
+    while (true) {
+      current_status = node->GetStatusWordProtected();
+      if (current_status.IsFrozen()) {
+        return {NodeReturnCode::kFrozen, StatusWord{}};
+      }
+
+      record_count = current_status.GetRecordCount();
+      const auto [existence, target_index] = SearchMetadataToRead(node, key, record_count);
+      if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
+        return {NodeReturnCode::kKeyNotExist, current_status};
+      }
+
+      if (current_status.GetOccupiedSize() + kWordLength + key_length > node->GetNodeSize()) {
+        return {NodeReturnCode::kNoSpace, StatusWord{}};
+      }
+
+      // prepare new status for MwCAS
+      const auto target_meta = node->GetMetadataProtected(target_index);
+      const auto deleted_size = kWordLength + target_meta.GetTotalLength();
+      const auto new_status = current_status.AddRecordInfo(1, total_length, deleted_size);
+
+      // perform MwCAS to reserve space
+      auto desc = MwCASDescriptor{};
+      node->SetStatusForMwCAS(desc, current_status, new_status);
+      node->SetMetadataForMwCAS(desc, record_count, Metadata{}, inserting_meta);
+      if (desc.MwCAS()) break;
+    }
+
+    while (true) {
       const auto current_status = node->GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, StatusWord{}};
@@ -593,10 +626,10 @@ class LeafNode
       auto desc = MwCASDescriptor{};
       node->SetStatusForMwCAS(desc, current_status, new_status);
       node->SetMetadataForMwCAS(desc, index, current_meta, deleted_meta);
-      mwcas_success = desc.MwCAS();
-    } while (!mwcas_success);
+      if (desc.MwCAS()) break;
+    }
 
-    return {NodeReturnCode::kSuccess, new_status};
+    return {NodeReturnCode::kSuccess, current_status};
   }
 
   /*################################################################################################
