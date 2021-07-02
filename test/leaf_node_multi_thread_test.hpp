@@ -214,12 +214,13 @@ TEST_F(LeafNodeFixture, Insert_MultiThreads_ReadWrittenPayloads)
 
 TEST_F(LeafNodeFixture, Update_MultiThreads_ReadWrittenPayloads)
 {
-  RunOverMultiThread(kWriteNumPerThread * 0.5, kThreadNum, kWrite,
-                     &LeafNodeFixture::WriteRandomKeys);
-  auto [written_indexes, failed_indexes] = RunOverMultiThread(
-      kWriteNumPerThread * 0.5, kThreadNum, kUpdate, &LeafNodeFixture::WriteRandomKeys);
+  constexpr size_t kWriteNumHalf = kWriteNumPerThread * 0.5;
 
-  EXPECT_EQ(kWriteNumPerThread * kThreadNum * 0.5, written_indexes.size());
+  RunOverMultiThread(kWriteNumHalf, kThreadNum, kWrite, &LeafNodeFixture::WriteRandomKeys);
+  auto [written_indexes, failed_indexes] =
+      RunOverMultiThread(kWriteNumHalf, kThreadNum, kUpdate, &LeafNodeFixture::WriteRandomKeys);
+
+  EXPECT_EQ(kWriteNumHalf * kThreadNum, written_indexes.size());
   for (auto&& index : written_indexes) {
     auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
@@ -229,12 +230,13 @@ TEST_F(LeafNodeFixture, Update_MultiThreads_ReadWrittenPayloads)
 
 TEST_F(LeafNodeFixture, Delete_MultiThreads_KeysDeleted)
 {
-  RunOverMultiThread(kWriteNumPerThread * 0.5, kThreadNum, kWrite,
-                     &LeafNodeFixture::WriteRandomKeys);
-  auto [written_indexes, failed_indexes] = RunOverMultiThread(
-      kWriteNumPerThread * 0.5, kThreadNum, kDelete, &LeafNodeFixture::WriteRandomKeys);
+  constexpr size_t kWriteNumHalf = kWriteNumPerThread * 0.5;
 
-  EXPECT_EQ(kWriteNumPerThread * kThreadNum * 0.5, written_indexes.size() + failed_indexes.size());
+  RunOverMultiThread(kWriteNumHalf, kThreadNum, kWrite, &LeafNodeFixture::WriteRandomKeys);
+  auto [written_indexes, failed_indexes] =
+      RunOverMultiThread(kWriteNumHalf, kThreadNum, kDelete, &LeafNodeFixture::WriteRandomKeys);
+
+  EXPECT_EQ(kWriteNumHalf * kThreadNum, written_indexes.size() + failed_indexes.size());
   for (auto&& index : written_indexes) {
     auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
     EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
