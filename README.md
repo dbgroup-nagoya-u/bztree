@@ -14,7 +14,9 @@ sudo apt update && sudo apt install -y build-essential cmake
 
 ### Build Options
 
+- `BZTREE_PAGE_SIZE`: the byte length of each node page: default `8192`.
 - `BZTREE_BUILD_TESTS`: build unit tests for this library if `on`: default `off`.
+- `BZTREE_TEST_THREAD_NUM`: the maximum number of threads to perform unit tests: default `8`.
 
 ### Build and Run Unit Tests
 
