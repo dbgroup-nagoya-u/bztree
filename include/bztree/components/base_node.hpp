@@ -174,8 +174,20 @@ class alignas(kCacheLineSize) BaseNode
   constexpr void *
   GetPayloadAddr(const Metadata meta) const
   {
-    const auto offset = meta.GetOffset() + meta.GetKeyLength();
-    return ShiftAddress(this, offset);
+    return ShiftAddress(this, meta.GetOffset() + meta.GetKeyLength());
+  }
+
+  constexpr auto
+  GetPayload(const Metadata meta) const
+  {
+    if constexpr (std::is_same_v<Payload, char *>) {
+      const auto payload_length = meta.GetPayloadLength();
+      auto payload = std::make_unique<char[]>(payload_length);
+      memcpy(payload.get(), GetPayloadAddr(meta), payload_length);
+      return payload;
+    } else {
+      return *static_cast<Payload *>(GetPayloadAddr(meta));
+    }
   }
 
   constexpr std::unique_ptr<Record_t>
