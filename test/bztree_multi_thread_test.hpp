@@ -58,7 +58,7 @@ class BzTreeFixture : public testing::Test
   static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;
   static constexpr size_t kMaxRecordNum =
       (kPageSize - kHeaderLength) / (kRecordLength + kWordLength);
-  static constexpr size_t kWriteNumPerThread = kMaxRecordNum / kThreadNum;
+  static constexpr size_t kWriteNumPerThread = kMaxRecordNum * 10;
   static constexpr size_t kIndexEpoch = 1;
 
   Key keys[kKeyNumForTest];
