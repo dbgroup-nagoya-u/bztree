@@ -187,9 +187,9 @@ TEST_F(LeafNodeFixture, Write_MultiThreads_ReadWrittenPayloads)
 
   EXPECT_EQ(kWriteNumPerThread * kThreadNum, written_indexes.size());
   for (auto&& index : written_indexes) {
-    auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
+    auto [rc, payload] = LeafNode_t::Read(node.get(), keys[index]);
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-    VerifyPayload(payloads[index], record->GetPayload());
+    VerifyPayload(payloads[index], payload.get());
   }
 }
 
@@ -201,14 +201,14 @@ TEST_F(LeafNodeFixture, Insert_MultiThreads_ReadWrittenPayloads)
   EXPECT_LE(written_indexes.size(), kWriteNumPerThread);
   EXPECT_EQ(kWriteNumPerThread * kThreadNum, written_indexes.size() + failed_indexes.size());
   for (auto&& index : written_indexes) {
-    auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
+    auto [rc, payload] = LeafNode_t::Read(node.get(), keys[index]);
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-    VerifyPayload(payloads[index], record->GetPayload());
+    VerifyPayload(payloads[index], payload.get());
   }
   for (auto&& index : failed_indexes) {
-    auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
+    auto [rc, payload] = LeafNode_t::Read(node.get(), keys[index]);
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-    VerifyPayload(payloads[index], record->GetPayload());
+    VerifyPayload(payloads[index], payload.get());
   }
 }
 
@@ -222,9 +222,9 @@ TEST_F(LeafNodeFixture, Update_MultiThreads_ReadWrittenPayloads)
 
   EXPECT_EQ(kWriteNumHalf * kThreadNum, written_indexes.size());
   for (auto&& index : written_indexes) {
-    auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
+    auto [rc, payload] = LeafNode_t::Read(node.get(), keys[index]);
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-    VerifyPayload(payloads[index + 1], record->GetPayload());
+    VerifyPayload(payloads[index + 1], payload.get());
   }
 }
 

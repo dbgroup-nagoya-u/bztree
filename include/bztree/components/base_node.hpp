@@ -182,9 +182,9 @@ class alignas(kCacheLineSize) BaseNode
   {
     if constexpr (std::is_same_v<Payload, char *>) {
       const auto payload_length = meta.GetPayloadLength();
-      auto payload = std::make_unique<char[]>(payload_length);
-      memcpy(payload.get(), GetPayloadAddr(meta), payload_length);
-      return payload;
+      auto page = malloc(payload_length);
+      memcpy(page, GetPayloadAddr(meta), payload_length);
+      return std::make_unique<char>(page);
     } else {
       return *static_cast<Payload *>(GetPayloadAddr(meta));
     }

@@ -129,6 +129,8 @@ constexpr bool kLeafFlag = true;
 /// a flag to indicate creating internal nodes
 constexpr bool kInternalFlag = false;
 
+const std::unique_ptr<char> kNullCString = nullptr;
+
 /**
  * @brief
  *

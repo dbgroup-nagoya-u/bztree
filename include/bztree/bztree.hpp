@@ -595,7 +595,7 @@ class BzTree
    * Public read APIs
    *##############################################################################################*/
 
-  constexpr std::pair<ReturnCode, std::unique_ptr<Record_t>>
+  constexpr auto
   Read(const Key &key)
   {
     const auto guard = gc_.CreateEpochGuard();
@@ -603,9 +603,13 @@ class BzTree
     auto leaf_node = SearchLeafNode(&key, true).second;
     auto [rc, payload] = LeafNode_t::Read(leaf_node, key);
     if (rc == NodeReturnCode::kSuccess) {
-      return std::pair{ReturnCode::kSuccess, std::move(payload)};
+      return std::make_pair(ReturnCode::kSuccess, payload);
     } else {
-      return {ReturnCode::kKeyNotExist, nullptr};
+      if constexpr (std::is_same_v<Payload, char *>) {
+        return std::make_pair(ReturnCode::kKeyNotExist, kNullCString);
+      } else {
+        return std::make_pair(ReturnCode::kKeyNotExist, Payload{});
+      }
     }
   }
 

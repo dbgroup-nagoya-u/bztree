@@ -142,6 +142,20 @@ class BzTreeFixture : public testing::Test
   {
     EXPECT_TRUE(IsEqual<PayloadComparator>(expected, actual));
   }
+
+  void
+  VerifyRead(  //
+      const Key key,
+      const Payload expected)
+  {
+    auto [rc, actual] = bztree.Read(key);
+    EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+    if constexpr (std::is_same_v<Payload, char*>) {
+      EXPECT_TRUE(IsEqual<PayloadComparator>(expected, actual.get()));
+    } else {
+      EXPECT_TRUE(IsEqual<PayloadComparator>(expected, actual));
+    }
+  }
 };
 
 /*--------------------------------------------------------------------------------------------------
@@ -150,7 +164,7 @@ class BzTreeFixture : public testing::Test
 
 TEST_F(BzTreeFixture, Read_NotPresentKey_ReadFailed)
 {
-  std::tie(rc, record) = bztree.Read(keys[1]);
+  auto [rc, payload] = bztree.Read(keys[1]);
 
   EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
 }
@@ -296,17 +310,8 @@ TEST_F(BzTreeFixture, Write_TwoKeys_ReadWrittenValues)
   bztree.Write(keys[1], kKeyLength, payloads[1], kPayloadLength);
   bztree.Write(keys[2], kKeyLength, payloads[2], kPayloadLength);
 
-  // read 1st input value
-  std::tie(rc, record) = bztree.Read(keys[1]);
-
-  EXPECT_EQ(ReturnCode::kSuccess, rc);
-  VerifyPayload(payloads[1], record->GetPayload());
-
-  // read 2nd input value
-  std::tie(rc, record) = bztree.Read(keys[2]);
-
-  EXPECT_EQ(ReturnCode::kSuccess, rc);
-  VerifyPayload(payloads[2], record->GetPayload());
+  VerifyRead(keys[1], payloads[1]);
+  VerifyRead(keys[2], payloads[2]);
 }
 
 TEST_F(BzTreeFixture, Write_DuplicateKey_ReadLatestValue)
@@ -314,10 +319,7 @@ TEST_F(BzTreeFixture, Write_DuplicateKey_ReadLatestValue)
   bztree.Write(keys[1], kKeyLength, payloads[1], kPayloadLength);
   bztree.Write(keys[1], kKeyLength, payloads[2], kPayloadLength);
 
-  std::tie(rc, record) = bztree.Read(keys[1]);
-
-  EXPECT_EQ(ReturnCode::kSuccess, rc);
-  VerifyPayload(payloads[2], record->GetPayload());
+  VerifyRead(keys[1], payloads[2]);
 }
 
 /*--------------------------------------------------------------------------------------------------
@@ -329,17 +331,8 @@ TEST_F(BzTreeFixture, Insert_TwoKeys_ReadInsertedValues)
   bztree.Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
   bztree.Insert(keys[2], kKeyLength, payloads[2], kPayloadLength);
 
-  // read 1st input value
-  std::tie(rc, record) = bztree.Read(keys[1]);
-
-  EXPECT_EQ(ReturnCode::kSuccess, rc);
-  VerifyPayload(payloads[1], record->GetPayload());
-
-  // read 2nd input value
-  std::tie(rc, record) = bztree.Read(keys[2]);
-
-  EXPECT_EQ(ReturnCode::kSuccess, rc);
-  VerifyPayload(payloads[2], record->GetPayload());
+  VerifyRead(keys[1], payloads[1]);
+  VerifyRead(keys[2], payloads[2]);
 }
 
 TEST_F(BzTreeFixture, Insert_DuplicateKey_InsertionFailed)
@@ -360,10 +353,7 @@ TEST_F(BzTreeFixture, Update_SingleKey_ReadUpdatedValue)
   bztree.Insert(keys[1], kKeyLength, payloads[2], kPayloadLength);
   bztree.Update(keys[1], kKeyLength, payloads[2], kPayloadLength);
 
-  std::tie(rc, record) = bztree.Read(keys[1]);
-
-  EXPECT_EQ(ReturnCode::kSuccess, rc);
-  VerifyPayload(payloads[2], record->GetPayload());
+  VerifyRead(keys[1], payloads[2]);
 }
 
 TEST_F(BzTreeFixture, Update_NotPresentKey_UpdatedFailed)
@@ -401,7 +391,7 @@ TEST_F(BzTreeFixture, Delete_PresentKey_ReadFailed)
   bztree.Insert(keys[1], kKeyLength, payloads[1], kPayloadLength);
   bztree.Delete(keys[1], kKeyLength);
 
-  std::tie(rc, record) = bztree.Read(keys[1]);
+  auto [rc, payload] = bztree.Read(keys[1]);
 
   EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
 }
@@ -435,10 +425,7 @@ TEST_F(BzTreeFixture, Split_OrderedKeyWrites_ReadWrittenKeys)
   // std::thread{&BzTreeFixture::WriteOrderedKeys, this, &bztree, 1, record_count}.join();
 
   for (size_t index = 1; index <= record_count; ++index) {
-    std::tie(rc, record) = bztree.Read(keys[index]);
-    auto result = record->GetPayload();
-    EXPECT_EQ(ReturnCode::kSuccess, rc);
-    VerifyPayload(payloads[index], result);
+    VerifyRead(keys[index], payloads[index]);
   }
 
   auto [rc, scan_results] = bztree.Scan(keys[50], true, keys[100], true);
@@ -458,10 +445,7 @@ TEST_F(BzTreeFixture, Split_OrderedKeyInserts_ReadInsertedKeys)
   // std::thread{&BzTreeFixture::InsertOrderedKeys, this, &bztree, 1, record_count}.join();
 
   for (size_t index = 1; index <= record_count; ++index) {
-    std::tie(rc, record) = bztree.Read(keys[index]);
-    auto result = record->GetPayload();
-    EXPECT_EQ(ReturnCode::kSuccess, rc);
-    VerifyPayload(payloads[index], result);
+    VerifyRead(keys[index], payloads[index]);
   }
 
   auto [rc, scan_results] = bztree.Scan(keys[50], true, keys[100], true);
@@ -483,10 +467,7 @@ TEST_F(BzTreeFixture, Split_OrderedKeyInsertsUpdates_ReadLatestKeys)
   // std::thread{&BzTreeFixture::UpdateOrderedKeys, this, &bztree, 1, record_count}.join();
 
   for (size_t index = 1; index <= record_count; ++index) {
-    std::tie(rc, record) = bztree.Read(keys[index]);
-    auto result = record->GetPayload();
-    EXPECT_EQ(ReturnCode::kSuccess, rc);
-    VerifyPayload(payloads[index + 1], result);
+    VerifyRead(keys[index], payloads[index + 1]);
   }
 
   auto [rc, scan_results] = bztree.Scan(keys[50], true, keys[100], true);
@@ -509,13 +490,10 @@ TEST_F(BzTreeFixture, Merge_OrderedKeyWritesDeletes_ReadRemainingKey)
   std::thread{&BzTreeFixture::WriteOrderedKeys, this, &bztree, 1, record_count}.join();
   std::thread{&BzTreeFixture::DeleteOrderedKeys, this, &bztree, 2, record_count}.join();
 
-  std::tie(rc, record) = bztree.Read(keys[1]);
-  auto result = record->GetPayload();
-  EXPECT_EQ(ReturnCode::kSuccess, rc);
-  VerifyPayload(payloads[1], result);
+  VerifyRead(keys[1], payloads[1]);
 
   for (size_t index = 2; index <= record_count; ++index) {
-    std::tie(rc, record) = bztree.Read(keys[index]);
+    auto [rc, payload] = bztree.Read(keys[index]);
     EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
   }
 }

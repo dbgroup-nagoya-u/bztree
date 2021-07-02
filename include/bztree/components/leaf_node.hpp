@@ -182,7 +182,7 @@ class LeafNode
    * Read operations
    *##############################################################################################*/
 
-  static constexpr std::pair<NodeReturnCode, std::unique_ptr<Record_t>>
+  static constexpr auto
   Read(  //
       const BaseNode_t *node,
       const Key &key)
@@ -190,10 +190,14 @@ class LeafNode
     const auto status = node->GetStatusWordProtected();
     const auto [existence, index] = SearchMetadataToRead(node, key, status.GetRecordCount());
     if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
-      return {NodeReturnCode::kKeyNotExist, nullptr};
+      if constexpr (std::is_same_v<Payload, char *>) {
+        return std::make_pair(NodeReturnCode::kKeyNotExist, kNullCString);
+      } else {
+        return std::make_pair(NodeReturnCode::kKeyNotExist, Payload{});
+      }
     } else {
       const auto meta = node->GetMetadataProtected(index);
-      return {NodeReturnCode::kSuccess, node->GetRecord(meta)};
+      return std::make_pair(NodeReturnCode::kSuccess, node->GetPayload(meta));
     }
   }
 

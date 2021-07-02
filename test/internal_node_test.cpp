@@ -162,28 +162,24 @@ TEST_F(InternalNodeFixture, Split_TenKeys_SplitNodesHaveCorrectKeysAndPayloads)
 
   auto [left_node_ptr, right_node_ptr] = InternalNode_t::Split(node.get(), expected_record_count);
 
-  std::unique_ptr<LeafNode_t> target_node;
+  std::unique_ptr<BaseNode_t> target_node;
   NodeReturnCode return_code;
 
-  target_node.reset(CastAddress<LeafNode_t*>(left_node_ptr));
+  target_node.reset(left_node_ptr);
   size_t index = 0;
   for (size_t count = 0; count < expected_record_count; ++count, ++index) {
-    auto [rc, record] =
-        LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(target_node.get()), keys[index]);
-    EXPECT_EQ(payloads[index], record->GetPayload());
+    auto [rc, payload] = LeafNode_t::Read(target_node.get(), keys[index]);
+    EXPECT_EQ(payloads[index], payload);
   }
-  return_code =
-      LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(target_node.get()), keys[index]).first;
+  return_code = LeafNode_t::Read(target_node.get(), keys[index]).first;
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, return_code);
 
-  target_node.reset(CastAddress<LeafNode_t*>(right_node_ptr));
+  target_node.reset(right_node_ptr);
   for (size_t count = 0; count < expected_record_count; ++count, ++index) {
-    auto [rc, record] =
-        LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(target_node.get()), keys[index]);
-    EXPECT_EQ(payloads[index], record->GetPayload());
+    auto [rc, payload] = LeafNode_t::Read(target_node.get(), keys[index]);
+    EXPECT_EQ(payloads[index], payload);
   }
-  return_code =
-      LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(target_node.get()), keys[index]).first;
+  return_code = LeafNode_t::Read(target_node.get(), keys[index]).first;
   EXPECT_EQ(NodeReturnCode::kKeyNotExist, return_code);
 }
 
