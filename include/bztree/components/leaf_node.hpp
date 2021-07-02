@@ -182,14 +182,6 @@ class LeafNode
    * Read operations
    *##############################################################################################*/
 
-  /**
-   * @brief
-   *
-   * @tparam Compare
-   * @param key
-   * @param key_length
-   * @return std::pair<NodeReturnCode, std::unique_ptr<std::byte[]>>
-   */
   static constexpr std::pair<NodeReturnCode, std::unique_ptr<Record_t>>
   Read(  //
       const BaseNode_t *node,
@@ -205,17 +197,6 @@ class LeafNode
     }
   }
 
-  /**
-   * @brief
-   *
-   * @tparam Compare
-   * @param begin_key
-   * @param begin_is_closed
-   * @param end_key
-   * @param end_is_closed
-   * @return std::pair<NodeReturnCode,
-   *         std::vector<std::pair<std::unique_ptr<std::byte[]>, std::unique_ptr<std::byte[]>>>>
-   */
   static constexpr std::pair<NodeReturnCode, std::vector<std::unique_ptr<Record_t>>>
   Scan(  //
       const BaseNode_t *node,
@@ -278,17 +259,6 @@ class LeafNode
    * Write operations
    *##############################################################################################*/
 
-  /**
-   * @brief
-   *
-   * @tparam Compare
-   * @param key
-   * @param key_length
-   * @param payload
-   * @param payload_length
-   * @param descriptor_pool
-   * @return NodeReturnCode
-   */
   static constexpr std::pair<NodeReturnCode, StatusWord>
   Write(  //
       BaseNode_t *node,
@@ -356,17 +326,6 @@ class LeafNode
     return {NodeReturnCode::kSuccess, current_status};
   }
 
-  /**
-   * @brief
-   *
-   * @tparam Compare
-   * @param key
-   * @param key_length
-   * @param payload
-   * @param payload_length
-   * @param descriptor_pool
-   * @return NodeReturnCode
-   */
   static constexpr std::pair<NodeReturnCode, StatusWord>
   Insert(  //
       BaseNode_t *node,
@@ -462,17 +421,6 @@ class LeafNode
     return {NodeReturnCode::kSuccess, current_status};
   }
 
-  /**
-   * @brief
-   *
-   * @tparam Compare
-   * @param key
-   * @param key_length
-   * @param payload
-   * @param payload_length
-   * @param descriptor_pool
-   * @return NodeReturnCode
-   */
   static constexpr std::pair<NodeReturnCode, StatusWord>
   Update(  //
       BaseNode_t *node,
@@ -562,15 +510,6 @@ class LeafNode
     return {NodeReturnCode::kSuccess, current_status};
   }
 
-  /**
-   * @brief
-   *
-   * @tparam Compare
-   * @param key
-   * @param key_length
-   * @param descriptor_pool
-   * @return NodeReturnCode
-   */
   static constexpr std::pair<NodeReturnCode, StatusWord>
   Delete(  //
       BaseNode_t *node,
