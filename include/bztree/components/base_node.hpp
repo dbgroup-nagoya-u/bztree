@@ -62,9 +62,8 @@ class alignas(kCacheLineSize) BaseNode
    *##############################################################################################*/
 
   constexpr BaseNode(  //
-      const size_t node_size,
       const bool is_leaf)
-      : node_size_{node_size}, is_leaf_{is_leaf}, sorted_count_{0}, status_{}
+      : node_size_{kPageSize}, is_leaf_{is_leaf}, sorted_count_{0}, status_{}
   {
   }
 
@@ -111,14 +110,10 @@ class alignas(kCacheLineSize) BaseNode
    *##############################################################################################*/
 
   constexpr static BaseNode *
-  CreateEmptyNode(  //
-      const size_t node_size,
-      const bool is_leaf)
+  CreateEmptyNode(const bool is_leaf)
   {
-    assert((node_size % kWordLength) == 0);
-
-    auto page = calloc(1, node_size);
-    auto new_node = new (page) BaseNode{node_size, is_leaf};
+    auto page = calloc(1, kPageSize);
+    auto new_node = new (page) BaseNode{is_leaf};
     return new_node;
   }
 
@@ -130,12 +125,6 @@ class alignas(kCacheLineSize) BaseNode
   IsLeaf() const
   {
     return is_leaf_;
-  }
-
-  constexpr size_t
-  GetNodeSize() const
-  {
-    return node_size_;
   }
 
   constexpr size_t

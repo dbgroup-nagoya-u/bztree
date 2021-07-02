@@ -7,22 +7,22 @@ buildType:
       long: Include debugging information without optimizations
       buildType: Debug
       settings:
+        BZTREE_PAGE_SIZE: 8192
         BZTREE_BUILD_TESTS: on
         BZTREE_TEST_THREAD_NUM: 8
-        BZTREE_TEST_WRITE_NUM: 3000
     relWithDebInfo:
       short: RelWithDebInfo
       long: Perform optimizations and include debugging informatin
       buildType: RelWithDebInfo
       settings:
+        BZTREE_PAGE_SIZE: 8192
         BZTREE_BUILD_TESTS: on
         BZTREE_TEST_THREAD_NUM: 8
-        BZTREE_TEST_WRITE_NUM: 3000
     release:
       short: Release
       long: Perform optimizations and omit debugging informatin
       buildType: Release
       settings:
+        BZTREE_PAGE_SIZE: 8192
         BZTREE_BUILD_TESTS: on
         BZTREE_TEST_THREAD_NUM: 8
-        BZTREE_TEST_WRITE_NUM: 3000

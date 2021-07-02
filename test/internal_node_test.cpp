@@ -16,36 +16,34 @@
 
 #include "bztree/components/internal_node.hpp"
 
-#include <gtest/gtest.h>
-
 #include <memory>
 
 #include "bztree/components/leaf_node.hpp"
-
-using std::byte;
+#include "gtest/gtest.h"
 
 namespace dbgroup::index::bztree
 {
-using Key = uint64_t;
-using Payload = uint64_t;
-using Record_t = Record<Key, Payload>;
-using BaseNode_t = BaseNode<Key, Payload>;
-using LeafNode_t = LeafNode<Key, Payload>;
-using InternalNode_t = InternalNode<Key, Payload>;
-using NodeReturnCode = BaseNode<Key, Payload>::NodeReturnCode;
-using KeyExistence = BaseNode<Key, Payload>::KeyExistence;
-
-static constexpr size_t kNodeSize = 256;
-static constexpr size_t kIndexEpoch = 0;
-static constexpr size_t kKeyNumForTest = 10000;
-static constexpr size_t kKeyLength = sizeof(Key);
-static constexpr size_t kPayloadLength = sizeof(Payload);
-static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;
-static constexpr size_t kDefaultMinNodeSizeThreshold = 128;
-
 class InternalNodeFixture : public testing::Test
 {
  public:
+  using Key = uint64_t;
+  using Payload = uint64_t;
+  using Record_t = Record<Key, Payload>;
+  using BaseNode_t = BaseNode<Key, Payload>;
+  using LeafNode_t = LeafNode<Key, Payload>;
+  using InternalNode_t = InternalNode<Key, Payload>;
+  using NodeReturnCode = BaseNode<Key, Payload>::NodeReturnCode;
+  using KeyExistence = BaseNode<Key, Payload>::KeyExistence;
+
+  static constexpr size_t kIndexEpoch = 0;
+  static constexpr size_t kKeyNumForTest = 10000;
+  static constexpr size_t kKeyLength = sizeof(Key);
+  static constexpr size_t kPayloadLength = sizeof(Payload);
+  static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;
+  static constexpr size_t kDefaultMinNodeSizeThreshold = 128;
+  static constexpr size_t kMaxRecordNum =
+      (kPageSize - kHeaderLength) / (kRecordLength + kWordLength);
+
   Key keys[kKeyNumForTest];
   Payload payloads[kKeyNumForTest];
   Key key_null = 0;          // null key must have 8 bytes to fill a node
@@ -61,7 +59,7 @@ class InternalNodeFixture : public testing::Test
   void
   SetUp() override
   {
-    node.reset(BaseNode_t::CreateEmptyNode(kNodeSize, false));
+    node.reset(BaseNode_t::CreateEmptyNode(kInternalFlag));
 
     expected_record_count = 0;
     expected_block_size = 0;
@@ -106,7 +104,7 @@ class InternalNodeFixture : public testing::Test
       const size_t begin_index,
       const size_t end_index)
   {
-    auto tmp_leaf_node = BaseNode_t::CreateEmptyNode(kNodeSize, true);
+    auto tmp_leaf_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
     auto tmp_meta = LeafNode_t::GatherSortedLiveMetadata(tmp_leaf_node);
     return LeafNode_t::Consolidate(tmp_leaf_node, tmp_meta);
@@ -136,7 +134,7 @@ TEST_F(InternalNodeFixture, NeedSplit_EmptyNode_SplitNotRequired)
 
 TEST_F(InternalNodeFixture, NeedSplit_FilledNode_SplitRequired)
 {
-  node.reset(CreateInternalNodeWithOrderedKeys(0, 9));
+  node.reset(CreateInternalNodeWithOrderedKeys(0, kMaxRecordNum));
 
   EXPECT_TRUE(InternalNode_t::NeedSplit(node.get(), kKeyLength, kPayloadLength));
 }
@@ -311,7 +309,6 @@ TEST_F(InternalNodeFixture, NewParent_AfterSplit_HasCorrectStatus)
   auto block_size = (kWordLength * 2) * record_count;
   auto deleted_size = 0;
 
-  EXPECT_EQ(kNodeSize, new_parent->GetNodeSize());
   EXPECT_EQ(record_count, new_parent->GetSortedCount());
   EXPECT_EQ(record_count, status.GetRecordCount());
   EXPECT_EQ(block_size, status.GetBlockSize());

@@ -16,8 +16,6 @@
 
 #pragma once
 
-#include <gtest/gtest.h>
-
 #include <future>
 #include <memory>
 #include <random>
@@ -26,6 +24,7 @@
 #include <vector>
 
 #include "bztree/components/leaf_node.hpp"
+#include "gtest/gtest.h"
 
 namespace dbgroup::index::bztree
 {
@@ -52,17 +51,13 @@ class LeafNodeFixture : public testing::Test
 #else
   static constexpr size_t kThreadNum = 8;
 #endif
-#ifdef BZTREE_TEST_WRITE_NUM
-  static constexpr size_t kWriteNumPerThread = BZTREE_TEST_WRITE_NUM;
-#else
-  static constexpr size_t kWriteNumPerThread = 3000;
-#endif
   static constexpr size_t kRandSeed = 10;
   static constexpr size_t kKeyNumForTest = 10000;
   static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;
-  static constexpr size_t kNodeSize =
-      kHeaderLength + (kWordLength + kRecordLength) * (kWriteNumPerThread * kThreadNum);
   static constexpr size_t kIndexEpoch = 1;
+  static constexpr size_t kMaxRecordNum =
+      (kPageSize - kHeaderLength) / (kRecordLength + kWordLength);
+  static constexpr size_t kWriteNumPerThread = kMaxRecordNum / kThreadNum;
 
   Key keys[kKeyNumForTest];
   Payload payloads[kKeyNumForTest];
@@ -131,7 +126,7 @@ class LeafNodeFixture : public testing::Test
   }
 
  protected:
-  LeafNodeFixture() : node{BaseNode_t::CreateEmptyNode(kNodeSize, true)} {}
+  LeafNodeFixture() : node{BaseNode_t::CreateEmptyNode(kLeafFlag)} {}
 
   void SetUp() override;
 
@@ -219,12 +214,13 @@ TEST_F(LeafNodeFixture, Insert_MultiThreads_ReadWrittenPayloads)
 
 TEST_F(LeafNodeFixture, Update_MultiThreads_ReadWrittenPayloads)
 {
-  RunOverMultiThread(kWriteNumPerThread * 0.5, kThreadNum, kWrite,
-                     &LeafNodeFixture::WriteRandomKeys);
-  auto [written_indexes, failed_indexes] = RunOverMultiThread(
-      kWriteNumPerThread * 0.5, kThreadNum, kUpdate, &LeafNodeFixture::WriteRandomKeys);
+  constexpr size_t kWriteNumHalf = kWriteNumPerThread * 0.5;
 
-  EXPECT_EQ(kWriteNumPerThread * kThreadNum * 0.5, written_indexes.size());
+  RunOverMultiThread(kWriteNumHalf, kThreadNum, kWrite, &LeafNodeFixture::WriteRandomKeys);
+  auto [written_indexes, failed_indexes] =
+      RunOverMultiThread(kWriteNumHalf, kThreadNum, kUpdate, &LeafNodeFixture::WriteRandomKeys);
+
+  EXPECT_EQ(kWriteNumHalf * kThreadNum, written_indexes.size());
   for (auto&& index : written_indexes) {
     auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
@@ -234,12 +230,13 @@ TEST_F(LeafNodeFixture, Update_MultiThreads_ReadWrittenPayloads)
 
 TEST_F(LeafNodeFixture, Delete_MultiThreads_KeysDeleted)
 {
-  RunOverMultiThread(kWriteNumPerThread * 0.5, kThreadNum, kWrite,
-                     &LeafNodeFixture::WriteRandomKeys);
-  auto [written_indexes, failed_indexes] = RunOverMultiThread(
-      kWriteNumPerThread * 0.5, kThreadNum, kDelete, &LeafNodeFixture::WriteRandomKeys);
+  constexpr size_t kWriteNumHalf = kWriteNumPerThread * 0.5;
 
-  EXPECT_EQ(kWriteNumPerThread * kThreadNum * 0.5, written_indexes.size() + failed_indexes.size());
+  RunOverMultiThread(kWriteNumHalf, kThreadNum, kWrite, &LeafNodeFixture::WriteRandomKeys);
+  auto [written_indexes, failed_indexes] =
+      RunOverMultiThread(kWriteNumHalf, kThreadNum, kDelete, &LeafNodeFixture::WriteRandomKeys);
+
+  EXPECT_EQ(kWriteNumHalf * kThreadNum, written_indexes.size() + failed_indexes.size());
   for (auto&& index : written_indexes) {
     auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()), keys[index]);
     EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
@@ -248,10 +245,11 @@ TEST_F(LeafNodeFixture, Delete_MultiThreads_KeysDeleted)
 
 TEST_F(LeafNodeFixture, InsertUpdateDelete_MultiThreads_ConcurrencyControlCorrupted)
 {
-  for (size_t i = 0; i < 10; ++i) {
+  constexpr size_t kWriteNumForTwoThreads = kMaxRecordNum / 2;
+  for (size_t i = 0; i < 100; ++i) {
     // insert/update/delete the same key by multi-threads
-    node.reset(BaseNode_t::CreateEmptyNode(kNodeSize, true));
-    RunOverMultiThread(kWriteNumPerThread, kThreadNum, kMixed, &LeafNodeFixture::WriteRandomKeys);
+    node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
+    RunOverMultiThread(kWriteNumForTwoThreads, 2, kMixed, &LeafNodeFixture::WriteRandomKeys);
     bool previous_is_update = false;
     bool concurrency_is_corrupted = false;
 

@@ -38,13 +38,6 @@ set(
   "The maximum number of threads to perform unit tests."
 )
 
-set(
-  BZTREE_TEST_WRITE_NUM
-  "3000"
-  CACHE STRING
-  "The number of write operations per threads to perform unit tests."
-)
-
 # define function to add unit tests in the same format
 function(ADD_BZTREE_TEST BZTREE_TEST_TARGET)
   add_executable(
@@ -65,8 +58,8 @@ function(ADD_BZTREE_TEST BZTREE_TEST_TARGET)
   )
   target_compile_definitions(
     ${BZTREE_TEST_TARGET} PRIVATE
+    BZTREE_PAGE_SIZE=${BZTREE_PAGE_SIZE}
     BZTREE_TEST_THREAD_NUM=${BZTREE_TEST_THREAD_NUM}
-    BZTREE_TEST_WRITE_NUM=${BZTREE_TEST_WRITE_NUM}
   )
   target_include_directories(
     ${BZTREE_TEST_TARGET} PRIVATE

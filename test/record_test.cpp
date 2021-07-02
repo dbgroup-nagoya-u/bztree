@@ -16,10 +16,10 @@
 
 #include "bztree/components/record.hpp"
 
-#include <gtest/gtest.h>
-
 #include <memory>
 #include <utility>
+
+#include "gtest/gtest.h"
 
 namespace dbgroup::index::bztree
 {

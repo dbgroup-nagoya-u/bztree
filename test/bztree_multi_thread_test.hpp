@@ -16,8 +16,6 @@
 
 #pragma once
 
-#include <gtest/gtest.h>
-
 #include <future>
 #include <memory>
 #include <random>
@@ -26,6 +24,7 @@
 #include <vector>
 
 #include "bztree/bztree.hpp"
+#include "gtest/gtest.h"
 
 namespace dbgroup::index::bztree
 {
@@ -54,16 +53,12 @@ class BzTreeFixture : public testing::Test
 #else
   static constexpr size_t kThreadNum = 8;
 #endif
-#ifdef BZTREE_TEST_WRITE_NUM
-  static constexpr size_t kWriteNumPerThread = BZTREE_TEST_WRITE_NUM;
-#else
-  static constexpr size_t kWriteNumPerThread = 3000;
-#endif
   static constexpr size_t kRandSeed = 10;
   static constexpr size_t kKeyNumForTest = 10000;
   static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;
-  static constexpr size_t kNodeSize =
-      kHeaderLength + (kWordLength + kRecordLength) * (kWriteNumPerThread * kThreadNum);
+  static constexpr size_t kMaxRecordNum =
+      (kPageSize - kHeaderLength) / (kRecordLength + kWordLength);
+  static constexpr size_t kWriteNumPerThread = kMaxRecordNum * 10;
   static constexpr size_t kIndexEpoch = 1;
 
   Key keys[kKeyNumForTest];
