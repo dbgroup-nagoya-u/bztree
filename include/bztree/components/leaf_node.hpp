@@ -377,7 +377,7 @@ class LeafNode
       const size_t index_epoch = 1)
   {
     // variables and constants shared in Phase 1 & 2
-    StatusWord current_status, new_status;
+    StatusWord current_status;
     size_t record_count;
     const auto total_length = key_length + payload_length;
     const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
@@ -407,7 +407,7 @@ class LeafNode
       }
 
       // prepare new status for MwCAS
-      new_status = current_status.AddRecordInfo(1, total_length, 0);
+      const auto new_status = current_status.AddRecordInfo(1, total_length, 0);
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
@@ -483,7 +483,7 @@ class LeafNode
       const size_t index_epoch = 1)
   {
     // variables and constants shared in Phase 1 & 2
-    StatusWord current_status, new_status;
+    StatusWord current_status;
     size_t record_count, target_index = 0;
     auto uniqueness = KeyExistence::kNotExist;
     const auto total_length = key_length + payload_length;
@@ -513,7 +513,7 @@ class LeafNode
       // prepare new status for MwCAS
       const auto target_meta = node->GetMetadataProtected(target_index);
       const auto deleted_size = kWordLength + target_meta.GetTotalLength();
-      new_status = current_status.AddRecordInfo(1, total_length, deleted_size);
+      const auto new_status = current_status.AddRecordInfo(1, total_length, deleted_size);
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
@@ -579,7 +579,7 @@ class LeafNode
       const size_t index_epoch = 1)
   {
     // variables and constants
-    StatusWord new_status;
+    StatusWord current_status;
     size_t record_count, target_index = 0;
     auto uniqueness = KeyExistence::kNotExist;
     const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
@@ -588,7 +588,7 @@ class LeafNode
      * Phase 1: reserve free space to insert a null record
      *--------------------------------------------------------------------------------------------*/
     while (true) {
-      const auto current_status = node->GetStatusWordProtected();
+      current_status = node->GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
@@ -608,7 +608,7 @@ class LeafNode
       // prepare new status for MwCAS
       const auto target_meta = node->GetMetadataProtected(target_index);
       const auto deleted_block_size = kWordLength + target_meta.GetTotalLength();
-      new_status = current_status.AddRecordInfo(1, key_length, deleted_block_size);
+      const auto new_status = current_status.AddRecordInfo(1, key_length, deleted_block_size);
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
@@ -622,7 +622,7 @@ class LeafNode
      *--------------------------------------------------------------------------------------------*/
 
     // insert a null record
-    auto offset = kPageSize - new_status.GetBlockSize();
+    auto offset = kPageSize - current_status.GetBlockSize() - key_length;
     node->SetKey(key, key_length, offset);
 
     // prepare record metadata for MwCAS
@@ -630,8 +630,8 @@ class LeafNode
 
     while (true) {
       // check concurrent SMOs
-      new_status = node->GetStatusWordProtected();
-      if (new_status.IsFrozen()) {
+      current_status = node->GetStatusWordProtected();
+      if (current_status.IsFrozen()) {
         // delete an inserted record
         node->SetMetadataByCAS(record_count, in_progress_meta.UpdateOffset(0));
         return {NodeReturnCode::kFrozen, StatusWord{}};
@@ -643,7 +643,7 @@ class LeafNode
         if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
           // delete an inserted record
           node->SetMetadataByCAS(record_count, in_progress_meta.UpdateOffset(0));
-          return {NodeReturnCode::kKeyNotExist, new_status};
+          return {NodeReturnCode::kKeyNotExist, current_status};
         } else if (uniqueness == KeyExistence::kUncertain) {
           // retry if there are still uncertain records
           continue;
@@ -652,12 +652,12 @@ class LeafNode
 
       // perform MwCAS to complete an insert
       auto desc = MwCASDescriptor{};
-      node->SetStatusForMwCAS(desc, new_status, new_status);
+      node->SetStatusForMwCAS(desc, current_status, current_status);
       node->SetMetadataForMwCAS(desc, record_count, in_progress_meta, deleted_meta);
       if (desc.MwCAS()) break;
     }
 
-    return {NodeReturnCode::kSuccess, new_status};
+    return {NodeReturnCode::kSuccess, current_status};
   }
 
   /*################################################################################################
