@@ -606,7 +606,8 @@ class BzTree
       return std::make_pair(ReturnCode::kSuccess, payload);
     } else {
       if constexpr (std::is_same_v<Payload, char *>) {
-        return std::make_pair(ReturnCode::kKeyNotExist, kNullCString);
+        return std::make_pair(ReturnCode::kKeyNotExist,
+                              static_cast<std::unique_ptr<char>>(nullptr));
       } else {
         return std::make_pair(ReturnCode::kKeyNotExist, Payload{});
       }

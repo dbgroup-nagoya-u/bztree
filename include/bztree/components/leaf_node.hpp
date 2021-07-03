@@ -191,7 +191,8 @@ class LeafNode
     const auto [existence, index] = SearchMetadataToRead(node, key, status.GetRecordCount());
     if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
       if constexpr (std::is_same_v<Payload, char *>) {
-        return std::make_pair(NodeReturnCode::kKeyNotExist, kNullCString);
+        return std::make_pair(NodeReturnCode::kKeyNotExist,
+                              static_cast<std::unique_ptr<char>>(nullptr));
       } else {
         return std::make_pair(NodeReturnCode::kKeyNotExist, Payload{});
       }

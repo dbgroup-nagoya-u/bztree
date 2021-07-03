@@ -184,7 +184,7 @@ class alignas(kCacheLineSize) BaseNode
       const auto payload_length = meta.GetPayloadLength();
       auto page = malloc(payload_length);
       memcpy(page, GetPayloadAddr(meta), payload_length);
-      return std::make_unique<char>(page);
+      return std::unique_ptr<char>(static_cast<char *>(page));
     } else {
       return *static_cast<Payload *>(GetPayloadAddr(meta));
     }
