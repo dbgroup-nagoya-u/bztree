@@ -38,8 +38,6 @@ using dbgroup::atomic::mwcas::ReadMwCASField;
 template <class Key, class Payload, class Compare = std::less<Key>>
 class alignas(kCacheLineSize) BaseNode
 {
-  using Record_t = Record<Key, Payload>;
-
  private:
   /*################################################################################################
    * Internal variables
@@ -192,14 +190,23 @@ class alignas(kCacheLineSize) BaseNode
     }
   }
 
-  constexpr std::unique_ptr<Record_t>
+  constexpr auto
   GetRecord(const Metadata meta) const
   {
-    const auto key_addr = this->GetKeyAddr(meta);
-    const auto key_length = meta.GetKeyLength();
-    const auto payload_length = meta.GetPayloadLength();
-
-    return Record_t::Create(key_addr, key_length, payload_length);
+    const auto record_addr = this->GetKeyAddr(meta);
+    if constexpr (std::is_same_v<Key, char *> && std::is_same_v<Payload, char *>) {
+      const auto key_length = meta.GetKeyLength();
+      const auto payload_length = meta.GetPayloadLength();
+      return VarRecord::Create(record_addr, key_length, payload_length);
+    } else if constexpr (std::is_same_v<Key, char *>) {
+      const auto key_length = meta.GetKeyLength();
+      return VarKeyRecord<Payload>::Create(record_addr, key_length);
+    } else if constexpr (std::is_same_v<Payload, char *>) {
+      const auto payload_length = meta.GetPayloadLength();
+      return VarPayloadRecord<Key>::Create(record_addr, payload_length);
+    } else {
+      return Record<Key, Payload>{record_addr};
+    }
   }
 
   void

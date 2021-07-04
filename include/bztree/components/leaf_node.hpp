@@ -36,7 +36,6 @@ class LeafNode
   using BaseNode_t = BaseNode<Key, Payload, Compare>;
   using KeyExistence = typename BaseNode_t::KeyExistence;
   using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
-  using Record_t = Record<Key, Payload>;
 
  private:
   /*################################################################################################
@@ -156,6 +155,50 @@ class LeafNode
     }
   }
 
+  static constexpr auto
+  CreateScanResults(  //
+      const BaseNode_t *node,
+      const std::vector<std::pair<Key, Metadata>> &meta_arr)
+  {
+    if constexpr (std::is_same_v<Key, char *> && std::is_same_v<Payload, char *>) {
+      std::vector<std::unique_ptr<VarRecord>> scan_results;
+      scan_results.reserve(meta_arr.size());
+      for (auto &&[key, meta] : meta_arr) {
+        if (meta.IsVisible()) {
+          scan_results.emplace_back(node->GetRecord(meta));
+        }
+      }
+      return scan_results;
+    } else if constexpr (std::is_same_v<Key, char *>) {
+      std::vector<std::unique_ptr<VarKeyRecord<Payload>>> scan_results;
+      scan_results.reserve(meta_arr.size());
+      for (auto &&[key, meta] : meta_arr) {
+        if (meta.IsVisible()) {
+          scan_results.emplace_back(node->GetRecord(meta));
+        }
+      }
+      return scan_results;
+    } else if constexpr (std::is_same_v<Payload, char *>) {
+      std::vector<std::unique_ptr<VarPayloadRecord<Key>>> scan_results;
+      scan_results.reserve(meta_arr.size());
+      for (auto &&[key, meta] : meta_arr) {
+        if (meta.IsVisible()) {
+          scan_results.emplace_back(node->GetRecord(meta));
+        }
+      }
+      return scan_results;
+    } else {
+      std::vector<Record<Key, Payload>> scan_results;
+      scan_results.reserve(meta_arr.size());
+      for (auto &&[key, meta] : meta_arr) {
+        if (meta.IsVisible()) {
+          scan_results.emplace_back(node->GetRecord(meta));
+        }
+      }
+      return scan_results;
+    }
+  }
+
   static constexpr void
   CopyRecordsViaMetadata(  //
       BaseNode_t *copied_node,
@@ -202,7 +245,7 @@ class LeafNode
     }
   }
 
-  static constexpr std::pair<NodeReturnCode, std::vector<std::unique_ptr<Record_t>>>
+  static constexpr auto
   Scan(  //
       const BaseNode_t *node,
       const Key *begin_key,
@@ -249,15 +292,7 @@ class LeafNode
     auto end_iter = std::unique(meta_arr.begin(), meta_arr.end(), PairEqual{});
     meta_arr.erase(end_iter, meta_arr.end());
 
-    // copy live records for return
-    std::vector<std::unique_ptr<Record_t>> scan_results;
-    scan_results.reserve(meta_arr.size());
-    for (auto &&[key, meta] : meta_arr) {
-      if (meta.IsVisible()) {
-        scan_results.emplace_back(node->GetRecord(meta));
-      }
-    }
-    return {NodeReturnCode::kSuccess, std::move(scan_results)};
+    return std::make_pair(NodeReturnCode::kSuccess, CreateScanResults(node, meta_arr));
   }
 
   /*################################################################################################

@@ -314,6 +314,43 @@ class LeafNodeFixture : public testing::Test
   }
 
   void
+  VerifyScan(  //
+      const size_t begin_id,
+      const bool begin_is_closed,
+      const size_t end_id,
+      const bool end_is_closed,
+      const std::vector<size_t> &expected_keys,
+      const std::vector<size_t> &expected_payloads,
+      const bool begin_is_inf = false,
+      const bool end_is_inf = false)
+  {
+    Key *begin_key = nullptr, *end_key = nullptr;
+    if (!begin_is_inf) {
+      begin_key = &keys[begin_id];
+    }
+    if (!end_is_inf) {
+      end_key = &keys[end_id];
+    }
+
+    auto [rc, results] =
+        LeafNode_t::Scan(node.get(), begin_key, begin_is_closed, end_key, end_is_closed);
+
+    EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+    EXPECT_EQ(expected_keys.size(), results.size());
+    for (size_t i = 0; i < expected_keys.size(); ++i) {
+      const auto key_id = expected_keys[i];
+      const auto payload_id = expected_payloads[i];
+      if constexpr (std::is_same_v<Key, char *> || std::is_same_v<Payload, char *>) {
+        EXPECT_TRUE(IsEqual<KeyComp>(keys[key_id], results[i]->GetKey()));
+        EXPECT_TRUE(IsEqual<PayloadComp>(payloads[payload_id], results[i]->GetPayload()));
+      } else {
+        EXPECT_TRUE(IsEqual<KeyComp>(keys[key_id], results[i].GetKey()));
+        EXPECT_TRUE(IsEqual<PayloadComp>(payloads[payload_id], results[i].GetPayload()));
+      }
+    }
+  }
+
+  void
   VerifyWrite(  //
       const size_t key_id,
       const size_t payload_id,
@@ -508,211 +545,179 @@ TYPED_TEST(LeafNodeFixture, Read_DeletedKey_ReadFail)
   TestFixture::VerifyRead(1, 1, true);
 }
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Scan operation
-//  *------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------
+ * Scan operation
+ *------------------------------------------------------------------------------------------------*/
 
-// TYPED_TEST(LeafNodeFixture, Scan_EmptyNode_NoResult)
-// {
-// //   auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[0], true, &keys[9], true);
+TYPED_TEST(LeafNodeFixture, Scan_EmptyNode_NoResult)
+{
+  std::vector<size_t> expected_ids = {};
+  TestFixture::VerifyScan(1, true, 10, true, expected_ids, expected_ids);
+}
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(0, scan_results.size());
-// }
+TYPED_TEST(LeafNodeFixture, Scan_BothClosed_ScanTargetValues)
+{
+  TestFixture::WriteOrderedKeys(1, 10);
 
-// TYPED_TEST(LeafNodeFixture, Scan_BothClosed_ScanTargetValues)
-// {
-// //   TestFixture::WriteOrderedKeys(4, 9);
-//   TestFixture::WriteOrderedKeys(0, 3);
+  std::vector<size_t> expected_ids = {2, 3, 4, 5, 6, 7, 8};
+  TestFixture::VerifyScan(2, true, 8, true, expected_ids, expected_ids);
+}
 
-//   auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[4], true, &keys[6], true);
+TYPED_TEST(LeafNodeFixture, Scan_LeftClosed_ScanTargetValues)
+{
+  TestFixture::WriteOrderedKeys(1, 10);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(3, scan_results.size());
-//   VerifyKey(keys[4], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[4], scan_results[0]->GetPayload());
-//   VerifyKey(keys[5], scan_results[1]->GetKey());
-//   VerifyPayload(payloads[5], scan_results[1]->GetPayload());
-//   VerifyKey(keys[6], scan_results[2]->GetKey());
-//   VerifyPayload(payloads[6], scan_results[2]->GetPayload());
-// }
+  std::vector<size_t> expected_ids = {2, 3, 4, 5, 6, 7};
+  TestFixture::VerifyScan(2, true, 8, false, expected_ids, expected_ids);
+}
 
-// TYPED_TEST(LeafNodeFixture, Scan_LeftClosed_ScanTargetValues)
-// {
-// //   TestFixture::WriteOrderedKeys(4, 9);
-//   TestFixture::WriteOrderedKeys(0, 3);
+TYPED_TEST(LeafNodeFixture, Scan_RightClosed_ScanTargetValues)
+{
+  TestFixture::WriteOrderedKeys(1, 10);
 
-//   auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[7], true, &keys[9], false);
+  std::vector<size_t> expected_ids = {3, 4, 5, 6, 7, 8};
+  TestFixture::VerifyScan(2, false, 8, true, expected_ids, expected_ids);
+}
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   VerifyKey(keys[7], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[7], scan_results[0]->GetPayload());
-//   VerifyKey(keys[8], scan_results[1]->GetKey());
-//   VerifyPayload(payloads[8], scan_results[1]->GetPayload());
-// }
+TYPED_TEST(LeafNodeFixture, Scan_BothOpened_ScanTargetValues)
+{
+  TestFixture::WriteOrderedKeys(1, 10);
 
-// TYPED_TEST(LeafNodeFixture, Scan_RightClosed_ScanTargetValues)
-// {
-// //   TestFixture::WriteOrderedKeys(4, 9);
-//   TestFixture::WriteOrderedKeys(0, 3);
+  std::vector<size_t> expected_ids = {3, 4, 5, 6, 7};
+  TestFixture::VerifyScan(2, false, 8, false, expected_ids, expected_ids);
+}
 
-//   auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[7], false, &keys[9], true);
+TYPED_TEST(LeafNodeFixture, Scan_LeftInfinity_ScanTargetValues)
+{
+  TestFixture::WriteOrderedKeys(1, 10);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   VerifyKey(keys[8], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[8], scan_results[0]->GetPayload());
-//   VerifyKey(keys[9], scan_results[1]->GetKey());
-//   VerifyPayload(payloads[9], scan_results[1]->GetPayload());
-// }
+  std::vector<size_t> expected_ids = {1, 2, 3, 4, 5, 6, 7, 8};
+  TestFixture::VerifyScan(2, true, 8, true, expected_ids, expected_ids, true);
+}
 
-// TYPED_TEST(LeafNodeFixture, Scan_BothOpened_ScanTargetValues)
-// {
-// //   TestFixture::WriteOrderedKeys(4, 9);
-//   TestFixture::WriteOrderedKeys(0, 3);
+TYPED_TEST(LeafNodeFixture, Scan_RightInfinity_ScanTargetValues)
+{
+  TestFixture::WriteOrderedKeys(1, 10);
 
-//   auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[7], false, &keys[9], false);
+  std::vector<size_t> expected_ids = {2, 3, 4, 5, 6, 7, 8, 9, 10};
+  TestFixture::VerifyScan(2, true, 8, true, expected_ids, expected_ids, false, true);
+}
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(1, scan_results.size());
-//   VerifyKey(keys[8], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[8], scan_results[0]->GetPayload());
-// }
+TYPED_TEST(LeafNodeFixture, Scan_LeftOutsideRange_NoResults)
+{
+  TestFixture::WriteOrderedKeys(6, 10);
 
-// TYPED_TEST(LeafNodeFixture, Scan_LeftInfinity_ScanTargetValues)
-// {
-// //   TestFixture::WriteOrderedKeys(4, 9);
-//   TestFixture::WriteOrderedKeys(0, 3);
+  std::vector<size_t> expected_ids = {};
+  TestFixture::VerifyScan(1, true, 5, true, expected_ids, expected_ids);
+}
 
-//   auto [rc, scan_results] = LeafNode_t::Scan(node.get(), nullptr, false, &keys[1], true);
+TYPED_TEST(LeafNodeFixture, Scan_RightOutsideRange_NoResults)
+{
+  TestFixture::WriteOrderedKeys(1, 5);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   VerifyKey(keys[0], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[0], scan_results[0]->GetPayload());
-//   VerifyKey(keys[1], scan_results[1]->GetKey());
-//   VerifyPayload(payloads[1], scan_results[1]->GetPayload());
-// }
+  std::vector<size_t> expected_ids = {};
+  TestFixture::VerifyScan(6, true, 10, true, expected_ids, expected_ids);
+}
 
-// TYPED_TEST(LeafNodeFixture, Scan_RightInfinity_ScanTargetValues)
-// {
-// //   TestFixture::WriteOrderedKeys(4, 9);
-//   TestFixture::WriteOrderedKeys(0, 3);
+TYPED_TEST(LeafNodeFixture, Scan_WithUpdateDelete_ScanLatestValues)
+{
+  TestFixture::WriteOrderedKeys(1, 10);
+  TestFixture::Update(5, 11);
+  TestFixture::Delete(7);
 
-//   auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[8], true, nullptr, false);
+  std::vector<size_t> expected_keys = {2, 3, 4, 5, 6, 8};
+  std::vector<size_t> expected_payloads = {2, 3, 4, 11, 6, 8};
+  TestFixture::VerifyScan(2, true, 8, true, expected_keys, expected_payloads);
+}
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   VerifyKey(keys[8], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[8], scan_results[0]->GetPayload());
-//   VerifyKey(keys[9], scan_results[1]->GetKey());
-//   VerifyPayload(payloads[9], scan_results[1]->GetPayload());
-// }
+TYPED_TEST(LeafNodeFixture, Scan_BothClosedWithConsolidatedNode_ScanTargetValues)
+{
+  TestFixture::PrepareConsolidatedNode(4, 7);
+  TestFixture::WriteOrderedKeys(1, 3);
+  TestFixture::WriteOrderedKeys(8, 10);
 
-// TYPED_TEST(LeafNodeFixture, Scan_LeftOutsideRange_NoResults)
-// {
-// //   TestFixture::WriteOrderedKeys(4, 9);
+  std::vector<size_t> expected_ids = {2, 3, 4, 5, 6, 7, 8};
+  TestFixture::VerifyScan(2, true, 8, true, expected_ids, expected_ids);
+}
 
-//   auto [rc, scan_results] = LeafNode_t::Scan(node.get(), nullptr, false, &keys[3], false);
+TYPED_TEST(LeafNodeFixture, Scan_LeftClosedWithConsolidatedNode_ScanTargetValues)
+{
+  TestFixture::PrepareConsolidatedNode(4, 7);
+  TestFixture::WriteOrderedKeys(1, 3);
+  TestFixture::WriteOrderedKeys(8, 10);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(0, scan_results.size());
-// }
+  std::vector<size_t> expected_ids = {2, 3, 4, 5, 6, 7};
+  TestFixture::VerifyScan(2, true, 8, false, expected_ids, expected_ids);
+}
 
-// TYPED_TEST(LeafNodeFixture, Scan_RightOutsideRange_NoResults)
-// {
-// //   TestFixture::WriteOrderedKeys(0, 3);
+TYPED_TEST(LeafNodeFixture, Scan_RightClosedWithConsolidatedNode_ScanTargetValues)
+{
+  TestFixture::PrepareConsolidatedNode(4, 7);
+  TestFixture::WriteOrderedKeys(1, 3);
+  TestFixture::WriteOrderedKeys(8, 10);
 
-//   auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[5], false, nullptr, false);
+  std::vector<size_t> expected_ids = {3, 4, 5, 6, 7, 8};
+  TestFixture::VerifyScan(2, false, 8, true, expected_ids, expected_ids);
+}
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(0, scan_results.size());
-// }
+TYPED_TEST(LeafNodeFixture, Scan_BothOpenedWithConsolidatedNode_ScanTargetValues)
+{
+  TestFixture::PrepareConsolidatedNode(4, 7);
+  TestFixture::WriteOrderedKeys(1, 3);
+  TestFixture::WriteOrderedKeys(8, 10);
 
-// TYPED_TEST(LeafNodeFixture, Scan_WithUpdateDelete_ScanLatestValues)
-// {
-// //   TestFixture::WriteOrderedKeys(0, 4);
-//   LeafNode_t::Update(node.get(), keys[2], kKeyLength, payloads[0], kPayloadLength);
-//   LeafNode_t::Delete(node.get(), keys[3], kKeyLength);
+  std::vector<size_t> expected_ids = {3, 4, 5, 6, 7};
+  TestFixture::VerifyScan(2, false, 8, false, expected_ids, expected_ids);
+}
 
-//   auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[2], true, &keys[4], true);
+TYPED_TEST(LeafNodeFixture, Scan_LeftInfinityWithConsolidatedNode_ScanTargetValues)
+{
+  TestFixture::PrepareConsolidatedNode(4, 7);
+  TestFixture::WriteOrderedKeys(1, 3);
+  TestFixture::WriteOrderedKeys(8, 10);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   VerifyKey(keys[2], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[0], scan_results[0]->GetPayload());
-//   VerifyKey(keys[4], scan_results[1]->GetKey());
-//   VerifyPayload(payloads[4], scan_results[1]->GetPayload());
-// }
+  std::vector<size_t> expected_ids = {1, 2, 3, 4, 5, 6, 7, 8};
+  TestFixture::VerifyScan(2, true, 8, true, expected_ids, expected_ids, true);
+}
 
-// TYPED_TEST(LeafNodeFixture, Scan_ConsolidatedNodeWithinRange_ScanTargetValues)
-// {
-// //   // prepare a consolidated node
-//   TestFixture::WriteOrderedKeys(3, 7);
-//   auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
-//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
+TYPED_TEST(LeafNodeFixture, Scan_RightInfinityWithConsolidatedNode_ScanTargetValues)
+{
+  TestFixture::PrepareConsolidatedNode(4, 7);
+  TestFixture::WriteOrderedKeys(1, 3);
+  TestFixture::WriteOrderedKeys(8, 10);
 
-//   auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[4], true, &keys[6], true);
+  std::vector<size_t> expected_ids = {2, 3, 4, 5, 6, 7, 8, 9, 10};
+  TestFixture::VerifyScan(2, true, 8, true, expected_ids, expected_ids, false, true);
+}
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(3, scan_results.size());
-//   VerifyKey(keys[4], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[4], scan_results[0]->GetPayload());
-//   VerifyKey(keys[5], scan_results[1]->GetKey());
-//   VerifyPayload(payloads[5], scan_results[1]->GetPayload());
-//   VerifyKey(keys[6], scan_results[2]->GetKey());
-//   VerifyPayload(payloads[6], scan_results[2]->GetPayload());
-// }
+TYPED_TEST(LeafNodeFixture, Scan_LeftOutsideRangeWithConsolidatedNode_NoResults)
+{
+  TestFixture::PrepareConsolidatedNode(6, 10);
 
-// TYPED_TEST(LeafNodeFixture, Scan_ConsolidatedNodeWithLeftInfinity_ScanTargetValues)
-// {
-// //   // prepare a consolidated node
-//   TestFixture::WriteOrderedKeys(3, 7);
-//   auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
-//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
+  std::vector<size_t> expected_ids = {};
+  TestFixture::VerifyScan(1, true, 5, true, expected_ids, expected_ids);
+}
 
-//   auto [rc, scan_results] = LeafNode_t::Scan(node.get(), nullptr, true, &keys[3], true);
+TYPED_TEST(LeafNodeFixture, Scan_RightOutsideRangeWithConsolidatedNode_NoResults)
+{
+  TestFixture::PrepareConsolidatedNode(1, 5);
 
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(1, scan_results.size());
-//   VerifyKey(keys[3], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[3], scan_results[0]->GetPayload());
-// }
+  std::vector<size_t> expected_ids = {};
+  TestFixture::VerifyScan(6, true, 10, true, expected_ids, expected_ids);
+}
 
-// TYPED_TEST(LeafNodeFixture, Scan_ConsolidatedNodeWithRightInfinity_ScanTargetValues)
-// {
-// //   // prepare a consolidated node
-//   TestFixture::WriteOrderedKeys(3, 7);
-//   auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
-//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
+TYPED_TEST(LeafNodeFixture, Scan_WithUpdateDeleteWithConsolidatedNode_ScanLatestValues)
+{
+  TestFixture::PrepareConsolidatedNode(4, 7);
+  TestFixture::WriteOrderedKeys(1, 3);
+  TestFixture::WriteOrderedKeys(8, 10);
+  TestFixture::Update(5, 11);
+  TestFixture::Delete(7);
 
-//   auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[7], true, nullptr, true);
-
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(1, scan_results.size());
-//   VerifyKey(keys[7], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[7], scan_results[0]->GetPayload());
-// }
-
-// TYPED_TEST(LeafNodeFixture, Scan_ConsolidatedNodeWithUpdateDelete_ScanLatestValues)
-// {
-// //   // prepare a consolidated node
-//   TestFixture::WriteOrderedKeys(3, 7);
-//   auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
-//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
-//   LeafNode_t::Update(node.get(), keys[5], kKeyLength, payloads[0], kPayloadLength);
-//   LeafNode_t::Delete(node.get(), keys[7], kKeyLength);
-
-//   auto [rc, scan_results] = LeafNode_t::Scan(node.get(), &keys[5], true, &keys[7], true);
-
-//   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   VerifyKey(keys[5], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[0], scan_results[0]->GetPayload());
-//   VerifyKey(keys[6], scan_results[1]->GetKey());
-//   VerifyPayload(payloads[6], scan_results[1]->GetPayload());
-// }
+  std::vector<size_t> expected_keys = {2, 3, 4, 5, 6, 8};
+  std::vector<size_t> expected_payloads = {2, 3, 4, 11, 6, 8};
+  TestFixture::VerifyScan(2, true, 8, true, expected_keys, expected_payloads);
+}
 
 /*--------------------------------------------------------------------------------------------------
  * Write operation

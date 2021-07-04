@@ -201,8 +201,8 @@ class VarKeyRecord
   /**
    * @return a stored key
    */
-  constexpr const char*
-  GetKey() const
+  constexpr char*
+  GetKey()
   {
     return key_;
   }
