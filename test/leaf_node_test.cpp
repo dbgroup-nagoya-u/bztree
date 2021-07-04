@@ -417,6 +417,31 @@ class LeafNodeFixture : public testing::Test
 
     VerifyStatusWord(node->GetStatusWord());
   }
+
+  void
+  VerifySplit(  //
+      const size_t begin_index,
+      const size_t end_index,
+      const size_t left_record_count,
+      const bool target_is_left)
+  {
+    WriteOrderedKeys(begin_index, end_index);
+    auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
+    auto [left_node, right_node] = LeafNode_t::Split(node.get(), meta_vec, left_record_count);
+
+    if (target_is_left) {
+      node.reset(left_node);
+      delete right_node;
+    } else {
+      node.reset(right_node);
+      delete left_node;
+    }
+
+    expected_record_count = left_record_count;
+    expected_block_size = expected_record_count * record_length;
+
+    VerifyStatusWord(node->GetStatusWord());
+  }
 };
 
 /*##################################################################################################
@@ -924,47 +949,27 @@ TYPED_TEST(LeafNodeFixture, Consolidate_UnsortedKeysWithDelete_NodeHasCorrectSta
   TestFixture::VerifyConsolidation();
 }
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Split operation
-//  *------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------
+ * Split operation
+ *------------------------------------------------------------------------------------------------*/
 
-// TYPED_TEST(LeafNodeFixture, Split_EquallyDivided_NodesHaveCorrectStatus)
-// {
-//   // prepare split nodes
-//   TestFixture::WriteOrderedKeys(0, 9);
-//   const auto left_record_count = 5;
-//   auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
+TYPED_TEST(LeafNodeFixture, Split_SplitLeftNode_NodesHaveCorrectKeyPayloads)
+{
+  TestFixture::VerifySplit(1, 10, 5, true);
+  for (size_t id = 1; id <= 10; ++id) {
+    const bool expect_not_exist = id > 5;
+    TestFixture::VerifyRead(id, id, expect_not_exist);
+  }
+}
 
-//   auto [left_node, right_node] = LeafNode_t::Split(node.get(), meta_vec, left_record_count);
-//   expected_record_count = 5;
-//   expected_block_size = expected_record_count * kRecordLength;
-
-//   node.reset(left_node);
-//   VerifyStatusWord(node->GetStatusWord());
-
-//   node.reset(right_node);
-//   VerifyStatusWord(node->GetStatusWord());
-// }
-
-// TYPED_TEST(LeafNodeFixture, Split_EquallyDivided_NodesHaveCorrectKeyPayloads)
-// {
-//   // prepare split nodes
-//   TestFixture::WriteOrderedKeys(0, 9);
-//   const auto left_record_count = 5;
-//   auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
-//   auto [left_node, right_node] = LeafNode_t::Split(node.get(), meta_vec, left_record_count);
-
-//   // check a split left node
-//   size_t index = 0;
-//   for (; index < left_record_count; ++index) {
-//     VerifyRead(left_node, keys[index], payloads[index]);
-//   }
-
-//   // check a split right node
-//   for (; index < expected_record_count; ++index) {
-//     VerifyRead(right_node, keys[index], payloads[index]);
-//   }
-// }
+TYPED_TEST(LeafNodeFixture, Split_SplitRightNode_NodesHaveCorrectKeyPayloads)
+{
+  TestFixture::VerifySplit(1, 10, 5, false);
+  for (size_t id = 1; id <= 10; ++id) {
+    const bool expect_not_exist = id <= 5;
+    TestFixture::VerifyRead(id, id, expect_not_exist);
+  }
+}
 
 // /*--------------------------------------------------------------------------------------------------
 //  * Merge operation
