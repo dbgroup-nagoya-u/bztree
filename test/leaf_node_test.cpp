@@ -442,6 +442,32 @@ class LeafNodeFixture : public testing::Test
 
     VerifyStatusWord(node->GetStatusWord());
   }
+
+  void
+  VerifyMerge(  //
+      const size_t target_begin,
+      const size_t target_end,
+      const size_t sibling_begin,
+      const size_t sibling_end,
+      const bool sibling_is_left)
+  {
+    WriteOrderedKeys(target_begin, target_end);
+    auto target_meta = LeafNode_t::GatherSortedLiveMetadata(node.get());
+
+    auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
+    for (size_t id = sibling_begin; id <= sibling_end; ++id) {
+      LeafNode_t::Write(sibling.get(), keys[id], key_length, payloads[id], payload_length);
+    }
+    auto sibling_meta = LeafNode_t::GatherSortedLiveMetadata(sibling.get());
+
+    node.reset(
+        LeafNode_t::Merge(node.get(), target_meta, sibling.get(), sibling_meta, sibling_is_left));
+
+    expected_record_count = (target_end - target_begin + 1) + (sibling_end - sibling_begin + 1);
+    expected_block_size = expected_record_count * record_length;
+
+    VerifyStatusWord(node->GetStatusWord());
+  }
 };
 
 /*##################################################################################################
@@ -971,82 +997,24 @@ TYPED_TEST(LeafNodeFixture, Split_SplitRightNode_NodesHaveCorrectKeyPayloads)
   }
 }
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Merge operation
-//  *------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------
+ * Merge operation
+ *------------------------------------------------------------------------------------------------*/
 
-// TYPED_TEST(LeafNodeFixture, Merge_LeftSiblingNode_NodeHasCorrectStatus)
-// {
-//   // prepare a merged node
-//   auto target = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
-//   LeafNode_t::Write(target.get(), keys[4], kKeyLength, payloads[4], kPayloadLength);
-//   auto target_meta = LeafNode_t::GatherSortedLiveMetadata(target.get());
+TYPED_TEST(LeafNodeFixture, Merge_LeftSiblingNode_NodesHaveCorrectKeyPayloads)
+{
+  TestFixture::VerifyMerge(6, 10, 1, 5, true);
+  for (size_t id = 1; id <= 10; ++id) {
+    TestFixture::VerifyRead(id, id);
+  }
+}
 
-//   auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
-//   LeafNode_t::Write(sibling.get(), keys[3], kKeyLength, payloads[3], kPayloadLength);
-//   auto sibling_meta = LeafNode_t::GatherSortedLiveMetadata(sibling.get());
-
-//   node.reset(LeafNode_t::Merge(target.get(), target_meta, sibling.get(), sibling_meta, true));
-//   expected_record_count = 2;
-//   expected_block_size = expected_record_count * kRecordLength;
-
-//   VerifyStatusWord(node->GetStatusWord());
-// }
-
-// TYPED_TEST(LeafNodeFixture, Merge_RightSiblingNode_NodeHasCorrectStatus)
-// {
-//   // prepare a merged node
-//   auto target = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
-//   LeafNode_t::Write(target.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
-//   auto target_meta = LeafNode_t::GatherSortedLiveMetadata(target.get());
-
-//   auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
-//   LeafNode_t::Write(sibling.get(), keys[3], kKeyLength, payloads[3], kPayloadLength);
-//   auto sibling_meta = LeafNode_t::GatherSortedLiveMetadata(sibling.get());
-
-//   node.reset(LeafNode_t::Merge(target.get(), target_meta, sibling.get(), sibling_meta, false));
-//   expected_record_count = 2;
-//   expected_block_size = expected_record_count * kRecordLength;
-
-//   VerifyStatusWord(node->GetStatusWord());
-// }
-
-// TYPED_TEST(LeafNodeFixture, Merge_LeftSiblingNode_NodeHasCorrectKeyPayloads)
-// {
-//   // prepare a merged node
-//   auto target = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
-//   LeafNode_t::Write(target.get(), keys[4], kKeyLength, payloads[4], kPayloadLength);
-//   auto target_meta = LeafNode_t::GatherSortedLiveMetadata(target.get());
-
-//   auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
-//   LeafNode_t::Write(sibling.get(), keys[3], kKeyLength, payloads[3], kPayloadLength);
-//   auto sibling_meta = LeafNode_t::GatherSortedLiveMetadata(sibling.get());
-
-//   node.reset(LeafNode_t::Merge(target.get(), target_meta, sibling.get(), sibling_meta, true));
-
-//   // check keys and payloads
-//   for (size_t index = 3; index <= 4; ++index) {
-//     VerifyRead(node.get(), keys[index], payloads[index]);
-//   }
-// }
-
-// TYPED_TEST(LeafNodeFixture, Merge_RightSiblingNode_NodeHasCorrectKeyPayloads)
-// {
-//   // prepare a merged node
-//   auto target = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
-//   LeafNode_t::Write(target.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
-//   auto target_meta = LeafNode_t::GatherSortedLiveMetadata(target.get());
-
-//   auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
-//   LeafNode_t::Write(sibling.get(), keys[3], kKeyLength, payloads[3], kPayloadLength);
-//   auto sibling_meta = LeafNode_t::GatherSortedLiveMetadata(sibling.get());
-
-//   node.reset(LeafNode_t::Merge(target.get(), target_meta, sibling.get(), sibling_meta, false));
-
-//   // check keys and payloads
-//   for (size_t index = 2; index <= 3; ++index) {
-//     VerifyRead(node.get(), keys[index], payloads[index]);
-//   }
-// }
+TYPED_TEST(LeafNodeFixture, Merge_RightSiblingNode_NodesHaveCorrectKeyPayloads)
+{
+  TestFixture::VerifyMerge(1, 5, 6, 10, false);
+  for (size_t id = 1; id <= 10; ++id) {
+    TestFixture::VerifyRead(id, id);
+  }
+}
 
 }  // namespace dbgroup::index::bztree
