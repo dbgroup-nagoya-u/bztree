@@ -220,19 +220,17 @@ class LeafNodeFixture : public testing::Test
     }
   }
 
-  std::vector<Key>
+  void
   WriteOrderedKeys(  //
       const size_t begin_index,
       const size_t end_index)
   {
+    assert(begin_index > 0);
     assert(end_index < kKeyNumForTest);
 
-    std::vector<Key> written_keys;
     for (size_t index = begin_index; index <= end_index; ++index) {
       Write(index, index);
-      written_keys.emplace_back(keys[index]);
     }
-    return written_keys;
   }
 
   void
@@ -283,22 +281,6 @@ class LeafNodeFixture : public testing::Test
   }
 
   void
-  VerifyKey(  //
-      const Key expected,
-      const Key actual)
-  {
-    EXPECT_TRUE(IsEqual<KeyComp>(expected, actual));
-  }
-
-  void
-  VerifyPayload(  //
-      const Payload expected,
-      const Payload actual)
-  {
-    EXPECT_TRUE(IsEqual<PayloadComp>(expected, actual));
-  }
-
-  void
   VerifyRead(  //
       const size_t key_id,
       const size_t expected_id,
@@ -310,11 +292,10 @@ class LeafNodeFixture : public testing::Test
       EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
     } else {
       EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-      const auto expected = payloads[expected_id];
       if constexpr (std::is_same_v<Payload, char *>) {
-        EXPECT_TRUE(IsEqual<PayloadComp>(expected, actual.get()));
+        EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], actual.get()));
       } else {
-        EXPECT_TRUE(IsEqual<PayloadComp>(expected, actual));
+        EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], actual));
       }
     }
   }
@@ -392,6 +373,21 @@ class LeafNodeFixture : public testing::Test
       EXPECT_EQ(NodeReturnCode::kSuccess, rc);
       VerifyMetadata(node->GetMetadata(expected_record_count - 1), false);
       VerifyStatusWord(status);
+    }
+  }
+
+  void
+  VerifyGatherSortedLiveMetadata(std::vector<size_t> &expected_ids)
+  {
+    auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
+
+    EXPECT_EQ(expected_ids.size(), meta_vec.size());
+    for (size_t i = 0; i < expected_ids.size(); ++i) {
+      const auto key_id = expected_ids[i];
+      const auto [actual_key, meta] = meta_vec[i];
+
+      EXPECT_TRUE(IsEqual<KeyComp>(keys[key_id], actual_key));
+      VerifyMetadata(meta);
     }
   }
 };
@@ -828,81 +824,45 @@ TYPED_TEST(LeafNodeFixture, Delete_ConsolidatedNodeWithDeletedKey_DeleteFail)
   TestFixture::VerifyDelete(1, true);
 }
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Consolide operation
-//  *------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------
+ * Consolide operation
+ *------------------------------------------------------------------------------------------------*/
 
-// TYPED_TEST(LeafNodeFixture, Consolidate_SortedTenKeys_GatherSortedLiveMetadata)
-// {
-//   // fill a node with ordered keys
-//   auto written_keys = TestFixture::WriteOrderedKeys(0, 9);
+TYPED_TEST(LeafNodeFixture, GatherSortedLiveMetadata_UnsortedKeys_GatherCorrectMetadata)
+{
+  std::vector<size_t> ids = {2, 3, 1, 5, 4};
+  for (auto &&id : ids) {
+    TestFixture::Insert(id, id);
+  }
+  std::sort(ids.begin(), ids.end());
 
-//   // gather live metadata and check equality
-//   auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
+  TestFixture::VerifyGatherSortedLiveMetadata(ids);
+}
 
-//   EXPECT_EQ(expected_record_count, meta_vec.size());
-//   for (size_t index = 0; index < meta_vec.size(); index++) {
-//     auto [key, meta] = meta_vec[index];
-//     VerifyKey(written_keys[index], key);
-//     EXPECT_TRUE(meta.IsVisible());
-//   }
-// }
+TYPED_TEST(LeafNodeFixture, GatherSortedLiveMetadata_UnsortedKeysWithUpdate_GatherCorrectMetadata)
+{
+  std::vector<size_t> ids = {2, 3, 1, 5, 4};
+  for (auto &&id : ids) {
+    TestFixture::Insert(id, id);
+  }
+  TestFixture::Update(3, 4);
+  std::sort(ids.begin(), ids.end());
 
-// TYPED_TEST(LeafNodeFixture, Consolidate_SortedTenKeysWithDelete_GatherSortedLiveMetadata)
-// {
-//   // fill a node with ordered keys
-//   auto written_keys = TestFixture::WriteOrderedKeys(0, 8);
+  TestFixture::VerifyGatherSortedLiveMetadata(ids);
+}
 
-//   // delete a key
-//   LeafNode_t::Delete(node.get(), keys[2], kKeyLength);
-//   --expected_record_count;
-//   written_keys.erase(std::find(written_keys.begin(), written_keys.end(), keys[2]));
+TYPED_TEST(LeafNodeFixture, GatherSortedLiveMetadata_UnsortedKeysWithDelete_GatherCorrectMetadata)
+{
+  std::vector<size_t> ids = {2, 3, 1, 5, 4};
+  for (auto &&id : ids) {
+    TestFixture::Insert(id, id);
+  }
+  TestFixture::Delete(3);
+  ids.erase(ids.begin() + 1);
+  std::sort(ids.begin(), ids.end());
 
-//   // gather live metadata and check equality
-//   auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
-
-//   EXPECT_EQ(expected_record_count, meta_vec.size());
-//   for (size_t index = 0; index < meta_vec.size(); index++) {
-//     auto [key, meta] = meta_vec[index];
-//     VerifyKey(written_keys[index], key);
-//     EXPECT_TRUE(meta.IsVisible());
-//   }
-// }
-
-// TYPED_TEST(LeafNodeFixture, Consolidate_SortedTenKeysWithUpdate_GatherSortedLiveMetadata)
-// {
-//   // fill a node with ordered keys
-//   auto written_keys = TestFixture::WriteOrderedKeys(0, 8);
-//   LeafNode_t::Update(node.get(), keys[2], kKeyLength, payload_null, kNullPayloadLength);
-
-//   // gather live metadata and check equality
-//   auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
-
-//   EXPECT_EQ(expected_record_count, meta_vec.size());
-//   for (size_t index = 0; index < meta_vec.size(); index++) {
-//     auto [key, meta] = meta_vec[index];
-//     VerifyKey(written_keys[index], key);
-//     EXPECT_TRUE(meta.IsVisible());
-//   }
-// }
-
-// TYPED_TEST(LeafNodeFixture, Consolidate_UnsortedTenKeys_GatherSortedLiveMetadata)
-// {
-//   // fill a node with ordered keys
-//   auto tmp_keys = TestFixture::WriteOrderedKeys(4, 9);
-//   auto written_keys = TestFixture::WriteOrderedKeys(0, 3);
-//   written_keys.insert(written_keys.end(), tmp_keys.begin(), tmp_keys.end());
-
-//   // gather live metadata and check equality
-//   auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
-
-//   EXPECT_EQ(expected_record_count, meta_vec.size());
-//   for (size_t index = 0; index < meta_vec.size(); index++) {
-//     auto [key, meta] = meta_vec[index];
-//     VerifyKey(written_keys[index], key);
-//     EXPECT_TRUE(meta.IsVisible());
-//   }
-// }
+  TestFixture::VerifyGatherSortedLiveMetadata(ids);
+}
 
 // TYPED_TEST(LeafNodeFixture, Consolidate_SortedTenKeys_NodeHasCorrectStatus)
 // {
