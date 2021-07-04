@@ -27,7 +27,6 @@
 
 #include "metadata.hpp"
 #include "mwcas/mwcas_descriptor.hpp"
-#include "record.hpp"
 #include "status_word.hpp"
 
 namespace dbgroup::index::bztree
@@ -173,40 +172,6 @@ class alignas(kCacheLineSize) BaseNode
   GetPayloadAddr(const Metadata meta) const
   {
     return ShiftAddress(this, meta.GetOffset() + meta.GetKeyLength());
-  }
-
-  constexpr auto
-  GetPayload(const Metadata meta) const
-  {
-    if constexpr (std::is_same_v<Payload, char *>) {
-      const auto payload_length = meta.GetPayloadLength();
-      auto payload = malloc(payload_length);
-      memcpy(payload, GetPayloadAddr(meta), payload_length);
-      return std::unique_ptr<char>(static_cast<char *>(payload));
-    } else {
-      Payload payload;
-      memcpy(&payload, GetPayloadAddr(meta), sizeof(Payload));
-      return payload;
-    }
-  }
-
-  constexpr auto
-  GetRecord(const Metadata meta) const
-  {
-    const auto record_addr = this->GetKeyAddr(meta);
-    if constexpr (std::is_same_v<Key, char *> && std::is_same_v<Payload, char *>) {
-      const auto key_length = meta.GetKeyLength();
-      const auto payload_length = meta.GetPayloadLength();
-      return VarRecord::Create(record_addr, key_length, payload_length);
-    } else if constexpr (std::is_same_v<Key, char *>) {
-      const auto key_length = meta.GetKeyLength();
-      return VarKeyRecord<Payload>::Create(record_addr, key_length);
-    } else if constexpr (std::is_same_v<Payload, char *>) {
-      const auto payload_length = meta.GetPayloadLength();
-      return VarPayloadRecord<Key>::Create(record_addr, payload_length);
-    } else {
-      return Record<Key, Payload>{record_addr};
-    }
   }
 
   void

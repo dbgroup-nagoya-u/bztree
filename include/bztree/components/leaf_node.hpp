@@ -156,6 +156,44 @@ class LeafNode
   }
 
   static constexpr auto
+  GetPayload(  //
+      const BaseNode_t *node,
+      const Metadata meta)
+  {
+    if constexpr (std::is_same_v<Payload, char *>) {
+      const auto payload_length = meta.GetPayloadLength();
+      auto payload = malloc(payload_length);
+      memcpy(payload, node->GetPayloadAddr(meta), payload_length);
+      return std::unique_ptr<char>(static_cast<char *>(payload));
+    } else {
+      Payload payload;
+      memcpy(&payload, node->GetPayloadAddr(meta), sizeof(Payload));
+      return payload;
+    }
+  }
+
+  static constexpr auto
+  GetRecord(  //
+      const BaseNode_t *node,
+      const Metadata meta)
+  {
+    const auto record_addr = node->GetKeyAddr(meta);
+    if constexpr (std::is_same_v<Key, char *> && std::is_same_v<Payload, char *>) {
+      const auto key_length = meta.GetKeyLength();
+      const auto payload_length = meta.GetPayloadLength();
+      return VarRecord::Create(record_addr, key_length, payload_length);
+    } else if constexpr (std::is_same_v<Key, char *>) {
+      const auto key_length = meta.GetKeyLength();
+      return VarKeyRecord<Payload>::Create(record_addr, key_length);
+    } else if constexpr (std::is_same_v<Payload, char *>) {
+      const auto payload_length = meta.GetPayloadLength();
+      return VarPayloadRecord<Key>::Create(record_addr, payload_length);
+    } else {
+      return Record<Key, Payload>{record_addr};
+    }
+  }
+
+  static constexpr auto
   CreateScanResults(  //
       const BaseNode_t *node,
       const std::vector<std::pair<Key, Metadata>> &meta_arr)
@@ -165,7 +203,7 @@ class LeafNode
       scan_results.reserve(meta_arr.size());
       for (auto &&[key, meta] : meta_arr) {
         if (meta.IsVisible()) {
-          scan_results.emplace_back(node->GetRecord(meta));
+          scan_results.emplace_back(GetRecord(node, meta));
         }
       }
       return scan_results;
@@ -174,7 +212,7 @@ class LeafNode
       scan_results.reserve(meta_arr.size());
       for (auto &&[key, meta] : meta_arr) {
         if (meta.IsVisible()) {
-          scan_results.emplace_back(node->GetRecord(meta));
+          scan_results.emplace_back(GetRecord(node, meta));
         }
       }
       return scan_results;
@@ -183,7 +221,7 @@ class LeafNode
       scan_results.reserve(meta_arr.size());
       for (auto &&[key, meta] : meta_arr) {
         if (meta.IsVisible()) {
-          scan_results.emplace_back(node->GetRecord(meta));
+          scan_results.emplace_back(GetRecord(node, meta));
         }
       }
       return scan_results;
@@ -192,7 +230,7 @@ class LeafNode
       scan_results.reserve(meta_arr.size());
       for (auto &&[key, meta] : meta_arr) {
         if (meta.IsVisible()) {
-          scan_results.emplace_back(node->GetRecord(meta));
+          scan_results.emplace_back(GetRecord(node, meta));
         }
       }
       return scan_results;
@@ -241,7 +279,7 @@ class LeafNode
       }
     } else {
       const auto meta = node->GetMetadataProtected(index);
-      return std::make_pair(NodeReturnCode::kSuccess, node->GetPayload(meta));
+      return std::make_pair(NodeReturnCode::kSuccess, GetPayload(node, meta));
     }
   }
 

@@ -110,13 +110,6 @@ TEST_F(BaseNodeFixture, New_EmptyNode_CorrectlyInitialized)
   EXPECT_EQ(status, node->GetStatusWord());
 }
 
-// TEST_F(BaseNodeFixture, GetPayload_EmptyNode_CorrectlyInitialized)
-// {
-//   node.reset(CreateSortedLeafNodeWithOrderedKeys(0, 9));
-
-//   auto [rc, payload] = LeafNode_t::Read(node.get(), keys[1]);
-// }
-
 TEST_F(BaseNodeFixture, Freeze_NotFrozenNode_FreezeNode)
 {
   auto rc = node->Freeze();
