@@ -70,8 +70,8 @@ class LeafNodeFixture : public testing::Test
   std::unique_ptr<BaseNode_t> node;
   size_t expected_record_count;
   size_t expected_block_size;
-  size_t expected_deleted_size;
-  size_t expected_occupied_size;
+  size_t expected_deleted_block_size;
+  size_t expected_deleted_rec_count;
 
   /*################################################################################################
    * Setup/Teardown
@@ -84,8 +84,8 @@ class LeafNodeFixture : public testing::Test
     node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
     expected_record_count = 0;
     expected_block_size = 0;
-    expected_deleted_size = 0;
-    expected_occupied_size = kHeaderLength;
+    expected_deleted_block_size = 0;
+    expected_deleted_rec_count = 0;
 
     // prepare keys
     if constexpr (std::is_same_v<Key, char *>) {
@@ -154,7 +154,6 @@ class LeafNodeFixture : public testing::Test
     if (!expect_full) {
       expected_record_count += 1;
       expected_block_size += record_length;
-      expected_occupied_size += kWordLength + record_length;
     }
 
     return LeafNode_t::Write(node.get(), keys[key_id], key_length, payloads[payload_id],
@@ -171,7 +170,6 @@ class LeafNodeFixture : public testing::Test
     if (!expect_exist && !expect_full) {
       expected_record_count += 1;
       expected_block_size += record_length;
-      expected_occupied_size += kWordLength + record_length;
     }
 
     return LeafNode_t::Insert(node.get(), keys[key_id], key_length, payloads[payload_id],
@@ -188,8 +186,8 @@ class LeafNodeFixture : public testing::Test
     if (!expect_not_exist && !expect_full) {
       expected_record_count += 1;
       expected_block_size += record_length;
-      expected_deleted_size += kWordLength + record_length;
-      expected_occupied_size += kWordLength + record_length;
+      expected_deleted_rec_count += 1;
+      expected_deleted_block_size += record_length;
     }
 
     return LeafNode_t::Update(node.get(), keys[key_id], key_length, payloads[payload_id],
@@ -205,12 +203,16 @@ class LeafNodeFixture : public testing::Test
     if (!expect_not_exist && !expect_full) {
       expected_record_count += 1;
       expected_block_size += key_length;
-      expected_deleted_size += kWordLength + record_length;
-      expected_occupied_size += kWordLength + key_length;
+      expected_deleted_rec_count += 2;
+      expected_deleted_block_size += record_length + key_length;
     }
 
     return LeafNode_t::Delete(node.get(), keys[key_id], key_length);
   }
+
+  /*################################################################################################
+   * Utility functions
+   *##############################################################################################*/
 
   void
   WriteNullKey(const size_t write_num)
@@ -243,6 +245,14 @@ class LeafNodeFixture : public testing::Test
     node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
   }
 
+  bool
+  NodeIsFull()
+  {
+    const auto expected_occupied_size =
+        kHeaderLength + (expected_record_count * kWordLength) + expected_block_size;
+    return kPageSize - expected_occupied_size < kWordLength + key_length;
+  }
+
   /*################################################################################################
    * Functions for verification
    *##############################################################################################*/
@@ -269,6 +279,9 @@ class LeafNodeFixture : public testing::Test
       const StatusWord status,
       const bool status_is_frozen = false)
   {
+    const auto expected_deleted_size =
+        expected_deleted_block_size + kWordLength * expected_deleted_rec_count;
+
     EXPECT_EQ(status, node->GetStatusWord());
     if (status_is_frozen) {
       EXPECT_TRUE(status.IsFrozen());
@@ -389,6 +402,20 @@ class LeafNodeFixture : public testing::Test
       EXPECT_TRUE(IsEqual<KeyComp>(keys[key_id], actual_key));
       VerifyMetadata(meta);
     }
+  }
+
+  void
+  VerifyConsolidation()
+  {
+    auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
+    node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
+
+    expected_record_count -= expected_deleted_rec_count;
+    expected_block_size -= expected_deleted_block_size;
+    expected_deleted_rec_count = 0;
+    expected_deleted_block_size = 0;
+
+    VerifyStatusWord(node->GetStatusWord());
   }
 };
 
@@ -796,9 +823,7 @@ TYPED_TEST(LeafNodeFixture, Delete_FilledNode_GetCorrectReturnCodes)
   TestFixture::WriteOrderedKeys(1, TestFixture::max_record_num);
 
   for (size_t index = 1; index <= 5; ++index) {
-    const bool is_full =
-        kPageSize - TestFixture::expected_occupied_size < kWordLength + TestFixture::key_length;
-    TestFixture::VerifyDelete(index, false, is_full);
+    TestFixture::VerifyDelete(index, false, TestFixture::NodeIsFull());
   }
 }
 
@@ -864,54 +889,40 @@ TYPED_TEST(LeafNodeFixture, GatherSortedLiveMetadata_UnsortedKeysWithDelete_Gath
   TestFixture::VerifyGatherSortedLiveMetadata(ids);
 }
 
-// TYPED_TEST(LeafNodeFixture, Consolidate_SortedTenKeys_NodeHasCorrectStatus)
-// {
-//   // prepare a consolidated node
-//   TestFixture::WriteOrderedKeys(0, 9);
-//   auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
-//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
+TYPED_TEST(LeafNodeFixture, Consolidate_UnsortedKeys_NodeHasCorrectStatus)
+{
+  std::vector<size_t> ids = {2, 3, 1, 5, 4};
+  for (auto &&id : ids) {
+    TestFixture::Insert(id, id);
+  }
 
-//   VerifyStatusWord(node->GetStatusWord());
-// }
+  TestFixture::VerifyConsolidation();
+}
 
-// TYPED_TEST(LeafNodeFixture, Consolidate_SortedTenKeysWithDelete_NodeHasCorrectStatus)
-// {
-//   // prepare a consolidated node
-//   TestFixture::WriteOrderedKeys(0, 8);
-//   LeafNode_t::Delete(node.get(), keys[2], kKeyLength);
-//   expected_record_count -= 1;
-//   expected_block_size -= kRecordLength;
+TYPED_TEST(LeafNodeFixture, Consolidate_UnsortedKeysWithUpdate_NodeHasCorrectStatus)
+{
+  std::vector<size_t> ids = {2, 3, 1, 5, 4};
+  for (auto &&id : ids) {
+    TestFixture::Insert(id, id);
+  }
+  TestFixture::Update(3, 4);
+  std::sort(ids.begin(), ids.end());
 
-//   auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
-//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
+  TestFixture::VerifyConsolidation();
+}
 
-//   VerifyStatusWord(node->GetStatusWord());
-// }
+TYPED_TEST(LeafNodeFixture, Consolidate_UnsortedKeysWithDelete_NodeHasCorrectStatus)
+{
+  std::vector<size_t> ids = {2, 3, 1, 5, 4};
+  for (auto &&id : ids) {
+    TestFixture::Insert(id, id);
+  }
+  TestFixture::Delete(3);
+  ids.erase(ids.begin() + 1);
+  std::sort(ids.begin(), ids.end());
 
-// TYPED_TEST(LeafNodeFixture, Consolidate_SortedTenKeysWithUpdate_NodeHasCorrectStatus)
-// {
-//   // prepare a consolidated node
-//   TestFixture::WriteOrderedKeys(0, 8);
-//   LeafNode_t::Update(node.get(), keys[2], kKeyLength, payload_null, kNullPayloadLength);
-//   expected_block_size += kNullPayloadLength - kPayloadLength;
-
-//   auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
-//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
-
-//   VerifyStatusWord(node->GetStatusWord());
-// }
-
-// TYPED_TEST(LeafNodeFixture, Consolidate_UnsortedTenKeys_NodeHasCorrectStatus)
-// {
-//   // prepare a consolidated node
-//   TestFixture::WriteOrderedKeys(4, 9);
-//   TestFixture::WriteOrderedKeys(0, 3);
-
-//   auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
-//   node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
-
-//   VerifyStatusWord(node->GetStatusWord());
-// }
+  TestFixture::VerifyConsolidation();
+}
 
 // /*--------------------------------------------------------------------------------------------------
 //  * Split operation

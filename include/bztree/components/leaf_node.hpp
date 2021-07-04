@@ -551,7 +551,8 @@ class LeafNode
 
       // prepare new status for MwCAS
       const auto target_meta = node->GetMetadataProtected(target_index);
-      const auto deleted_block_size = kWordLength + target_meta.GetTotalLength();
+      const auto deleted_block_size =
+          (kWordLength << 1) + target_meta.GetTotalLength() + key_length;
       const auto new_status = current_status.AddRecordInfo(1, key_length, deleted_block_size);
 
       // perform MwCAS to reserve space
