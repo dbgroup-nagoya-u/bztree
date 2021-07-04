@@ -55,15 +55,16 @@ class LeafNodeFixture : public testing::Test
   static constexpr size_t kKeyNumForTest = 10000;
   static constexpr size_t kKeyLength = kWordLength;
   static constexpr size_t kPayloadLength = kWordLength;
-  static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;
-  static constexpr size_t kMaxRecordNum =
-      (kPageSize - kHeaderLength) / (kRecordLength + kWordLength);
 
   // actual keys and payloads
   size_t key_length;
   size_t payload_length;
   Key keys[kKeyNumForTest];
   Payload payloads[kKeyNumForTest];
+
+  // the length of a record and its maximum number
+  size_t record_length;
+  size_t max_record_num;
 
   // a leaf node and its statistics
   std::unique_ptr<BaseNode_t> node;
@@ -89,10 +90,10 @@ class LeafNodeFixture : public testing::Test
     // prepare keys
     if constexpr (std::is_same_v<Key, char *>) {
       // variable-length keys
-      key_length = 8;
+      key_length = 7;
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
         auto key = new char[kKeyLength];
-        snprintf(key, kKeyLength, "%07lu", index);
+        snprintf(key, kKeyLength, "%06lu", index);
         keys[index] = key;
       }
     } else {
@@ -106,10 +107,10 @@ class LeafNodeFixture : public testing::Test
     // prepare payloads
     if constexpr (std::is_same_v<Payload, char *>) {
       // variable-length payloads
-      payload_length = 8;
+      payload_length = 7;
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
         auto payload = new char[kPayloadLength];
-        snprintf(payload, kPayloadLength, "%07lu", index);
+        snprintf(payload, kPayloadLength, "%06lu", index);
         payloads[index] = payload;
       }
     } else {
@@ -119,6 +120,10 @@ class LeafNodeFixture : public testing::Test
         payloads[index] = index;
       }
     }
+
+    // set a record length and its maximum number
+    record_length = key_length + payload_length;
+    max_record_num = (kPageSize - kHeaderLength) / (record_length + kWordLength);
   }
 
   void
@@ -148,8 +153,8 @@ class LeafNodeFixture : public testing::Test
   {
     if (!expect_full) {
       expected_record_count += 1;
-      expected_block_size += kRecordLength;
-      expected_occupied_size += kWordLength + kRecordLength;
+      expected_block_size += record_length;
+      expected_occupied_size += kWordLength + record_length;
     }
 
     return LeafNode_t::Write(node.get(), keys[key_id], key_length, payloads[payload_id],
@@ -165,8 +170,8 @@ class LeafNodeFixture : public testing::Test
   {
     if (!expect_exist && !expect_full) {
       expected_record_count += 1;
-      expected_block_size += kRecordLength;
-      expected_occupied_size += kWordLength + kRecordLength;
+      expected_block_size += record_length;
+      expected_occupied_size += kWordLength + record_length;
     }
 
     return LeafNode_t::Insert(node.get(), keys[key_id], key_length, payloads[payload_id],
@@ -182,9 +187,9 @@ class LeafNodeFixture : public testing::Test
   {
     if (!expect_not_exist && !expect_full) {
       expected_record_count += 1;
-      expected_block_size += kRecordLength;
-      expected_deleted_size += kWordLength + kRecordLength;
-      expected_occupied_size += kWordLength + kRecordLength;
+      expected_block_size += record_length;
+      expected_deleted_size += kWordLength + record_length;
+      expected_occupied_size += kWordLength + record_length;
     }
 
     return LeafNode_t::Update(node.get(), keys[key_id], key_length, payloads[payload_id],
@@ -200,7 +205,7 @@ class LeafNodeFixture : public testing::Test
     if (!expect_not_exist && !expect_full) {
       expected_record_count += 1;
       expected_block_size += key_length;
-      expected_deleted_size += kWordLength + kRecordLength;
+      expected_deleted_size += kWordLength + record_length;
       expected_occupied_size += kWordLength + key_length;
     }
 
@@ -395,12 +400,16 @@ class LeafNodeFixture : public testing::Test
  * Preparation for typed testing
  *################################################################################################*/
 
-using UIntComp = std::less<uint64_t>;
+using Int32Comp = std::less<int32_t>;
+using Int64Comp = std::less<int64_t>;
 using CStrComp = dbgroup::index::bztree::CompareAsCString;
 
-using KeyPayloadPairs = ::testing::Types<KeyPayloadPair<uint64_t, uint64_t, UIntComp, UIntComp>,
-                                         KeyPayloadPair<char *, uint64_t, CStrComp, UIntComp>,
-                                         KeyPayloadPair<uint64_t, char *, UIntComp, CStrComp>,
+using KeyPayloadPairs = ::testing::Types<KeyPayloadPair<int64_t, int64_t, Int64Comp, Int64Comp>,
+                                         KeyPayloadPair<char *, int64_t, CStrComp, Int64Comp>,
+                                         KeyPayloadPair<int64_t, char *, Int64Comp, CStrComp>,
+                                         KeyPayloadPair<int32_t, int32_t, Int32Comp, Int32Comp>,
+                                         KeyPayloadPair<char *, int32_t, CStrComp, Int32Comp>,
+                                         KeyPayloadPair<int32_t, char *, Int32Comp, CStrComp>,
                                          KeyPayloadPair<char *, char *, CStrComp, CStrComp>>;
 TYPED_TEST_CASE(LeafNodeFixture, KeyPayloadPairs);
 
@@ -637,7 +646,7 @@ TYPED_TEST(LeafNodeFixture, Read_DeletedKey_ReadFail)
 
 TYPED_TEST(LeafNodeFixture, Write_UniqueKeys_ReadWrittenValues)
 {
-  for (size_t i = 1; i <= TestFixture::kMaxRecordNum; ++i) {
+  for (size_t i = 1; i <= TestFixture::max_record_num; ++i) {
     TestFixture::VerifyWrite(i, i);
   }
 }
@@ -652,7 +661,7 @@ TYPED_TEST(LeafNodeFixture, Write_DuplicateKey_ReadLatestValue)
 
 TYPED_TEST(LeafNodeFixture, Write_FilledNode_GetCorrectReturnCodes)
 {
-  TestFixture::WriteNullKey(TestFixture::kMaxRecordNum - 1);
+  TestFixture::WriteNullKey(TestFixture::max_record_num - 1);
 
   TestFixture::VerifyWrite(1, 1);
   TestFixture::VerifyWrite(2, 2, true);
@@ -671,7 +680,7 @@ TYPED_TEST(LeafNodeFixture, Write_ConsolidatedNode_ReadWrittenValue)
 
 TYPED_TEST(LeafNodeFixture, Insert_UniqueKeys_ReadInsertedValues)
 {
-  for (size_t i = 1; i <= TestFixture::kMaxRecordNum; ++i) {
+  for (size_t i = 1; i <= TestFixture::max_record_num; ++i) {
     TestFixture::VerifyInsert(i, i);
   }
 }
@@ -686,7 +695,7 @@ TYPED_TEST(LeafNodeFixture, Insert_DuplicateKey_InsertionFail)
 
 TYPED_TEST(LeafNodeFixture, Insert_FilledNode_GetCorrectReturnCodes)
 {
-  TestFixture::WriteNullKey(TestFixture::kMaxRecordNum - 1);
+  TestFixture::WriteNullKey(TestFixture::max_record_num - 1);
 
   TestFixture::VerifyInsert(1, 1);
   TestFixture::VerifyInsert(2, 2, false, true);
@@ -733,7 +742,7 @@ TYPED_TEST(LeafNodeFixture, Update_DeletedKey_UpdateFail)
 
 TYPED_TEST(LeafNodeFixture, Update_FilledNode_GetCorrectReturnCodes)
 {
-  TestFixture::WriteOrderedKeys(1, TestFixture::kMaxRecordNum - 1);
+  TestFixture::WriteOrderedKeys(1, TestFixture::max_record_num - 1);
 
   TestFixture::VerifyUpdate(1, 2);
   TestFixture::VerifyUpdate(2, 3, false, true);
@@ -788,7 +797,7 @@ TYPED_TEST(LeafNodeFixture, Delete_DeletedKey_DeleteFail)
 
 TYPED_TEST(LeafNodeFixture, Delete_FilledNode_GetCorrectReturnCodes)
 {
-  TestFixture::WriteOrderedKeys(1, TestFixture::kMaxRecordNum);
+  TestFixture::WriteOrderedKeys(1, TestFixture::max_record_num);
 
   for (size_t index = 1; index <= 5; ++index) {
     const bool is_full =
