@@ -27,6 +27,7 @@
 
 namespace dbgroup::index::bztree
 {
+// use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
 struct KeyPayloadPair {
   using Key = KeyType;
@@ -50,8 +51,6 @@ class LeafNodeFixture : public testing::Test
   using BaseNode_t = BaseNode<Key, Payload, KeyComp>;
   using LeafNode_t = LeafNode<Key, Payload, KeyComp>;
   using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
-
-  using RunResult = std::pair<std::vector<size_t>, std::vector<size_t>>;
 
   enum WriteType
   {

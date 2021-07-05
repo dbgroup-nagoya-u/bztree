@@ -40,6 +40,14 @@ class InternalNode
     return (pad_length == 0) ? key_length : key_length + (kWordLength - pad_length);
   }
 
+  static constexpr uintptr_t
+  GetChildAddrProtected(  //
+      const BaseNode_t *node,
+      const Metadata meta)
+  {
+    return ReadMwCASField<uintptr_t>(node->GetPayloadAddr(meta));
+  }
+
   static constexpr size_t
   SetChild(  //
       BaseNode_t *node,
@@ -88,14 +96,6 @@ class InternalNode
   /*################################################################################################
    * Public getters/setters
    *##############################################################################################*/
-
-  static constexpr uintptr_t
-  GetChildAddrProtected(  //
-      const BaseNode_t *node,
-      const Metadata meta)
-  {
-    return ReadMwCASField<uintptr_t>(node->GetPayloadAddr(meta));
-  }
 
   static constexpr BaseNode_t *
   GetChildNode(  //

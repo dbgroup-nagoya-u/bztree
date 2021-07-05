@@ -23,458 +23,471 @@
 
 namespace dbgroup::index::bztree
 {
-class InternalNodeFixture : public testing::Test
-{
- public:
-  using Key = uint64_t;
-  using Payload = uint64_t;
-  using Record_t = Record<Key, Payload>;
-  using BaseNode_t = BaseNode<Key, Payload>;
-  using LeafNode_t = LeafNode<Key, Payload>;
-  using InternalNode_t = InternalNode<Key, Payload>;
-  using NodeReturnCode = BaseNode<Key, Payload>::NodeReturnCode;
-  using KeyExistence = BaseNode<Key, Payload>::KeyExistence;
-
-  static constexpr size_t kIndexEpoch = 0;
-  static constexpr size_t kKeyNumForTest = 10000;
-  static constexpr size_t kKeyLength = sizeof(Key);
-  static constexpr size_t kPayloadLength = sizeof(Payload);
-  static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;
-  static constexpr size_t kDefaultMinNodeSizeThreshold = 128;
-  static constexpr size_t kMaxRecordNum =
-      (kPageSize - kHeaderLength) / (kRecordLength + kWordLength);
-
-  Key keys[kKeyNumForTest];
-  Payload payloads[kKeyNumForTest];
-  Key key_null = 0;          // null key must have 8 bytes to fill a node
-  Payload payload_null = 0;  // null payload must have 8 bytes to fill a node
-
-  std::unique_ptr<BaseNode_t> node;
-
-  size_t expected_record_count;
-  size_t expected_block_size;
-  size_t expected_deleted_size;
-
- protected:
-  void
-  SetUp() override
-  {
-    node.reset(BaseNode_t::CreateEmptyNode(kInternalFlag));
-
-    expected_record_count = 0;
-    expected_block_size = 0;
-    expected_deleted_size = 0;
-
-    for (size_t index = 0; index < kKeyNumForTest; index++) {
-      keys[index] = index + 1;
-      payloads[index] = index + 1;
-    }
-  }
-
-  void
-  TearDown() override
-  {
-  }
-
-  void
-  WriteNullKey(  //
-      BaseNode_t* target_node,
-      const size_t write_num)
-  {
-    for (size_t index = 0; index < write_num; ++index) {
-      LeafNode_t::Write(target_node, key_null, kKeyLength, payload_null, kPayloadLength);
-    }
-  }
-
-  void
-  WriteOrderedKeys(  //
-      BaseNode_t* target_node,
-      const size_t begin_index,
-      const size_t end_index)
-  {
-    assert(end_index < kKeyNumForTest);
-
-    for (size_t index = begin_index; index <= end_index; ++index) {
-      LeafNode_t::Write(target_node, keys[index], kKeyLength, payloads[index], kPayloadLength);
-    }
-  }
-
-  BaseNode_t*
-  CreateInternalNodeWithOrderedKeys(  //
-      const size_t begin_index,
-      const size_t end_index)
-  {
-    auto tmp_leaf_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
-    WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
-    auto tmp_meta = LeafNode_t::GatherSortedLiveMetadata(tmp_leaf_node);
-    return LeafNode_t::Consolidate(tmp_leaf_node, tmp_meta);
-  }
-
-  void
-  VerifyStatusWord(  //
-      const StatusWord status,
-      const bool status_is_frozen = false)
-  {
-    EXPECT_EQ(status, node->GetStatusWord());
-    if (status_is_frozen) {
-      EXPECT_TRUE(status.IsFrozen());
-    } else {
-      EXPECT_FALSE(status.IsFrozen());
-    }
-    EXPECT_EQ(expected_record_count, status.GetRecordCount());
-    EXPECT_EQ(expected_block_size, status.GetBlockSize());
-    EXPECT_EQ(expected_deleted_size, status.GetDeletedSize());
-  }
+// use a supper template to define key-payload pair templates
+template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
+struct KeyPayloadPair {
+  using Key = KeyType;
+  using Payload = PayloadType;
+  using KeyComp = KeyComparator;
+  using PayloadComp = PayloadComparator;
 };
 
-TEST_F(InternalNodeFixture, NeedSplit_EmptyNode_SplitNotRequired)
+template <class KeyPayloadPair>
+class InternalNodeFixture : public testing::Test
 {
-  EXPECT_FALSE(InternalNode_t::NeedSplit(node.get(), kKeyLength, kPayloadLength));
-}
+ protected:
+  // extract key-payload types
+  using Key = typename KeyPayloadPair::Key;
+  using Payload = typename KeyPayloadPair::Payload;
+  using KeyComp = typename KeyPayloadPair::KeyComp;
+  using PayloadComp = typename KeyPayloadPair::PayloadComp;
 
-TEST_F(InternalNodeFixture, NeedSplit_FilledNode_SplitRequired)
-{
-  node.reset(CreateInternalNodeWithOrderedKeys(0, kMaxRecordNum));
+  // define type aliases for simplicity
+  using Record_t = Record<Key, Payload>;
+  using BaseNode_t = BaseNode<Key, Payload, KeyComp>;
+  using LeafNode_t = LeafNode<Key, Payload, KeyComp>;
+  using InternalNode_t = InternalNode<Key, Payload, KeyComp>;
+  using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
 
-  EXPECT_TRUE(InternalNode_t::NeedSplit(node.get(), kKeyLength, kPayloadLength));
-}
+  // constant values for testing
+  static constexpr size_t kKeyNumForTest = 1024;
+  static constexpr size_t kKeyLength = kWordLength;
+  static constexpr size_t kPayloadLength = kWordLength;
+  static constexpr size_t kDefaultMinNodeSizeThreshold = 128;
 
-TEST_F(InternalNodeFixture, Split_TenKeys_SplitNodesHaveCorrectStatus)
-{
-  node.reset(CreateInternalNodeWithOrderedKeys(0, 9));
-  auto left_record_count = 5;
+  // actual keys and payloads
+  size_t key_length;
+  size_t payload_length = kWordLength;
+  Key keys[kKeyNumForTest];
 
-  auto [left_node_ptr, right_node_ptr] = InternalNode_t::Split(node.get(), left_record_count);
-  expected_record_count = 5;
-  expected_block_size = expected_record_count * kRecordLength;
+  // the length of a record and its maximum number
+  size_t record_length;
+  size_t max_record_num;
 
-  node.reset(left_node_ptr);
-  VerifyStatusWord(node->GetStatusWord());
+  // a leaf node
+  std::unique_ptr<BaseNode_t> node;
 
-  node.reset(right_node_ptr);
-  VerifyStatusWord(node->GetStatusWord());
-}
+  /*################################################################################################
+   * Setup/Teardown
+   *##############################################################################################*/
 
-TEST_F(InternalNodeFixture, Split_TenKeys_SplitNodesHaveCorrectKeysAndPayloads)
-{
-  node.reset(CreateInternalNodeWithOrderedKeys(0, 9));
-  expected_record_count = 5;
+  void
+  SetUp()
+  {
+    // initialize a leaf node and expected statistics
+    node.reset(BaseNode_t::CreateEmptyNode(kInternalFlag));
 
-  auto [left_node_ptr, right_node_ptr] = InternalNode_t::Split(node.get(), expected_record_count);
+    // prepare keys
+    if constexpr (std::is_same_v<Key, char*>) {
+      // variable-length keys
+      key_length = 7;
+      for (size_t index = 0; index < kKeyNumForTest; ++index) {
+        auto key = new char[kKeyLength];
+        snprintf(key, kKeyLength, "%06lu", index);
+        keys[index] = key;
+      }
+    } else {
+      // static-length keys
+      key_length = sizeof(Key);
+      for (size_t index = 0; index < kKeyNumForTest; ++index) {
+        keys[index] = index;
+      }
+    }
 
-  std::unique_ptr<BaseNode_t> target_node;
-  NodeReturnCode return_code;
-
-  target_node.reset(left_node_ptr);
-  size_t index = 0;
-  for (size_t count = 0; count < expected_record_count; ++count, ++index) {
-    auto [rc, payload] = LeafNode_t::Read(target_node.get(), keys[index]);
-    EXPECT_EQ(payloads[index], payload);
+    // set a record length and its maximum number
+    record_length = key_length + payload_length;
+    max_record_num = (kPageSize - kHeaderLength) / (record_length + kWordLength);
   }
-  return_code = LeafNode_t::Read(target_node.get(), keys[index]).first;
-  EXPECT_EQ(NodeReturnCode::kKeyNotExist, return_code);
 
-  target_node.reset(right_node_ptr);
-  for (size_t count = 0; count < expected_record_count; ++count, ++index) {
-    auto [rc, payload] = LeafNode_t::Read(target_node.get(), keys[index]);
-    EXPECT_EQ(payloads[index], payload);
+  void
+  TearDown()
+  {
+    if constexpr (std::is_same_v<Key, char*>) {
+      for (size_t index = 0; index < kKeyNumForTest; ++index) {
+        delete[] keys[index];
+      }
+    }
   }
-  return_code = LeafNode_t::Read(target_node.get(), keys[index]).first;
-  EXPECT_EQ(NodeReturnCode::kKeyNotExist, return_code);
-}
 
-TEST_F(InternalNodeFixture, NeedMerge_EmptyNode_MergeRequired)
-{
-  EXPECT_TRUE(InternalNode_t::NeedMerge(node.get(), kKeyLength, kPayloadLength,
-                                        kDefaultMinNodeSizeThreshold));
-}
+  /*################################################################################################
+   * Utility functions
+   *##############################################################################################*/
+};
 
-TEST_F(InternalNodeFixture, NeedMerge_FilledNode_MergeNotRequired)
-{
-  node.reset(CreateInternalNodeWithOrderedKeys(0, 9));
+/*##################################################################################################
+ * Preparation for typed testing
+ *################################################################################################*/
 
-  EXPECT_FALSE(InternalNode_t::NeedMerge(node.get(), kKeyLength, kPayloadLength,
-                                         kDefaultMinNodeSizeThreshold));
-}
+using Int32Comp = std::less<int32_t>;
+using Int64Comp = std::less<int64_t>;
+using CStrComp = dbgroup::index::bztree::CompareAsCString;
 
-TEST_F(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectStatus)
-{
-  auto target_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
-  auto sibling_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(2, 3));
+using KeyPayloadPairs = ::testing::Types<KeyPayloadPair<int64_t, int64_t, Int64Comp, Int64Comp>,
+                                         KeyPayloadPair<int32_t, int64_t, Int32Comp, Int64Comp>,
+                                         KeyPayloadPair<char*, int64_t, CStrComp, Int64Comp>>;
+TYPED_TEST_CASE(InternalNodeFixture, KeyPayloadPairs);
 
-  node.reset(InternalNode_t::Merge(target_node.get(), sibling_node.get(), true));
-  expected_record_count = 5;
-  expected_block_size = expected_record_count * kRecordLength;
+/*##################################################################################################
+ * Unit test definitions
+ *################################################################################################*/
 
-  VerifyStatusWord(node->GetStatusWord());
-}
+// TYPED_TEST(InternalNodeFixture, NeedSplit_EmptyNode_SplitNotRequired)
+// {
+//   EXPECT_FALSE(InternalNode_t::NeedSplit(node.get(), kKeyLength, kPayloadLength));
+// }
 
-TEST_F(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectStatus)
-{
-  auto target_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
-  auto sibling_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 8));
+// TYPED_TEST(InternalNodeFixture, NeedSplit_FilledNode_SplitRequired)
+// {
+//   node.reset(CreateInternalNodeWithOrderedKeys(0, kMaxRecordNum));
 
-  node.reset(InternalNode_t::Merge(target_node.get(), sibling_node.get(), false));
-  expected_record_count = 5;
-  expected_block_size = expected_record_count * kRecordLength;
+//   EXPECT_TRUE(InternalNode_t::NeedSplit(node.get(), kKeyLength, kPayloadLength));
+// }
 
-  VerifyStatusWord(node->GetStatusWord());
-}
+// TYPED_TEST(InternalNodeFixture, Split_TenKeys_SplitNodesHaveCorrectStatus)
+// {
+//   node.reset(CreateInternalNodeWithOrderedKeys(0, 9));
+//   auto left_record_count = 5;
 
-TEST_F(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectKeysAndPayloads)
-{
-  auto target_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
-  auto sibling_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(2, 3));
+//   auto [left_node_ptr, right_node_ptr] = InternalNode_t::Split(node.get(), left_record_count);
+//   expected_record_count = 5;
+//   expected_block_size = expected_record_count * kRecordLength;
 
-  auto merged_node = std::unique_ptr<BaseNode_t>(
-      CastAddress<BaseNode_t*>(InternalNode_t::Merge(target_node.get(), sibling_node.get(), true)));
+//   node.reset(left_node_ptr);
+//   VerifyStatusWord(node->GetStatusWord());
 
-  auto [rc, scan_results] = LeafNode_t::Scan(merged_node.get(), &keys[3], true, &keys[5], false);
+//   node.reset(right_node_ptr);
+//   VerifyStatusWord(node->GetStatusWord());
+// }
 
-  ASSERT_EQ(2, scan_results.size());
-  EXPECT_EQ(keys[3], scan_results[0]->GetKey());
-  EXPECT_EQ(payloads[3], scan_results[0]->GetPayload());
-  EXPECT_EQ(keys[4], scan_results[1]->GetKey());
-  EXPECT_EQ(payloads[4], scan_results[1]->GetPayload());
-}
+// TYPED_TEST(InternalNodeFixture, Split_TenKeys_SplitNodesHaveCorrectKeysAndPayloads)
+// {
+//   node.reset(CreateInternalNodeWithOrderedKeys(0, 9));
+//   expected_record_count = 5;
 
-TEST_F(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectKeysAndPayloads)
-{
-  auto target_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
-  auto sibling_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 8));
+//   auto [left_node_ptr, right_node_ptr] = InternalNode_t::Split(node.get(),
+//   expected_record_count);
 
-  auto merged_node = std::unique_ptr<BaseNode_t>(CastAddress<BaseNode_t*>(
-      InternalNode_t::Merge(target_node.get(), sibling_node.get(), false)));
+//   std::unique_ptr<BaseNode_t> target_node;
+//   NodeReturnCode return_code;
 
-  auto [rc, scan_results] = LeafNode_t::Scan(merged_node.get(), &keys[5], false, &keys[7], true);
+//   target_node.reset(left_node_ptr);
+//   size_t index = 0;
+//   for (size_t count = 0; count < expected_record_count; ++count, ++index) {
+//     auto [rc, payload] = LeafNode_t::Read(target_node.get(), keys[index]);
+//     EXPECT_EQ(payloads[index], payload);
+//   }
+//   return_code = LeafNode_t::Read(target_node.get(), keys[index]).first;
+//   EXPECT_EQ(NodeReturnCode::kKeyNotExist, return_code);
 
-  ASSERT_EQ(2, scan_results.size());
-  EXPECT_EQ(keys[6], scan_results[0]->GetKey());
-  EXPECT_EQ(payloads[6], scan_results[0]->GetPayload());
-  EXPECT_EQ(keys[7], scan_results[1]->GetKey());
-  EXPECT_EQ(payloads[7], scan_results[1]->GetPayload());
-}
+//   target_node.reset(right_node_ptr);
+//   for (size_t count = 0; count < expected_record_count; ++count, ++index) {
+//     auto [rc, payload] = LeafNode_t::Read(target_node.get(), keys[index]);
+//     EXPECT_EQ(payloads[index], payload);
+//   }
+//   return_code = LeafNode_t::Read(target_node.get(), keys[index]).first;
+//   EXPECT_EQ(NodeReturnCode::kKeyNotExist, return_code);
+// }
 
-TEST_F(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectStatus)
-{
-  auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(0, 4));
-  auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(5, 9));
+// TYPED_TEST(InternalNodeFixture, NeedMerge_EmptyNode_MergeRequired)
+// {
+//   EXPECT_TRUE(InternalNode_t::NeedMerge(node.get(), kKeyLength, kPayloadLength,
+//                                         kDefaultMinNodeSizeThreshold));
+// }
 
-  node.reset(InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
-  expected_record_count = 2;
-  expected_block_size = expected_record_count * kRecordLength;
+// TYPED_TEST(InternalNodeFixture, NeedMerge_FilledNode_MergeNotRequired)
+// {
+//   node.reset(CreateInternalNodeWithOrderedKeys(0, 9));
 
-  VerifyStatusWord(node->GetStatusWord());
-}
+//   EXPECT_FALSE(InternalNode_t::NeedMerge(node.get(), kKeyLength, kPayloadLength,
+//                                          kDefaultMinNodeSizeThreshold));
+// }
 
-TEST_F(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectPointersToChildren)
-{
-  auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(0, 4));
-  auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(5, 9));
+// TYPED_TEST(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectStatus)
+// {
+//   auto target_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
+//   auto sibling_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(2, 3));
 
-  node.reset(InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
+//   node.reset(InternalNode_t::Merge(target_node.get(), sibling_node.get(), true));
+//   expected_record_count = 5;
+//   expected_block_size = expected_record_count * kRecordLength;
 
-  auto read_left_addr = InternalNode_t::GetChildNode(node.get(), 0);
-  EXPECT_TRUE(HaveSameAddress(left_node.get(), read_left_addr));
+//   VerifyStatusWord(node->GetStatusWord());
+// }
 
-  auto read_right_addr = InternalNode_t::GetChildNode(node.get(), 1);
-  EXPECT_TRUE(HaveSameAddress(right_node.get(), read_right_addr));
-}
+// TYPED_TEST(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectStatus)
+// {
+//   auto target_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
+//   auto sibling_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 8));
 
-TEST_F(InternalNodeFixture, NewParent_AfterSplit_HasCorrectStatus)
-{
-  // prepare an old parent
-  auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
-  auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
-  auto old_parent =
-      std::unique_ptr<BaseNode_t>(InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
+//   node.reset(InternalNode_t::Merge(target_node.get(), sibling_node.get(), false));
+//   expected_record_count = 5;
+//   expected_block_size = expected_record_count * kRecordLength;
 
-  // prepare a split node
-  auto [tmp_left, tmp_right] = InternalNode_t::Split(left_node.get(), 3);
-  auto split_left = std::unique_ptr<BaseNode_t>(tmp_left);
-  auto split_right = std::unique_ptr<BaseNode_t>(tmp_right);
-  auto new_key = keys[3];
-  auto split_index = 1;
+//   VerifyStatusWord(node->GetStatusWord());
+// }
 
-  // create a new parent node
-  auto new_parent = std::unique_ptr<BaseNode_t>(InternalNode_t::NewParentForSplit(
-      old_parent.get(), new_key, kKeyLength, split_left.get(), split_right.get(), split_index));
+// TYPED_TEST(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectKeysAndPayloads)
+// {
+//   auto target_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
+//   auto sibling_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(2, 3));
 
-  auto status = new_parent->GetStatusWord();
-  auto record_count = 3;
-  auto block_size = (kWordLength * 2) * record_count;
-  auto deleted_size = 0;
+//   auto merged_node = std::unique_ptr<BaseNode_t>(
+//       CastAddress<BaseNode_t*>(InternalNode_t::Merge(target_node.get(), sibling_node.get(),
+//       true)));
 
-  EXPECT_EQ(record_count, new_parent->GetSortedCount());
-  EXPECT_EQ(record_count, status.GetRecordCount());
-  EXPECT_EQ(block_size, status.GetBlockSize());
-  EXPECT_EQ(deleted_size, status.GetDeletedSize());
-}
+//   auto [rc, scan_results] = LeafNode_t::Scan(merged_node.get(), &keys[3], true, &keys[5], false);
 
-TEST_F(InternalNodeFixture, NewParent_AfterSplit_HasCorrectPointersToChildren)
-{
-  // prepare an old parent
-  auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
-  auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
-  auto old_parent =
-      std::unique_ptr<BaseNode_t>(InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
+//   ASSERT_EQ(2, scan_results.size());
+//   EXPECT_EQ(keys[3], scan_results[0]->GetKey());
+//   EXPECT_EQ(payloads[3], scan_results[0]->GetPayload());
+//   EXPECT_EQ(keys[4], scan_results[1]->GetKey());
+//   EXPECT_EQ(payloads[4], scan_results[1]->GetPayload());
+// }
 
-  // prepare a split node
-  auto [tmp_left, tmp_right] = InternalNode_t::Split(left_node.get(), 3);
-  auto split_left = std::unique_ptr<BaseNode_t>(tmp_left);
-  auto split_right = std::unique_ptr<BaseNode_t>(tmp_right);
-  auto new_key = keys[3];
-  auto split_index = 1;
+// TYPED_TEST(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectKeysAndPayloads)
+// {
+//   auto target_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
+//   auto sibling_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 8));
 
-  // create a new parent node
-  auto new_parent = std::unique_ptr<BaseNode_t>(InternalNode_t::NewParentForSplit(
-      old_parent.get(), new_key, kKeyLength, split_left.get(), split_right.get(), split_index));
+//   auto merged_node = std::unique_ptr<BaseNode_t>(CastAddress<BaseNode_t*>(
+//       InternalNode_t::Merge(target_node.get(), sibling_node.get(), false)));
 
-  auto read_addr = InternalNode_t::GetChildNode(new_parent.get(), 0);
-  EXPECT_TRUE(HaveSameAddress(left_node.get(), read_addr));
+//   auto [rc, scan_results] = LeafNode_t::Scan(merged_node.get(), &keys[5], false, &keys[7], true);
 
-  read_addr = InternalNode_t::GetChildNode(new_parent.get(), 1);
-  EXPECT_TRUE(HaveSameAddress(split_left.get(), read_addr));
+//   ASSERT_EQ(2, scan_results.size());
+//   EXPECT_EQ(keys[6], scan_results[0]->GetKey());
+//   EXPECT_EQ(payloads[6], scan_results[0]->GetPayload());
+//   EXPECT_EQ(keys[7], scan_results[1]->GetKey());
+//   EXPECT_EQ(payloads[7], scan_results[1]->GetPayload());
+// }
 
-  read_addr = InternalNode_t::GetChildNode(new_parent.get(), 2);
-  EXPECT_TRUE(HaveSameAddress(split_right.get(), read_addr));
-}
+// TYPED_TEST(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectStatus)
+// {
+//   auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(0, 4));
+//   auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(5, 9));
 
-TEST_F(InternalNodeFixture, NewParent_AfterMerge_HasCorrectStatus)
-{
-  // prepare an old parent
-  auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
-  auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
-  auto old_parent =
-      std::unique_ptr<BaseNode_t>(InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
+//   node.reset(InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
+//   expected_record_count = 2;
+//   expected_block_size = expected_record_count * kRecordLength;
 
-  // prepare a merged node
-  auto merged_node =
-      std::unique_ptr<BaseNode_t>(InternalNode_t::Merge(left_node.get(), right_node.get(), false));
-  auto deleted_index = 0;
+//   VerifyStatusWord(node->GetStatusWord());
+// }
 
-  // create a new parent node
-  node.reset(InternalNode_t::NewParentForMerge(old_parent.get(), merged_node.get(), deleted_index));
-  expected_record_count = 1;
-  expected_block_size = expected_record_count * kRecordLength;
+// TYPED_TEST(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectPointersToChildren)
+// {
+//   auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(0, 4));
+//   auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(5, 9));
 
-  VerifyStatusWord(node->GetStatusWord());
-}
+//   node.reset(InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
 
-TEST_F(InternalNodeFixture, NewParent_AfterMerge_HasCorrectPointersToChildren)
-{
-  // prepare an old parent
-  auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
-  auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
-  auto old_parent =
-      std::unique_ptr<BaseNode_t>(InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
+//   auto read_left_addr = InternalNode_t::GetChildNode(node.get(), 0);
+//   EXPECT_TRUE(HaveSameAddress(left_node.get(), read_left_addr));
 
-  // prepare a merged node
-  auto merged_node =
-      std::unique_ptr<BaseNode_t>(InternalNode_t::Merge(left_node.get(), right_node.get(), false));
-  auto deleted_index = 0;
+//   auto read_right_addr = InternalNode_t::GetChildNode(node.get(), 1);
+//   EXPECT_TRUE(HaveSameAddress(right_node.get(), read_right_addr));
+// }
 
-  // create a new parent node
-  node.reset(InternalNode_t::NewParentForMerge(old_parent.get(), merged_node.get(), deleted_index));
+// TYPED_TEST(InternalNodeFixture, NewParent_AfterSplit_HasCorrectStatus)
+// {
+//   // prepare an old parent
+//   auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
+//   auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
+//   auto old_parent =
+//       std::unique_ptr<BaseNode_t>(InternalNode_t::CreateNewRoot(left_node.get(),
+//       right_node.get()));
 
-  auto read_addr = InternalNode_t::GetChildNode(node.get(), 0);
-  EXPECT_TRUE(HaveSameAddress(merged_node.get(), read_addr));
-}
+//   // prepare a split node
+//   auto [tmp_left, tmp_right] = InternalNode_t::Split(left_node.get(), 3);
+//   auto split_left = std::unique_ptr<BaseNode_t>(tmp_left);
+//   auto split_right = std::unique_ptr<BaseNode_t>(tmp_right);
+//   auto new_key = keys[3];
+//   auto split_index = 1;
 
-TEST_F(InternalNodeFixture, CanMergeLeftSibling_SiblingHasSufficentSpace_CanBeMerged)
-{
-  // prepare an old parent
-  auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 3));  // 72B
-  auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 9));
-  node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
+//   // create a new parent node
+//   auto new_parent = std::unique_ptr<BaseNode_t>(InternalNode_t::NewParentForSplit(
+//       old_parent.get(), new_key, kKeyLength, split_left.get(), split_right.get(), split_index));
 
-  // prepare merging information
-  auto target_index = 1;
-  auto target_node_size = kHeaderLength + kWordLength + kRecordLength;  // 40B
-  auto max_merged_size = 128;
+//   auto status = new_parent->GetStatusWord();
+//   auto record_count = 3;
+//   auto block_size = (kWordLength * 2) * record_count;
+//   auto deleted_size = 0;
 
-  EXPECT_TRUE(InternalNode_t::CanMergeLeftSibling(node.get(), target_index, target_node_size,
-                                                  max_merged_size));
-}
+//   EXPECT_EQ(record_count, new_parent->GetSortedCount());
+//   EXPECT_EQ(record_count, status.GetRecordCount());
+//   EXPECT_EQ(block_size, status.GetBlockSize());
+//   EXPECT_EQ(deleted_size, status.GetDeletedSize());
+// }
 
-TEST_F(InternalNodeFixture, CanMergeLeftSibling_SiblingHasSmallSpace_CannotBeMerged)
-{
-  // prepare an old parent
-  auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));  // 144B
-  auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
-  node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
+// TYPED_TEST(InternalNodeFixture, NewParent_AfterSplit_HasCorrectPointersToChildren)
+// {
+//   // prepare an old parent
+//   auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
+//   auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
+//   auto old_parent =
+//       std::unique_ptr<BaseNode_t>(InternalNode_t::CreateNewRoot(left_node.get(),
+//       right_node.get()));
 
-  // prepare merging information
-  auto target_index = 1;
-  auto target_node_size = kHeaderLength + kWordLength + kRecordLength;  // 40B
-  auto max_merged_size = 128;
+//   // prepare a split node
+//   auto [tmp_left, tmp_right] = InternalNode_t::Split(left_node.get(), 3);
+//   auto split_left = std::unique_ptr<BaseNode_t>(tmp_left);
+//   auto split_right = std::unique_ptr<BaseNode_t>(tmp_right);
+//   auto new_key = keys[3];
+//   auto split_index = 1;
 
-  EXPECT_FALSE(InternalNode_t::CanMergeLeftSibling(node.get(), target_index, target_node_size,
-                                                   max_merged_size));
-}
+//   // create a new parent node
+//   auto new_parent = std::unique_ptr<BaseNode_t>(InternalNode_t::NewParentForSplit(
+//       old_parent.get(), new_key, kKeyLength, split_left.get(), split_right.get(), split_index));
 
-TEST_F(InternalNodeFixture, CanMergeLeftSibling_NoSibling_CannotBeMerged)
-{
-  // prepare an old parent
-  auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));  // 144B
-  auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
-  node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
+//   auto read_addr = InternalNode_t::GetChildNode(new_parent.get(), 0);
+//   EXPECT_TRUE(HaveSameAddress(left_node.get(), read_addr));
 
-  // prepare merging information
-  auto target_index = 0;
-  auto target_node_size = kHeaderLength + kWordLength + kRecordLength;  // 40B
-  auto max_merged_size = 128;
+//   read_addr = InternalNode_t::GetChildNode(new_parent.get(), 1);
+//   EXPECT_TRUE(HaveSameAddress(split_left.get(), read_addr));
 
-  EXPECT_FALSE(InternalNode_t::CanMergeLeftSibling(node.get(), target_index, target_node_size,
-                                                   max_merged_size));
-}
+//   read_addr = InternalNode_t::GetChildNode(new_parent.get(), 2);
+//   EXPECT_TRUE(HaveSameAddress(split_right.get(), read_addr));
+// }
 
-TEST_F(InternalNodeFixture, CanMergeRightSibling_SiblingHasSufficentSpace_CanBeMerged)
-{
-  // prepare an old parent
-  auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
-  auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));  // 72B
-  node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
+// TYPED_TEST(InternalNodeFixture, NewParent_AfterMerge_HasCorrectStatus)
+// {
+//   // prepare an old parent
+//   auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
+//   auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
+//   auto old_parent =
+//       std::unique_ptr<BaseNode_t>(InternalNode_t::CreateNewRoot(left_node.get(),
+//       right_node.get()));
 
-  // prepare merging information
-  auto target_index = 0;
-  auto target_node_size = kHeaderLength + kWordLength + kRecordLength;  // 40B
-  auto max_merged_size = 128;
+//   // prepare a merged node
+//   auto merged_node =
+//       std::unique_ptr<BaseNode_t>(InternalNode_t::Merge(left_node.get(), right_node.get(),
+//       false));
+//   auto deleted_index = 0;
 
-  EXPECT_TRUE(InternalNode_t::CanMergeRightSibling(node.get(), target_index, target_node_size,
-                                                   max_merged_size));
-}
+//   // create a new parent node
+//   node.reset(InternalNode_t::NewParentForMerge(old_parent.get(), merged_node.get(),
+//   deleted_index)); expected_record_count = 1; expected_block_size = expected_record_count *
+//   kRecordLength;
 
-TEST_F(InternalNodeFixture, CanMergeRightSibling_SiblingHasSmallSpace_CannotBeMerged)
-{
-  // prepare an old parent
-  auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 3));
-  auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 9));  // 144B
-  node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
+//   VerifyStatusWord(node->GetStatusWord());
+// }
 
-  // prepare merging information
-  auto target_index = 0;
-  auto target_node_size = kHeaderLength + kWordLength + kRecordLength;  // 40B
-  auto max_merged_size = 128;
+// TYPED_TEST(InternalNodeFixture, NewParent_AfterMerge_HasCorrectPointersToChildren)
+// {
+//   // prepare an old parent
+//   auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
+//   auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
+//   auto old_parent =
+//       std::unique_ptr<BaseNode_t>(InternalNode_t::CreateNewRoot(left_node.get(),
+//       right_node.get()));
 
-  EXPECT_FALSE(InternalNode_t::CanMergeRightSibling(node.get(), target_index, target_node_size,
-                                                    max_merged_size));
-}
+//   // prepare a merged node
+//   auto merged_node =
+//       std::unique_ptr<BaseNode_t>(InternalNode_t::Merge(left_node.get(), right_node.get(),
+//       false));
+//   auto deleted_index = 0;
 
-TEST_F(InternalNodeFixture, CanMergeRightSibling_NoSibling_CannotBeMerged)
-{
-  // prepare an old parent
-  auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
-  auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));  // 72B
-  node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
+//   // create a new parent node
+//   node.reset(InternalNode_t::NewParentForMerge(old_parent.get(), merged_node.get(),
+//   deleted_index));
 
-  // prepare merging information
-  auto target_index = 1;
-  auto target_node_size = kHeaderLength + kWordLength + kRecordLength;  // 40B
-  auto max_merged_size = 128;
+//   auto read_addr = InternalNode_t::GetChildNode(node.get(), 0);
+//   EXPECT_TRUE(HaveSameAddress(merged_node.get(), read_addr));
+// }
 
-  EXPECT_FALSE(InternalNode_t::CanMergeRightSibling(node.get(), target_index, target_node_size,
-                                                    max_merged_size));
-}
+// TYPED_TEST(InternalNodeFixture, CanMergeLeftSibling_SiblingHasSufficentSpace_CanBeMerged)
+// {
+//   // prepare an old parent
+//   auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 3));  // 72B
+//   auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 9));
+//   node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
+
+//   // prepare merging information
+//   auto target_index = 1;
+//   auto target_node_size = kHeaderLength + kWordLength + kRecordLength;  // 40B
+//   auto max_merged_size = 128;
+
+//   EXPECT_TRUE(InternalNode_t::CanMergeLeftSibling(node.get(), target_index, target_node_size,
+//                                                   max_merged_size));
+// }
+
+// TYPED_TEST(InternalNodeFixture, CanMergeLeftSibling_SiblingHasSmallSpace_CannotBeMerged)
+// {
+//   // prepare an old parent
+//   auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));  // 144B
+//   auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
+//   node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
+
+//   // prepare merging information
+//   auto target_index = 1;
+//   auto target_node_size = kHeaderLength + kWordLength + kRecordLength;  // 40B
+//   auto max_merged_size = 128;
+
+//   EXPECT_FALSE(InternalNode_t::CanMergeLeftSibling(node.get(), target_index, target_node_size,
+//                                                    max_merged_size));
+// }
+
+// TYPED_TEST(InternalNodeFixture, CanMergeLeftSibling_NoSibling_CannotBeMerged)
+// {
+//   // prepare an old parent
+//   auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));  // 144B
+//   auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
+//   node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
+
+//   // prepare merging information
+//   auto target_index = 0;
+//   auto target_node_size = kHeaderLength + kWordLength + kRecordLength;  // 40B
+//   auto max_merged_size = 128;
+
+//   EXPECT_FALSE(InternalNode_t::CanMergeLeftSibling(node.get(), target_index, target_node_size,
+//                                                    max_merged_size));
+// }
+
+// TYPED_TEST(InternalNodeFixture, CanMergeRightSibling_SiblingHasSufficentSpace_CanBeMerged)
+// {
+//   // prepare an old parent
+//   auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
+//   auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));  // 72B
+//   node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
+
+//   // prepare merging information
+//   auto target_index = 0;
+//   auto target_node_size = kHeaderLength + kWordLength + kRecordLength;  // 40B
+//   auto max_merged_size = 128;
+
+//   EXPECT_TRUE(InternalNode_t::CanMergeRightSibling(node.get(), target_index, target_node_size,
+//                                                    max_merged_size));
+// }
+
+// TYPED_TEST(InternalNodeFixture, CanMergeRightSibling_SiblingHasSmallSpace_CannotBeMerged)
+// {
+//   // prepare an old parent
+//   auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 3));
+//   auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 9));  // 144B
+//   node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
+
+//   // prepare merging information
+//   auto target_index = 0;
+//   auto target_node_size = kHeaderLength + kWordLength + kRecordLength;  // 40B
+//   auto max_merged_size = 128;
+
+//   EXPECT_FALSE(InternalNode_t::CanMergeRightSibling(node.get(), target_index, target_node_size,
+//                                                     max_merged_size));
+// }
+
+// TYPED_TEST(InternalNodeFixture, CanMergeRightSibling_NoSibling_CannotBeMerged)
+// {
+//   // prepare an old parent
+//   auto left_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
+//   auto right_n = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));  // 72B
+//   node.reset(InternalNode_t::CreateNewRoot(left_n.get(), right_n.get()));
+
+//   // prepare merging information
+//   auto target_index = 1;
+//   auto target_node_size = kHeaderLength + kWordLength + kRecordLength;  // 40B
+//   auto max_merged_size = 128;
+
+//   EXPECT_FALSE(InternalNode_t::CanMergeRightSibling(node.get(), target_index, target_node_size,
+//                                                     max_merged_size));
+// }
 
 }  // namespace dbgroup::index::bztree
