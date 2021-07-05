@@ -74,6 +74,7 @@ class LeafNodeFixture : public testing::Test
   static constexpr size_t kKeyLength = kWordLength;
   static constexpr size_t kPayloadLength = kWordLength;
   static constexpr size_t kRandomSeed = 10;
+  static constexpr size_t kRepeatNum = 10;
 #ifdef BZTREE_TEST_THREAD_NUM
   static constexpr size_t kThreadNum = BZTREE_TEST_THREAD_NUM;
 #else
@@ -289,6 +290,10 @@ class LeafNodeFixture : public testing::Test
     return written_ids;
   }
 
+  /*################################################################################################
+   * Functions for verification
+   *##############################################################################################*/
+
   void
   VerifyRead(  //
       const size_t key_id,
@@ -313,10 +318,15 @@ class LeafNodeFixture : public testing::Test
   VerifyWrite()
   {
     const size_t write_num_per_thread = max_record_num / kThreadNum;
-    auto written_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kWrite);
 
-    for (auto&& id : written_ids) {
-      VerifyRead(id, id);
+    for (size_t i = 0; i < kRepeatNum; ++i) {
+      // initialize a leaf node and expected statistics
+      node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
+
+      auto written_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kWrite);
+      for (auto&& id : written_ids) {
+        VerifyRead(id, id);
+      }
     }
   }
 
@@ -324,10 +334,15 @@ class LeafNodeFixture : public testing::Test
   VerifyInsert()
   {
     const size_t write_num_per_thread = max_record_num / kThreadNum;
-    auto written_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
 
-    for (auto&& id : written_ids) {
-      VerifyRead(id, id);
+    for (size_t i = 0; i < kRepeatNum; ++i) {
+      // initialize a leaf node and expected statistics
+      node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
+
+      auto inserted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
+      for (auto&& id : inserted_ids) {
+        VerifyRead(id, id);
+      }
     }
   }
 
@@ -335,11 +350,22 @@ class LeafNodeFixture : public testing::Test
   VerifyUpdate()
   {
     const size_t write_num_per_thread = max_record_num / kThreadNum / 2;
-    RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
-    auto written_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kUpdate);
 
-    for (auto&& id : written_ids) {
-      VerifyRead(id, id + 1);
+    for (size_t i = 0; i < kRepeatNum; ++i) {
+      // initialize a leaf node and expected statistics
+      node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
+
+      auto inserted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
+      auto updated_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kUpdate);
+
+      // remove duplicated updates
+      std::sort(updated_ids.begin(), updated_ids.end());
+      updated_ids.erase(std::unique(updated_ids.begin(), updated_ids.end()), updated_ids.end());
+
+      EXPECT_EQ(inserted_ids.size(), updated_ids.size());
+      for (auto&& id : updated_ids) {
+        VerifyRead(id, id + 1);
+      }
     }
   }
 
@@ -347,11 +373,17 @@ class LeafNodeFixture : public testing::Test
   VerifyDelete()
   {
     const size_t write_num_per_thread = max_record_num / kThreadNum / 2;
-    RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
-    auto written_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kDelete);
 
-    for (auto&& id : written_ids) {
-      VerifyRead(id, id, true);
+    for (size_t i = 0; i < kRepeatNum; ++i) {
+      // initialize a leaf node and expected statistics
+      node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
+
+      auto inserted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
+      auto deleted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kDelete);
+      EXPECT_EQ(inserted_ids.size(), deleted_ids.size());
+      for (auto&& id : deleted_ids) {
+        VerifyRead(id, id, true);
+      }
     }
   }
 };
