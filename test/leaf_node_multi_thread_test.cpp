@@ -319,6 +319,41 @@ class LeafNodeFixture : public testing::Test
       VerifyRead(id, id);
     }
   }
+
+  void
+  VerifyInsert()
+  {
+    const size_t write_num_per_thread = max_record_num / kThreadNum;
+    auto written_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
+
+    for (auto&& id : written_ids) {
+      VerifyRead(id, id);
+    }
+  }
+
+  void
+  VerifyUpdate()
+  {
+    const size_t write_num_per_thread = max_record_num / kThreadNum / 2;
+    RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
+    auto written_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kUpdate);
+
+    for (auto&& id : written_ids) {
+      VerifyRead(id, id + 1);
+    }
+  }
+
+  void
+  VerifyDelete()
+  {
+    const size_t write_num_per_thread = max_record_num / kThreadNum / 2;
+    RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
+    auto written_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kDelete);
+
+    for (auto&& id : written_ids) {
+      VerifyRead(id, id, true);
+    }
+  }
 };
 
 /*##################################################################################################
@@ -347,57 +382,20 @@ TYPED_TEST(LeafNodeFixture, Write_MultiThreads_ReadWrittenPayloads)
   TestFixture::VerifyWrite();
 }
 
-// TYPED_TEST(LeafNodeFixture, Insert_MultiThreads_ReadWrittenPayloads)
-// {
-//   auto [written_indexes, failed_indexes] = RunOverMultiThread(
-//       kWriteNumPerThread, kThreadNum, kInsert, &LeafNodeFixture::WriteRandomKeys);
+TYPED_TEST(LeafNodeFixture, Write_MultiThreads_ReadInsertedPayloads)
+{  //
+  TestFixture::VerifyInsert();
+}
 
-//   EXPECT_LE(written_indexes.size(), kWriteNumPerThread);
-//   EXPECT_EQ(kWriteNumPerThread * kThreadNum, written_indexes.size() + failed_indexes.size());
-//   for (auto&& index : written_indexes) {
-//     auto [rc, payload] = LeafNode_t::Read(node.get(), keys[index]);
-//     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//     VerifyPayload(payloads[index], payload.get());
-//   }
-//   for (auto&& index : failed_indexes) {
-//     auto [rc, payload] = LeafNode_t::Read(node.get(), keys[index]);
-//     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//     VerifyPayload(payloads[index], payload.get());
-//   }
-// }
+TYPED_TEST(LeafNodeFixture, Write_MultiThreads_ReadUpdatedPayloads)
+{  //
+  TestFixture::VerifyUpdate();
+}
 
-// TYPED_TEST(LeafNodeFixture, Update_MultiThreads_ReadWrittenPayloads)
-// {
-//   constexpr size_t kWriteNumHalf = kWriteNumPerThread * 0.5;
-
-//   RunOverMultiThread(kWriteNumHalf, kThreadNum, kWrite, &LeafNodeFixture::WriteRandomKeys);
-//   auto [written_indexes, failed_indexes] =
-//       RunOverMultiThread(kWriteNumHalf, kThreadNum, kUpdate,
-//       &LeafNodeFixture::WriteRandomKeys);
-
-//   EXPECT_EQ(kWriteNumHalf * kThreadNum, written_indexes.size());
-//   for (auto&& index : written_indexes) {
-//     auto [rc, payload] = LeafNode_t::Read(node.get(), keys[index]);
-//     EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-//     VerifyPayload(payloads[index + 1], payload.get());
-//   }
-// }
-
-// TYPED_TEST(LeafNodeFixture, Delete_MultiThreads_KeysDeleted)
-// {
-//   constexpr size_t kWriteNumHalf = kWriteNumPerThread * 0.5;
-
-//   RunOverMultiThread(kWriteNumHalf, kThreadNum, kWrite, &LeafNodeFixture::WriteRandomKeys);
-//   auto [written_indexes, failed_indexes] =
-//       RunOverMultiThread(kWriteNumHalf, kThreadNum, kDelete,
-//       &LeafNodeFixture::WriteRandomKeys);
-
-//   EXPECT_EQ(kWriteNumHalf * kThreadNum, written_indexes.size() + failed_indexes.size());
-//   for (auto&& index : written_indexes) {
-//     auto [rc, record] = LeafNode_t::Read(reinterpret_cast<BaseNode_t*>(node.get()),
-//     keys[index]); EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
-//   }
-// }
+TYPED_TEST(LeafNodeFixture, Write_MultiThreads_ReadFailWithDeletedPayloads)
+{  //
+  TestFixture::VerifyDelete();
+}
 
 // TYPED_TEST(LeafNodeFixture, InsertUpdateDelete_MultiThreads_ConcurrencyControlCorrupted)
 // {
