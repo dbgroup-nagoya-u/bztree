@@ -112,6 +112,19 @@ class InternalNodeFixture : public testing::Test
   /*################################################################################################
    * Utility functions
    *##############################################################################################*/
+
+  BaseNode_t*
+  PrepareDummyNode(const size_t child_num = 10)
+  {
+    auto dummy_node = BaseNode_t::CreateEmptyNode(kInternalFlag);
+
+    // embeds dummy childrens
+    auto offset = kPageSize;
+    for (size_t i = 0; i < child_num; ++i) {
+      const auto meta = Metadata{}.SetRecordInfo(offset, key_length, key_length + kWordLength);
+      offset -= 2 * kWordLength;
+    }
+  }
 };
 
 /*##################################################################################################
@@ -130,6 +143,8 @@ TYPED_TEST_CASE(InternalNodeFixture, KeyPayloadPairs);
 /*##################################################################################################
  * Unit test definitions
  *################################################################################################*/
+
+TYPED_TEST(InternalNodeFixture, GetChildNode__SplitNotRequired) {}
 
 // TYPED_TEST(InternalNodeFixture, NeedSplit_EmptyNode_SplitNotRequired)
 // {

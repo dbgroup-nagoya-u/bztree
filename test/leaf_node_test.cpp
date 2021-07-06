@@ -122,7 +122,11 @@ class LeafNodeFixture : public testing::Test
     }
 
     // set a record length and its maximum number
-    record_length = key_length + payload_length;
+    if constexpr (!std::is_same_v<Payload, char *> && sizeof(Payload) == kWordLength) {
+      record_length = 2 * kWordLength;
+    } else {
+      record_length = key_length + payload_length;
+    }
     max_record_num = (kPageSize - kHeaderLength) / (record_length + kWordLength);
   }
 

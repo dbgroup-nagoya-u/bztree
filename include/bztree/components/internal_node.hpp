@@ -33,13 +33,6 @@ class InternalNode
    * Internal utility functions
    *##############################################################################################*/
 
-  static constexpr size_t
-  AlignKeyLengthToWord(const size_t key_length)
-  {
-    const auto pad_length = key_length % kWordLength;
-    return (pad_length == 0) ? key_length : key_length + (kWordLength - pad_length);
-  }
-
   static constexpr uintptr_t
   GetChildAddrProtected(  //
       const BaseNode_t *node,
@@ -51,18 +44,14 @@ class InternalNode
   static constexpr size_t
   SetChild(  //
       BaseNode_t *node,
-      const Key &key,
+      const Key key,
       const size_t key_length,
       const uintptr_t child_addr,
       size_t offset)
   {
-    // align memory address
-    offset -= kWordLength + offset % kWordLength;
-    memcpy(ShiftAddress(node, offset), &child_addr, kWordLength);
-
+    offset = node->SetPayload(offset, child_addr, kWordLength);
     if (key_length > 0) {
-      offset -= key_length;
-      node->SetKey(key, key_length, offset);
+      offset = node->SetKey(offset, key, key_length);
     }
 
     return offset;

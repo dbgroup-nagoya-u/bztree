@@ -202,64 +202,46 @@ class alignas(kCacheLineSize) BaseNode
     CastAddress<std::atomic<Metadata> *>(meta_array_ + index)->store(new_meta, mo_relax);
   }
 
-  void
-  SetKey(  //
-      const Key &key,
-      const size_t key_length,
-      const size_t offset)
-  {
-    const auto key_ptr = ShiftAddress(this, offset);
-    if constexpr (std::is_pointer_v<Key>) {
-      memcpy(key_ptr, key, key_length);
-    } else {
-      memcpy(key_ptr, &key, key_length);
-    }
-  }
-
-  void
-  SetPayload(  //
-      const Payload &payload,
-      const size_t payload_length,
-      const size_t offset)
-  {
-    const auto payload_ptr = ShiftAddress(this, offset);
-    if constexpr (std::is_pointer_v<Payload>) {
-      memcpy(payload_ptr, payload, payload_length);
-    } else {
-      memcpy(payload_ptr, &payload, payload_length);
-    }
-  }
-
   constexpr size_t
-  SetRecord(  //
-      const Key &key,
-      const size_t key_length,
-      const Payload &payload,
-      const size_t payload_length,
-      size_t offset)
+  SetKey(  //
+      size_t offset,
+      const Key key,
+      const size_t key_length)
   {
-    offset -= payload_length;
-    SetPayload(payload, payload_length, offset);
-    if (key_length > 0) {
+    if constexpr (std::is_same_v<Key, char *>) {
       offset -= key_length;
-      SetKey(key, key_length, offset);
+      memcpy(ShiftAddress(this, offset), key, key_length);
+    } else {
+      offset -= sizeof(Key);
+      memcpy(ShiftAddress(this, offset), &key, sizeof(Key));
     }
     return offset;
   }
 
+  template <class T>
   constexpr size_t
-  CopyRecord(  //
-      const BaseNode *original_node,
-      const Metadata meta,
-      size_t offset)
+  SetPayload(  //
+      size_t offset,
+      const T payload,
+      const size_t payload_length)
   {
-    const auto total_length = meta.GetTotalLength();
+    if constexpr (!std::is_same_v<T, char *> && sizeof(T) == kWordLength) {
+      // align memory address
+      if constexpr (std::is_same_v<Key, char *>) {
+        offset -= (offset & (kWordLength - 1));
+      } else if constexpr (sizeof(Key) % kWordLength != 0) {
+        constexpr auto kAlignedSize = sizeof(Key) - (sizeof(Key) % kWordLength);
+        offset -= kAlignedSize;
+      }
+    }
 
-    offset -= total_length;
-    const auto dest = ShiftAddress(this, offset);
-    const auto src = original_node->GetKeyAddr(meta);
-    memcpy(dest, src, total_length);
-
+    if constexpr (std::is_same_v<T, char *>) {
+      offset -= payload_length;
+      memcpy(ShiftAddress(this, offset), payload, payload_length);
+    } else {
+      offset -= sizeof(T);
+      memcpy(ShiftAddress(this, offset), &payload, sizeof(T));
+    }
     return offset;
   }
 
