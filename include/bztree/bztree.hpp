@@ -262,7 +262,7 @@ class BzTree
 
       // check whether it is required to split a parent node
       parent = trace.top().first;
-      if (InternalNode_t::NeedSplit(parent, split_key_length, kWordLength)) {
+      if (InternalNode_t::NeedSplit(parent, split_key_length)) {
         SplitInternalNode(parent, target_key);
         continue;
       }
@@ -320,7 +320,7 @@ class BzTree
       if (trace.size() > 1) {  // target is not a root node (i.e., there is a parent node)
         trace.pop();
         parent = trace.top().first;
-        if (InternalNode_t::NeedSplit(parent, split_key_length, kWordLength)) {
+        if (InternalNode_t::NeedSplit(parent, split_key_length)) {
           SplitInternalNode(parent, target_key);
           continue;
         }

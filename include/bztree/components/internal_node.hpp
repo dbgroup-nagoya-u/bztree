@@ -98,24 +98,11 @@ class InternalNode
   static constexpr bool
   NeedSplit(  //
       const BaseNode_t *node,
-      const size_t key_length,
-      const size_t payload_length)
+      const size_t key_length)
   {
-    const auto new_block_size = node->GetStatusWordProtected().GetOccupiedSize() + kWordLength
-                                + key_length + payload_length;
+    const auto new_block_size =
+        node->GetStatusWordProtected().GetOccupiedSize() + 2 * kWordLength + key_length;
     return new_block_size > kPageSize;
-  }
-
-  static constexpr bool
-  NeedMerge(  //
-      const BaseNode_t *node,
-      const size_t key_length,
-      const size_t payload_length,
-      const size_t min_node_size)
-  {
-    const int64_t new_block_size = node->GetStatusWordProtected().GetOccupiedSize() - kWordLength
-                                   - (key_length + payload_length);
-    return new_block_size < static_cast<int64_t>(min_node_size);
   }
 
   static constexpr bool
