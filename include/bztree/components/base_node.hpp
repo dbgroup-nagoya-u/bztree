@@ -225,16 +225,6 @@ class alignas(kCacheLineSize) BaseNode
       const T payload,
       const size_t payload_length)
   {
-    if constexpr (!std::is_same_v<T, char *> && sizeof(T) == kWordLength) {
-      // align memory address
-      if constexpr (std::is_same_v<Key, char *>) {
-        offset -= (offset & (kWordLength - 1));
-      } else if constexpr (sizeof(Key) % kWordLength != 0) {
-        constexpr auto kAlignedSize = sizeof(Key) - (sizeof(Key) % kWordLength);
-        offset -= kAlignedSize;
-      }
-    }
-
     if constexpr (std::is_same_v<T, char *>) {
       offset -= payload_length;
       memcpy(ShiftAddress(this, offset), payload, payload_length);

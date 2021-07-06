@@ -33,6 +33,18 @@ class InternalNode
    * Internal utility functions
    *##############################################################################################*/
 
+  static constexpr size_t
+  GetAlignedOffset(const size_t offset)
+  {
+    if constexpr (std::is_same_v<Key, char *>) {
+      return offset - (offset & (kWordLength - 1));
+    } else if constexpr (sizeof(Key) % kWordLength != 0) {
+      constexpr auto kAlignedSize = kWordLength - sizeof(Key) % kWordLength;
+      return offset - kAlignedSize;
+    }
+    return offset;
+  }
+
   static constexpr uintptr_t
   GetChildAddrProtected(  //
       const BaseNode_t *node,
@@ -49,7 +61,7 @@ class InternalNode
       const uintptr_t child_addr,
       size_t offset)
   {
-    offset = node->SetPayload(offset, child_addr, kWordLength);
+    offset = node->SetPayload(GetAlignedOffset(offset), child_addr, kWordLength);
     if (key_length > 0) {
       offset = node->SetKey(offset, key, key_length);
     }
@@ -154,11 +166,10 @@ class InternalNode
     constexpr auto key = Key{};  // act as a positive infinity value
     constexpr auto key_length = 0;
     const auto leaf_addr = reinterpret_cast<uintptr_t>(leaf_node);
-    constexpr auto total_length = kWordLength;
 
     // set an inital leaf node
     const auto offset = SetChild(root, key, key_length, leaf_addr, kPageSize);
-    const auto meta = Metadata{}.SetRecordInfo(offset, key_length, total_length);
+    const auto meta = Metadata{}.SetRecordInfo(offset, key_length, kWordLength);
     root->SetMetadata(0, meta);
 
     // set a new header

@@ -156,20 +156,20 @@ class LeafNode
   }
 
   static constexpr size_t
-  GetAlignedRecordSize(const size_t total_length)
+  GetAlignedSize(const size_t block_size)
   {
     if constexpr (!std::is_same_v<Payload, char *> && sizeof(Payload) == kWordLength) {
       if constexpr (std::is_same_v<Key, char *>) {
-        const auto align_size = total_length & (kWordLength - 1);
+        const auto align_size = block_size & (kWordLength - 1);
         if (align_size > 0) {
-          return total_length + (kWordLength - align_size);
+          return block_size + (kWordLength - align_size);
         }
       } else if constexpr (sizeof(Key) % kWordLength != 0) {
         constexpr auto kAlignedSize = sizeof(Key) - (sizeof(Key) % kWordLength);
-        return total_length + kAlignedSize;
+        return block_size + kAlignedSize;
       }
     }
-    return total_length;
+    return block_size;
   }
 
   static constexpr auto
@@ -271,7 +271,7 @@ class LeafNode
       const auto new_meta = meta.UpdateOffset(offset);
       copied_node->SetMetadata(record_count, new_meta);
     }
-    const auto aligned_block_size = GetAlignedRecordSize(kPageSize - offset);
+    const auto aligned_block_size = GetAlignedSize(kPageSize - offset);
     copied_node->SetStatus(StatusWord{}.AddRecordInfo(record_count, aligned_block_size, 0));
     copied_node->SetSortedCount(record_count);
   }
@@ -393,7 +393,7 @@ class LeafNode
   {
     // variables and constants shared in Phase 1 & 2
     const auto total_length = key_length + payload_length;
-    const auto block_size = GetAlignedRecordSize(total_length);
+    const auto block_size = GetAlignedSize(total_length);
     const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
     StatusWord current_status;
     size_t record_count;
@@ -462,7 +462,7 @@ class LeafNode
   {
     // variables and constants shared in Phase 1 & 2
     const auto total_length = key_length + payload_length;
-    const auto block_size = GetAlignedRecordSize(total_length);
+    const auto block_size = GetAlignedSize(total_length);
     const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
     StatusWord current_status;
     size_t record_count;
@@ -559,7 +559,7 @@ class LeafNode
   {
     // variables and constants shared in Phase 1 & 2
     const auto total_length = key_length + payload_length;
-    const auto block_size = GetAlignedRecordSize(total_length);
+    const auto block_size = GetAlignedSize(total_length);
     const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
     StatusWord current_status;
     size_t record_count, target_index = 0;
@@ -588,7 +588,7 @@ class LeafNode
 
       // prepare new status for MwCAS
       const auto target_meta = node->GetMetadataProtected(target_index);
-      const auto deleted_size = kWordLength + GetAlignedRecordSize(target_meta.GetTotalLength());
+      const auto deleted_size = kWordLength + GetAlignedSize(target_meta.GetTotalLength());
       const auto new_status = current_status.AddRecordInfo(1, block_size, deleted_size);
 
       // perform MwCAS to reserve space
@@ -676,7 +676,7 @@ class LeafNode
       // prepare new status for MwCAS
       const auto target_meta = node->GetMetadataProtected(target_index);
       const auto deleted_block_size =
-          (kWordLength << 1) + GetAlignedRecordSize(target_meta.GetTotalLength()) + key_length;
+          (kWordLength << 1) + GetAlignedSize(target_meta.GetTotalLength()) + key_length;
       const auto new_status = current_status.AddRecordInfo(1, key_length, deleted_block_size);
 
       // perform MwCAS to reserve space
