@@ -45,12 +45,12 @@ class InternalNode
     return offset;
   }
 
-  static constexpr uintptr_t
+  static constexpr BaseNode_t *
   GetChildAddrProtected(  //
       const BaseNode_t *node,
       const Metadata meta)
   {
-    return ReadMwCASField<uintptr_t>(node->GetPayloadAddr(meta));
+    return ReadMwCASField<BaseNode_t *>(node->GetPayloadAddr(meta));
   }
 
   static constexpr size_t
@@ -58,7 +58,7 @@ class InternalNode
       BaseNode_t *node,
       const Key key,
       const size_t key_length,
-      const uintptr_t child_addr,
+      const BaseNode_t *child_addr,
       size_t offset)
   {
     offset = node->SetPayload(GetAlignedOffset(offset), child_addr, kWordLength);
@@ -165,10 +165,9 @@ class InternalNode
 
     constexpr auto key = Key{};  // act as a positive infinity value
     constexpr auto key_length = 0;
-    const auto leaf_addr = reinterpret_cast<uintptr_t>(leaf_node);
 
     // set an inital leaf node
-    const auto offset = SetChild(root, key, key_length, leaf_addr, kPageSize);
+    const auto offset = SetChild(root, key, key_length, leaf_node, kPageSize);
     const auto meta = Metadata{}.SetRecordInfo(offset, key_length, kWordLength);
     root->SetMetadata(0, meta);
 
@@ -226,8 +225,7 @@ class InternalNode
     const auto left_meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
     const auto left_key = CastKey<Key>(left_child->GetKeyAddr(left_meta));
     const auto left_key_length = left_meta.GetKeyLength();
-    const auto left_child_addr = reinterpret_cast<uintptr_t>(left_child);
-    offset = SetChild(new_root, left_key, left_key_length, left_child_addr, offset);
+    offset = SetChild(new_root, left_key, left_key_length, left_child, offset);
     const auto new_left_meta =
         Metadata{}.SetRecordInfo(offset, left_key_length, left_key_length + kWordLength);
     new_root->SetMetadata(0, new_left_meta);
@@ -236,8 +234,7 @@ class InternalNode
     const auto right_meta = right_child->GetMetadata(right_child->GetSortedCount() - 1);
     const auto right_key = CastKey<Key>(right_child->GetKeyAddr(right_meta));
     const auto right_key_length = right_meta.GetKeyLength();
-    const auto right_child_addr = reinterpret_cast<uintptr_t>(right_child);
-    offset = SetChild(new_root, right_key, right_key_length, right_child_addr, offset);
+    offset = SetChild(new_root, right_key, right_key_length, right_child, offset);
     const auto new_right_meta =
         Metadata{}.SetRecordInfo(offset, right_key_length, right_key_length + kWordLength);
     new_root->SetMetadata(1, new_right_meta);
@@ -254,8 +251,8 @@ class InternalNode
       const BaseNode_t *old_parent,
       const Key &new_key,
       const size_t new_key_length,
-      const void *left_addr,
-      const void *right_addr,
+      const BaseNode_t *left_node,
+      const BaseNode_t *right_node,
       const size_t split_index)
   {
     auto offset = kPageSize;
@@ -271,14 +268,13 @@ class InternalNode
       auto node_addr = GetChildAddrProtected(old_parent, meta);
       if (old_idx == split_index) {
         // insert a split left child
-        const auto left_addr_uintptr = reinterpret_cast<uintptr_t>(left_addr);
         const auto prev_offset = offset;
-        offset = SetChild(new_parent, new_key, new_key_length, left_addr_uintptr, offset);
+        offset = SetChild(new_parent, new_key, new_key_length, left_node, offset);
         const auto total_length = prev_offset - offset;
         const auto left_meta = Metadata{}.SetRecordInfo(offset, new_key_length, total_length);
         new_parent->SetMetadata(new_idx++, left_meta);
         // continue with a split right child
-        node_addr = reinterpret_cast<uintptr_t>(right_addr);
+        node_addr = right_node;
       }
       // copy a child node
       offset = SetChild(new_parent, key, key_length, node_addr, offset);
@@ -296,7 +292,7 @@ class InternalNode
   static constexpr BaseNode_t *
   NewParentForMerge(  //
       const BaseNode_t *old_parent,
-      const void *merged_child_addr,
+      const BaseNode_t *merged_node,
       const size_t deleted_index)
   {
     auto offset = kPageSize;
@@ -315,7 +311,7 @@ class InternalNode
         meta = old_parent->GetMetadata(++old_idx);
         key = CastKey<Key>(old_parent->GetKeyAddr(meta));
         key_length = meta.GetKeyLength();
-        node_addr = reinterpret_cast<uintptr_t>(merged_child_addr);
+        node_addr = merged_node;
       }
       // copy a child node
       offset = SetChild(new_parent, key, key_length, node_addr, offset);

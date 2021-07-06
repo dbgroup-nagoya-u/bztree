@@ -254,17 +254,6 @@ class alignas(kCacheLineSize) BaseNode
     desc.AddMwCASTarget(meta_array_ + index, old_meta, new_meta);
   }
 
-  void
-  SetChildForMwCAS(  //
-      MwCASDescriptor &desc,
-      const size_t index,
-      const void *old_addr,
-      const void *new_addr)
-  {
-    desc.AddMwCASTarget(GetPayloadAddr(GetMetadata(index)), reinterpret_cast<uintptr_t>(old_addr),
-                        reinterpret_cast<uintptr_t>(new_addr));
-  }
-
   /*################################################################################################
    * Public utility functions
    *##############################################################################################*/
