@@ -52,7 +52,7 @@ class LeafNodeFixture : public testing::Test
 
   // constant values for testing
   static constexpr size_t kIndexEpoch = 1;
-  static constexpr size_t kKeyNumForTest = 10000;
+  static constexpr size_t kKeyNumForTest = 1024;
   static constexpr size_t kKeyLength = kWordLength;
   static constexpr size_t kPayloadLength = kWordLength;
 
