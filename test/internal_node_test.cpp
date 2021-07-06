@@ -54,10 +54,10 @@ class InternalNodeFixture : public testing::Test
   static constexpr size_t kKeyLength = kWordLength;
   static constexpr size_t kPayloadLength = kWordLength;
   static constexpr size_t kDefaultMinNodeSizeThreshold = 128;
+  static constexpr size_t kDummyNodeNum = 10;
 
   // actual keys and payloads
   size_t key_length;
-  size_t payload_length = kWordLength;
   Key keys[kKeyNumForTest];
 
   // the length of a record and its maximum number
@@ -95,7 +95,7 @@ class InternalNodeFixture : public testing::Test
     }
 
     // set a record length and its maximum number
-    record_length = key_length + payload_length;
+    record_length = 2 * kWordLength;
     max_record_num = (kPageSize - kHeaderLength) / (record_length + kWordLength);
   }
 
@@ -114,15 +114,40 @@ class InternalNodeFixture : public testing::Test
    *##############################################################################################*/
 
   BaseNode_t*
-  PrepareDummyNode(const size_t child_num = 10)
+  PrepareDummyNode(const size_t child_num)
   {
     auto dummy_node = BaseNode_t::CreateEmptyNode(kInternalFlag);
 
     // embeds dummy childrens
     auto offset = kPageSize;
     for (size_t i = 0; i < child_num; ++i) {
+      // set a key and a dummy payload
+      offset = dummy_node->SetPayload(offset, i, kWordLength);
+      offset = dummy_node->SetKey(offset, keys[i], key_length);
+
+      // set a corresponding metadata
       const auto meta = Metadata{}.SetRecordInfo(offset, key_length, key_length + kWordLength);
-      offset -= 2 * kWordLength;
+      dummy_node->SetMetadata(i, meta);
+    }
+
+    const auto status = StatusWord{}.AddRecordInfo(child_num, child_num * record_length, 0);
+    dummy_node->SetStatus(status);
+
+    return dummy_node;
+  }
+
+  /*################################################################################################
+   * Functions for verification
+   *##############################################################################################*/
+
+  void
+  VerifyGetChildNode()
+  {
+    node.reset(PrepareDummyNode(kDummyNodeNum));
+
+    for (size_t i = 0; i < kDummyNodeNum; ++i) {
+      auto child = reinterpret_cast<uintptr_t>(InternalNode_t::GetChildNode(node.get(), i));
+      EXPECT_EQ(i, child);
     }
   }
 };
@@ -144,7 +169,10 @@ TYPED_TEST_CASE(InternalNodeFixture, KeyPayloadPairs);
  * Unit test definitions
  *################################################################################################*/
 
-TYPED_TEST(InternalNodeFixture, GetChildNode__SplitNotRequired) {}
+TYPED_TEST(InternalNodeFixture, GetChildNode_DummyChildren_ReadDummyValues)
+{
+  TestFixture::VerifyGetChildNode();
+}
 
 // TYPED_TEST(InternalNodeFixture, NeedSplit_EmptyNode_SplitNotRequired)
 // {
