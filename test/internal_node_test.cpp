@@ -132,6 +132,7 @@ class InternalNodeFixture : public testing::Test
 
     const auto status = StatusWord{}.AddRecordInfo(child_num, child_num * record_length, 0);
     dummy_node->SetStatus(status);
+    dummy_node->SetSortedCount(kDummyNodeNum);
 
     return dummy_node;
   }
@@ -149,26 +150,36 @@ class InternalNodeFixture : public testing::Test
    *##############################################################################################*/
 
   void
-  VerifyInternalNode(const size_t child_num)
+  VerifyInternalNode(  //
+      const BaseNode_t* target_node,
+      const size_t child_num)
   {
-    EXPECT_FALSE(node->IsLeaf());
-    EXPECT_EQ(child_num, node->GetSortedCount());
-    EXPECT_FALSE(node->GetStatusWord().IsFrozen());
+    EXPECT_FALSE(target_node->IsLeaf());
+    EXPECT_EQ(child_num, target_node->GetSortedCount());
+    EXPECT_FALSE(target_node->GetStatusWord().IsFrozen());
   }
 
   void
   VerifyChildren(  //
+      const BaseNode_t* target_node,
       const size_t child_num,
-      const bool child_is_dummy,
-      const bool child_is_leaf = true)
+      const bool child_is_leaf)
   {
     for (size_t i = 0; i < child_num; ++i) {
-      auto child = InternalNode_t::GetChildNode(node.get(), i);
-      if (child_is_dummy) {
-        EXPECT_EQ(i, reinterpret_cast<uintptr_t>(child));
-      } else {
-        EXPECT_FALSE(child->IsLeaf() ^ child_is_leaf);
-      }
+      auto child = InternalNode_t::GetChildNode(target_node, i);
+      EXPECT_FALSE(child->IsLeaf() ^ child_is_leaf);
+    }
+  }
+
+  void
+  VerifyDummyChildren(  //
+      const BaseNode_t* target_node,
+      const size_t child_num,
+      const size_t begin_payload)
+  {
+    for (size_t i = 0; i < child_num; ++i) {
+      auto child = InternalNode_t::GetChildNode(target_node, i);
+      EXPECT_EQ(begin_payload + i, reinterpret_cast<uintptr_t>(child));
     }
   }
 
@@ -177,7 +188,7 @@ class InternalNodeFixture : public testing::Test
   {
     node.reset(PrepareDummyNode(kDummyNodeNum));
 
-    VerifyChildren(kDummyNodeNum, true);
+    VerifyDummyChildren(node.get(), 1, 0);
   }
 
   void
@@ -197,10 +208,27 @@ class InternalNodeFixture : public testing::Test
   {
     node.reset(InternalNode_t::CreateInitialRoot());
 
-    VerifyInternalNode(1);
-    VerifyChildren(1, false, true);
+    VerifyInternalNode(node.get(), 1);
+    VerifyChildren(node.get(), 1, true);
 
     ReleaseChildren();
+  }
+
+  void
+  VerifySplit()
+  {
+    node.reset(PrepareDummyNode(kDummyNodeNum));
+
+    const size_t left_rec_count = kDummyNodeNum / 2;
+    auto [left_node, right_node] = InternalNode_t::Split(node.get(), left_rec_count);
+
+    VerifyInternalNode(left_node, left_rec_count);
+    VerifyDummyChildren(left_node, left_rec_count, 0);
+    VerifyInternalNode(right_node, kDummyNodeNum - left_rec_count);
+    VerifyDummyChildren(right_node, kDummyNodeNum - left_rec_count, left_rec_count);
+
+    delete left_node;
+    delete right_node;
   }
 };
 
@@ -253,50 +281,10 @@ TYPED_TEST(InternalNodeFixture, CreateInitialRoot_Default_RootHasOneLeaf)
   TestFixture::VerifyInitialRoot();
 }
 
-// TYPED_TEST(InternalNodeFixture, Split_TenKeys_SplitNodesHaveCorrectStatus)
-// {
-//   node.reset(CreateInternalNodeWithOrderedKeys(0, 9));
-//   auto left_record_count = 5;
-
-//   auto [left_node_ptr, right_node_ptr] = InternalNode_t::Split(node.get(), left_record_count);
-//   expected_record_count = 5;
-//   expected_block_size = expected_record_count * kRecordLength;
-
-//   node.reset(left_node_ptr);
-//   VerifyStatusWord(node->GetStatusWord());
-
-//   node.reset(right_node_ptr);
-//   VerifyStatusWord(node->GetStatusWord());
-// }
-
-// TYPED_TEST(InternalNodeFixture, Split_TenKeys_SplitNodesHaveCorrectKeysAndPayloads)
-// {
-//   node.reset(CreateInternalNodeWithOrderedKeys(0, 9));
-//   expected_record_count = 5;
-
-//   auto [left_node_ptr, right_node_ptr] = InternalNode_t::Split(node.get(),
-//   expected_record_count);
-
-//   std::unique_ptr<BaseNode_t> target_node;
-//   NodeReturnCode return_code;
-
-//   target_node.reset(left_node_ptr);
-//   size_t index = 0;
-//   for (size_t count = 0; count < expected_record_count; ++count, ++index) {
-//     auto [rc, payload] = LeafNode_t::Read(target_node.get(), keys[index]);
-//     EXPECT_EQ(payloads[index], payload);
-//   }
-//   return_code = LeafNode_t::Read(target_node.get(), keys[index]).first;
-//   EXPECT_EQ(NodeReturnCode::kKeyNotExist, return_code);
-
-//   target_node.reset(right_node_ptr);
-//   for (size_t count = 0; count < expected_record_count; ++count, ++index) {
-//     auto [rc, payload] = LeafNode_t::Read(target_node.get(), keys[index]);
-//     EXPECT_EQ(payloads[index], payload);
-//   }
-//   return_code = LeafNode_t::Read(target_node.get(), keys[index]).first;
-//   EXPECT_EQ(NodeReturnCode::kKeyNotExist, return_code);
-// }
+TYPED_TEST(InternalNodeFixture, Split_DummyChildren_ChildrenEquallyDivided)
+{
+  TestFixture::VerifySplit();
+}
 
 // TYPED_TEST(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectStatus)
 // {
