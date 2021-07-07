@@ -65,6 +65,23 @@ class InternalNode
     if (key_length > 0) {
       offset = node->SetKey(offset, key, key_length);
     }
+    return offset;
+  }
+
+  static constexpr size_t
+  InsertNewChild(  //
+      BaseNode_t *inserted_node,
+      const BaseNode_t *target_node,
+      const size_t target_index,
+      size_t offset)
+  {
+    const auto meta = target_node->GetMetadata(target_node->GetSortedCount() - 1);
+    const auto key = CastKey<Key>(target_node->GetKeyAddr(meta));
+    const auto key_length = meta.GetKeyLength();
+    offset = SetChild(inserted_node, key, key_length, target_node, offset);
+    const auto inserted_meta =
+        Metadata{}.SetRecordInfo(offset, key_length, key_length + kWordLength);
+    inserted_node->SetMetadata(target_index, inserted_meta);
 
     return offset;
   }
@@ -212,23 +229,9 @@ class InternalNode
     auto offset = kPageSize;
     auto new_root = BaseNode_t::CreateEmptyNode(kInternalFlag);
 
-    // insert a left child node
-    const auto left_meta = left_child->GetMetadata(left_child->GetSortedCount() - 1);
-    const auto left_key = CastKey<Key>(left_child->GetKeyAddr(left_meta));
-    const auto left_key_length = left_meta.GetKeyLength();
-    offset = SetChild(new_root, left_key, left_key_length, left_child, offset);
-    const auto new_left_meta =
-        Metadata{}.SetRecordInfo(offset, left_key_length, left_key_length + kWordLength);
-    new_root->SetMetadata(0, new_left_meta);
-
-    // insert a right child node
-    const auto right_meta = right_child->GetMetadata(right_child->GetSortedCount() - 1);
-    const auto right_key = CastKey<Key>(right_child->GetKeyAddr(right_meta));
-    const auto right_key_length = right_meta.GetKeyLength();
-    offset = SetChild(new_root, right_key, right_key_length, right_child, offset);
-    const auto new_right_meta =
-        Metadata{}.SetRecordInfo(offset, right_key_length, right_key_length + kWordLength);
-    new_root->SetMetadata(1, new_right_meta);
+    // insert children
+    offset = InsertNewChild(new_root, left_child, 0, offset);
+    offset = GetAlignedOffset(InsertNewChild(new_root, right_child, 1, offset));
 
     // set a new header
     new_root->SetSortedCount(2);

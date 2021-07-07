@@ -165,11 +165,13 @@ class InternalNodeFixture : public testing::Test
   VerifyChildren(  //
       const BaseNode_t* target_node,
       const size_t child_num,
-      const bool child_is_leaf)
+      const std::vector<BaseNode_t*>* expected_children)
   {
     for (size_t i = 0; i < child_num; ++i) {
       auto child = InternalNode_t::GetChildNode(target_node, i);
-      EXPECT_FALSE(child->IsLeaf() ^ child_is_leaf);
+      if (expected_children != nullptr) {
+        EXPECT_TRUE(HaveSameAddress(expected_children->at(i), child));
+      }
     }
   }
 
@@ -211,7 +213,7 @@ class InternalNodeFixture : public testing::Test
     node.reset(InternalNode_t::CreateInitialRoot());
 
     VerifyInternalNode(node.get(), 1);
-    VerifyChildren(node.get(), 1, true);
+    VerifyChildren(node.get(), 1, nullptr);
 
     ReleaseChildren();
   }
@@ -247,6 +249,21 @@ class InternalNodeFixture : public testing::Test
 
     delete sibling_node;
     delete merged_node;
+  }
+
+  void
+  VerifyCreateNewRoot()
+  {
+    auto left_node = PrepareDummyNode(kDummyNodeNum);
+    auto right_node = PrepareDummyNode(kDummyNodeNum);
+    std::vector<BaseNode_t*> expected_children = {left_node, right_node};
+
+    node.reset(InternalNode_t::CreateNewRoot(left_node, right_node));
+
+    VerifyInternalNode(node.get(), 2);
+    VerifyChildren(node.get(), 2, &expected_children);
+
+    ReleaseChildren();
   }
 };
 
@@ -309,31 +326,10 @@ TYPED_TEST(InternalNodeFixture, Merge_DummyChildren_MergedNodeHasAllChildren)
   TestFixture::VerifyMerge();
 }
 
-// TYPED_TEST(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectStatus)
-// {
-//   auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(0, 4));
-//   auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(5, 9));
-
-//   node.reset(InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
-//   expected_record_count = 2;
-//   expected_block_size = expected_record_count * kRecordLength;
-
-//   VerifyStatusWord(node->GetStatusWord());
-// }
-
-// TYPED_TEST(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectPointersToChildren)
-// {
-//   auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(0, 4));
-//   auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(5, 9));
-
-//   node.reset(InternalNode_t::CreateNewRoot(left_node.get(), right_node.get()));
-
-//   auto read_left_addr = InternalNode_t::GetChildNode(node.get(), 0);
-//   EXPECT_TRUE(HaveSameAddress(left_node.get(), read_left_addr));
-
-//   auto read_right_addr = InternalNode_t::GetChildNode(node.get(), 1);
-//   EXPECT_TRUE(HaveSameAddress(right_node.get(), read_right_addr));
-// }
+TYPED_TEST(InternalNodeFixture, CreateNewRoot_DummyChildren_RootHasCorrectChild)
+{
+  TestFixture::VerifyCreateNewRoot();
+}
 
 // TYPED_TEST(InternalNodeFixture, NewParent_AfterSplit_HasCorrectStatus)
 // {
