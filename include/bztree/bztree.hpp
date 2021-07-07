@@ -278,8 +278,8 @@ class BzTree
     // create new nodes
     const auto [left_node, right_node] =
         LeafNode_t::Split(target_node, sorted_meta, left_record_count);
-    const auto new_parent = InternalNode_t::NewParentForSplit(parent, split_key, split_key_length,
-                                                              left_node, right_node, target_index);
+    const auto new_parent =
+        InternalNode_t::NewParentForSplit(parent, left_node, right_node, target_index);
 
     // install new nodes
     InstallNewNode(trace, new_parent, target_key, parent);
@@ -349,8 +349,7 @@ class BzTree
     BaseNode_t *new_parent;
     if (parent != nullptr) {
       // target is not a root node
-      new_parent = InternalNode_t::NewParentForSplit(parent, split_key, split_key_length, left_node,
-                                                     right_node, target_index);
+      new_parent = InternalNode_t::NewParentForSplit(parent, left_node, right_node, target_index);
     } else {
       // target is a root node
       new_parent = InternalNode_t::CreateNewRoot(left_node, right_node);

@@ -243,42 +243,25 @@ class InternalNode
   static constexpr BaseNode_t *
   NewParentForSplit(  //
       const BaseNode_t *old_parent,
-      const Key &new_key,
-      const size_t new_key_length,
       const BaseNode_t *left_node,
       const BaseNode_t *right_node,
       const size_t split_index)
   {
-    auto offset = kPageSize;
     auto new_parent = BaseNode_t::CreateEmptyNode(kInternalFlag);
 
-    // copy child nodes with inserting new split ones
-    auto record_count = old_parent->GetSortedCount();
-    for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
-      // prepare copying record and metadata
-      const auto meta = old_parent->GetMetadata(old_idx);
-      const auto key = CastKey<Key>(old_parent->GetKeyAddr(meta));
-      const auto key_length = meta.GetKeyLength();
-      auto node_addr = GetChildAddrProtected(old_parent, meta);
-      if (old_idx == split_index) {
-        // insert a split left child
-        const auto prev_offset = offset;
-        offset = SetChild(new_parent, new_key, new_key_length, left_node, offset);
-        const auto total_length = prev_offset - offset;
-        const auto left_meta = Metadata{}.SetRecordInfo(offset, new_key_length, total_length);
-        new_parent->SetMetadata(new_idx++, left_meta);
-        // continue with a split right child
-        node_addr = right_node;
-      }
-      // copy a child node
-      offset = SetChild(new_parent, key, key_length, node_addr, offset);
-      const auto new_meta = meta.UpdateOffset(offset);
-      new_parent->SetMetadata(new_idx, new_meta);
-    }
+    // copy left sorted records
+    CopySortedRecords(new_parent, old_parent, 0, split_index);
 
-    // set a new header
-    new_parent->SetSortedCount(++record_count);
-    new_parent->SetStatus(StatusWord{}.AddRecordInfo(record_count, kPageSize - offset, 0));
+    // insert split nodes
+    const auto status = new_parent->GetStatusWord();
+    auto offset = kPageSize - status.GetBlockSize();
+    offset = InsertNewChild(new_parent, left_node, split_index, offset);
+    offset = GetAlignedOffset(InsertNewChild(new_parent, right_node, split_index + 1, offset));
+    new_parent->SetSortedCount(split_index + 2);
+    new_parent->SetStatus(status.AddRecordInfo(2, kPageSize - offset, 0));
+
+    // copy right sorted records
+    CopySortedRecords(new_parent, old_parent, split_index + 1, old_parent->GetSortedCount());
 
     return new_parent;
   }

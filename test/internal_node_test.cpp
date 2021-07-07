@@ -265,6 +265,31 @@ class InternalNodeFixture : public testing::Test
 
     ReleaseChildren();
   }
+
+  void
+  VerifyNewParentForSplit()
+  {
+    auto init_left = PrepareDummyNode(kDummyNodeNum);
+    auto init_right = PrepareDummyNode(kDummyNodeNum);
+    auto left_left = PrepareDummyNode(kDummyNodeNum);
+    auto left_right = PrepareDummyNode(kDummyNodeNum);
+    auto right_left = PrepareDummyNode(kDummyNodeNum);
+    auto right_right = PrepareDummyNode(kDummyNodeNum);
+
+    node.reset(InternalNode_t::CreateNewRoot(init_left, init_right));
+    node.reset(InternalNode_t::NewParentForSplit(node.get(), left_left, left_right, 0));
+    node.reset(InternalNode_t::NewParentForSplit(node.get(), right_left, right_right, 2));
+
+    std::vector<BaseNode_t*> expected_children = {left_left, left_right, right_left, right_right};
+
+    VerifyInternalNode(node.get(), 4);
+    VerifyChildren(node.get(), 4, &expected_children);
+
+    ReleaseChildren();
+
+    delete init_left;
+    delete init_right;
+  }
 };
 
 /*##################################################################################################
@@ -331,66 +356,10 @@ TYPED_TEST(InternalNodeFixture, CreateNewRoot_DummyChildren_RootHasCorrectChild)
   TestFixture::VerifyCreateNewRoot();
 }
 
-// TYPED_TEST(InternalNodeFixture, NewParent_AfterSplit_HasCorrectStatus)
-// {
-//   // prepare an old parent
-//   auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
-//   auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
-//   auto old_parent =
-//       std::unique_ptr<BaseNode_t>(InternalNode_t::CreateNewRoot(left_node.get(),
-//       right_node.get()));
-
-//   // prepare a split node
-//   auto [tmp_left, tmp_right] = InternalNode_t::Split(left_node.get(), 3);
-//   auto split_left = std::unique_ptr<BaseNode_t>(tmp_left);
-//   auto split_right = std::unique_ptr<BaseNode_t>(tmp_right);
-//   auto new_key = keys[3];
-//   auto split_index = 1;
-
-//   // create a new parent node
-//   auto new_parent = std::unique_ptr<BaseNode_t>(InternalNode_t::NewParentForSplit(
-//       old_parent.get(), new_key, kKeyLength, split_left.get(), split_right.get(), split_index));
-
-//   auto status = new_parent->GetStatusWord();
-//   auto record_count = 3;
-//   auto block_size = (kWordLength * 2) * record_count;
-//   auto deleted_size = 0;
-
-//   EXPECT_EQ(record_count, new_parent->GetSortedCount());
-//   EXPECT_EQ(record_count, status.GetRecordCount());
-//   EXPECT_EQ(block_size, status.GetBlockSize());
-//   EXPECT_EQ(deleted_size, status.GetDeletedSize());
-// }
-
-// TYPED_TEST(InternalNodeFixture, NewParent_AfterSplit_HasCorrectPointersToChildren)
-// {
-//   // prepare an old parent
-//   auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
-//   auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
-//   auto old_parent =
-//       std::unique_ptr<BaseNode_t>(InternalNode_t::CreateNewRoot(left_node.get(),
-//       right_node.get()));
-
-//   // prepare a split node
-//   auto [tmp_left, tmp_right] = InternalNode_t::Split(left_node.get(), 3);
-//   auto split_left = std::unique_ptr<BaseNode_t>(tmp_left);
-//   auto split_right = std::unique_ptr<BaseNode_t>(tmp_right);
-//   auto new_key = keys[3];
-//   auto split_index = 1;
-
-//   // create a new parent node
-//   auto new_parent = std::unique_ptr<BaseNode_t>(InternalNode_t::NewParentForSplit(
-//       old_parent.get(), new_key, kKeyLength, split_left.get(), split_right.get(), split_index));
-
-//   auto read_addr = InternalNode_t::GetChildNode(new_parent.get(), 0);
-//   EXPECT_TRUE(HaveSameAddress(left_node.get(), read_addr));
-
-//   read_addr = InternalNode_t::GetChildNode(new_parent.get(), 1);
-//   EXPECT_TRUE(HaveSameAddress(split_left.get(), read_addr));
-
-//   read_addr = InternalNode_t::GetChildNode(new_parent.get(), 2);
-//   EXPECT_TRUE(HaveSameAddress(split_right.get(), read_addr));
-// }
+TYPED_TEST(InternalNodeFixture, NewParentForSplit_DummyChildren_ParentHasCorrectChild)
+{
+  TestFixture::VerifyNewParentForSplit();
+}
 
 // TYPED_TEST(InternalNodeFixture, NewParent_AfterMerge_HasCorrectStatus)
 // {
