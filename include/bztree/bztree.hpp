@@ -494,9 +494,15 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    const auto deleted_index = (sibling_is_left) ? target_index - 1 : target_index;
-    const auto merged_node = InternalNode_t::Merge(target_node, sibling_node, sibling_is_left);
-    BaseNode_t *new_parent = nullptr;
+    BaseNode_t *new_parent = nullptr, merged_node;
+    size_t deleted_index;
+    if (sibling_is_left) {
+      merged_node = InternalNode_t::Merge(sibling_node, target_node);
+      deleted_index = target_index - 1;
+    } else {
+      merged_node = InternalNode_t::Merge(target_node, sibling_node);
+      deleted_index = target_index;
+    }
     if (parent->GetSortedCount() > 2) {
       new_parent = InternalNode_t::NewParentForMerge(parent, merged_node, deleted_index);
     } else {

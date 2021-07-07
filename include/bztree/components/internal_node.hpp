@@ -193,19 +193,13 @@ class InternalNode
 
   static constexpr BaseNode_t *
   Merge(  //
-      const BaseNode_t *target_node,
-      const BaseNode_t *sibling_node,
-      const bool sibling_is_left)
+      const BaseNode_t *left_node,
+      const BaseNode_t *right_node)
   {
     // create a merged node
     auto merged_node = BaseNode_t::CreateEmptyNode(kInternalFlag);
-    if (sibling_is_left) {
-      CopySortedRecords(merged_node, sibling_node, 0, sibling_node->GetSortedCount());
-      CopySortedRecords(merged_node, target_node, 0, target_node->GetSortedCount());
-    } else {
-      CopySortedRecords(merged_node, target_node, 0, target_node->GetSortedCount());
-      CopySortedRecords(merged_node, sibling_node, 0, sibling_node->GetSortedCount());
-    }
+    CopySortedRecords(merged_node, left_node, 0, left_node->GetSortedCount());
+    CopySortedRecords(merged_node, right_node, 0, right_node->GetSortedCount());
 
     return merged_node;
   }

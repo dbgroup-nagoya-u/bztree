@@ -114,7 +114,9 @@ class InternalNodeFixture : public testing::Test
    *##############################################################################################*/
 
   BaseNode_t*
-  PrepareDummyNode(const size_t child_num)
+  PrepareDummyNode(  //
+      const size_t child_num,
+      const size_t payload_begin = 0)
   {
     auto dummy_node = BaseNode_t::CreateEmptyNode(kInternalFlag);
 
@@ -122,7 +124,7 @@ class InternalNodeFixture : public testing::Test
     auto offset = kPageSize;
     for (size_t i = 0; i < child_num; ++i) {
       // set a key and a dummy payload
-      offset = dummy_node->SetPayload(offset, i, kWordLength);
+      offset = dummy_node->SetPayload(offset, payload_begin + i, kWordLength);
       offset = dummy_node->SetKey(offset, keys[i], key_length);
 
       // set a corresponding metadata
@@ -230,6 +232,22 @@ class InternalNodeFixture : public testing::Test
     delete left_node;
     delete right_node;
   }
+
+  void
+  VerifyMerge()
+  {
+    BaseNode_t *sibling_node, *merged_node;
+    node.reset(PrepareDummyNode(kDummyNodeNum));
+    sibling_node = PrepareDummyNode(kDummyNodeNum, kDummyNodeNum);
+
+    merged_node = InternalNode_t::Merge(node.get(), sibling_node);
+
+    VerifyInternalNode(merged_node, kDummyNodeNum * 2);
+    VerifyDummyChildren(merged_node, kDummyNodeNum * 2, 0);
+
+    delete sibling_node;
+    delete merged_node;
+  }
 };
 
 /*##################################################################################################
@@ -286,64 +304,10 @@ TYPED_TEST(InternalNodeFixture, Split_DummyChildren_ChildrenEquallyDivided)
   TestFixture::VerifySplit();
 }
 
-// TYPED_TEST(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectStatus)
-// {
-//   auto target_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
-//   auto sibling_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(2, 3));
-
-//   node.reset(InternalNode_t::Merge(target_node.get(), sibling_node.get(), true));
-//   expected_record_count = 5;
-//   expected_block_size = expected_record_count * kRecordLength;
-
-//   VerifyStatusWord(node->GetStatusWord());
-// }
-
-// TYPED_TEST(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectStatus)
-// {
-//   auto target_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
-//   auto sibling_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 8));
-
-//   node.reset(InternalNode_t::Merge(target_node.get(), sibling_node.get(), false));
-//   expected_record_count = 5;
-//   expected_block_size = expected_record_count * kRecordLength;
-
-//   VerifyStatusWord(node->GetStatusWord());
-// }
-
-// TYPED_TEST(InternalNodeFixture, Merge_LeftSibling_MergedNodeHasCorrectKeysAndPayloads)
-// {
-//   auto target_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
-//   auto sibling_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(2, 3));
-
-//   auto merged_node = std::unique_ptr<BaseNode_t>(
-//       CastAddress<BaseNode_t*>(InternalNode_t::Merge(target_node.get(), sibling_node.get(),
-//       true)));
-
-//   auto [rc, scan_results] = LeafNode_t::Scan(merged_node.get(), &keys[3], true, &keys[5], false);
-
-//   ASSERT_EQ(2, scan_results.size());
-//   EXPECT_EQ(keys[3], scan_results[0]->GetKey());
-//   EXPECT_EQ(payloads[3], scan_results[0]->GetPayload());
-//   EXPECT_EQ(keys[4], scan_results[1]->GetKey());
-//   EXPECT_EQ(payloads[4], scan_results[1]->GetPayload());
-// }
-
-// TYPED_TEST(InternalNodeFixture, Merge_RightSibling_MergedNodeHasCorrectKeysAndPayloads)
-// {
-//   auto target_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(4, 6));
-//   auto sibling_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 8));
-
-//   auto merged_node = std::unique_ptr<BaseNode_t>(CastAddress<BaseNode_t*>(
-//       InternalNode_t::Merge(target_node.get(), sibling_node.get(), false)));
-
-//   auto [rc, scan_results] = LeafNode_t::Scan(merged_node.get(), &keys[5], false, &keys[7], true);
-
-//   ASSERT_EQ(2, scan_results.size());
-//   EXPECT_EQ(keys[6], scan_results[0]->GetKey());
-//   EXPECT_EQ(payloads[6], scan_results[0]->GetPayload());
-//   EXPECT_EQ(keys[7], scan_results[1]->GetKey());
-//   EXPECT_EQ(payloads[7], scan_results[1]->GetPayload());
-// }
+TYPED_TEST(InternalNodeFixture, Merge_DummyChildren_MergedNodeHasAllChildren)
+{
+  TestFixture::VerifyMerge();
+}
 
 // TYPED_TEST(InternalNodeFixture, NewRoot_TwoChildNodes_HasCorrectStatus)
 // {
