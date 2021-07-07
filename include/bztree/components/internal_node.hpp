@@ -272,33 +272,20 @@ class InternalNode
       const BaseNode_t *merged_node,
       const size_t deleted_index)
   {
-    auto offset = kPageSize;
     auto new_parent = BaseNode_t::CreateEmptyNode(kInternalFlag);
 
-    // copy child nodes with deleting a merging target node
-    auto record_count = old_parent->GetSortedCount();
-    for (size_t old_idx = 0, new_idx = 0; old_idx < record_count; ++old_idx, ++new_idx) {
-      // prepare copying record and metadata
-      auto meta = old_parent->GetMetadata(old_idx);
-      auto key = CastKey<Key>(old_parent->GetKeyAddr(meta));
-      auto key_length = meta.GetKeyLength();
-      auto node_addr = GetChildAddrProtected(old_parent, meta);
-      if (old_idx == deleted_index) {
-        // skip a deleted node and insert a merged node
-        meta = old_parent->GetMetadata(++old_idx);
-        key = CastKey<Key>(old_parent->GetKeyAddr(meta));
-        key_length = meta.GetKeyLength();
-        node_addr = merged_node;
-      }
-      // copy a child node
-      offset = SetChild(new_parent, key, key_length, node_addr, offset);
-      const auto new_meta = meta.UpdateOffset(offset);
-      new_parent->SetMetadata(new_idx, new_meta);
-    }
+    // copy left sorted records
+    CopySortedRecords(new_parent, old_parent, 0, deleted_index);
 
-    // set a new header
-    new_parent->SetSortedCount(--record_count);
-    new_parent->SetStatus(StatusWord{}.AddRecordInfo(record_count, kPageSize - offset, 0));
+    // insert merged node
+    const auto status = new_parent->GetStatusWord();
+    auto offset = kPageSize - status.GetBlockSize();
+    offset = GetAlignedOffset(InsertNewChild(new_parent, merged_node, deleted_index, offset));
+    new_parent->SetSortedCount(deleted_index + 1);
+    new_parent->SetStatus(status.AddRecordInfo(1, kPageSize - offset, 0));
+
+    // copy right sorted records
+    CopySortedRecords(new_parent, old_parent, deleted_index + 2, old_parent->GetSortedCount());
 
     return new_parent;
   }

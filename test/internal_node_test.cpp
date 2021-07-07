@@ -290,6 +290,35 @@ class InternalNodeFixture : public testing::Test
     delete init_left;
     delete init_right;
   }
+
+  void
+  VerifyNewParentForMerge()
+  {
+    auto init_left = PrepareDummyNode(kDummyNodeNum);
+    auto init_right = PrepareDummyNode(kDummyNodeNum);
+    auto left_left = PrepareDummyNode(kDummyNodeNum);
+    auto left_right = PrepareDummyNode(kDummyNodeNum);
+    auto right_left = PrepareDummyNode(kDummyNodeNum);
+    auto right_right = PrepareDummyNode(kDummyNodeNum);
+
+    node.reset(InternalNode_t::CreateNewRoot(init_left, init_right));
+    node.reset(InternalNode_t::NewParentForSplit(node.get(), left_left, left_right, 0));
+    node.reset(InternalNode_t::NewParentForSplit(node.get(), right_left, right_right, 2));
+    node.reset(InternalNode_t::NewParentForMerge(node.get(), init_left, 0));
+    node.reset(InternalNode_t::NewParentForMerge(node.get(), init_right, 1));
+
+    std::vector<BaseNode_t*> expected_children = {init_left, init_right};
+
+    VerifyInternalNode(node.get(), 2);
+    VerifyChildren(node.get(), 2, &expected_children);
+
+    ReleaseChildren();
+
+    delete left_left;
+    delete left_right;
+    delete right_left;
+    delete right_right;
+  }
 };
 
 /*##################################################################################################
@@ -361,50 +390,9 @@ TYPED_TEST(InternalNodeFixture, NewParentForSplit_DummyChildren_ParentHasCorrect
   TestFixture::VerifyNewParentForSplit();
 }
 
-// TYPED_TEST(InternalNodeFixture, NewParent_AfterMerge_HasCorrectStatus)
-// {
-//   // prepare an old parent
-//   auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
-//   auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
-//   auto old_parent =
-//       std::unique_ptr<BaseNode_t>(InternalNode_t::CreateNewRoot(left_node.get(),
-//       right_node.get()));
-
-//   // prepare a merged node
-//   auto merged_node =
-//       std::unique_ptr<BaseNode_t>(InternalNode_t::Merge(left_node.get(), right_node.get(),
-//       false));
-//   auto deleted_index = 0;
-
-//   // create a new parent node
-//   node.reset(InternalNode_t::NewParentForMerge(old_parent.get(), merged_node.get(),
-//   deleted_index)); expected_record_count = 1; expected_block_size = expected_record_count *
-//   kRecordLength;
-
-//   VerifyStatusWord(node->GetStatusWord());
-// }
-
-// TYPED_TEST(InternalNodeFixture, NewParent_AfterMerge_HasCorrectPointersToChildren)
-// {
-//   // prepare an old parent
-//   auto left_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(1, 6));
-//   auto right_node = std::unique_ptr<BaseNode_t>(CreateInternalNodeWithOrderedKeys(7, 9));
-//   auto old_parent =
-//       std::unique_ptr<BaseNode_t>(InternalNode_t::CreateNewRoot(left_node.get(),
-//       right_node.get()));
-
-//   // prepare a merged node
-//   auto merged_node =
-//       std::unique_ptr<BaseNode_t>(InternalNode_t::Merge(left_node.get(), right_node.get(),
-//       false));
-//   auto deleted_index = 0;
-
-//   // create a new parent node
-//   node.reset(InternalNode_t::NewParentForMerge(old_parent.get(), merged_node.get(),
-//   deleted_index));
-
-//   auto read_addr = InternalNode_t::GetChildNode(node.get(), 0);
-//   EXPECT_TRUE(HaveSameAddress(merged_node.get(), read_addr));
-// }
+TYPED_TEST(InternalNodeFixture, NewParentForMerge_DummyChildren_ParentHasCorrectChild)
+{
+  TestFixture::VerifyNewParentForMerge();
+}
 
 }  // namespace dbgroup::index::bztree
