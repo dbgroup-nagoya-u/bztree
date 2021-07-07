@@ -163,12 +163,9 @@ class InternalNode
     auto root = BaseNode_t::CreateEmptyNode(kInternalFlag);
     const auto leaf_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
 
-    constexpr auto key = Key{};  // act as a positive infinity value
-    constexpr auto key_length = 0;
-
     // set an inital leaf node
-    const auto offset = SetChild(root, key, key_length, leaf_node, kPageSize);
-    const auto meta = Metadata{}.SetRecordInfo(offset, key_length, kWordLength);
+    const auto offset = SetChild(root, Key{}, 0, leaf_node, kPageSize);
+    const auto meta = Metadata{}.SetRecordInfo(offset, 0, kWordLength);
     root->SetMetadata(0, meta);
 
     // set a new header

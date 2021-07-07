@@ -136,19 +136,48 @@ class InternalNodeFixture : public testing::Test
     return dummy_node;
   }
 
+  void
+  ReleaseChildren()
+  {
+    for (size_t i = 0; i < node->GetSortedCount(); ++i) {
+      delete InternalNode_t::GetChildNode(node.get(), i);
+    }
+  }
+
   /*################################################################################################
    * Functions for verification
    *##############################################################################################*/
+
+  void
+  VerifyInternalNode(const size_t child_num)
+  {
+    EXPECT_FALSE(node->IsLeaf());
+    EXPECT_EQ(child_num, node->GetSortedCount());
+    EXPECT_FALSE(node->GetStatusWord().IsFrozen());
+  }
+
+  void
+  VerifyChildren(  //
+      const size_t child_num,
+      const bool child_is_dummy,
+      const bool child_is_leaf = true)
+  {
+    for (size_t i = 0; i < child_num; ++i) {
+      auto child = InternalNode_t::GetChildNode(node.get(), i);
+      if (child_is_dummy) {
+        EXPECT_EQ(i, reinterpret_cast<uintptr_t>(child));
+      } else {
+        EXPECT_FALSE(child->IsLeaf() ^ child_is_leaf);
+      }
+    }
+  }
 
   void
   VerifyGetChildNode()
   {
     node.reset(PrepareDummyNode(kDummyNodeNum));
 
-    for (size_t i = 0; i < kDummyNodeNum; ++i) {
-      auto child = reinterpret_cast<uintptr_t>(InternalNode_t::GetChildNode(node.get(), i));
-      EXPECT_EQ(i, child);
-    }
+    VerifyChildren(kDummyNodeNum, true);
   }
 
   void
@@ -161,6 +190,17 @@ class InternalNodeFixture : public testing::Test
       node.reset(PrepareDummyNode(max_record_num - 1));
       EXPECT_FALSE(InternalNode_t::NeedSplit(node.get(), key_length));
     }
+  }
+
+  void
+  VerifyInitialRoot()
+  {
+    node.reset(InternalNode_t::CreateInitialRoot());
+
+    VerifyInternalNode(1);
+    VerifyChildren(1, false, true);
+
+    ReleaseChildren();
   }
 };
 
@@ -208,7 +248,10 @@ TYPED_TEST(InternalNodeFixture, CanMergeRightSibling_SiblingHasSmallSpace_Cannot
 
 TYPED_TEST(InternalNodeFixture, CanMergeRightSibling_NoSibling_CannotBeMerged) {}
 
-TYPED_TEST(InternalNodeFixture, CreateInitialRoot__) {}
+TYPED_TEST(InternalNodeFixture, CreateInitialRoot_Default_RootHasOneLeaf)
+{
+  TestFixture::VerifyInitialRoot();
+}
 
 // TYPED_TEST(InternalNodeFixture, Split_TenKeys_SplitNodesHaveCorrectStatus)
 // {
