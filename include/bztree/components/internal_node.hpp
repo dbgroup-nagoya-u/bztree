@@ -134,40 +134,28 @@ class InternalNode
     return new_block_size > kPageSize;
   }
 
-  static constexpr bool
-  CanMergeLeftSibling(  //
-      const BaseNode_t *node,
-      const size_t index,
-      const size_t merged_node_size,
+  static constexpr std::pair<BaseNode_t *, bool>
+  GetMergeableSibling(  //
+      BaseNode_t *parent,
+      const size_t target_index,
+      const size_t target_size,
       const size_t max_merged_node_size)
   {
-    assert(index < node->GetSortedCount());  // an input index must be within range
-
-    if (index == 0) {
-      return false;
-    } else {
-      const auto data_size =
-          GetChildNode(node, index - 1)->GetStatusWordProtected().GetLiveDataSize();
-      return (merged_node_size + data_size) < max_merged_node_size;
+    if (target_index > 0) {
+      const auto sibling_node = GetChildNode(parent, target_index - 1);
+      const auto sibling_size = sibling_node->GetStatusWordProtected().GetLiveDataSize();
+      if ((target_size + sibling_size) < max_merged_node_size) {
+        return {sibling_node, true};
+      }
     }
-  }
-
-  static constexpr bool
-  CanMergeRightSibling(  //
-      const BaseNode_t *node,
-      const size_t index,
-      const size_t merged_node_size,
-      const size_t max_merged_node_size)
-  {
-    assert(index < node->GetSortedCount());  // an input index must be within range
-
-    if (index == node->GetSortedCount() - 1) {
-      return false;
-    } else {
-      const auto data_size =
-          GetChildNode(node, index + 1)->GetStatusWordProtected().GetLiveDataSize();
-      return (merged_node_size + data_size) < max_merged_node_size;
+    if (target_index < parent->GetSortedCount() - 1) {
+      const auto sibling_node = GetChildNode(parent, target_index + 1);
+      const auto sibling_size = sibling_node->GetStatusWordProtected().GetLiveDataSize();
+      if ((target_size + sibling_size) < max_merged_node_size) {
+        return {sibling_node, false};
+      }
     }
+    return {nullptr, false};
   }
 
   /*################################################################################################

@@ -176,30 +176,6 @@ class BzTree
     }
   }
 
-  constexpr std::pair<BaseNode_t *, bool>
-  GetMergeableSibling(  //
-      BaseNode_t *parent,
-      const size_t target_index,
-      const size_t target_size,
-      const bool is_leaf)
-  {
-    if (InternalNode_t::CanMergeLeftSibling(parent, target_index, target_size, max_merged_size_)) {
-      const auto sibling_node = InternalNode_t::GetChildNode(parent, target_index - 1);
-      if ((is_leaf && sibling_node->IsLeaf()) || (!is_leaf && !sibling_node->IsLeaf())) {
-        return {sibling_node, true};
-      }
-    }
-
-    if (InternalNode_t::CanMergeRightSibling(parent, target_index, target_size, max_merged_size_)) {
-      const auto sibling_node = InternalNode_t::GetChildNode(parent, target_index + 1);
-      if ((is_leaf && sibling_node->IsLeaf()) || (!is_leaf && !sibling_node->IsLeaf())) {
-        return {sibling_node, false};
-      }
-    }
-
-    return {nullptr, true};
-  }
-
   /*################################################################################################
    * Internal structure modification functoins
    *##############################################################################################*/
@@ -393,7 +369,7 @@ class BzTree
 
       // check a left/right sibling node is live
       std::tie(sibling_node, sibling_is_left) =
-          GetMergeableSibling(parent, target_index, target_size, true);
+          InternalNode_t::GetMergeableSibling(parent, target_index, target_size, min_node_size_);
       if (sibling_node == nullptr) {
         return false;  // there is no live sibling node
       }
@@ -477,10 +453,9 @@ class BzTree
       // check a left/right sibling node is live
       const auto target_size = target_status.GetOccupiedSize();
       std::tie(sibling_node, sibling_is_left) =
-          GetMergeableSibling(parent, target_index, target_size, true);
-      if (sibling_node == nullptr) {
-        return;  // there is no live sibling node
-      }
+          InternalNode_t::GetMergeableSibling(parent, target_index, target_size, min_node_size_);
+      if (sibling_node == nullptr) return;  // there is no live sibling node
+
       const auto sibling_status = sibling_node->GetStatusWordProtected();
       if (sibling_status.IsFrozen()) {
         continue;
@@ -499,7 +474,7 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    BaseNode_t *new_parent = nullptr, merged_node;
+    BaseNode_t merged_node;
     size_t deleted_index;
     if (sibling_is_left) {
       merged_node = InternalNode_t::Merge(sibling_node, target_node);
@@ -508,12 +483,7 @@ class BzTree
       merged_node = InternalNode_t::Merge(target_node, sibling_node);
       deleted_index = target_index;
     }
-    if (parent->GetSortedCount() > 2) {
-      new_parent = InternalNode_t::NewParentForMerge(parent, merged_node, deleted_index);
-    } else {
-      // if a merged node is an only child, swap it for a new parent node
-      new_parent = merged_node;
-    }
+    const auto new_parent = InternalNode_t::NewParentForMerge(parent, merged_node, deleted_index);
     const auto new_occupied_size = new_parent->GetStatusWord().GetOccupiedSize();
 
     // install new nodes
@@ -538,9 +508,9 @@ class BzTree
     while (true) {
       MwCASDescriptor desc;
       if (trace.size() > 1) {
-        /*--------------------------------------------------------------------------------------------
+        /*------------------------------------------------------------------------------------------
          * Swapping a new internal node
-         *------------------------------------------------------------------------------------------*/
+         *----------------------------------------------------------------------------------------*/
 
         // prepare installing nodes
         const auto [old_node, swapping_index] = trace.top();
@@ -558,9 +528,9 @@ class BzTree
         parent_node->SetStatusForMwCAS(desc, parent_status, parent_status);
         parent_node->SetChildForMwCAS(desc, swapping_index, old_node, new_node);
       } else {
-        /*--------------------------------------------------------------------------------------------
+        /*------------------------------------------------------------------------------------------
          * Swapping a new root node
-         *------------------------------------------------------------------------------------------*/
+         *----------------------------------------------------------------------------------------*/
 
         const auto old_node = trace.top().first;
         SetRootForMwCAS(desc, old_node, new_node);
