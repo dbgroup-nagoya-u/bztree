@@ -53,7 +53,7 @@ class InternalNodeFixture : public testing::Test
   static constexpr size_t kKeyNumForTest = 1024;
   static constexpr size_t kKeyLength = kWordLength;
   static constexpr size_t kPayloadLength = kWordLength;
-  static constexpr size_t kDefaultMinNodeSizeThreshold = 128;
+  static constexpr size_t kMaxNodeSize = kPageSize / 2;
   static constexpr size_t kDummyNodeNum = 10;
 
   // actual keys and payloads
@@ -208,6 +208,42 @@ class InternalNodeFixture : public testing::Test
   }
 
   void
+  VerifyGetMergeableSibling(const bool expect_filled_node)
+  {
+    const size_t target_size = kDummyNodeNum * record_length;
+
+    BaseNode_t *left_node, *right_node, *sibling_node;
+    if (expect_filled_node) {
+      left_node = PrepareDummyNode(max_record_num);
+      right_node = PrepareDummyNode(max_record_num);
+    } else {
+      left_node = PrepareDummyNode(kDummyNodeNum);
+      right_node = PrepareDummyNode(kDummyNodeNum);
+    }
+    node.reset(InternalNode_t::CreateNewRoot(left_node, right_node));
+
+    bool sibling_is_left;
+    std::tie(sibling_node, sibling_is_left) =
+        InternalNode_t::GetMergeableSibling(node.get(), 1, target_size, kMaxNodeSize);
+    if (expect_filled_node) {
+      EXPECT_TRUE(HaveSameAddress(nullptr, sibling_node));
+    } else {
+      EXPECT_TRUE(HaveSameAddress(left_node, sibling_node));
+      EXPECT_TRUE(sibling_is_left);
+    }
+    std::tie(sibling_node, sibling_is_left) =
+        InternalNode_t::GetMergeableSibling(node.get(), 0, target_size, kMaxNodeSize);
+    if (expect_filled_node) {
+      EXPECT_TRUE(HaveSameAddress(nullptr, sibling_node));
+    } else {
+      EXPECT_TRUE(HaveSameAddress(right_node, sibling_node));
+      EXPECT_FALSE(sibling_is_left);
+    }
+
+    ReleaseChildren();
+  }
+
+  void
   VerifyInitialRoot()
   {
     node.reset(InternalNode_t::CreateInitialRoot());
@@ -353,17 +389,15 @@ TYPED_TEST(InternalNodeFixture, NeedSplit_FilledNode_SplitRequired)
   TestFixture::VerifyNeedSplit(true);
 }
 
-TYPED_TEST(InternalNodeFixture, CanMergeLeftSibling_SiblingHasSufficentSpace_CanBeMerged) {}
+TYPED_TEST(InternalNodeFixture, GetMergeableSibling_SiblingHasSufficentSpace_GetSiblingNode)
+{
+  TestFixture::VerifyGetMergeableSibling(false);
+}
 
-TYPED_TEST(InternalNodeFixture, CanMergeLeftSibling_SiblingHasSmallSpace_CannotBeMerged) {}
-
-TYPED_TEST(InternalNodeFixture, CanMergeLeftSibling_NoSibling_CannotBeMerged) {}
-
-TYPED_TEST(InternalNodeFixture, CanMergeRightSibling_SiblingHasSufficentSpace_CanBeMerged) {}
-
-TYPED_TEST(InternalNodeFixture, CanMergeRightSibling_SiblingHasSmallSpace_CannotBeMerged) {}
-
-TYPED_TEST(InternalNodeFixture, CanMergeRightSibling_NoSibling_CannotBeMerged) {}
+TYPED_TEST(InternalNodeFixture, GetMergeableSibling_SiblingHasNoSpace_GetNullptr)
+{
+  TestFixture::VerifyGetMergeableSibling(true);
+}
 
 TYPED_TEST(InternalNodeFixture, CreateInitialRoot_Default_RootHasOneLeaf)
 {
