@@ -766,21 +766,15 @@ class LeafNode
 
   static constexpr BaseNode_t *
   Merge(  //
-      const BaseNode_t *target_node,
-      const std::vector<std::pair<Key, Metadata>> &target_meta,
-      const BaseNode_t *sibling_node,
-      const std::vector<std::pair<Key, Metadata>> &sibling_meta,
-      const bool sibling_is_left)
+      const BaseNode_t *left_node,
+      const std::vector<std::pair<Key, Metadata>> &left_meta,
+      const BaseNode_t *right_node,
+      const std::vector<std::pair<Key, Metadata>> &right_meta)
   {
     // create a merged node
     auto merged_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
-    if (sibling_is_left) {
-      CopyRecordsViaMetadata(merged_node, sibling_node, sibling_meta.begin(), sibling_meta.end());
-      CopyRecordsViaMetadata(merged_node, target_node, target_meta.begin(), target_meta.end());
-    } else {
-      CopyRecordsViaMetadata(merged_node, target_node, target_meta.begin(), target_meta.end());
-      CopyRecordsViaMetadata(merged_node, sibling_node, sibling_meta.begin(), sibling_meta.end());
-    }
+    CopyRecordsViaMetadata(merged_node, left_node, left_meta.begin(), left_meta.end());
+    CopyRecordsViaMetadata(merged_node, right_node, right_meta.begin(), right_meta.end());
 
     return merged_node;
   }

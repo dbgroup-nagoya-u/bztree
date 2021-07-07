@@ -415,10 +415,16 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    const auto deleted_index = (sibling_is_left) ? target_index - 1 : target_index;
     const auto sibling_meta = LeafNode_t::GatherSortedLiveMetadata(sibling_node);
-    const auto merged_node =
-        LeafNode_t::Merge(target_node, sorted_meta, sibling_node, sibling_meta, sibling_is_left);
+    BaseNode_t *merged_node;
+    size_t deleted_index;
+    if (sibling_is_left) {
+      merged_node = LeafNode_t::Merge(sibling_node, sibling_meta, target_node, sorted_meta);
+      deleted_index = target_index - 1;
+    } else {
+      merged_node = LeafNode_t::Merge(target_node, sorted_meta, sibling_node, sibling_meta);
+      deleted_index = target_index;
+    }
     const auto new_parent = InternalNode_t::NewParentForMerge(parent, merged_node, deleted_index);
     const auto new_occupied_size = new_parent->GetStatusWord().GetOccupiedSize();
 

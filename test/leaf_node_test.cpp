@@ -486,25 +486,23 @@ class LeafNodeFixture : public testing::Test
 
   void
   VerifyMerge(  //
-      const size_t target_begin,
-      const size_t target_end,
-      const size_t sibling_begin,
-      const size_t sibling_end,
-      const bool sibling_is_left)
+      const size_t left_begin,
+      const size_t left_end,
+      const size_t right_begin,
+      const size_t right_end)
   {
-    WriteOrderedKeys(target_begin, target_end);
-    auto target_meta = LeafNode_t::GatherSortedLiveMetadata(node.get());
+    WriteOrderedKeys(left_begin, left_end);
+    auto left_meta = LeafNode_t::GatherSortedLiveMetadata(node.get());
 
-    auto sibling = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
-    for (size_t id = sibling_begin; id <= sibling_end; ++id) {
-      LeafNode_t::Write(sibling.get(), keys[id], key_length, payloads[id], payload_length);
+    auto right_node = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
+    for (size_t id = right_begin; id <= right_end; ++id) {
+      LeafNode_t::Write(right_node.get(), keys[id], key_length, payloads[id], payload_length);
     }
-    auto sibling_meta = LeafNode_t::GatherSortedLiveMetadata(sibling.get());
+    auto right_meta = LeafNode_t::GatherSortedLiveMetadata(right_node.get());
 
-    node.reset(
-        LeafNode_t::Merge(node.get(), target_meta, sibling.get(), sibling_meta, sibling_is_left));
+    node.reset(LeafNode_t::Merge(node.get(), left_meta, right_node.get(), right_meta));
 
-    expected_record_count = (target_end - target_begin + 1) + (sibling_end - sibling_begin + 1);
+    expected_record_count = (left_end - left_begin + 1) + (right_end - right_begin + 1);
     expected_block_size = expected_record_count * record_length;
 
     VerifyStatusWord(node->GetStatusWord());
@@ -1012,18 +1010,9 @@ TYPED_TEST(LeafNodeFixture, Split_SplitRightNode_NodesHaveCorrectKeyPayloads)
 
 TYPED_TEST(LeafNodeFixture, Merge_LeftSiblingNode_NodesHaveCorrectKeyPayloads)
 {
-  TestFixture::VerifyMerge(6, 10, 1, 5, true);
+  TestFixture::VerifyMerge(1, 5, 6, 10);
   for (size_t id = 1; id <= 10; ++id) {
     TestFixture::VerifyRead(id, id);
   }
 }
-
-TYPED_TEST(LeafNodeFixture, Merge_RightSiblingNode_NodesHaveCorrectKeyPayloads)
-{
-  TestFixture::VerifyMerge(1, 5, 6, 10, false);
-  for (size_t id = 1; id <= 10; ++id) {
-    TestFixture::VerifyRead(id, id);
-  }
-}
-
 }  // namespace dbgroup::index::bztree
