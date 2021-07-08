@@ -154,11 +154,16 @@ class alignas(kCacheLineSize) BaseNode
     return ReadMwCASField<Metadata>(&meta_array_[index]);
   }
 
+  constexpr Key
+  GetKey(const Metadata meta) const
+  {
+    return CastKey<Key>(GetKeyAddr(meta));
+  }
+
   constexpr void *
   GetKeyAddr(const Metadata meta) const
   {
-    const auto offset = meta.GetOffset();
-    return ShiftAddress(this, offset);
+    return ShiftAddress(this, meta.GetOffset());
   }
 
   constexpr std::pair<Key, size_t>
