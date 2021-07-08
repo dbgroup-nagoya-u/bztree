@@ -67,7 +67,7 @@ class BzTree
   const size_t index_epoch_;
 
   /// a root node of BzTree
-  uintptr_t root_;
+  BaseNode_t *root_;
 
   /// garbage collector
   TLSBasedMemoryManager<BaseNode_t> gc_;
@@ -79,7 +79,7 @@ class BzTree
   constexpr BaseNode_t *
   GetRoot()
   {
-    return reinterpret_cast<BaseNode_t *>(ReadMwCASField<uintptr_t>(&root_));
+    return ReadMwCASField<BaseNode_t *>(&root_);
   }
 
   constexpr std::pair<void *, BaseNode_t *>
@@ -142,17 +142,6 @@ class BzTree
     return block_size;
   }
 
-  constexpr void
-  SetRootForMwCAS(  //
-      MwCASDescriptor &desc,
-      const void *old_root_node,
-      const void *new_root_node)
-  {
-    desc.AddMwCASTarget(&root_,  //
-                        reinterpret_cast<uintptr_t>(old_root_node),
-                        reinterpret_cast<uintptr_t>(new_root_node));
-  }
-
   constexpr std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
   ScanPerLeaf(  //
       const Key *begin_key,
@@ -187,9 +176,7 @@ class BzTree
       const size_t target_key_length)
   {
     // freeze a target node and perform consolidation
-    if (target_node->Freeze() != NodeReturnCode::kSuccess) {
-      return;
-    }
+    if (target_node->Freeze() != NodeReturnCode::kSuccess) return;
 
     // gather sorted live metadata of a targetnode, and check whether split/merge is required
     const auto live_meta = LeafNode_t::GatherSortedLiveMetadata(target_node);
@@ -533,7 +520,7 @@ class BzTree
          *----------------------------------------------------------------------------------------*/
 
         const auto old_node = trace.top().first;
-        SetRootForMwCAS(desc, old_node, new_node);
+        desc.AddMwCASTarget(&root_, old_node, new_node);
       }
 
       if (desc.MwCAS()) return;
@@ -558,11 +545,9 @@ class BzTree
         max_deleted_size_{max_deleted_size},
         max_merged_size_{max_merged_size},
         index_epoch_{1},
+        root_{InternalNode_t::CreateInitialRoot()},
         gc_{1000}
   {
-    // initialize a tree structure: one internal node with one leaf node
-    const auto root_node = InternalNode_t::CreateInitialRoot();
-    root_ = reinterpret_cast<uintptr_t>(root_node);
   }
 
   ~BzTree() = default;

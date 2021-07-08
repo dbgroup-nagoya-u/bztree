@@ -423,15 +423,15 @@ TYPED_TEST(BzTreeFixture, Write_DuplicateKey_ReadLatestValue)
   TestFixture::VerifyRead(0, 1);
 }
 
-// TYPED_TEST(BzTreeFixture, Write_UniqueKeysWithSplit_ReadWrittenValues)
-// {
-//   for (size_t i = 0; i < TestFixture::max_record_num; ++i) {
-//     TestFixture::VerifyWrite(i, i);
-//   }
-//   for (size_t i = 0; i < TestFixture::max_record_num; ++i) {
-//     TestFixture::VerifyRead(i, i);
-//   }
-// }
+TYPED_TEST(BzTreeFixture, Write_UniqueKeysWithSplit_ReadWrittenValues)
+{
+  for (size_t i = 0; i < TestFixture::max_record_num; ++i) {
+    TestFixture::VerifyWrite(i, i);
+  }
+  for (size_t i = 0; i < TestFixture::max_record_num; ++i) {
+    TestFixture::VerifyRead(i, i);
+  }
+}
 
 // /*--------------------------------------------------------------------------------------------------
 //  * Insert operation
