@@ -577,22 +577,16 @@ class BzTree
    *##############################################################################################*/
 
   constexpr auto
-  Read(const Key &key)
+  Read(const Key key)
   {
     const auto guard = gc_.CreateEpochGuard();
 
-    auto leaf_node = SearchLeafNode(&key, true).second;
+    const auto leaf_node = SearchLeafNode(&key, true).second;
     auto [rc, payload] = LeafNode_t::Read(leaf_node, key);
     if (rc == NodeReturnCode::kSuccess) {
-      return std::make_pair(ReturnCode::kSuccess, payload);
-    } else {
-      if constexpr (std::is_same_v<Payload, char *>) {
-        return std::make_pair(ReturnCode::kKeyNotExist,
-                              static_cast<std::unique_ptr<char>>(nullptr));
-      } else {
-        return std::make_pair(ReturnCode::kKeyNotExist, Payload{});
-      }
+      return std::make_pair(ReturnCode::kSuccess, std::move(payload));
     }
+    return std::make_pair(ReturnCode::kKeyNotExist, std::move(payload));
   }
 
   constexpr std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>

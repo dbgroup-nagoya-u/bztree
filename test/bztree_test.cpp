@@ -225,15 +225,21 @@ class BzTreeFixture : public testing::Test
 
   void
   VerifyRead(  //
-      const Key key,
-      const Payload expected)
+      const size_t key_id,
+      const size_t expected_id,
+      const bool expect_fail = false)
   {
-    auto [rc, actual] = bztree.Read(key);
-    EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-    if constexpr (std::is_same_v<Payload, char *>) {
-      EXPECT_TRUE(IsEqual<PayloadComp>(expected, actual.get()));
+    auto [rc, actual] = bztree.Read(keys[key_id]);
+
+    if (expect_fail) {
+      EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
     } else {
-      EXPECT_TRUE(IsEqual<PayloadComp>(expected, actual));
+      EXPECT_EQ(ReturnCode::kSuccess, rc);
+      if constexpr (std::is_same_v<Payload, char *>) {
+        EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], actual.get()));
+      } else {
+        EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], actual));
+      }
     }
   }
 };
@@ -259,16 +265,14 @@ TYPED_TEST_CASE(BzTreeFixture, KeyPayloadPairs);
  * Unit test definitions
  *################################################################################################*/
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Read operation
-//  *------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------
+ * Read operation
+ *------------------------------------------------------------------------------------------------*/
 
-// TYPED_TEST(BzTreeFixture, Read_NotPresentKey_ReadFailed)
-// {
-//   auto [rc, payload] = bztree.Read(keys[1]);
-
-//   EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
-// }
+TYPED_TEST(BzTreeFixture, Read_NotPresentKey_ReadFail)
+{  //
+  TestFixture::VerifyRead(0, 0, true);
+}
 
 // /*--------------------------------------------------------------------------------------------------
 //  * Scan operation
