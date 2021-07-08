@@ -723,7 +723,7 @@ class BzTree
 
     while (true) {
       auto leaf_node = SearchLeafNode(&key, true).second;
-      auto [rc, status] =
+      const auto [rc, status] =
           LeafNode_t::Insert(leaf_node, key, key_length, payload, payload_length, index_epoch_);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyExist) {
@@ -779,7 +779,7 @@ class BzTree
 
     while (true) {
       auto leaf_node = SearchLeafNode(&key, true).second;
-      auto [rc, status] =
+      const auto [rc, status] =
           LeafNode_t::Update(leaf_node, key, key_length, payload, payload_length, index_epoch_);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
@@ -831,21 +831,15 @@ class BzTree
   {
     const auto guard = gc_.CreateEpochGuard();
 
-    BaseNode_t *leaf_node;
-    NodeReturnCode rc;
-    StatusWord node_status;
-    do {
-      leaf_node = SearchLeafNode(&key, true).second;
-      std::tie(rc, node_status) = LeafNode_t::Delete(leaf_node, key, key_length);
-    } while (rc != NodeReturnCode::kSuccess && rc != NodeReturnCode::kKeyNotExist);
+    while (true) {
+      auto leaf_node = SearchLeafNode(&key, true).second;
+      const auto [rc, status] = LeafNode_t::Delete(leaf_node, key, key_length);
 
-    if (NeedConsolidation(node_status)) {
-      // invoke consolidation with a new thread
-      ConsolidateLeafNode(leaf_node, key, key_length);
-    }
-
-    if (rc == NodeReturnCode::kKeyNotExist) {
-      return ReturnCode::kKeyNotExist;
+      if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
+        if (NeedConsolidation(status)) ConsolidateLeafNode(leaf_node, key, key_length);
+        if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
+        break;
+      }
     }
     return ReturnCode::kSuccess;
   }
@@ -853,6 +847,8 @@ class BzTree
   constexpr ReturnCode
   Delete(const Key &key)
   {
+    static_assert(!std::is_same_v<Key, char *>);
+
     return Delete(key, sizeof(Key));
   }
 };
