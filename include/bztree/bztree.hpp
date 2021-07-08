@@ -474,7 +474,7 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    BaseNode_t merged_node;
+    BaseNode_t *merged_node;
     size_t deleted_index;
     if (sibling_is_left) {
       merged_node = InternalNode_t::Merge(sibling_node, target_node);
@@ -501,9 +501,9 @@ class BzTree
   constexpr void
   InstallNewNode(  //
       std::stack<std::pair<BaseNode_t *, size_t>> &trace,
-      const void *new_node,
+      BaseNode_t *new_node,
       const Key &target_key,
-      const void *target_node)
+      const BaseNode_t *target_node)
   {
     while (true) {
       MwCASDescriptor desc;
@@ -513,7 +513,7 @@ class BzTree
          *----------------------------------------------------------------------------------------*/
 
         // prepare installing nodes
-        const auto [old_node, swapping_index] = trace.top();
+        auto [old_node, index] = trace.top();
         trace.pop();
         auto parent_node = trace.top().first;
 
@@ -526,7 +526,7 @@ class BzTree
 
         // install a new internal node by PMwCAS
         parent_node->SetStatusForMwCAS(desc, parent_status, parent_status);
-        parent_node->SetChildForMwCAS(desc, swapping_index, old_node, new_node);
+        parent_node->SetPayloadForMwCAS(desc, parent_node->GetMetadata(index), old_node, new_node);
       } else {
         /*------------------------------------------------------------------------------------------
          * Swapping a new root node
@@ -674,53 +674,56 @@ class BzTree
 
   constexpr ReturnCode
   Write(  //
-      const Key &key,
+      const Key key,
       const size_t key_length,
-      const Payload &payload,
+      const Payload payload,
       const size_t payload_length)
   {
     const auto guard = gc_.CreateEpochGuard();
 
-    BaseNode_t *leaf_node;
-    NodeReturnCode rc;
-    StatusWord node_status;
-    do {
-      leaf_node = SearchLeafNode(&key, true).second;
-      std::tie(rc, node_status) =
+    while (true) {
+      auto leaf_node = SearchLeafNode(&key, true).second;
+      const auto [rc, status] =
           LeafNode_t::Write(leaf_node, key, key_length, payload, payload_length, index_epoch_);
-    } while (rc != NodeReturnCode::kSuccess);
 
-    if (NeedConsolidation(node_status)) {
-      // invoke consolidation with a new thread
-      ConsolidateLeafNode(leaf_node, key, key_length);
+      if (rc == NodeReturnCode::kSuccess) {
+        if (NeedConsolidation(status)) ConsolidateLeafNode(leaf_node, key, key_length);
+        break;
+      }
     }
-
     return ReturnCode::kSuccess;
   }
 
   constexpr ReturnCode
   Write(  //
-      const Key &key,
-      const Payload &payload,
+      const Key key,
+      const Payload payload,
       const size_t payload_length)
   {
+    static_assert(!std::is_same_v<Key, char *>);
+
     return Write(key, sizeof(Key), payload, payload_length);
   }
 
   constexpr ReturnCode
   Write(  //
-      const Key &key,
+      const Key key,
       const size_t key_length,
-      const Payload &payload)
+      const Payload payload)
   {
+    static_assert(!std::is_same_v<Payload, char *>);
+
     return Write(key, key_length, payload, sizeof(Payload));
   }
 
   constexpr ReturnCode
   Write(  //
-      const Key &key,
-      const Payload &payload)
+      const Key key,
+      const Payload payload)
   {
+    static_assert(!std::is_same_v<Key, char *>);
+    static_assert(!std::is_same_v<Payload, char *>);
+
     return Write(key, sizeof(Key), payload, sizeof(Payload));
   }
 

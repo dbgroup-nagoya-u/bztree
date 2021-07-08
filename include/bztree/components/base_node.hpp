@@ -254,6 +254,18 @@ class alignas(kCacheLineSize) BaseNode
     desc.AddMwCASTarget(meta_array_ + index, old_meta, new_meta);
   }
 
+  template <class T>
+  void
+  SetPayloadForMwCAS(  //
+      MwCASDescriptor &desc,
+      const Metadata meta,
+      const T old_payload,
+      const T new_payload)
+  {
+    desc.AddMwCASTarget(ShiftAddress(this, meta.GetOffset() + meta.GetKeyLength()),  //
+                        old_payload, new_payload);
+  }
+
   /*################################################################################################
    * Public utility functions
    *##############################################################################################*/

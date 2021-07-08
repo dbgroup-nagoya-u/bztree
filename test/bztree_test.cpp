@@ -56,7 +56,8 @@ class BzTreeFixture : public testing::Test
 
   // constant values for testing
   static constexpr size_t kIndexEpoch = 1;
-  static constexpr size_t kKeyNumForTest = 1024;
+  static constexpr size_t kKeyNumForTest = 10240;
+  static constexpr size_t kSmallKeyNum = 10;
   static constexpr size_t kKeyLength = kWordLength;
   static constexpr size_t kPayloadLength = kWordLength;
 
@@ -208,22 +209,6 @@ class BzTreeFixture : public testing::Test
    *##############################################################################################*/
 
   void
-  VerifyKey(  //
-      const Key expected,
-      const Key actual)
-  {
-    EXPECT_TRUE(IsEqual<KeyComp>(expected, actual));
-  }
-
-  void
-  VerifyPayload(  //
-      const Payload expected,
-      const Payload actual)
-  {
-    EXPECT_TRUE(IsEqual<PayloadComp>(expected, actual));
-  }
-
-  void
   VerifyRead(  //
       const size_t key_id,
       const size_t expected_id,
@@ -241,6 +226,16 @@ class BzTreeFixture : public testing::Test
         EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], actual));
       }
     }
+  }
+
+  void
+  VerifyWrite(  //
+      const size_t key_id,
+      const size_t payload_id)
+  {
+    auto rc = bztree.Write(keys[key_id], key_length, payloads[payload_id], payload_length);
+
+    EXPECT_EQ(ReturnCode::kSuccess, rc);
   }
 };
 
@@ -406,25 +401,36 @@ TYPED_TEST(BzTreeFixture, Read_NotPresentKey_ReadFail)
 //   VerifyPayload(payloads[4], scan_results[1]->GetPayload());
 // }
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Write operation
-//  *------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------
+ * Write operation
+ *------------------------------------------------------------------------------------------------*/
 
-// TYPED_TEST(BzTreeFixture, Write_TwoKeys_ReadWrittenValues)
+TYPED_TEST(BzTreeFixture, Write_UniqueKeys_ReadWrittenValues)
+{
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
+    TestFixture::VerifyWrite(i, i);
+  }
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
+    TestFixture::VerifyRead(i, i);
+  }
+}
+
+TYPED_TEST(BzTreeFixture, Write_DuplicateKey_ReadLatestValue)
+{
+  TestFixture::VerifyWrite(0, 0);
+  TestFixture::VerifyWrite(0, 1);
+
+  TestFixture::VerifyRead(0, 1);
+}
+
+// TYPED_TEST(BzTreeFixture, Write_UniqueKeysWithSplit_ReadWrittenValues)
 // {
-//   bztree.Write(keys[1], kKeyLength, payloads[1], kPayloadLength);
-//   bztree.Write(keys[2], kKeyLength, payloads[2], kPayloadLength);
-
-//   VerifyRead(keys[1], payloads[1]);
-//   VerifyRead(keys[2], payloads[2]);
-// }
-
-// TYPED_TEST(BzTreeFixture, Write_DuplicateKey_ReadLatestValue)
-// {
-//   bztree.Write(keys[1], kKeyLength, payloads[1], kPayloadLength);
-//   bztree.Write(keys[1], kKeyLength, payloads[2], kPayloadLength);
-
-//   VerifyRead(keys[1], payloads[2]);
+//   for (size_t i = 0; i < TestFixture::max_record_num; ++i) {
+//     TestFixture::VerifyWrite(i, i);
+//   }
+//   for (size_t i = 0; i < TestFixture::max_record_num; ++i) {
+//     TestFixture::VerifyRead(i, i);
+//   }
 // }
 
 // /*--------------------------------------------------------------------------------------------------

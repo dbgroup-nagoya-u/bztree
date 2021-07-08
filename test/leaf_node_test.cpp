@@ -729,6 +729,7 @@ TYPED_TEST(LeafNodeFixture, Write_UniqueKeys_ReadWrittenValues)
 {
   for (size_t i = 1; i <= TestFixture::max_record_num; ++i) {
     TestFixture::VerifyWrite(i, i);
+    TestFixture::VerifyRead(i, i);
   }
 }
 
@@ -763,6 +764,7 @@ TYPED_TEST(LeafNodeFixture, Insert_UniqueKeys_ReadInsertedValues)
 {
   for (size_t i = 1; i <= TestFixture::max_record_num; ++i) {
     TestFixture::VerifyInsert(i, i);
+    TestFixture::VerifyRead(i, i);
   }
 }
 
