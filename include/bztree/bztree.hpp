@@ -714,56 +714,57 @@ class BzTree
 
   constexpr ReturnCode
   Insert(  //
-      const Key &key,
+      const Key key,
       const size_t key_length,
-      const Payload &payload,
+      const Payload payload,
       const size_t payload_length)
   {
     const auto guard = gc_.CreateEpochGuard();
 
-    BaseNode_t *leaf_node;
-    NodeReturnCode rc;
-    StatusWord node_status;
-    do {
-      leaf_node = SearchLeafNode(&key, true).second;
-      std::tie(rc, node_status) =
+    while (true) {
+      auto leaf_node = SearchLeafNode(&key, true).second;
+      auto [rc, status] =
           LeafNode_t::Insert(leaf_node, key, key_length, payload, payload_length, index_epoch_);
-    } while (rc != NodeReturnCode::kSuccess && rc != NodeReturnCode::kKeyExist);
 
-    if (NeedConsolidation(node_status)) {
-      // invoke consolidation with a new thread
-      ConsolidateLeafNode(leaf_node, key, key_length);
-    }
-
-    if (rc == NodeReturnCode::kKeyExist) {
-      return ReturnCode::kKeyExist;
+      if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyExist) {
+        if (NeedConsolidation(status)) ConsolidateLeafNode(leaf_node, key, key_length);
+        if (rc == NodeReturnCode::kKeyExist) return ReturnCode::kKeyExist;
+        break;
+      }
     }
     return ReturnCode::kSuccess;
   }
 
   constexpr ReturnCode
   Insert(  //
-      const Key &key,
-      const Payload &payload,
+      const Key key,
+      const Payload payload,
       const size_t payload_length)
   {
+    static_assert(!std::is_same_v<Key, char *>);
+
     return Insert(key, sizeof(Key), payload, payload_length);
   }
 
   constexpr ReturnCode
   Insert(  //
-      const Key &key,
+      const Key key,
       const size_t key_length,
-      const Payload &payload)
+      const Payload payload)
   {
+    static_assert(!std::is_same_v<Payload, char *>);
+
     return Insert(key, key_length, payload, sizeof(Payload));
   }
 
   constexpr ReturnCode
   Insert(  //
-      const Key &key,
-      const Payload &payload)
+      const Key key,
+      const Payload payload)
   {
+    static_assert(!std::is_same_v<Key, char *>);
+    static_assert(!std::is_same_v<Payload, char *>);
+
     return Insert(key, sizeof(Key), payload, sizeof(Payload));
   }
 
