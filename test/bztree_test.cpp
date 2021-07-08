@@ -415,21 +415,39 @@ TYPED_TEST(BzTreeFixture, Write_UniqueKeys_ReadWrittenValues)
   }
 }
 
-TYPED_TEST(BzTreeFixture, Write_DuplicateKey_ReadLatestValue)
+TYPED_TEST(BzTreeFixture, Write_DuplicateKeys_ReadLatestValue)
 {
-  TestFixture::VerifyWrite(0, 0);
-  TestFixture::VerifyWrite(0, 1);
-
-  TestFixture::VerifyRead(0, 1);
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
+    TestFixture::VerifyWrite(i, i);
+  }
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
+    TestFixture::VerifyWrite(i, i + 1);
+  }
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
+    TestFixture::VerifyRead(i, i + 1);
+  }
 }
 
 TYPED_TEST(BzTreeFixture, Write_UniqueKeysWithSplit_ReadWrittenValues)
 {
-  for (size_t i = 0; i < TestFixture::max_record_num; ++i) {
+  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
     TestFixture::VerifyWrite(i, i);
   }
-  for (size_t i = 0; i < TestFixture::max_record_num; ++i) {
+  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
     TestFixture::VerifyRead(i, i);
+  }
+}
+
+TYPED_TEST(BzTreeFixture, Write_DuplicateKeysWithSplit_ReadWrittenValues)
+{
+  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+    TestFixture::VerifyWrite(i, i);
+  }
+  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+    TestFixture::VerifyWrite(i, i + 1);
+  }
+  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+    TestFixture::VerifyRead(i, i + 1);
   }
 }
 
