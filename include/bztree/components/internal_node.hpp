@@ -58,7 +58,7 @@ class InternalNode
       const BaseNode_t *child_addr,
       size_t offset)
   {
-    offset = node->SetPayload(offset, child_addr, kWordLength);
+    offset = node->SetPayload(AlignOffset(offset), child_addr, kWordLength);
     if (key_length > 0) {
       offset = node->SetKey(offset, key, key_length);
     }

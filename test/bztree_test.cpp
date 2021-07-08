@@ -57,7 +57,8 @@ class BzTreeFixture : public testing::Test
   // constant values for testing
   static constexpr size_t kIndexEpoch = 1;
   static constexpr size_t kKeyNumForTest = 10240;
-  static constexpr size_t kSmallKeyNum = 10;
+  static constexpr size_t kSmallKeyNum = 16;
+  static constexpr size_t kLargeKeyNum = 2048;
   static constexpr size_t kKeyLength = kWordLength;
   static constexpr size_t kPayloadLength = kWordLength;
 
@@ -66,10 +67,6 @@ class BzTreeFixture : public testing::Test
   size_t payload_length;
   Key keys[kKeyNumForTest];
   Payload payloads[kKeyNumForTest];
-
-  // the length of a record and its maximum number
-  size_t record_length;
-  size_t max_record_num;
 
   // a test target BzTree
   BzTree_t bztree = BzTree_t{};
@@ -114,14 +111,6 @@ class BzTreeFixture : public testing::Test
         payloads[index] = index;
       }
     }
-
-    // set a record length and its maximum number
-    if constexpr (!std::is_same_v<Payload, char *> && sizeof(Payload) == kWordLength) {
-      record_length = 2 * kWordLength;
-    } else {
-      record_length = key_length + payload_length;
-    }
-    max_record_num = (kPageSize - kHeaderLength) / (record_length + kWordLength);
   }
 
   void
@@ -407,25 +396,25 @@ TYPED_TEST(BzTreeFixture, Write_DuplicateKeys_ReadLatestValue)
   }
 }
 
-TYPED_TEST(BzTreeFixture, Write_UniqueKeysWithSplit_ReadWrittenValues)
+TYPED_TEST(BzTreeFixture, Write_UniqueKeysWithSMOs_ReadWrittenValues)
 {
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
     TestFixture::VerifyWrite(i, i);
   }
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
     TestFixture::VerifyRead(i, i);
   }
 }
 
-TYPED_TEST(BzTreeFixture, Write_DuplicateKeysWithSplit_ReadWrittenValues)
+TYPED_TEST(BzTreeFixture, Write_DuplicateKeysWithSMOs_ReadWrittenValues)
 {
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
     TestFixture::VerifyWrite(i, i);
   }
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
     TestFixture::VerifyWrite(i, i + 1);
   }
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
     TestFixture::VerifyRead(i, i + 1);
   }
 }
@@ -457,26 +446,58 @@ TYPED_TEST(BzTreeFixture, Insert_DuplicateKeys_InsertFail)
   }
 }
 
-TYPED_TEST(BzTreeFixture, Insert_UniqueKeysWithSplit_ReadInsertedValues)
+TYPED_TEST(BzTreeFixture, Insert_DeletedKeys_InsertSucceed)
 {
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
     TestFixture::VerifyInsert(i, i);
   }
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
+    TestFixture::VerifyDelete(i);
+  }
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
+    TestFixture::VerifyInsert(i, i + 1);
+  }
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
+    TestFixture::VerifyRead(i, i + 1);
+  }
+}
+
+TYPED_TEST(BzTreeFixture, Insert_UniqueKeysWithSMOs_ReadInsertedValues)
+{
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
+    TestFixture::VerifyInsert(i, i);
+  }
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
     TestFixture::VerifyRead(i, i);
   }
 }
 
-TYPED_TEST(BzTreeFixture, Insert_DuplicateKeysWithSplit_InsertFail)
+TYPED_TEST(BzTreeFixture, Insert_DuplicateKeysWithSMOs_InsertFail)
 {
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
     TestFixture::VerifyInsert(i, i);
   }
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
     TestFixture::VerifyInsert(i, i + 1, true);
   }
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
     TestFixture::VerifyRead(i, i);
+  }
+}
+
+TYPED_TEST(BzTreeFixture, Insert_DeletedKeysWithSMOs_InsertSucceed)
+{
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
+    TestFixture::VerifyInsert(i, i);
+  }
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
+    TestFixture::VerifyDelete(i);
+  }
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
+    TestFixture::VerifyInsert(i, i + 1);
+  }
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
+    TestFixture::VerifyRead(i, i + 1);
   }
 }
 
@@ -507,28 +528,60 @@ TYPED_TEST(BzTreeFixture, Update_NotInsertedKeys_UpdateFail)
   }
 }
 
-TYPED_TEST(BzTreeFixture, Update_DuplicateKeysWithSplit_ReadUpdatedValues)
+TYPED_TEST(BzTreeFixture, Update_DeletedKeys_UpdateFail)
 {
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
     TestFixture::VerifyInsert(i, i);
   }
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
+    TestFixture::VerifyDelete(i);
+  }
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
+    TestFixture::VerifyUpdate(i, i, true);
+  }
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
+    TestFixture::VerifyRead(i, i, true);
+  }
+}
+
+TYPED_TEST(BzTreeFixture, Update_DuplicateKeysWithSMOs_ReadUpdatedValues)
+{
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
+    TestFixture::VerifyInsert(i, i);
+  }
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
     TestFixture::VerifyUpdate(i, i + 1);
   }
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
     TestFixture::VerifyRead(i, i + 1);
   }
 }
 
-TYPED_TEST(BzTreeFixture, Update_NotInsertedKeysWithSplit_UpdateFail)
+TYPED_TEST(BzTreeFixture, Update_NotInsertedKeysWithSMOs_UpdateFail)
 {
-  for (size_t i = TestFixture::max_record_num; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = TestFixture::kLargeKeyNum; i < TestFixture::kLargeKeyNum - 1; ++i) {
     TestFixture::VerifyInsert(i, i);
   }
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
     TestFixture::VerifyUpdate(i, i, true);
   }
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
+    TestFixture::VerifyRead(i, i, true);
+  }
+}
+
+TYPED_TEST(BzTreeFixture, Update_DeletedKeysWithSMOs_UpdateFail)
+{
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
+    TestFixture::VerifyInsert(i, i);
+  }
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
+    TestFixture::VerifyDelete(i);
+  }
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
+    TestFixture::VerifyUpdate(i, i, true);
+  }
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
     TestFixture::VerifyRead(i, i, true);
   }
 }
@@ -557,25 +610,51 @@ TYPED_TEST(BzTreeFixture, Delete_NotInsertedKeys_DeleteFail)
   }
 }
 
-TYPED_TEST(BzTreeFixture, Delete_DuplicateKeysWithSplit_DeleteSucceed)
+TYPED_TEST(BzTreeFixture, Delete_DeletedKeys_DeleteFail)
 {
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
     TestFixture::VerifyInsert(i, i);
   }
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
     TestFixture::VerifyDelete(i);
   }
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
+    TestFixture::VerifyDelete(i, true);
+  }
+}
+
+TYPED_TEST(BzTreeFixture, Delete_DuplicateKeysWithSMOs_DeleteSucceed)
+{
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
+    TestFixture::VerifyInsert(i, i);
+  }
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
+    TestFixture::VerifyDelete(i);
+  }
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
     TestFixture::VerifyRead(i, i, true);
   }
 }
 
-TYPED_TEST(BzTreeFixture, Delete_NotInsertedKeysWithSplit_DeleteFail)
+TYPED_TEST(BzTreeFixture, Delete_NotInsertedKeysWithSMOs_DeleteFail)
 {
-  for (size_t i = TestFixture::max_record_num; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = TestFixture::kLargeKeyNum; i < TestFixture::kLargeKeyNum - 1; ++i) {
     TestFixture::VerifyInsert(i, i);
   }
-  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
+    TestFixture::VerifyDelete(i, true);
+  }
+}
+
+TYPED_TEST(BzTreeFixture, Delete_DeletedKeysWithSMOs_DeleteFail)
+{
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
+    TestFixture::VerifyInsert(i, i);
+  }
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
+    TestFixture::VerifyDelete(i);
+  }
+  for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
     TestFixture::VerifyDelete(i, true);
   }
 }
