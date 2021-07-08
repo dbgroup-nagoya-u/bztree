@@ -252,6 +252,21 @@ class BzTreeFixture : public testing::Test
       EXPECT_EQ(ReturnCode::kSuccess, rc);
     }
   }
+
+  void
+  VerifyUpdate(  //
+      const size_t key_id,
+      const size_t payload_id,
+      const bool expect_fail = false)
+  {
+    auto rc = bztree.Update(keys[key_id], key_length, payloads[payload_id], payload_length);
+
+    if (expect_fail) {
+      EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
+    } else {
+      EXPECT_EQ(ReturnCode::kSuccess, rc);
+    }
+  }
 };
 
 /*##################################################################################################
@@ -516,34 +531,55 @@ TYPED_TEST(BzTreeFixture, Insert_DuplicateKeysWithSplit_InsertFail)
   }
 }
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Update operation
-//  *------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------
+ * Update operation
+ *------------------------------------------------------------------------------------------------*/
 
-// TYPED_TEST(BzTreeFixture, Update_SingleKey_ReadUpdatedValue)
-// {
-//   bztree.Insert(keys[1], kKeyLength, payloads[2], kPayloadLength);
-//   bztree.Update(keys[1], kKeyLength, payloads[2], kPayloadLength);
+TYPED_TEST(BzTreeFixture, Update_DuplicateKeys_ReadUpdatedValues)
+{
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
+    TestFixture::VerifyInsert(i, i);
+  }
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
+    TestFixture::VerifyUpdate(i, i + 1);
+  }
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
+    TestFixture::VerifyRead(i, i + 1);
+  }
+}
 
-//   VerifyRead(keys[1], payloads[2]);
-// }
+TYPED_TEST(BzTreeFixture, Update_NotInsertedKeys_UpdateFail)
+{
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
+    TestFixture::VerifyUpdate(i, i, true);
+  }
+  for (size_t i = 0; i < TestFixture::kSmallKeyNum; ++i) {
+    TestFixture::VerifyRead(i, i, true);
+  }
+}
 
-// TYPED_TEST(BzTreeFixture, Update_NotPresentKey_UpdatedFailed)
-// {
-//   rc = bztree.Update(keys[1], kKeyLength, payloads[1], kPayloadLength);
+TYPED_TEST(BzTreeFixture, Update_DuplicateKeysWithSplit_ReadUpdatedValues)
+{
+  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+    TestFixture::VerifyInsert(i, i);
+  }
+  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+    TestFixture::VerifyUpdate(i, i + 1);
+  }
+  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+    TestFixture::VerifyRead(i, i + 1);
+  }
+}
 
-//   EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
-// }
-
-// TYPED_TEST(BzTreeFixture, Update_DeletedKey_UpdateFailed)
-// {
-//   bztree.Insert(keys[1], kKeyLength, payloads[2], kPayloadLength);
-//   bztree.Delete(keys[1], kKeyLength);
-
-//   rc = bztree.Update(keys[1], kKeyLength, payloads[2], kPayloadLength);
-
-//   EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
-// }
+TYPED_TEST(BzTreeFixture, Update_NotInsertedKeysWithSplit_UpdateFail)
+{
+  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+    TestFixture::VerifyUpdate(i, i, true);
+  }
+  for (size_t i = 0; i < TestFixture::max_record_num - 1; ++i) {
+    TestFixture::VerifyRead(i, i, true);
+  }
+}
 
 // /*--------------------------------------------------------------------------------------------------
 //  * Delete operation
