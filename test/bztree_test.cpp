@@ -61,13 +61,6 @@ class BzTreeFixture : public testing::Test
   static constexpr size_t kKeyLength = kWordLength;
   static constexpr size_t kPayloadLength = kWordLength;
 
-  static constexpr size_t kTestNodeSize = 256;          // a node can have 10 records (16 + 24 * 10)
-  static constexpr size_t kTestMinNodeSize = 89;        // a node with 3 records invokes merging
-  static constexpr size_t kTestMinFreeSpace = 24;       // keep free space with 1 record size
-  static constexpr size_t kTestExpectedFreeSpace = 72;  // expect free space can write 3 records
-  static constexpr size_t kTestMaxDeletedSize = 119;    // consolidate when 5 records are deleted
-  static constexpr size_t kTestMaxMergedSize = 137;     // a merged node has space for 5 records
-
   // actual keys and payloads
   size_t key_length;
   size_t payload_length;
@@ -78,10 +71,8 @@ class BzTreeFixture : public testing::Test
   size_t record_length;
   size_t max_record_num;
 
+  // a test target BzTree
   BzTree_t bztree = BzTree_t{};
-
-  ReturnCode rc;
-  std::unique_ptr<Record_t> record;
 
   /*################################################################################################
    * Setup/Teardown
@@ -145,62 +136,6 @@ class BzTreeFixture : public testing::Test
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
         delete[] payloads[index];
       }
-    }
-  }
-
-  /*################################################################################################
-   * Utility functions
-   *##############################################################################################*/
-
-  void
-  WriteOrderedKeys(  //
-      BzTree_t *bztree,
-      const size_t begin_index,
-      const size_t end_index)
-  {
-    assert(end_index < kKeyNumForTest);
-
-    for (size_t index = begin_index; index <= end_index; ++index) {
-      bztree->Write(keys[index], kKeyLength, payloads[index], kPayloadLength);
-    }
-  }
-
-  void
-  InsertOrderedKeys(  //
-      BzTree_t *bztree,
-      const size_t begin_index,
-      const size_t end_index)
-  {
-    assert(end_index < kKeyNumForTest);
-
-    for (size_t index = begin_index; index <= end_index; ++index) {
-      bztree->Insert(keys[index], kKeyLength, payloads[index], kPayloadLength);
-    }
-  }
-
-  void
-  UpdateOrderedKeys(  //
-      BzTree_t *bztree,
-      const size_t begin_index,
-      const size_t end_index)
-  {
-    assert(end_index + 1 < kKeyNumForTest);
-
-    for (size_t index = begin_index; index <= end_index; ++index) {
-      bztree->Update(keys[index], kKeyLength, payloads[index + 1], kPayloadLength);
-    }
-  }
-
-  void
-  DeleteOrderedKeys(  //
-      BzTree_t *bztree,
-      const size_t begin_index,
-      const size_t end_index)
-  {
-    assert(end_index < kKeyNumForTest);
-
-    for (size_t index = begin_index; index <= end_index; ++index) {
-      bztree->Delete(keys[index], kKeyLength);
     }
   }
 
