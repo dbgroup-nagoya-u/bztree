@@ -130,9 +130,11 @@ class InternalNodeFixture : public testing::Test
       // set a corresponding metadata
       const auto meta = Metadata{}.SetRecordInfo(offset, key_length, key_length + kWordLength);
       dummy_node->SetMetadata(i, meta);
+
+      offset -= offset & (kWordLength - 1);
     }
 
-    const auto status = StatusWord{}.AddRecordInfo(child_num, child_num * record_length, 0);
+    const auto status = StatusWord{}.AddRecordInfo(child_num, kPageSize - offset, 0);
     dummy_node->SetStatus(status);
     dummy_node->SetSortedCount(kDummyNodeNum);
 
