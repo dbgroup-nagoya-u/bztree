@@ -22,8 +22,6 @@
 
 #include "gtest/gtest.h"
 
-using std::byte;
-
 namespace dbgroup::index::bztree
 {
 // use a supper template to define key-payload pair templates
