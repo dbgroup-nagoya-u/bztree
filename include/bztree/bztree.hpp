@@ -362,7 +362,8 @@ class BzTree
       }
       const auto sibling_status = sibling_node->GetStatusWordProtected();
       if (sibling_status.IsFrozen()) {
-        continue;
+        if (sibling_is_left) continue;
+        return false;
       }
 
       // pre-freezing of SMO targets
@@ -445,7 +446,8 @@ class BzTree
 
       const auto sibling_status = sibling_node->GetStatusWordProtected();
       if (sibling_status.IsFrozen()) {
-        continue;
+        if (sibling_is_left) continue;
+        return;
       }
 
       // pre-freezing of SMO targets
