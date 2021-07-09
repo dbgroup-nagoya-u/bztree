@@ -40,6 +40,7 @@ struct KeyPayloadPair {
 template <class KeyPayloadPair>
 class BzTreeFixture : public testing::Test
 {
+ protected:
   // extract key-payload types
   using Key = typename KeyPayloadPair::Key;
   using Payload = typename KeyPayloadPair::Payload;
@@ -71,11 +72,10 @@ class BzTreeFixture : public testing::Test
 
   // constant values for testing
   static constexpr size_t kIndexEpoch = 1;
-  static constexpr size_t kKeyNumForTest = 4096;
-  static constexpr size_t kSmallKeyNum = 16;
-  static constexpr size_t kLargeKeyNum = 2048;
+  static constexpr size_t kKeyNumForTest = 8192;
   static constexpr size_t kKeyLength = kWordLength;
   static constexpr size_t kPayloadLength = kWordLength;
+  static constexpr size_t kRandomSeed = 10;
 #ifdef BZTREE_TEST_THREAD_NUM
   static constexpr size_t kThreadNum = BZTREE_TEST_THREAD_NUM;
 #else
@@ -292,6 +292,61 @@ class BzTreeFixture : public testing::Test
       }
     }
   }
+
+  void
+  VerifyWrite()
+  {
+    const size_t write_num = (kKeyNumForTest - 1) / kThreadNum;
+
+    auto written_ids = RunOverMultiThread(write_num, kThreadNum, WriteType::kWrite);
+    for (auto &&id : written_ids) {
+      VerifyRead(id, id);
+    }
+  }
+
+  void
+  VerifyInsert()
+  {
+    const size_t write_num = (kKeyNumForTest - 1) / kThreadNum;
+
+    auto written_ids = RunOverMultiThread(write_num, kThreadNum, WriteType::kInsert);
+    for (auto &&id : written_ids) {
+      VerifyRead(id, id);
+    }
+
+    written_ids = RunOverMultiThread(write_num, kThreadNum, WriteType::kInsert);
+    EXPECT_EQ(0, written_ids.size());
+  }
+
+  void
+  VerifyUpdate()
+  {
+    const size_t write_num = (kKeyNumForTest - 1) / kThreadNum;
+
+    auto written_ids = RunOverMultiThread(write_num, kThreadNum, WriteType::kUpdate);
+    EXPECT_EQ(0, written_ids.size());
+
+    RunOverMultiThread(write_num, kThreadNum, WriteType::kInsert);
+    written_ids = RunOverMultiThread(write_num, kThreadNum, WriteType::kUpdate);
+    for (auto &&id : written_ids) {
+      VerifyRead(id, id + 1);
+    }
+  }
+
+  void
+  VerifyDelete()
+  {
+    const size_t write_num = (kKeyNumForTest - 1) / kThreadNum;
+
+    auto written_ids = RunOverMultiThread(write_num, kThreadNum, WriteType::kDelete);
+    EXPECT_EQ(0, written_ids.size());
+
+    RunOverMultiThread(write_num, kThreadNum, WriteType::kInsert);
+    written_ids = RunOverMultiThread(write_num, kThreadNum, WriteType::kDelete);
+    for (auto &&id : written_ids) {
+      VerifyRead(id, id, true);
+    }
+  }
 };
 
 /*##################################################################################################
@@ -314,5 +369,25 @@ TYPED_TEST_CASE(BzTreeFixture, KeyPayloadPairs);
 /*##################################################################################################
  * Unit test definitions
  *################################################################################################*/
+
+TYPED_TEST(BzTreeFixture, Write_MultiThreads_ReadWrittenPayloads)
+{  //
+  TestFixture::VerifyWrite();
+}
+
+TYPED_TEST(BzTreeFixture, Insert_MultiThreads_ReadInsertedPayloads)
+{  //
+  TestFixture::VerifyInsert();
+}
+
+TYPED_TEST(BzTreeFixture, Update_MultiThreads_ReadUpdatedPayloads)
+{  //
+  TestFixture::VerifyUpdate();
+}
+
+TYPED_TEST(BzTreeFixture, Delete_MultiThreads_ReadFailWithDeletedKeys)
+{  //
+  TestFixture::VerifyDelete();
+}
 
 }  // namespace dbgroup::index::bztree
