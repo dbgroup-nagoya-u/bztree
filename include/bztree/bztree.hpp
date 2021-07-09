@@ -142,7 +142,7 @@ class BzTree
     return block_size;
   }
 
-  constexpr std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
+  constexpr auto
   ScanPerLeaf(  //
       const Key *begin_key,
       const bool begin_is_closed,
@@ -157,11 +157,11 @@ class BzTree
 
     if (node_key == nullptr
         || (end_key != nullptr
-            && (Compare{}(*end_key, CastKey<Key>(node_key))
-                || IsEqual<Compare>(*end_key, CastKey<Key>(node_key))))) {
-      return {ReturnCode::kSuccess, std::move(scan_results)};
+            && (Compare{}(*end_key, Cast<Key>(node_key))
+                || IsEqual<Compare>(*end_key, Cast<Key>(node_key))))) {
+      return std::make_pair(ReturnCode::kSuccess, std::move(scan_results));
     } else {
-      return {ReturnCode::kScanInProgress, std::move(scan_results)};
+      return std::make_pair(ReturnCode::kScanInProgress, std::move(scan_results));
     }
   }
 
@@ -572,85 +572,6 @@ class BzTree
       return std::make_pair(ReturnCode::kSuccess, std::move(payload));
     }
     return std::make_pair(ReturnCode::kKeyNotExist, std::move(payload));
-  }
-
-  constexpr std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
-  Scan(  //
-      const Key &begin_key_orig,
-      const bool begin_is_closed_orig,
-      const Key &end_key,
-      const bool end_is_closed)
-  {
-    Key begin_key = begin_key_orig;
-    bool begin_is_closed = begin_is_closed_orig;
-
-    std::vector<std::unique_ptr<Record_t>> all_results;
-    while (true) {
-      auto [rc, leaf_results] = ScanPerLeaf(&begin_key, begin_is_closed, &end_key, end_is_closed);
-      // concatanate scan results for each leaf node
-      all_results.reserve(all_results.size() + leaf_results.size());
-      all_results.insert(all_results.end(), std::make_move_iterator(leaf_results.begin()),
-                         std::make_move_iterator(leaf_results.end()));
-      if (rc == ReturnCode::kScanInProgress) {
-        begin_key = all_results.back()->GetKey();
-        begin_is_closed = false;
-      } else {
-        break;
-      }
-    }
-    return {ReturnCode::kSuccess, std::move(all_results)};
-  }
-
-  constexpr std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
-  ScanLess(  //
-      const Key &end_key,
-      const bool end_is_closed)
-  {
-    Key tmp_key;
-    Key *begin_key = nullptr;
-    bool begin_is_closed = false;
-
-    std::vector<std::unique_ptr<Record_t>> all_results;
-    while (true) {
-      auto [rc, leaf_results] = ScanPerLeaf(begin_key, begin_is_closed, &end_key, end_is_closed);
-      // concatanate scan results for each leaf node
-      all_results.reserve(all_results.size() + leaf_results.size());
-      all_results.insert(all_results.end(), std::make_move_iterator(leaf_results.begin()),
-                         std::make_move_iterator(leaf_results.end()));
-      if (rc == ReturnCode::kScanInProgress) {
-        tmp_key = all_results.back()->GetKey();
-        begin_key = &tmp_key;
-        begin_is_closed = false;
-      } else {
-        break;
-      }
-    }
-    return {ReturnCode::kSuccess, std::move(all_results)};
-  }
-
-  constexpr std::pair<ReturnCode, std::vector<std::unique_ptr<Record_t>>>
-  ScanGreater(  //
-      const Key &begin_key_orig,
-      const bool begin_is_closed_orig)
-  {
-    Key begin_key = begin_key_orig;
-    bool begin_is_closed = begin_is_closed_orig;
-
-    std::vector<std::unique_ptr<Record_t>> all_results;
-    while (true) {
-      auto [rc, leaf_results] = ScanPerLeaf(&begin_key, begin_is_closed, nullptr, false);
-      // concatanate scan results for each leaf node
-      all_results.reserve(all_results.size() + leaf_results.size());
-      all_results.insert(all_results.end(), std::make_move_iterator(leaf_results.begin()),
-                         std::make_move_iterator(leaf_results.end()));
-      if (rc == ReturnCode::kScanInProgress) {
-        begin_key = all_results.back()->GetKey();
-        begin_is_closed = false;
-      } else {
-        break;
-      }
-    }
-    return {ReturnCode::kSuccess, std::move(all_results)};
   }
 
   /*################################################################################################

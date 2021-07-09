@@ -56,7 +56,7 @@ class BzTreeFixture : public testing::Test
 
   // constant values for testing
   static constexpr size_t kIndexEpoch = 1;
-  static constexpr size_t kKeyNumForTest = 10240;
+  static constexpr size_t kKeyNumForTest = 4096;
   static constexpr size_t kSmallKeyNum = 16;
   static constexpr size_t kLargeKeyNum = 2048;
   static constexpr size_t kKeyLength = kWordLength;
@@ -237,137 +237,9 @@ TYPED_TEST(BzTreeFixture, Read_NotPresentKey_ReadFail)
   TestFixture::VerifyRead(0, 0, true);
 }
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Scan operation
-//  *------------------------------------------------------------------------------------------------*/
-
-// TYPED_TEST(BzTreeFixture, Scan_EmptyNode_NoResult)
-// {
-//   auto [rc, scan_results] = bztree.Scan(keys[1], true, keys[10], true);
-
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(0, scan_results.size());
-// }
-
-// TYPED_TEST(BzTreeFixture, Scan_BothClosed_ScanTargetValues)
-// {
-//   WriteOrderedKeys(&bztree, 1, 10);
-
-//   auto [rc, scan_results] = bztree.Scan(keys[4], true, keys[6], true);
-
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(3, scan_results.size());
-//   VerifyKey(keys[4], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[4], scan_results[0]->GetPayload());
-//   VerifyKey(keys[5], scan_results[1]->GetKey());
-//   VerifyPayload(payloads[5], scan_results[1]->GetPayload());
-//   VerifyKey(keys[6], scan_results[2]->GetKey());
-//   VerifyPayload(payloads[6], scan_results[2]->GetPayload());
-// }
-
-// TYPED_TEST(BzTreeFixture, Scan_LeftClosed_ScanTargetValues)
-// {
-//   WriteOrderedKeys(&bztree, 1, 10);
-
-//   auto [rc, scan_results] = bztree.Scan(keys[8], true, keys[10], false);
-
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   VerifyKey(keys[8], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[8], scan_results[0]->GetPayload());
-//   VerifyKey(keys[9], scan_results[1]->GetKey());
-//   VerifyPayload(payloads[9], scan_results[1]->GetPayload());
-// }
-
-// TYPED_TEST(BzTreeFixture, Scan_RightClosed_ScanTargetValues)
-// {
-//   WriteOrderedKeys(&bztree, 1, 10);
-
-//   auto [rc, scan_results] = bztree.Scan(keys[8], false, keys[10], true);
-
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   VerifyKey(keys[9], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[9], scan_results[0]->GetPayload());
-//   VerifyKey(keys[10], scan_results[1]->GetKey());
-//   VerifyPayload(payloads[10], scan_results[1]->GetPayload());
-// }
-
-// TYPED_TEST(BzTreeFixture, Scan_BothOpened_ScanTargetValues)
-// {
-//   WriteOrderedKeys(&bztree, 1, 10);
-
-//   auto [rc, scan_results] = bztree.Scan(keys[8], false, keys[10], false);
-
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(1, scan_results.size());
-//   VerifyKey(keys[9], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[9], scan_results[0]->GetPayload());
-// }
-
-// TYPED_TEST(BzTreeFixture, ScanLess_EndClosed_ScanTargetValues)
-// {
-//   WriteOrderedKeys(&bztree, 1, 10);
-
-//   auto [rc, scan_results] = bztree.ScanLess(keys[2], true);
-
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   VerifyKey(keys[1], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[1], scan_results[0]->GetPayload());
-//   VerifyKey(keys[2], scan_results[1]->GetKey());
-//   VerifyPayload(payloads[2], scan_results[1]->GetPayload());
-// }
-
-// TYPED_TEST(BzTreeFixture, ScanGreater_BeginClosed_ScanTargetValues)
-// {
-//   WriteOrderedKeys(&bztree, 1, 10);
-
-//   auto [rc, scan_results] = bztree.ScanGreater(keys[9], true);
-
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   VerifyKey(keys[9], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[9], scan_results[0]->GetPayload());
-//   VerifyKey(keys[10], scan_results[1]->GetKey());
-//   VerifyPayload(payloads[10], scan_results[1]->GetPayload());
-// }
-
-// TYPED_TEST(BzTreeFixture, ScanLess_LeftOutsideRange_NoResults)
-// {
-//   WriteOrderedKeys(&bztree, 5, 10);
-
-//   auto [rc, scan_results] = bztree.ScanLess(keys[3], false);
-
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(0, scan_results.size());
-// }
-
-// TYPED_TEST(BzTreeFixture, ScanGreater_RightOutsideRange_NoResults)
-// {
-//   WriteOrderedKeys(&bztree, 1, 4);
-
-//   auto [rc, scan_results] = bztree.ScanGreater(keys[5], false);
-
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(0, scan_results.size());
-// }
-
-// TYPED_TEST(BzTreeFixture, Scan_WithUpdateDelete_ScanLatestValues)
-// {
-//   WriteOrderedKeys(&bztree, 1, 5);
-//   bztree.Update(keys[2], kKeyLength, payloads[0], kPayloadLength);
-//   bztree.Delete(keys[3], kKeyLength);
-
-//   auto [rc, scan_results] = bztree.Scan(keys[2], true, keys[4], true);
-
-//   EXPECT_EQ(ReturnCode::kSuccess, rc);
-//   EXPECT_EQ(2, scan_results.size());
-//   VerifyKey(keys[2], scan_results[0]->GetKey());
-//   VerifyPayload(payloads[0], scan_results[0]->GetPayload());
-//   VerifyKey(keys[4], scan_results[1]->GetKey());
-//   VerifyPayload(payloads[4], scan_results[1]->GetPayload());
-// }
+/*--------------------------------------------------------------------------------------------------
+ * Scan operation
+ *------------------------------------------------------------------------------------------------*/
 
 /*--------------------------------------------------------------------------------------------------
  * Write operation
@@ -559,7 +431,7 @@ TYPED_TEST(BzTreeFixture, Update_DuplicateKeysWithSMOs_ReadUpdatedValues)
 
 TYPED_TEST(BzTreeFixture, Update_NotInsertedKeysWithSMOs_UpdateFail)
 {
-  for (size_t i = TestFixture::kLargeKeyNum; i < TestFixture::kLargeKeyNum - 1; ++i) {
+  for (size_t i = TestFixture::kLargeKeyNum; i < TestFixture::kLargeKeyNum * 2 - 1; ++i) {
     TestFixture::VerifyInsert(i, i);
   }
   for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
@@ -638,7 +510,7 @@ TYPED_TEST(BzTreeFixture, Delete_DuplicateKeysWithSMOs_DeleteSucceed)
 
 TYPED_TEST(BzTreeFixture, Delete_NotInsertedKeysWithSMOs_DeleteFail)
 {
-  for (size_t i = TestFixture::kLargeKeyNum; i < TestFixture::kLargeKeyNum - 1; ++i) {
+  for (size_t i = TestFixture::kLargeKeyNum; i < TestFixture::kLargeKeyNum * 2 - 1; ++i) {
     TestFixture::VerifyInsert(i, i);
   }
   for (size_t i = 0; i < TestFixture::kLargeKeyNum - 1; ++i) {
