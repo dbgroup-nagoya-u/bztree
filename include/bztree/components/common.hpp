@@ -47,18 +47,14 @@ PayloadToNodeAddr(const void *payload)
   return *static_cast<const uintptr_t *>(payload);
 }
 
-template <class Key>
-constexpr Key
-CastKey(const void *addr)
+template <class T>
+constexpr T
+Cast(const void *addr)
 {
-  if constexpr (std::is_pointer_v<Key>) {
-    if constexpr (std::is_const_v<Key>) {
-      return static_cast<Key>(addr);
-    } else {
-      return static_cast<Key>(const_cast<void *>(addr));
-    }
+  if constexpr (std::is_same_v<T, char *>) {
+    return static_cast<T>(const_cast<void *>(addr));
   } else {
-    return *static_cast<const Key *>(addr);
+    return *static_cast<T *>(const_cast<void *>(addr));
   }
 }
 

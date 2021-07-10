@@ -2,7 +2,7 @@
 # Configure GoogleTest
 #--------------------------------------------------------------------------------------#
 
-configure_file(CMakeLists.txt.in googletest-download/CMakeLists.txt)
+configure_file(CMakeLists-googletest.txt.in googletest-download/CMakeLists.txt)
 execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
   RESULT_VARIABLE result
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/googletest-download )
@@ -83,12 +83,8 @@ ADD_BZTREE_TEST(record_test)
 ADD_BZTREE_TEST(status_word_test)
 ADD_BZTREE_TEST(metadata_test)
 ADD_BZTREE_TEST(base_node_test)
-ADD_BZTREE_TEST(leaf_node_uint64_test)
-ADD_BZTREE_TEST(leaf_node_cstr_test)
-ADD_BZTREE_TEST(leaf_node_uint64_multi_thread_test)
-ADD_BZTREE_TEST(leaf_node_cstr_multi_thread_test)
+ADD_BZTREE_TEST(leaf_node_test)
+ADD_BZTREE_TEST(leaf_node_multi_thread_test)
 ADD_BZTREE_TEST(internal_node_test)
-ADD_BZTREE_TEST(bztree_uint64_test)
-ADD_BZTREE_TEST(bztree_cstr_test)
-ADD_BZTREE_TEST(bztree_uint64_multi_thread_test)
-ADD_BZTREE_TEST(bztree_cstr_multi_thread_test)
+ADD_BZTREE_TEST(bztree_test)
+ADD_BZTREE_TEST(bztree_multi_thread_test)

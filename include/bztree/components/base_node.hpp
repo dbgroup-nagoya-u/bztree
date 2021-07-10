@@ -27,7 +27,6 @@
 
 #include "metadata.hpp"
 #include "mwcas/mwcas_descriptor.hpp"
-#include "record.hpp"
 #include "status_word.hpp"
 
 namespace dbgroup::index::bztree
@@ -38,8 +37,6 @@ using dbgroup::atomic::mwcas::ReadMwCASField;
 template <class Key, class Payload, class Compare = std::less<Key>>
 class alignas(kCacheLineSize) BaseNode
 {
-  using Record_t = Record<Key, Payload>;
-
  private:
   /*################################################################################################
    * Internal variables
@@ -157,35 +154,29 @@ class alignas(kCacheLineSize) BaseNode
     return ReadMwCASField<Metadata>(&meta_array_[index]);
   }
 
+  constexpr Key
+  GetKey(const Metadata meta) const
+  {
+    return Cast<Key>(GetKeyAddr(meta));
+  }
+
   constexpr void *
   GetKeyAddr(const Metadata meta) const
   {
-    const auto offset = meta.GetOffset();
-    return ShiftAddress(this, offset);
+    return ShiftAddress(this, meta.GetOffset());
   }
 
   constexpr std::pair<Key, size_t>
   GetKeyAndItsLength(const size_t index) const
   {
     const auto meta = GetMetadata(index);
-    return {CastKey<Key>(GetKeyAddr(meta)), meta.GetKeyLength()};
+    return {Cast<Key>(GetKeyAddr(meta)), meta.GetKeyLength()};
   }
 
   constexpr void *
   GetPayloadAddr(const Metadata meta) const
   {
-    const auto offset = meta.GetOffset() + meta.GetKeyLength();
-    return ShiftAddress(this, offset);
-  }
-
-  constexpr std::unique_ptr<Record_t>
-  GetRecord(const Metadata meta) const
-  {
-    const auto key_addr = this->GetKeyAddr(meta);
-    const auto key_length = meta.GetKeyLength();
-    const auto payload_length = meta.GetPayloadLength();
-
-    return Record_t::Create(key_addr, key_length, payload_length);
+    return ShiftAddress(this, meta.GetOffset() + meta.GetKeyLength());
   }
 
   void
@@ -216,64 +207,36 @@ class alignas(kCacheLineSize) BaseNode
     CastAddress<std::atomic<Metadata> *>(meta_array_ + index)->store(new_meta, mo_relax);
   }
 
-  void
-  SetKey(  //
-      const Key &key,
-      const size_t key_length,
-      const size_t offset)
-  {
-    const auto key_ptr = ShiftAddress(this, offset);
-    if constexpr (std::is_pointer_v<Key>) {
-      memcpy(key_ptr, key, key_length);
-    } else {
-      memcpy(key_ptr, &key, key_length);
-    }
-  }
-
-  void
-  SetPayload(  //
-      const Payload &payload,
-      const size_t payload_length,
-      const size_t offset)
-  {
-    const auto payload_ptr = ShiftAddress(this, offset);
-    if constexpr (std::is_pointer_v<Payload>) {
-      memcpy(payload_ptr, payload, payload_length);
-    } else {
-      memcpy(payload_ptr, &payload, payload_length);
-    }
-  }
-
   constexpr size_t
-  SetRecord(  //
-      const Key &key,
-      const size_t key_length,
-      const Payload &payload,
-      const size_t payload_length,
-      size_t offset)
+  SetKey(  //
+      size_t offset,
+      const Key key,
+      const size_t key_length)
   {
-    offset -= payload_length;
-    SetPayload(payload, payload_length, offset);
-    if (key_length > 0) {
+    if constexpr (std::is_same_v<Key, char *>) {
       offset -= key_length;
-      SetKey(key, key_length, offset);
+      memcpy(ShiftAddress(this, offset), key, key_length);
+    } else {
+      offset -= sizeof(Key);
+      memcpy(ShiftAddress(this, offset), &key, sizeof(Key));
     }
     return offset;
   }
 
+  template <class T>
   constexpr size_t
-  CopyRecord(  //
-      const BaseNode *original_node,
-      const Metadata meta,
-      size_t offset)
+  SetPayload(  //
+      size_t offset,
+      const T payload,
+      const size_t payload_length)
   {
-    const auto total_length = meta.GetTotalLength();
-
-    offset -= total_length;
-    const auto dest = ShiftAddress(this, offset);
-    const auto src = original_node->GetKeyAddr(meta);
-    memcpy(dest, src, total_length);
-
+    if constexpr (std::is_same_v<T, char *>) {
+      offset -= payload_length;
+      memcpy(ShiftAddress(this, offset), payload, payload_length);
+    } else {
+      offset -= sizeof(T);
+      memcpy(ShiftAddress(this, offset), &payload, sizeof(T));
+    }
     return offset;
   }
 
@@ -296,15 +259,16 @@ class alignas(kCacheLineSize) BaseNode
     desc.AddMwCASTarget(meta_array_ + index, old_meta, new_meta);
   }
 
+  template <class T>
   void
-  SetChildForMwCAS(  //
+  SetPayloadForMwCAS(  //
       MwCASDescriptor &desc,
-      const size_t index,
-      const void *old_addr,
-      const void *new_addr)
+      const Metadata meta,
+      const T old_payload,
+      const T new_payload)
   {
-    desc.AddMwCASTarget(GetPayloadAddr(GetMetadata(index)), reinterpret_cast<uintptr_t>(old_addr),
-                        reinterpret_cast<uintptr_t>(new_addr));
+    desc.AddMwCASTarget(ShiftAddress(this, meta.GetOffset() + meta.GetKeyLength()),  //
+                        old_payload, new_payload);
   }
 
   /*################################################################################################
@@ -360,7 +324,7 @@ class alignas(kCacheLineSize) BaseNode
 
     while (begin_index <= end_index && index < sorted_count) {
       const auto meta = GetMetadataProtected(index);
-      const auto index_key = CastKey<Key>(GetKeyAddr(meta));
+      const auto index_key = Cast<Key>(GetKeyAddr(meta));
       const auto index_key_length = meta.GetKeyLength();
 
       if (index_key_length == 0 || Compare{}(key, index_key)) {

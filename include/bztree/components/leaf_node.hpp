@@ -36,7 +36,6 @@ class LeafNode
   using BaseNode_t = BaseNode<Key, Payload, Compare>;
   using KeyExistence = typename BaseNode_t::KeyExistence;
   using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
-  using Record_t = Record<Key, Payload>;
 
  private:
   /*################################################################################################
@@ -74,7 +73,7 @@ class LeafNode
   static constexpr std::pair<KeyExistence, size_t>
   SearchUnsortedMetaToWrite(  //
       const BaseNode_t *node,
-      const Key &key,
+      const Key key,
       const int64_t begin_index,
       const int64_t sorted_count,
       const size_t index_epoch)
@@ -89,7 +88,7 @@ class LeafNode
         continue;  // failed record
       }
 
-      const auto target_key = CastKey<Key>(node->GetKeyAddr(meta));
+      const auto target_key = Cast<Key>(node->GetKeyAddr(meta));
       if (IsEqual<Compare>(key, target_key)) {
         if (meta.IsVisible()) {
           return {KeyExistence::kExist, index};
@@ -103,7 +102,7 @@ class LeafNode
   static constexpr std::pair<KeyExistence, size_t>
   CheckUniqueness(  //
       const BaseNode_t *node,
-      const Key &key,
+      const Key key,
       const int64_t record_count,
       const size_t index_epoch)
   {
@@ -120,7 +119,7 @@ class LeafNode
   static constexpr std::pair<KeyExistence, size_t>
   SearchUnsortedMetaToRead(  //
       const BaseNode_t *node,
-      const Key &key,
+      const Key key,
       const int64_t end_index,
       const int64_t record_count)
   {
@@ -130,7 +129,7 @@ class LeafNode
         continue;
       }
 
-      const auto target_key = CastKey<Key>(node->GetKeyAddr(meta));
+      const auto target_key = Cast<Key>(node->GetKeyAddr(meta));
       if (IsEqual<Compare>(key, target_key)) {
         if (meta.IsVisible()) {
           return {KeyExistence::kExist, index};
@@ -144,7 +143,7 @@ class LeafNode
   static constexpr std::pair<KeyExistence, size_t>
   SearchMetadataToRead(  //
       const BaseNode_t *node,
-      const Key &key,
+      const Key key,
       const size_t record_count)
   {
     const auto [existence, index] =
@@ -153,6 +152,103 @@ class LeafNode
       return {existence, index};
     } else {
       return node->SearchSortedMetadata(key, true);
+    }
+  }
+
+  static constexpr size_t
+  GetAlignedSize(const size_t block_size)
+  {
+    if constexpr (!std::is_same_v<Payload, char *> && sizeof(Payload) == kWordLength) {
+      if constexpr (std::is_same_v<Key, char *>) {
+        const auto align_size = block_size & (kWordLength - 1);
+        if (align_size > 0) {
+          return block_size + (kWordLength - align_size);
+        }
+      } else if constexpr (sizeof(Key) % kWordLength != 0) {
+        constexpr auto kAlignedSize = sizeof(Key) - (sizeof(Key) % kWordLength);
+        return block_size + kAlignedSize;
+      }
+    }
+    return block_size;
+  }
+
+  static constexpr auto
+  GetPayload(  //
+      const BaseNode_t *node,
+      const Metadata meta)
+  {
+    if constexpr (std::is_same_v<Payload, char *>) {
+      const auto payload_length = meta.GetPayloadLength();
+      auto payload = malloc(payload_length);
+      memcpy(payload, node->GetPayloadAddr(meta), payload_length);
+      return std::unique_ptr<char>(static_cast<char *>(payload));
+    } else {
+      return Cast<Payload>(node->GetPayloadAddr(meta));
+    }
+  }
+
+  static constexpr auto
+  GetRecord(  //
+      const BaseNode_t *node,
+      const Metadata meta)
+  {
+    const auto record_addr = node->GetKeyAddr(meta);
+    if constexpr (std::is_same_v<Key, char *> && std::is_same_v<Payload, char *>) {
+      const auto key_length = meta.GetKeyLength();
+      const auto payload_length = meta.GetPayloadLength();
+      return VarRecord::Create(record_addr, key_length, payload_length);
+    } else if constexpr (std::is_same_v<Key, char *>) {
+      const auto key_length = meta.GetKeyLength();
+      return VarKeyRecord<Payload>::Create(record_addr, key_length);
+    } else if constexpr (std::is_same_v<Payload, char *>) {
+      const auto payload_length = meta.GetPayloadLength();
+      return VarPayloadRecord<Key>::Create(record_addr, payload_length);
+    } else {
+      return Record<Key, Payload>{record_addr};
+    }
+  }
+
+  static constexpr auto
+  CreateScanResults(  //
+      const BaseNode_t *node,
+      const std::vector<std::pair<Key, Metadata>> &meta_arr)
+  {
+    if constexpr (std::is_same_v<Key, char *> && std::is_same_v<Payload, char *>) {
+      std::vector<std::unique_ptr<VarRecord>> scan_results;
+      scan_results.reserve(meta_arr.size());
+      for (auto &&[key, meta] : meta_arr) {
+        if (meta.IsVisible()) {
+          scan_results.emplace_back(GetRecord(node, meta));
+        }
+      }
+      return scan_results;
+    } else if constexpr (std::is_same_v<Key, char *>) {
+      std::vector<std::unique_ptr<VarKeyRecord<Payload>>> scan_results;
+      scan_results.reserve(meta_arr.size());
+      for (auto &&[key, meta] : meta_arr) {
+        if (meta.IsVisible()) {
+          scan_results.emplace_back(GetRecord(node, meta));
+        }
+      }
+      return scan_results;
+    } else if constexpr (std::is_same_v<Payload, char *>) {
+      std::vector<std::unique_ptr<VarPayloadRecord<Key>>> scan_results;
+      scan_results.reserve(meta_arr.size());
+      for (auto &&[key, meta] : meta_arr) {
+        if (meta.IsVisible()) {
+          scan_results.emplace_back(GetRecord(node, meta));
+        }
+      }
+      return scan_results;
+    } else {
+      std::vector<Record<Key, Payload>> scan_results;
+      scan_results.reserve(meta_arr.size());
+      for (auto &&[key, meta] : meta_arr) {
+        if (meta.IsVisible()) {
+          scan_results.emplace_back(GetRecord(node, meta));
+        }
+      }
+      return scan_results;
     }
   }
 
@@ -168,13 +264,41 @@ class LeafNode
     for (auto iter = begin_iter; iter != end_iter; ++record_count, ++iter) {
       // copy a record
       const auto [key, meta] = *iter;
-      offset = copied_node->CopyRecord(original_node, meta, offset);
+      offset = CopyRecord(copied_node, offset, original_node, meta);
       // copy metadata
       const auto new_meta = meta.UpdateOffset(offset);
       copied_node->SetMetadata(record_count, new_meta);
     }
-    copied_node->SetStatus(StatusWord{}.AddRecordInfo(record_count, kPageSize - offset, 0));
+    const auto aligned_block_size = GetAlignedSize(kPageSize - offset);
+    copied_node->SetStatus(StatusWord{}.AddRecordInfo(record_count, aligned_block_size, 0));
     copied_node->SetSortedCount(record_count);
+  }
+
+  static constexpr size_t
+  CopyRecord(  //
+      BaseNode_t *copied_node,
+      size_t offset,
+      const BaseNode_t *original_node,
+      const Metadata meta)
+  {
+    if constexpr (!std::is_same_v<Payload, char *> && sizeof(Payload) == kWordLength) {
+      // align memory address
+      if constexpr (std::is_same_v<Key, char *>) {
+        offset -= (offset & (kWordLength - 1));
+      } else if constexpr (sizeof(Key) % kWordLength != 0) {
+        constexpr auto kAlignedSize = sizeof(Key) - (sizeof(Key) % kWordLength);
+        offset -= kAlignedSize;
+      }
+    }
+
+    const auto total_length = meta.GetTotalLength();
+
+    offset -= total_length;
+    const auto dest = ShiftAddress(copied_node, offset);
+    const auto src = original_node->GetKeyAddr(meta);
+    memcpy(dest, src, total_length);
+
+    return offset;
   }
 
  public:
@@ -182,22 +306,27 @@ class LeafNode
    * Read operations
    *##############################################################################################*/
 
-  static constexpr std::pair<NodeReturnCode, std::unique_ptr<Record_t>>
+  static constexpr auto
   Read(  //
       const BaseNode_t *node,
-      const Key &key)
+      const Key key)
   {
     const auto status = node->GetStatusWordProtected();
     const auto [existence, index] = SearchMetadataToRead(node, key, status.GetRecordCount());
     if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
-      return {NodeReturnCode::kKeyNotExist, nullptr};
+      if constexpr (std::is_same_v<Payload, char *>) {
+        return std::make_pair(NodeReturnCode::kKeyNotExist,
+                              static_cast<std::unique_ptr<char>>(nullptr));
+      } else {
+        return std::make_pair(NodeReturnCode::kKeyNotExist, Payload{});
+      }
     } else {
       const auto meta = node->GetMetadataProtected(index);
-      return {NodeReturnCode::kSuccess, node->GetRecord(meta)};
+      return std::make_pair(NodeReturnCode::kSuccess, GetPayload(node, meta));
     }
   }
 
-  static constexpr std::pair<NodeReturnCode, std::vector<std::unique_ptr<Record_t>>>
+  static constexpr auto
   Scan(  //
       const BaseNode_t *node,
       const Key *begin_key,
@@ -216,7 +345,7 @@ class LeafNode
     // search unsorted metadata in reverse order
     for (int64_t index = record_count - 1; index >= sorted_count; --index) {
       const auto meta = node->GetMetadataProtected(index);
-      const auto key = CastKey<Key>(node->GetKeyAddr(meta));
+      const auto key = Cast<Key>(node->GetKeyAddr(meta));
       if (IsInRange<Compare>(key, begin_key, begin_is_closed, end_key, end_is_closed)
           && (meta.IsVisible() || meta.IsDeleted())) {
         meta_arr.emplace_back(key, meta);
@@ -228,7 +357,7 @@ class LeafNode
         (begin_key == nullptr) ? 0 : node->SearchSortedMetadata(*begin_key, begin_is_closed).second;
     for (int64_t index = begin_index; index < sorted_count; ++index) {
       const auto meta = node->GetMetadataProtected(index);
-      const auto key = CastKey<Key>(node->GetKeyAddr(meta));
+      const auto key = Cast<Key>(node->GetKeyAddr(meta));
       if (IsInRange<Compare>(key, begin_key, begin_is_closed, end_key, end_is_closed)) {
         meta_arr.emplace_back(key, meta);
         if (end_key != nullptr && end_is_closed && IsEqual<Compare>(key, *end_key)) {
@@ -244,15 +373,7 @@ class LeafNode
     auto end_iter = std::unique(meta_arr.begin(), meta_arr.end(), PairEqual{});
     meta_arr.erase(end_iter, meta_arr.end());
 
-    // copy live records for return
-    std::vector<std::unique_ptr<Record_t>> scan_results;
-    scan_results.reserve(meta_arr.size());
-    for (auto &&[key, meta] : meta_arr) {
-      if (meta.IsVisible()) {
-        scan_results.emplace_back(node->GetRecord(meta));
-      }
-    }
-    return {NodeReturnCode::kSuccess, std::move(scan_results)};
+    return std::make_pair(NodeReturnCode::kSuccess, CreateScanResults(node, meta_arr));
   }
 
   /*################################################################################################
@@ -262,17 +383,18 @@ class LeafNode
   static constexpr std::pair<NodeReturnCode, StatusWord>
   Write(  //
       BaseNode_t *node,
-      const Key &key,
+      const Key key,
       const size_t key_length,
-      const Payload &payload,
+      const Payload payload,
       const size_t payload_length,
       const size_t index_epoch = 1)
   {
     // variables and constants shared in Phase 1 & 2
+    const auto total_length = key_length + payload_length;
+    const auto block_size = GetAlignedSize(total_length);
+    const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
     StatusWord current_status;
     size_t record_count;
-    const auto total_length = key_length + payload_length;
-    const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: reserve free space to write a record
@@ -283,13 +405,13 @@ class LeafNode
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
-      if (current_status.GetOccupiedSize() + kWordLength + total_length > kPageSize) {
+      if (current_status.GetOccupiedSize() + kWordLength + block_size > kPageSize) {
         return {NodeReturnCode::kNoSpace, StatusWord{}};
       }
 
       // prepare for MwCAS
       record_count = current_status.GetRecordCount();
-      const auto new_status = current_status.AddRecordInfo(1, total_length, 0);
+      const auto new_status = current_status.AddRecordInfo(1, block_size, 0);
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
@@ -304,7 +426,8 @@ class LeafNode
 
     // insert a record
     auto offset = kPageSize - current_status.GetBlockSize();
-    offset = node->SetRecord(key, key_length, payload, payload_length, offset);
+    offset = node->SetPayload(offset, payload, payload_length);
+    offset = node->SetKey(offset, key, key_length);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = in_progress_meta.SetRecordInfo(offset, key_length, total_length);
@@ -329,17 +452,18 @@ class LeafNode
   static constexpr std::pair<NodeReturnCode, StatusWord>
   Insert(  //
       BaseNode_t *node,
-      const Key &key,
+      const Key key,
       const size_t key_length,
-      const Payload &payload,
+      const Payload payload,
       const size_t payload_length,
       const size_t index_epoch = 1)
   {
     // variables and constants shared in Phase 1 & 2
+    const auto total_length = key_length + payload_length;
+    const auto block_size = GetAlignedSize(total_length);
+    const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
     StatusWord current_status;
     size_t record_count;
-    const auto total_length = key_length + payload_length;
-    const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
 
     // local flags for insertion
     auto uniqueness = KeyExistence::kNotExist;
@@ -361,12 +485,12 @@ class LeafNode
         }
       }
 
-      if (current_status.GetOccupiedSize() + kWordLength + total_length > kPageSize) {
+      if (current_status.GetOccupiedSize() + kWordLength + block_size > kPageSize) {
         return {NodeReturnCode::kNoSpace, StatusWord{}};
       }
 
       // prepare new status for MwCAS
-      const auto new_status = current_status.AddRecordInfo(1, total_length, 0);
+      const auto new_status = current_status.AddRecordInfo(1, block_size, 0);
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
@@ -384,7 +508,8 @@ class LeafNode
 
     // insert a record
     auto offset = kPageSize - current_status.GetBlockSize();
-    offset = node->SetRecord(key, key_length, payload, payload_length, offset);
+    offset = node->SetPayload(offset, payload, payload_length);
+    offset = node->SetKey(offset, key, key_length);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = in_progress_meta.SetRecordInfo(offset, key_length, total_length);
@@ -424,18 +549,19 @@ class LeafNode
   static constexpr std::pair<NodeReturnCode, StatusWord>
   Update(  //
       BaseNode_t *node,
-      const Key &key,
+      const Key key,
       const size_t key_length,
-      const Payload &payload,
+      const Payload payload,
       const size_t payload_length,
       const size_t index_epoch = 1)
   {
     // variables and constants shared in Phase 1 & 2
+    const auto total_length = key_length + payload_length;
+    const auto block_size = GetAlignedSize(total_length);
+    const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
     StatusWord current_status;
     size_t record_count, target_index = 0;
     auto uniqueness = KeyExistence::kNotExist;
-    const auto total_length = key_length + payload_length;
-    const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: reserve free space to insert a record
@@ -454,14 +580,14 @@ class LeafNode
         }
       }
 
-      if (current_status.GetOccupiedSize() + kWordLength + total_length > kPageSize) {
+      if (current_status.GetOccupiedSize() + kWordLength + block_size > kPageSize) {
         return {NodeReturnCode::kNoSpace, StatusWord{}};
       }
 
       // prepare new status for MwCAS
       const auto target_meta = node->GetMetadataProtected(target_index);
-      const auto deleted_size = kWordLength + target_meta.GetTotalLength();
-      const auto new_status = current_status.AddRecordInfo(1, total_length, deleted_size);
+      const auto deleted_size = kWordLength + GetAlignedSize(target_meta.GetTotalLength());
+      const auto new_status = current_status.AddRecordInfo(1, block_size, deleted_size);
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
@@ -476,7 +602,8 @@ class LeafNode
 
     // insert a record
     auto offset = kPageSize - current_status.GetBlockSize();
-    offset = node->SetRecord(key, key_length, payload, payload_length, offset);
+    offset = node->SetPayload(offset, payload, payload_length);
+    offset = node->SetKey(offset, key, key_length);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = in_progress_meta.SetRecordInfo(offset, key_length, total_length);
@@ -513,15 +640,15 @@ class LeafNode
   static constexpr std::pair<NodeReturnCode, StatusWord>
   Delete(  //
       BaseNode_t *node,
-      const Key &key,
+      const Key key,
       const size_t key_length,
       const size_t index_epoch = 1)
   {
     // variables and constants
+    const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
     StatusWord current_status;
     size_t record_count, target_index = 0;
     auto uniqueness = KeyExistence::kNotExist;
-    const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: reserve free space to insert a null record
@@ -546,7 +673,8 @@ class LeafNode
 
       // prepare new status for MwCAS
       const auto target_meta = node->GetMetadataProtected(target_index);
-      const auto deleted_block_size = kWordLength + target_meta.GetTotalLength();
+      const auto deleted_block_size =
+          (kWordLength << 1) + GetAlignedSize(target_meta.GetTotalLength()) + key_length;
       const auto new_status = current_status.AddRecordInfo(1, key_length, deleted_block_size);
 
       // perform MwCAS to reserve space
@@ -561,8 +689,8 @@ class LeafNode
      *--------------------------------------------------------------------------------------------*/
 
     // insert a null record
-    auto offset = kPageSize - current_status.GetBlockSize() - key_length;
-    node->SetKey(key, key_length, offset);
+    auto offset = kPageSize - current_status.GetBlockSize();
+    offset = node->SetKey(offset, key, key_length);
 
     // prepare record metadata for MwCAS
     const auto deleted_meta = in_progress_meta.SetDeleteInfo(offset, key_length, key_length);
@@ -636,21 +764,15 @@ class LeafNode
 
   static constexpr BaseNode_t *
   Merge(  //
-      const BaseNode_t *target_node,
-      const std::vector<std::pair<Key, Metadata>> &target_meta,
-      const BaseNode_t *sibling_node,
-      const std::vector<std::pair<Key, Metadata>> &sibling_meta,
-      const bool sibling_is_left)
+      const BaseNode_t *left_node,
+      const std::vector<std::pair<Key, Metadata>> &left_meta,
+      const BaseNode_t *right_node,
+      const std::vector<std::pair<Key, Metadata>> &right_meta)
   {
     // create a merged node
     auto merged_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
-    if (sibling_is_left) {
-      CopyRecordsViaMetadata(merged_node, sibling_node, sibling_meta.begin(), sibling_meta.end());
-      CopyRecordsViaMetadata(merged_node, target_node, target_meta.begin(), target_meta.end());
-    } else {
-      CopyRecordsViaMetadata(merged_node, target_node, target_meta.begin(), target_meta.end());
-      CopyRecordsViaMetadata(merged_node, sibling_node, sibling_meta.begin(), sibling_meta.end());
-    }
+    CopyRecordsViaMetadata(merged_node, left_node, left_meta.begin(), left_meta.end());
+    CopyRecordsViaMetadata(merged_node, right_node, right_meta.begin(), right_meta.end());
 
     return merged_node;
   }
@@ -673,7 +795,7 @@ class LeafNode
     for (int64_t index = record_count - 1; index >= sorted_count; --index) {
       const auto meta = node->GetMetadataProtected(index);
       if (meta.IsVisible() || meta.IsDeleted()) {
-        const auto key = CastKey<Key>(node->GetKeyAddr(meta));
+        const auto key = Cast<Key>(node->GetKeyAddr(meta));
         meta_arr.emplace_back(key, meta);
       } else {
         // there is a key, but it is in inserting or corrupted.
@@ -684,7 +806,7 @@ class LeafNode
     // search sorted metadata
     for (int64_t index = 0; index < sorted_count; ++index) {
       const auto meta = node->GetMetadataProtected(index);
-      const auto key = CastKey<Key>(node->GetKeyAddr(meta));
+      const auto key = Cast<Key>(node->GetKeyAddr(meta));
       meta_arr.emplace_back(key, meta);
     }
 
