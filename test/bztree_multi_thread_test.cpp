@@ -72,7 +72,7 @@ class BzTreeFixture : public testing::Test
 
   // constant values for testing
   static constexpr size_t kIndexEpoch = 1;
-  static constexpr size_t kKeyNumForTest = 8192;
+  static constexpr size_t kKeyNumForTest = 8192 * 10;
   static constexpr size_t kKeyLength = kWordLength;
   static constexpr size_t kPayloadLength = kWordLength;
   static constexpr size_t kRandomSeed = 10;
@@ -170,7 +170,7 @@ class BzTreeFixture : public testing::Test
       case kUpdate:
         return bztree.Update(key, key_length, payload, payload_length);
       case kDelete:
-        return bztree.Delete(key, kKeyLength);
+        return bztree.Delete(key, key_length);
       case kWrite:
         break;
     }
@@ -326,9 +326,14 @@ class BzTreeFixture : public testing::Test
     auto written_ids = RunOverMultiThread(write_num, kThreadNum, WriteType::kUpdate);
     EXPECT_EQ(0, written_ids.size());
 
-    RunOverMultiThread(write_num, kThreadNum, WriteType::kInsert);
-    written_ids = RunOverMultiThread(write_num, kThreadNum, WriteType::kUpdate);
-    for (auto &&id : written_ids) {
+    written_ids = RunOverMultiThread(write_num, kThreadNum, WriteType::kInsert);
+    auto updated_ids = RunOverMultiThread(write_num, kThreadNum, WriteType::kUpdate);
+
+    std::sort(updated_ids.begin(), updated_ids.end());
+    updated_ids.erase(std::unique(updated_ids.begin(), updated_ids.end()), updated_ids.end());
+
+    EXPECT_EQ(written_ids.size(), updated_ids.size());
+    for (auto &&id : updated_ids) {
       VerifyRead(id, id + 1);
     }
   }
@@ -341,9 +346,11 @@ class BzTreeFixture : public testing::Test
     auto written_ids = RunOverMultiThread(write_num, kThreadNum, WriteType::kDelete);
     EXPECT_EQ(0, written_ids.size());
 
-    RunOverMultiThread(write_num, kThreadNum, WriteType::kInsert);
-    written_ids = RunOverMultiThread(write_num, kThreadNum, WriteType::kDelete);
-    for (auto &&id : written_ids) {
+    written_ids = RunOverMultiThread(write_num, kThreadNum, WriteType::kInsert);
+    auto deleted_ids = RunOverMultiThread(write_num, kThreadNum, WriteType::kDelete);
+
+    EXPECT_EQ(written_ids.size(), deleted_ids.size());
+    for (auto &&id : deleted_ids) {
       VerifyRead(id, id, true);
     }
   }
