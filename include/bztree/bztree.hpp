@@ -270,9 +270,7 @@ class BzTree
     while (true) {
       // check a target node is live
       const auto target_status = target_node->GetStatusWordProtected();
-      if (target_status.IsFrozen()) {
-        return;  // a target node is modified by concurrent SMOs
-      }
+      if (target_status.IsFrozen()) return;
 
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(target_key, target_node);
@@ -290,9 +288,7 @@ class BzTree
 
         // check a parent node is live
         const auto parent_status = parent->GetStatusWordProtected();
-        if (parent_status.IsFrozen()) {
-          continue;
-        }
+        if (parent_status.IsFrozen()) continue;
 
         // pre-freezing of SMO targets
         parent->SetStatusForMwCAS(desc, parent_status, parent_status.Freeze());
@@ -345,21 +341,18 @@ class BzTree
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(target_key, target_node);
       target_index = trace.top().second;
+      if (!HaveSameAddress(trace.top().first, target_node)) return false;
       trace.pop();
 
       // check a parent node is live
       parent = trace.top().first;
       const auto parent_status = parent->GetStatusWordProtected();
-      if (parent_status.IsFrozen()) {
-        continue;
-      }
+      if (parent_status.IsFrozen()) continue;
 
       // check a left/right sibling node is live
       std::tie(sibling_node, sibling_is_left) =
           InternalNode_t::GetMergeableSibling(parent, target_index, target_size, min_node_size_);
-      if (sibling_node == nullptr) {
-        return false;  // there is no live sibling node
-      }
+      if (sibling_node == nullptr) return false;  // there is no live sibling node
       const auto sibling_status = sibling_node->GetStatusWordProtected();
       if (sibling_status.IsFrozen()) {
         if (sibling_is_left) continue;
@@ -398,7 +391,7 @@ class BzTree
     gc_.AddGarbage(sibling_node);
 
     // check whether it is required to merge a new parent node
-    if (!HaveSameAddress(new_parent, GetRoot()) && new_occupied_size < min_node_size_) {
+    if (trace.size() != 0 && new_occupied_size < min_node_size_) {
       MergeInternalNodes(new_parent, target_key, target_key_length);
     }
 
@@ -422,9 +415,7 @@ class BzTree
     while (true) {
       // check a target node is not frozen and live
       const auto target_status = target_node->GetStatusWordProtected();
-      if (target_status.IsFrozen()) {
-        return;  // other SMOs are modifying a target node
-      }
+      if (target_status.IsFrozen()) return;
 
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(target_key, target_node);
@@ -434,9 +425,7 @@ class BzTree
       // check a parent node is live
       parent = trace.top().first;
       const auto parent_status = parent->GetStatusWordProtected();
-      if (parent_status.IsFrozen()) {
-        continue;
-      }
+      if (parent_status.IsFrozen()) continue;
 
       // check a left/right sibling node is live
       const auto target_size = target_status.GetOccupiedSize();
@@ -445,10 +434,7 @@ class BzTree
       if (sibling_node == nullptr) return;  // there is no live sibling node
 
       const auto sibling_status = sibling_node->GetStatusWordProtected();
-      if (sibling_status.IsFrozen()) {
-        if (sibling_is_left) continue;
-        return;
-      }
+      if (sibling_status.IsFrozen()) continue;
 
       // pre-freezing of SMO targets
       auto desc = MwCASDescriptor{};
@@ -482,7 +468,7 @@ class BzTree
     gc_.AddGarbage(sibling_node);
 
     // check whether it is required to merge a parent node
-    if (!HaveSameAddress(new_parent, GetRoot()) && new_occupied_size < min_node_size_) {
+    if (trace.size() != 0 && new_occupied_size < min_node_size_) {
       MergeInternalNodes(new_parent, target_key, target_key_length);
     }
   }
@@ -503,6 +489,7 @@ class BzTree
 
         // prepare installing nodes
         auto [old_node, index] = trace.top();
+        if (!HaveSameAddress(old_node, target_node)) return;
         trace.pop();
         auto parent_node = trace.top().first;
 
@@ -522,6 +509,8 @@ class BzTree
          *----------------------------------------------------------------------------------------*/
 
         const auto old_node = trace.top().first;
+        if (!HaveSameAddress(old_node, target_node)) return;
+        trace.pop();
         desc.AddMwCASTarget(&root_, old_node, new_node);
       }
 
