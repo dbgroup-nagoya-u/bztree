@@ -42,7 +42,7 @@ TEST_F(StatusWordFixture, New_DefaultConstructor_CorrectlyInitialized)
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(0, status.GetRecordCount());
   EXPECT_EQ(0, status.GetBlockSize());
-  EXPECT_EQ(0, status.GetDeletedRecCount());
+  EXPECT_EQ(0, status.GetDeletedSize());
 }
 
 TEST_F(StatusWordFixture, Freeze_InitialStatus_FreezeWithoutSideEffect)
@@ -54,7 +54,7 @@ TEST_F(StatusWordFixture, Freeze_InitialStatus_FreezeWithoutSideEffect)
   EXPECT_TRUE(frozen_status.IsFrozen());
   EXPECT_EQ(0, frozen_status.GetRecordCount());
   EXPECT_EQ(0, frozen_status.GetBlockSize());
-  EXPECT_EQ(0, frozen_status.GetDeletedRecCount());
+  EXPECT_EQ(0, frozen_status.GetDeletedSize());
 }
 
 TEST_F(StatusWordFixture, AddRecordInfo_InitialStatus_AddInfoWithoutSideEffect)
@@ -67,7 +67,7 @@ TEST_F(StatusWordFixture, AddRecordInfo_InitialStatus_AddInfoWithoutSideEffect)
   EXPECT_FALSE(updated_status.IsFrozen());
   EXPECT_EQ(record_count, updated_status.GetRecordCount());
   EXPECT_EQ(block_size, updated_status.GetBlockSize());
-  EXPECT_EQ(deleted_size, updated_status.GetDeletedRecCount());
+  EXPECT_EQ(deleted_size, updated_status.GetDeletedSize());
   EXPECT_EQ(kHeaderLength + (kWordLength * 16) + block_size, updated_status.GetOccupiedSize());
   EXPECT_EQ((kWordLength * 16) + block_size - deleted_size, updated_status.GetLiveDataSize());
 }

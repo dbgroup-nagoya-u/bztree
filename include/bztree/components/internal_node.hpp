@@ -152,31 +152,7 @@ class InternalNode
       const size_t index)
   {
     const auto meta = node->GetMetadata(index);
-    return reinterpret_cast<BaseNode_t *>(GetChildAddrProtected(node, meta));
-  }
-
-  static constexpr std::pair<BaseNode_t *, bool>
-  GetMergeableSibling(  //
-      BaseNode_t *parent,
-      const size_t target_index,
-      const size_t target_size,
-      const size_t max_merged_node_size)
-  {
-    if (target_index > 0) {
-      const auto sibling_node = GetChildNode(parent, target_index - 1);
-      const auto sibling_size = sibling_node->GetStatusWordProtected().GetLiveDataSize();
-      if ((target_size + sibling_size) < max_merged_node_size) {
-        return {sibling_node, true};
-      }
-    }
-    if (target_index < parent->GetSortedCount() - 1) {
-      const auto sibling_node = GetChildNode(parent, target_index + 1);
-      const auto sibling_size = sibling_node->GetStatusWordProtected().GetLiveDataSize();
-      if ((target_size + sibling_size) < max_merged_node_size) {
-        return {sibling_node, false};
-      }
-    }
-    return {nullptr, false};
+    return GetChildAddrProtected(node, meta);
   }
 
   /*################################################################################################

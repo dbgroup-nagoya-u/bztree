@@ -52,41 +52,45 @@ class BzTree
   /// Invoking consolidation if the number of unsorted records exceeds this threshold
   static constexpr size_t kMaxUnsortedRecNum = BZTREE_MAX_UNSORTED_REC_NUM;
 #else
+  /// Invoking consolidation if the number of unsorted records exceeds this threshold
   static constexpr size_t kMaxUnsortedRecNum = 64;
 #endif
 
-#ifdef BZTREE_MAX_DELETED_REC_NUM
-  /// Invoking consolidation if the number of deleted records exceeds this threshold
-  static constexpr size_t kMaxDeletedRecNum = BZTREE_MAX_DELETED_REC_NUM;
+#ifdef BZTREE_MAX_DELETED_SPACE_SIZE
+  /// Invoking consolidation if the size of deleted records exceeds this threshold
+  static constexpr size_t kMaxDeletedSpaceSize = BZTREE_MAX_DELETED_SPACE_SIZE;
 #else
-  static constexpr size_t kMaxDeletedRecNum = 128;
+  /// Invoking consolidation if the size of deleted records exceeds this threshold
+  static constexpr size_t kMaxDeletedSpaceSize = kPageSize / 8;
+#endif
+
+#ifdef BZTREE_MIN_FREE_SPACE_SIZE
+  /// Invoking a split if the size of free space in a node exceeds this threshold
+  static constexpr size_t kMinFreeSpaceSize = BZTREE_MIN_FREE_SPACE_SIZE;
+#else
+  /// Invoking a split if the size of free space in a node exceeds this threshold
+  static constexpr size_t kMinFreeSpaceSize = kMaxUnsortedRecNum * kExpectedRecSize;
 #endif
 
 #ifdef BZTREE_MIN_SORTED_REC_NUM
   /// Invoking merging if the number of sorted records falls below this threshold
   static constexpr size_t kMinSortedRecNum = BZTREE_MIN_SORTED_REC_NUM;
 #else
+  /// Invoking merging if the number of sorted records falls below this threshold
   static constexpr size_t kMinSortedRecNum = 16;
+#endif
+
+#ifdef BZTREE_MAX_MERGED_SIZE
+  /// Canceling merging if the size of a merged node exceeds this threshold
+  static constexpr size_t kMaxMergedSize = BZTREE_MAX_MERGED_SIZE;
+#else
+  /// Canceling merging if the size of a merged node exceeds this threshold
+  static constexpr size_t kMaxMergedSize = kPageSize / 2;
 #endif
 
   /*################################################################################################
    * Internal member variables
    *##############################################################################################*/
-
-  /// if an occupied size of a consolidated node is less than this threshold, invoke merging
-  const size_t min_node_size_;
-
-  /// the minimum size of free space in bytes
-  const size_t min_free_space_;
-
-  /// an expected size of free space after SMOs in bytes
-  const size_t expected_free_space_;
-
-  /// if a deleted block size exceeds this threshold, invoke consolidation
-  const size_t max_deleted_size_;
-
-  /// if an occupied size of a merged node exceeds this threshold, cancel merging
-  const size_t max_merged_size_;
 
   /// an epoch to count the number of failure
   const size_t index_epoch_;
@@ -151,10 +155,10 @@ class BzTree
   static constexpr bool
   NeedConsolidation(  //
       const BaseNode_t *leaf_node,
-      const StatusWord status) const
+      const StatusWord status)
   {
     return status.GetRecordCount() - leaf_node->GetSortedCount() > kMaxUnsortedRecNum
-           || status.GetDeletedRecCount() > kMaxDeletedRecNum;
+           || status.GetDeletedSize() > kMaxDeletedSpaceSize;
   }
 
   static constexpr bool
@@ -164,6 +168,31 @@ class BzTree
   {
     return internal_node->GetStatusWordProtected().GetOccupiedSize() + key_length
            > kPageSize - 2 * kWordLength;
+  }
+
+  static constexpr bool
+  NeedMerge(const BaseNode_t *internal_node)
+  {
+    return internal_node->GetSortedCount() < kMinSortedRecNum;
+  }
+
+  static constexpr std::pair<BaseNode_t *, bool>
+  GetSiblingNode(  //
+      BaseNode_t *parent_node,
+      const size_t target_index,
+      const size_t target_size)
+  {
+    if (target_index > 0) {
+      const auto sibling_node = InternalNode_t::GetChildNode(parent_node, target_index - 1);
+      const auto sibling_size = sibling_node->GetStatusWordProtected().GetLiveDataSize();
+      if ((target_size + sibling_size) < kPageSize / 2) return {sibling_node, true};
+    }
+    if (target_index < parent_node->GetSortedCount() - 1) {
+      const auto sibling_node = InternalNode_t::GetChildNode(parent_node, target_index + 1);
+      const auto sibling_size = sibling_node->GetStatusWordProtected().GetLiveDataSize();
+      if ((target_size + sibling_size) < kPageSize / 2) return {sibling_node, false};
+    }
+    return {nullptr, false};
   }
 
   static constexpr size_t
@@ -217,10 +246,10 @@ class BzTree
     // gather sorted live metadata of a targetnode, and check whether split/merge is required
     const auto live_meta = LeafNode_t::GatherSortedLiveMetadata(target_node);
     const auto occupied_size = ComputeOccupiedSize(live_meta);
-    if (occupied_size > kPageSize + kMaxUnsortedRecNum * kExpectedRecSize) {
+    if (occupied_size > kPageSize - kMinFreeSpaceSize) {
       SplitLeafNode(target_node, target_key, live_meta);
       return;
-    } else if (occupied_size < min_node_size_) {
+    } else if (live_meta.size() < kMinSortedRecNum) {
       if (MergeLeafNodes(target_node, target_key, target_key_length, occupied_size, live_meta)) {
         return;
       }
@@ -386,8 +415,7 @@ class BzTree
       if (parent_status.IsFrozen()) continue;
 
       // check a left/right sibling node is live
-      std::tie(sibling_node, sibling_is_left) =
-          InternalNode_t::GetMergeableSibling(parent, target_index, target_size, min_node_size_);
+      std::tie(sibling_node, sibling_is_left) = GetSiblingNode(parent, target_index, target_size);
       if (sibling_node == nullptr) return false;  // there is no live sibling node
       const auto sibling_status = sibling_node->GetStatusWordProtected();
       if (sibling_status.IsFrozen()) {
@@ -418,7 +446,6 @@ class BzTree
       deleted_index = target_index;
     }
     const auto new_parent = InternalNode_t::NewParentForMerge(parent, merged_node, deleted_index);
-    const auto new_occupied_size = new_parent->GetStatusWord().GetOccupiedSize();
 
     // install new nodes
     InstallNewNode(trace, new_parent, target_key, parent);
@@ -427,10 +454,9 @@ class BzTree
     gc_.AddGarbage(sibling_node);
 
     // check whether it is required to merge a new parent node
-    if (trace.size() != 0 && new_occupied_size < min_node_size_) {
+    if (trace.size() != 0 && NeedMerge(new_parent)) {
       MergeInternalNodes(new_parent, target_key, target_key_length);
     }
-
     return true;
   }
 
@@ -465,8 +491,7 @@ class BzTree
 
       // check a left/right sibling node is live
       const auto target_size = target_status.GetOccupiedSize();
-      std::tie(sibling_node, sibling_is_left) =
-          InternalNode_t::GetMergeableSibling(parent, target_index, target_size, min_node_size_);
+      std::tie(sibling_node, sibling_is_left) = GetSiblingNode(parent, target_index, target_size);
       if (sibling_node == nullptr) return;  // there is no live sibling node
 
       const auto sibling_status = sibling_node->GetStatusWordProtected();
@@ -495,7 +520,6 @@ class BzTree
       deleted_index = target_index;
     }
     const auto new_parent = InternalNode_t::NewParentForMerge(parent, merged_node, deleted_index);
-    const auto new_occupied_size = new_parent->GetStatusWord().GetOccupiedSize();
 
     // install new nodes
     InstallNewNode(trace, new_parent, target_key, parent);
@@ -504,7 +528,7 @@ class BzTree
     gc_.AddGarbage(sibling_node);
 
     // check whether it is required to merge a parent node
-    if (trace.size() != 0 && new_occupied_size < min_node_size_) {
+    if (trace.size() != 0 && NeedMerge(new_parent)) {
       MergeInternalNodes(new_parent, target_key, target_key_length);
     }
   }
@@ -561,21 +585,7 @@ class BzTree
    * Public constructor/destructor
    *##############################################################################################*/
 
-  explicit BzTree(const size_t min_node_size = 256,
-                  const size_t min_free_space = 256,
-                  const size_t expected_free_space = 1024,
-                  const size_t max_deleted_size = 1024,
-                  const size_t max_merged_size = 2048)
-      : min_node_size_{min_node_size},
-        min_free_space_{min_free_space},
-        expected_free_space_{expected_free_space},
-        max_deleted_size_{max_deleted_size},
-        max_merged_size_{max_merged_size},
-        index_epoch_{1},
-        root_{InternalNode_t::CreateInitialRoot()},
-        gc_{1000}
-  {
-  }
+  BzTree() : index_epoch_{1}, root_{InternalNode_t::CreateInitialRoot()}, gc_{1000} {}
 
   ~BzTree() = default;
 

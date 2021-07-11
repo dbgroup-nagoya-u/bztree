@@ -198,42 +198,6 @@ class InternalNodeFixture : public testing::Test
   }
 
   void
-  VerifyGetMergeableSibling(const bool expect_filled_node)
-  {
-    const size_t target_size = kDummyNodeNum * record_length;
-
-    BaseNode_t *left_node, *right_node, *sibling_node;
-    if (expect_filled_node) {
-      left_node = PrepareDummyNode(max_record_num);
-      right_node = PrepareDummyNode(max_record_num);
-    } else {
-      left_node = PrepareDummyNode(kDummyNodeNum);
-      right_node = PrepareDummyNode(kDummyNodeNum);
-    }
-    node.reset(InternalNode_t::CreateNewRoot(left_node, right_node));
-
-    bool sibling_is_left;
-    std::tie(sibling_node, sibling_is_left) =
-        InternalNode_t::GetMergeableSibling(node.get(), 1, target_size, kMaxNodeSize);
-    if (expect_filled_node) {
-      EXPECT_TRUE(HaveSameAddress(nullptr, sibling_node));
-    } else {
-      EXPECT_TRUE(HaveSameAddress(left_node, sibling_node));
-      EXPECT_TRUE(sibling_is_left);
-    }
-    std::tie(sibling_node, sibling_is_left) =
-        InternalNode_t::GetMergeableSibling(node.get(), 0, target_size, kMaxNodeSize);
-    if (expect_filled_node) {
-      EXPECT_TRUE(HaveSameAddress(nullptr, sibling_node));
-    } else {
-      EXPECT_TRUE(HaveSameAddress(right_node, sibling_node));
-      EXPECT_FALSE(sibling_is_left);
-    }
-
-    ReleaseChildren();
-  }
-
-  void
   VerifyInitialRoot()
   {
     node.reset(InternalNode_t::CreateInitialRoot());
@@ -367,16 +331,6 @@ TYPED_TEST_CASE(InternalNodeFixture, KeyPayloadPairs);
 TYPED_TEST(InternalNodeFixture, GetChildNode_DummyChildren_ReadDummyValues)
 {
   TestFixture::VerifyGetChildNode();
-}
-
-TYPED_TEST(InternalNodeFixture, GetMergeableSibling_SiblingHasSufficentSpace_GetSiblingNode)
-{
-  TestFixture::VerifyGetMergeableSibling(false);
-}
-
-TYPED_TEST(InternalNodeFixture, GetMergeableSibling_SiblingHasNoSpace_GetNullptr)
-{
-  TestFixture::VerifyGetMergeableSibling(true);
 }
 
 TYPED_TEST(InternalNodeFixture, CreateInitialRoot_Default_RootHasOneLeaf)
