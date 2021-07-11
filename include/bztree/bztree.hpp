@@ -45,6 +45,31 @@ class BzTree
   using NodeReturnCode = typename BaseNode<Key, Payload, Compare>::NodeReturnCode;
 
   /*################################################################################################
+   * Internal constants
+   *##############################################################################################*/
+
+#ifdef BZTREE_MAX_UNSORTED_REC_NUM
+  /// Invoking consolidation if the number of unsorted records exceeds this threshold
+  static constexpr size_t kMaxUnsortedRecNum = BZTREE_MAX_UNSORTED_REC_NUM;
+#else
+  static constexpr size_t kMaxUnsortedRecNum = 64;
+#endif
+
+#ifdef BZTREE_MAX_DELETED_REC_NUM
+  /// Invoking consolidation if the number of deleted records exceeds this threshold
+  static constexpr size_t kMaxDeletedRecNum = BZTREE_MAX_DELETED_REC_NUM;
+#else
+  static constexpr size_t kMaxDeletedRecNum = 128;
+#endif
+
+#ifdef BZTREE_MIN_SORTED_REC_NUM
+  /// Invoking merging if the number of sorted records falls below this threshold
+  static constexpr size_t kMinSortedRecNum = BZTREE_MIN_SORTED_REC_NUM;
+#else
+  static constexpr size_t kMinSortedRecNum = 16;
+#endif
+
+  /*################################################################################################
    * Internal member variables
    *##############################################################################################*/
 
