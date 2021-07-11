@@ -119,11 +119,6 @@ constexpr size_t kPageSize = 8192;
 /// check whether the specified page size is valid
 static_assert(kPageSize % kWordLength == 0);
 
-/// The expected maximum number of records of each node
-constexpr size_t kMaxRecordNum = (kPageSize - kHeaderLength) / (3 * kWordLength);
-
-constexpr size_t kExpectedRecSize = kWordLength * 3;
-
 /// a flag to indicate creating leaf nodes
 constexpr bool kLeafFlag = true;
 

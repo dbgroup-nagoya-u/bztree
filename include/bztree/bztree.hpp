@@ -53,7 +53,7 @@ class BzTree
   static constexpr size_t kMaxUnsortedRecNum = BZTREE_MAX_UNSORTED_REC_NUM;
 #else
   /// Invoking consolidation if the number of unsorted records exceeds this threshold
-  static constexpr size_t kMaxUnsortedRecNum = 64;
+  static constexpr size_t kMaxUnsortedRecNum = 32;
 #endif
 
 #ifdef BZTREE_MAX_DELETED_SPACE_SIZE
@@ -69,7 +69,7 @@ class BzTree
   static constexpr size_t kMinFreeSpaceSize = BZTREE_MIN_FREE_SPACE_SIZE;
 #else
   /// Invoking a split if the size of free space in a node exceeds this threshold
-  static constexpr size_t kMinFreeSpaceSize = kMaxUnsortedRecNum * kExpectedRecSize;
+  static constexpr size_t kMinFreeSpaceSize = kMaxUnsortedRecNum * kWordLength * 3;
 #endif
 
 #ifdef BZTREE_MIN_SORTED_REC_NUM
