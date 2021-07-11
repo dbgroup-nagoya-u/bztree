@@ -632,6 +632,8 @@ class BzTree
       if (rc == NodeReturnCode::kSuccess) {
         if (NeedConsolidation(leaf_node, status)) ConsolidateLeafNode(leaf_node, key, key_length);
         break;
+      } else if (rc == NodeReturnCode::kNoSpace) {
+        ConsolidateLeafNode(leaf_node, key, key_length);
       }
     }
     return ReturnCode::kSuccess;
@@ -655,6 +657,8 @@ class BzTree
         if (NeedConsolidation(leaf_node, status)) ConsolidateLeafNode(leaf_node, key, key_length);
         if (rc == NodeReturnCode::kKeyExist) return ReturnCode::kKeyExist;
         break;
+      } else if (rc == NodeReturnCode::kNoSpace) {
+        ConsolidateLeafNode(leaf_node, key, key_length);
       }
     }
     return ReturnCode::kSuccess;
@@ -678,6 +682,8 @@ class BzTree
         if (NeedConsolidation(leaf_node, status)) ConsolidateLeafNode(leaf_node, key, key_length);
         if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
         break;
+      } else if (rc == NodeReturnCode::kNoSpace) {
+        ConsolidateLeafNode(leaf_node, key, key_length);
       }
     }
     return ReturnCode::kSuccess;
@@ -698,6 +704,8 @@ class BzTree
         if (NeedConsolidation(leaf_node, status)) ConsolidateLeafNode(leaf_node, key, key_length);
         if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
         break;
+      } else if (rc == NodeReturnCode::kNoSpace) {
+        ConsolidateLeafNode(leaf_node, key, key_length);
       }
     }
     return ReturnCode::kSuccess;
