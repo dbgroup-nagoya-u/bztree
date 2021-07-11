@@ -155,7 +155,7 @@ class BzTreeFixture : public testing::Test
       const size_t key_id,
       const size_t payload_id)
   {
-    auto rc = bztree.Write(keys[key_id], key_length, payloads[payload_id], payload_length);
+    auto rc = bztree.Write(keys[key_id], payloads[payload_id], key_length, payload_length);
 
     EXPECT_EQ(ReturnCode::kSuccess, rc);
   }
@@ -166,7 +166,7 @@ class BzTreeFixture : public testing::Test
       const size_t payload_id,
       const bool expect_fail = false)
   {
-    auto rc = bztree.Insert(keys[key_id], key_length, payloads[payload_id], payload_length);
+    auto rc = bztree.Insert(keys[key_id], payloads[payload_id], key_length, payload_length);
 
     if (expect_fail) {
       EXPECT_EQ(ReturnCode::kKeyExist, rc);
@@ -181,7 +181,7 @@ class BzTreeFixture : public testing::Test
       const size_t payload_id,
       const bool expect_fail = false)
   {
-    auto rc = bztree.Update(keys[key_id], key_length, payloads[payload_id], payload_length);
+    auto rc = bztree.Update(keys[key_id], payloads[payload_id], key_length, payload_length);
 
     if (expect_fail) {
       EXPECT_EQ(ReturnCode::kKeyNotExist, rc);

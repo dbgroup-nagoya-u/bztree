@@ -106,7 +106,7 @@ class BzTree
 
   constexpr std::stack<std::pair<BaseNode_t *, size_t>>
   TraceTargetNode(  //
-      const Key &key,
+      const Key key,
       const void *target_node)
   {
     // trace nodes to a target internal node
@@ -172,7 +172,7 @@ class BzTree
   constexpr void
   ConsolidateLeafNode(  //
       BaseNode_t *target_node,
-      const Key &target_key,
+      const Key target_key,
       const size_t target_key_length)
   {
     // freeze a target node and perform consolidation
@@ -202,7 +202,7 @@ class BzTree
   constexpr void
   SplitLeafNode(  //
       const BaseNode_t *target_node,
-      const Key &target_key,
+      const Key target_key,
       const std::vector<std::pair<Key, Metadata>> &sorted_meta)
   {
     // get a separator key and its length
@@ -253,7 +253,7 @@ class BzTree
   constexpr void
   SplitInternalNode(  //
       BaseNode_t *target_node,
-      const Key &target_key)
+      const Key target_key)
   {
     // get a split index and a corresponding key length
     const auto left_record_count = (target_node->GetSortedCount() / 2);
@@ -324,7 +324,7 @@ class BzTree
   constexpr bool
   MergeLeafNodes(  //
       const BaseNode_t *target_node,
-      const Key &target_key,
+      const Key target_key,
       const size_t target_key_length,
       const size_t target_size,
       const std::vector<std::pair<Key, Metadata>> &sorted_meta)
@@ -401,7 +401,7 @@ class BzTree
   constexpr void
   MergeInternalNodes(  //
       BaseNode_t *target_node,
-      const Key &target_key,
+      const Key target_key,
       const size_t target_key_length)
   {
     /*----------------------------------------------------------------------------------------------
@@ -477,7 +477,7 @@ class BzTree
   InstallNewNode(  //
       std::stack<std::pair<BaseNode_t *, size_t>> &trace,
       BaseNode_t *new_node,
-      const Key &target_key,
+      const Key target_key,
       const BaseNode_t *target_node)
   {
     while (true) {
@@ -572,9 +572,9 @@ class BzTree
   constexpr ReturnCode
   Write(  //
       const Key key,
-      const size_t key_length,
       const Payload payload,
-      const size_t payload_length)
+      const size_t key_length = sizeof(Key),
+      const size_t payload_length = sizeof(Payload))
   {
     const auto guard = gc_.CreateEpochGuard();
 
@@ -592,44 +592,11 @@ class BzTree
   }
 
   constexpr ReturnCode
-  Write(  //
-      const Key key,
-      const Payload payload,
-      const size_t payload_length)
-  {
-    static_assert(!std::is_same_v<Key, char *>);
-
-    return Write(key, sizeof(Key), payload, payload_length);
-  }
-
-  constexpr ReturnCode
-  Write(  //
-      const Key key,
-      const size_t key_length,
-      const Payload payload)
-  {
-    static_assert(!std::is_same_v<Payload, char *>);
-
-    return Write(key, key_length, payload, sizeof(Payload));
-  }
-
-  constexpr ReturnCode
-  Write(  //
-      const Key key,
-      const Payload payload)
-  {
-    static_assert(!std::is_same_v<Key, char *>);
-    static_assert(!std::is_same_v<Payload, char *>);
-
-    return Write(key, sizeof(Key), payload, sizeof(Payload));
-  }
-
-  constexpr ReturnCode
   Insert(  //
       const Key key,
-      const size_t key_length,
       const Payload payload,
-      const size_t payload_length)
+      const size_t key_length = sizeof(Key),
+      const size_t payload_length = sizeof(Payload))
   {
     const auto guard = gc_.CreateEpochGuard();
 
@@ -648,44 +615,11 @@ class BzTree
   }
 
   constexpr ReturnCode
-  Insert(  //
-      const Key key,
-      const Payload payload,
-      const size_t payload_length)
-  {
-    static_assert(!std::is_same_v<Key, char *>);
-
-    return Insert(key, sizeof(Key), payload, payload_length);
-  }
-
-  constexpr ReturnCode
-  Insert(  //
-      const Key key,
-      const size_t key_length,
-      const Payload payload)
-  {
-    static_assert(!std::is_same_v<Payload, char *>);
-
-    return Insert(key, key_length, payload, sizeof(Payload));
-  }
-
-  constexpr ReturnCode
-  Insert(  //
-      const Key key,
-      const Payload payload)
-  {
-    static_assert(!std::is_same_v<Key, char *>);
-    static_assert(!std::is_same_v<Payload, char *>);
-
-    return Insert(key, sizeof(Key), payload, sizeof(Payload));
-  }
-
-  constexpr ReturnCode
   Update(  //
       const Key key,
-      const size_t key_length,
       const Payload payload,
-      const size_t payload_length)
+      const size_t key_length = sizeof(Key),
+      const size_t payload_length = sizeof(Payload))
   {
     const auto guard = gc_.CreateEpochGuard();
 
@@ -704,42 +638,9 @@ class BzTree
   }
 
   constexpr ReturnCode
-  Update(  //
-      const Key key,
-      const Payload payload,
-      const size_t payload_length)
-  {
-    static_assert(!std::is_same_v<Key, char *>);
-
-    return Update(key, sizeof(Key), payload, payload_length);
-  }
-
-  constexpr ReturnCode
-  Update(  //
-      const Key key,
-      const size_t key_length,
-      const Payload payload)
-  {
-    static_assert(!std::is_same_v<Payload, char *>);
-
-    return Update(key, key_length, payload, sizeof(Payload));
-  }
-
-  constexpr ReturnCode
-  Update(  //
-      const Key key,
-      const Payload payload)
-  {
-    static_assert(!std::is_same_v<Key, char *>);
-    static_assert(!std::is_same_v<Payload, char *>);
-
-    return Update(key, sizeof(Key), payload, sizeof(Payload));
-  }
-
-  constexpr ReturnCode
   Delete(  //
-      const Key &key,
-      const size_t key_length)
+      const Key key,
+      const size_t key_length = sizeof(Key))
   {
     const auto guard = gc_.CreateEpochGuard();
 
@@ -754,14 +655,6 @@ class BzTree
       }
     }
     return ReturnCode::kSuccess;
-  }
-
-  constexpr ReturnCode
-  Delete(const Key &key)
-  {
-    static_assert(!std::is_same_v<Key, char *>);
-
-    return Delete(key, sizeof(Key));
   }
 };
 
