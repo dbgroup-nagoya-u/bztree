@@ -149,10 +149,12 @@ class BzTree
   }
 
   constexpr bool
-  NeedConsolidation(const StatusWord status) const
+  NeedConsolidation(  //
+      const BaseNode_t *node,
+      const StatusWord status) const
   {
-    return status.GetOccupiedSize() + min_free_space_ > kPageSize
-           || status.GetDeletedSize() > max_deleted_size_;
+    return status.GetRecordCount() - node->GetSortedCount() > kMaxUnsortedRecNum
+           || status.GetDeletedRecCount() > kMaxDeletedRecNum;
   }
 
   static constexpr size_t
@@ -609,7 +611,7 @@ class BzTree
           LeafNode_t::Write(leaf_node, key, key_length, payload, payload_length, index_epoch_);
 
       if (rc == NodeReturnCode::kSuccess) {
-        if (NeedConsolidation(status)) ConsolidateLeafNode(leaf_node, key, key_length);
+        if (NeedConsolidation(leaf_node, status)) ConsolidateLeafNode(leaf_node, key, key_length);
         break;
       }
     }
@@ -631,7 +633,7 @@ class BzTree
           LeafNode_t::Insert(leaf_node, key, key_length, payload, payload_length, index_epoch_);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyExist) {
-        if (NeedConsolidation(status)) ConsolidateLeafNode(leaf_node, key, key_length);
+        if (NeedConsolidation(leaf_node, status)) ConsolidateLeafNode(leaf_node, key, key_length);
         if (rc == NodeReturnCode::kKeyExist) return ReturnCode::kKeyExist;
         break;
       }
@@ -654,7 +656,7 @@ class BzTree
           LeafNode_t::Update(leaf_node, key, key_length, payload, payload_length, index_epoch_);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
-        if (NeedConsolidation(status)) ConsolidateLeafNode(leaf_node, key, key_length);
+        if (NeedConsolidation(leaf_node, status)) ConsolidateLeafNode(leaf_node, key, key_length);
         if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
         break;
       }
@@ -674,7 +676,7 @@ class BzTree
       const auto [rc, status] = LeafNode_t::Delete(leaf_node, key, key_length);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
-        if (NeedConsolidation(status)) ConsolidateLeafNode(leaf_node, key, key_length);
+        if (NeedConsolidation(leaf_node, status)) ConsolidateLeafNode(leaf_node, key, key_length);
         if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
         break;
       }

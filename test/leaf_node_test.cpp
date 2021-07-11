@@ -294,7 +294,7 @@ class LeafNodeFixture : public testing::Test
     }
     EXPECT_EQ(expected_record_count, status.GetRecordCount());
     EXPECT_EQ(expected_block_size, status.GetBlockSize());
-    EXPECT_EQ(expected_deleted_size, status.GetDeletedSize());
+    EXPECT_EQ(expected_deleted_size, status.GetDeletedRecCount());
   }
 
   void

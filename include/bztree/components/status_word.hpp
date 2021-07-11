@@ -92,7 +92,7 @@ class alignas(kWordLength) StatusWord
   }
 
   constexpr size_t
-  GetDeletedSize() const
+  GetDeletedRecCount() const
   {
     return deleted_size_;
   }
