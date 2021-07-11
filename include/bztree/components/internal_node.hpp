@@ -155,16 +155,6 @@ class InternalNode
     return reinterpret_cast<BaseNode_t *>(GetChildAddrProtected(node, meta));
   }
 
-  static constexpr bool
-  NeedSplit(  //
-      const BaseNode_t *node,
-      const size_t key_length)
-  {
-    const auto new_block_size =
-        node->GetStatusWordProtected().GetOccupiedSize() + 2 * kWordLength + key_length;
-    return new_block_size > kPageSize;
-  }
-
   static constexpr std::pair<BaseNode_t *, bool>
   GetMergeableSibling(  //
       BaseNode_t *parent,

@@ -148,13 +148,22 @@ class BzTree
     return trace;
   }
 
-  constexpr bool
+  static constexpr bool
   NeedConsolidation(  //
-      const BaseNode_t *node,
+      const BaseNode_t *leaf_node,
       const StatusWord status) const
   {
-    return status.GetRecordCount() - node->GetSortedCount() > kMaxUnsortedRecNum
+    return status.GetRecordCount() - leaf_node->GetSortedCount() > kMaxUnsortedRecNum
            || status.GetDeletedRecCount() > kMaxDeletedRecNum;
+  }
+
+  static constexpr bool
+  NeedSplit(  //
+      const BaseNode_t *internal_node,
+      const size_t key_length)
+  {
+    return internal_node->GetStatusWordProtected().GetOccupiedSize() + key_length
+           > kPageSize - 2 * kWordLength;
   }
 
   static constexpr size_t
@@ -208,7 +217,7 @@ class BzTree
     // gather sorted live metadata of a targetnode, and check whether split/merge is required
     const auto live_meta = LeafNode_t::GatherSortedLiveMetadata(target_node);
     const auto occupied_size = ComputeOccupiedSize(live_meta);
-    if (occupied_size + expected_free_space_ > kPageSize) {
+    if (occupied_size > kPageSize + kMaxUnsortedRecNum * kExpectedRecSize) {
       SplitLeafNode(target_node, target_key, live_meta);
       return;
     } else if (occupied_size < min_node_size_) {
@@ -252,7 +261,7 @@ class BzTree
 
       // check whether it is required to split a parent node
       parent = trace.top().first;
-      if (InternalNode_t::NeedSplit(parent, split_key_length)) {
+      if (NeedSplit(parent, split_key_length)) {
         SplitInternalNode(parent, target_key);
         continue;
       }
@@ -308,7 +317,7 @@ class BzTree
       if (trace.size() > 1) {  // target is not a root node (i.e., there is a parent node)
         trace.pop();
         parent = trace.top().first;
-        if (InternalNode_t::NeedSplit(parent, split_key_length)) {
+        if (NeedSplit(parent, split_key_length)) {
           SplitInternalNode(parent, target_key);
           continue;
         }

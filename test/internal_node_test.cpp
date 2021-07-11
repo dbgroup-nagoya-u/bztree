@@ -198,18 +198,6 @@ class InternalNodeFixture : public testing::Test
   }
 
   void
-  VerifyNeedSplit(const bool expect_split)
-  {
-    if (expect_split) {
-      node.reset(PrepareDummyNode(max_record_num));
-      EXPECT_TRUE(InternalNode_t::NeedSplit(node.get(), key_length));
-    } else {
-      node.reset(PrepareDummyNode(max_record_num - 1));
-      EXPECT_FALSE(InternalNode_t::NeedSplit(node.get(), key_length));
-    }
-  }
-
-  void
   VerifyGetMergeableSibling(const bool expect_filled_node)
   {
     const size_t target_size = kDummyNodeNum * record_length;
@@ -379,16 +367,6 @@ TYPED_TEST_CASE(InternalNodeFixture, KeyPayloadPairs);
 TYPED_TEST(InternalNodeFixture, GetChildNode_DummyChildren_ReadDummyValues)
 {
   TestFixture::VerifyGetChildNode();
-}
-
-TYPED_TEST(InternalNodeFixture, NeedSplit_HasOneRecordSpace_SplitNotRequired)
-{
-  TestFixture::VerifyNeedSplit(false);
-}
-
-TYPED_TEST(InternalNodeFixture, NeedSplit_FilledNode_SplitRequired)
-{
-  TestFixture::VerifyNeedSplit(true);
 }
 
 TYPED_TEST(InternalNodeFixture, GetMergeableSibling_SiblingHasSufficentSpace_GetSiblingNode)
