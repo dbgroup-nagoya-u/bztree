@@ -301,6 +301,14 @@ class LeafNode
     return offset;
   }
 
+  static constexpr bool
+  HasSpace(  //
+      const StatusWord status,
+      const size_t block_size)
+  {
+    return status.GetOccupiedSize() + block_size <= kPageSize - kWordLength;
+  }
+
  public:
   /*################################################################################################
    * Read operations
@@ -320,10 +328,9 @@ class LeafNode
       } else {
         return std::make_pair(NodeReturnCode::kKeyNotExist, Payload{});
       }
-    } else {
-      const auto meta = node->GetMetadataProtected(index);
-      return std::make_pair(NodeReturnCode::kSuccess, GetPayload(node, meta));
     }
+    const auto meta = node->GetMetadataProtected(index);
+    return std::make_pair(NodeReturnCode::kSuccess, GetPayload(node, meta));
   }
 
   static constexpr auto
@@ -401,13 +408,8 @@ class LeafNode
      *--------------------------------------------------------------------------------------------*/
     while (true) {
       current_status = node->GetStatusWordProtected();
-      if (current_status.IsFrozen()) {
-        return {NodeReturnCode::kFrozen, StatusWord{}};
-      }
-
-      if (current_status.GetOccupiedSize() + kWordLength + block_size > kPageSize) {
-        return {NodeReturnCode::kNoSpace, StatusWord{}};
-      }
+      if (current_status.IsFrozen()) return {NodeReturnCode::kFrozen, StatusWord{}};
+      if (!HasSpace(current_status, block_size)) return {NodeReturnCode::kNoSpace, StatusWord{}};
 
       // prepare for MwCAS
       record_count = current_status.GetRecordCount();
@@ -473,20 +475,16 @@ class LeafNode
      *--------------------------------------------------------------------------------------------*/
     while (true) {
       current_status = node->GetStatusWordProtected();
-      if (current_status.IsFrozen()) {
-        return {NodeReturnCode::kFrozen, StatusWord{}};
-      }
+      if (current_status.IsFrozen()) return {NodeReturnCode::kFrozen, StatusWord{}};
+      if (!HasSpace(current_status, block_size)) return {NodeReturnCode::kNoSpace, StatusWord{}};
 
+      // check uniqueness
       record_count = current_status.GetRecordCount();
       if (uniqueness != KeyExistence::kUncertain) {
         uniqueness = CheckUniqueness(node, key, record_count, index_epoch).first;
         if (uniqueness == KeyExistence::kExist) {
           return {NodeReturnCode::kKeyExist, current_status};
         }
-      }
-
-      if (current_status.GetOccupiedSize() + kWordLength + block_size > kPageSize) {
-        return {NodeReturnCode::kNoSpace, StatusWord{}};
       }
 
       // prepare new status for MwCAS
@@ -568,20 +566,16 @@ class LeafNode
      *--------------------------------------------------------------------------------------------*/
     while (true) {
       current_status = node->GetStatusWordProtected();
-      if (current_status.IsFrozen()) {
-        return {NodeReturnCode::kFrozen, StatusWord{}};
-      }
+      if (current_status.IsFrozen()) return {NodeReturnCode::kFrozen, StatusWord{}};
+      if (!HasSpace(current_status, block_size)) return {NodeReturnCode::kNoSpace, StatusWord{}};
 
+      // check whether a node includes a target key
       record_count = current_status.GetRecordCount();
       if (uniqueness != KeyExistence::kUncertain) {
         std::tie(uniqueness, target_index) = CheckUniqueness(node, key, record_count, index_epoch);
         if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
           return {NodeReturnCode::kKeyNotExist, current_status};
         }
-      }
-
-      if (current_status.GetOccupiedSize() + kWordLength + block_size > kPageSize) {
-        return {NodeReturnCode::kNoSpace, StatusWord{}};
       }
 
       // prepare new status for MwCAS
@@ -655,20 +649,16 @@ class LeafNode
      *--------------------------------------------------------------------------------------------*/
     while (true) {
       current_status = node->GetStatusWordProtected();
-      if (current_status.IsFrozen()) {
-        return {NodeReturnCode::kFrozen, StatusWord{}};
-      }
+      if (current_status.IsFrozen()) return {NodeReturnCode::kFrozen, StatusWord{}};
+      if (!HasSpace(current_status, key_length)) return {NodeReturnCode::kNoSpace, StatusWord{}};
 
+      // check whether a node includes a target key
       record_count = current_status.GetRecordCount();
       if (uniqueness != KeyExistence::kUncertain) {
         std::tie(uniqueness, target_index) = CheckUniqueness(node, key, record_count, index_epoch);
         if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
           return {NodeReturnCode::kKeyNotExist, current_status};
         }
-      }
-
-      if (current_status.GetOccupiedSize() + kWordLength + key_length > kPageSize) {
-        return {NodeReturnCode::kNoSpace, StatusWord{}};
       }
 
       // prepare new status for MwCAS
