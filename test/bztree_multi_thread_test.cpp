@@ -166,15 +166,15 @@ class BzTreeFixture : public testing::Test
 
     switch (ops.w_type) {
       case kInsert:
-        return bztree.Insert(key, key_length, payload, payload_length);
+        return bztree.Insert(key, payload, key_length, payload_length);
       case kUpdate:
-        return bztree.Update(key, key_length, payload, payload_length);
+        return bztree.Update(key, payload, key_length, payload_length);
       case kDelete:
         return bztree.Delete(key, key_length);
       case kWrite:
         break;
     }
-    return bztree.Write(key, key_length, payload, payload_length);
+    return bztree.Write(key, payload, key_length, payload_length);
   }
 
   Operation

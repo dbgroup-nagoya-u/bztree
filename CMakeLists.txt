@@ -29,6 +29,41 @@ set(
   "The byte length of each node page"
 )
 
+set(
+  BZTREE_MAX_UNSORTED_REC_NUM
+  "32"
+  CACHE STRING
+  "Invoking consolidation if the number of unsorted records exceeds this threshold"
+)
+
+set(
+  BZTREE_MAX_DELETED_SPACE_SIZE
+  "1024"
+  CACHE STRING
+  "Invoking consolidation if the size of deleted records exceeds this threshold"
+)
+
+set(
+  BZTREE_MIN_FREE_SPACE_SIZE
+  "768"
+  CACHE STRING
+  "Invoking a split if the size of free space in a node exceeds this threshold"
+)
+
+set(
+  BZTREE_MIN_SORTED_REC_NUM
+  "16"
+  CACHE STRING
+  "Invoking merging if the number of sorted records falls below this threshold"
+)
+
+set(
+  BZTREE_MAX_MERGED_SIZE
+  "4096"
+  CACHE STRING
+  "Canceling merging if the size of a merged node exceeds this threshold"
+)
+
 #--------------------------------------------------------------------------------------#
 # Configure external libraries
 #--------------------------------------------------------------------------------------#
@@ -60,6 +95,11 @@ target_compile_options(
 target_compile_definitions(
   bztree INTERFACE
   BZTREE_PAGE_SIZE=${BZTREE_PAGE_SIZE}
+  BZTREE_MAX_UNSORTED_REC_NUM=${BZTREE_MAX_UNSORTED_REC_NUM}
+  BZTREE_MAX_DELETED_SPACE_SIZE=${BZTREE_MAX_DELETED_SPACE_SIZE}
+  BZTREE_MIN_FREE_SPACE_SIZE=${BZTREE_MIN_FREE_SPACE_SIZE}
+  BZTREE_MIN_SORTED_REC_NUM=${BZTREE_MIN_SORTED_REC_NUM}
+  BZTREE_MAX_MERGED_SIZE=${BZTREE_MAX_MERGED_SIZE}
 )
 target_include_directories(
   bztree INTERFACE
