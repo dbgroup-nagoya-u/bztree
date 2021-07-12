@@ -152,13 +152,15 @@ class BzTree
   }
 
   static constexpr size_t
-  ComputeOccupiedSize(const std::vector<std::pair<Key, Metadata>> &live_meta)
+  ComputeOccupiedSize(  //
+      const std::array<Metadata, kMaxRecordNum> &metadata,
+      const size_t rec_count)
   {
     size_t block_size = 0;
-    for (auto &&[key, meta] : live_meta) {
-      block_size += meta.GetTotalLength();
+    for (size_t i = 0; i < rec_count; ++i) {
+      block_size += metadata[i].GetTotalLength();
     }
-    block_size += kHeaderLength + (kWordLength * live_meta.size());
+    block_size += kHeaderLength + (kWordLength * rec_count);
 
     return block_size;
   }
@@ -193,28 +195,28 @@ class BzTree
   constexpr void
   ConsolidateLeafNode(  //
       BaseNode_t *target_node,
-      const Key target_key,
-      const size_t target_key_length)
+      const Key key,
+      const size_t key_length)
   {
     // freeze a target node and perform consolidation
     if (target_node->Freeze() != NodeReturnCode::kSuccess) return;
 
     // gather sorted live metadata of a targetnode, and check whether split/merge is required
-    const auto live_meta = LeafNode_t::GatherSortedLiveMetadata(target_node);
-    const auto occupied_size = ComputeOccupiedSize(live_meta);
-    if (occupied_size > kPageSize - kMinFreeSpaceSize) {
-      SplitLeafNode(target_node, target_key, live_meta);
+    const auto [metadata, rec_count] = LeafNode_t::GatherSortedLiveMetadata(target_node);
+    const auto target_size = ComputeOccupiedSize(metadata, rec_count);
+    if (target_size > kPageSize - kMinFreeSpaceSize) {
+      SplitLeafNode(target_node, key, metadata, rec_count);
       return;
-    } else if (live_meta.size() < kMinSortedRecNum) {
-      if (MergeLeafNodes(target_node, target_key, target_key_length, occupied_size, live_meta)) {
+    } else if (metadata.size() < kMinSortedRecNum) {
+      if (MergeLeafNodes(target_node, key, key_length, target_size, metadata, rec_count)) {
         return;
       }
     }
 
     // install a new node
-    const auto new_node = LeafNode_t::Consolidate(target_node, live_meta);
-    auto trace = TraceTargetNode(target_key, target_node);
-    InstallNewNode(trace, new_node, target_key, target_node);
+    const auto new_node = LeafNode_t::Consolidate(target_node, metadata, rec_count);
+    auto trace = TraceTargetNode(key, target_node);
+    InstallNewNode(trace, new_node, key, target_node);
 
     // Temporal implementation of garbage collection
     gc_.AddGarbage(target_node);
@@ -224,12 +226,11 @@ class BzTree
   SplitLeafNode(  //
       const BaseNode_t *target_node,
       const Key target_key,
-      const std::vector<std::pair<Key, Metadata>> &sorted_meta)
+      const std::array<Metadata, kMaxRecordNum> &metadata,
+      const size_t rec_count)
   {
-    // get a separator key and its length
-    const auto left_record_count = (sorted_meta.size() / 2);
-    const auto [split_key, split_meta] = sorted_meta[left_record_count - 1];
-    const auto split_key_length = split_meta.GetKeyLength();
+    const size_t left_rec_count = rec_count / 2;
+    const auto split_key_length = metadata[left_rec_count - 1].GetKeyLength();
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: preparation
@@ -261,7 +262,7 @@ class BzTree
 
     // create new nodes
     const auto [left_node, right_node] =
-        LeafNode_t::Split(target_node, sorted_meta, left_record_count);
+        LeafNode_t::Split(target_node, metadata, rec_count, left_rec_count);
     const auto new_parent =
         InternalNode_t::NewParentForSplit(parent, left_node, right_node, target_index);
 
@@ -277,9 +278,8 @@ class BzTree
       const Key target_key)
   {
     // get a split index and a corresponding key length
-    const auto left_record_count = (target_node->GetSortedCount() / 2);
-    const auto [split_key, split_key_length] =
-        target_node->GetKeyAndItsLength(left_record_count - 1);
+    const auto left_rec_count = (target_node->GetSortedCount() / 2);
+    const auto split_key_length = target_node->GetMetadata(left_rec_count - 1).GetKeyLength();
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: preparation
@@ -325,7 +325,7 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    const auto [left_node, right_node] = InternalNode_t::Split(target_node, left_record_count);
+    const auto [left_node, right_node] = InternalNode_t::Split(target_node, left_rec_count);
     BaseNode_t *new_parent;
     if (parent != nullptr) {
       // target is not a root node
@@ -348,21 +348,21 @@ class BzTree
       const Key target_key,
       const size_t target_key_length,
       const size_t target_size,
-      const std::vector<std::pair<Key, Metadata>> &sorted_meta)
+      const std::array<Metadata, kMaxRecordNum> &target_meta,
+      const size_t rec_count)
   {
     /*----------------------------------------------------------------------------------------------
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
 
     std::stack<std::pair<BaseNode_t *, size_t>> trace;
-    BaseNode_t *parent = nullptr, *sibling_node = nullptr;
-    bool sibling_is_left = true;
+    BaseNode_t *parent = nullptr, *sib_node = nullptr;
+    bool sib_is_left = true;
     size_t target_index = 0;
     while (true) {
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(target_key, target_node);
       target_index = trace.top().second;
-      if (!HaveSameAddress(trace.top().first, target_node)) return false;
       trace.pop();
 
       // check a parent node is live
@@ -371,18 +371,18 @@ class BzTree
       if (parent_status.IsFrozen()) continue;
 
       // check a left/right sibling node is live
-      std::tie(sibling_node, sibling_is_left) = GetSiblingNode(parent, target_index, target_size);
-      if (sibling_node == nullptr) return false;  // there is no live sibling node
-      const auto sibling_status = sibling_node->GetStatusWordProtected();
+      std::tie(sib_node, sib_is_left) = GetSiblingNode(parent, target_index, target_size);
+      if (sib_node == nullptr) return false;  // there is no live sibling node
+      const auto sibling_status = sib_node->GetStatusWordProtected();
       if (sibling_status.IsFrozen()) {
-        if (sibling_is_left) continue;
+        if (sib_is_left) continue;
         return false;
       }
 
       // pre-freezing of SMO targets
       MwCASDescriptor desc;
       parent->SetStatusForMwCAS(desc, parent_status, parent_status.Freeze());
-      sibling_node->SetStatusForMwCAS(desc, sibling_status, sibling_status.Freeze());
+      sib_node->SetStatusForMwCAS(desc, sibling_status, sibling_status.Freeze());
       if (desc.MwCAS()) break;
     }
 
@@ -391,14 +391,16 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    const auto sibling_meta = LeafNode_t::GatherSortedLiveMetadata(sibling_node);
+    const auto [sib_meta, sib_rec_count] = LeafNode_t::GatherSortedLiveMetadata(sib_node);
     BaseNode_t *merged_node;
     size_t deleted_index;
-    if (sibling_is_left) {
-      merged_node = LeafNode_t::Merge(sibling_node, sibling_meta, target_node, sorted_meta);
+    if (sib_is_left) {
+      merged_node =
+          LeafNode_t::Merge(sib_node, sib_meta, sib_rec_count, target_node, target_meta, rec_count);
       deleted_index = target_index - 1;
     } else {
-      merged_node = LeafNode_t::Merge(target_node, sorted_meta, sibling_node, sibling_meta);
+      merged_node =
+          LeafNode_t::Merge(target_node, target_meta, rec_count, sib_node, sib_meta, sib_rec_count);
       deleted_index = target_index;
     }
     const auto new_parent = InternalNode_t::NewParentForMerge(parent, merged_node, deleted_index);
@@ -407,7 +409,7 @@ class BzTree
     InstallNewNode(trace, new_parent, target_key, parent);
     gc_.AddGarbage(target_node);
     gc_.AddGarbage(parent);
-    gc_.AddGarbage(sibling_node);
+    gc_.AddGarbage(sib_node);
 
     // check whether it is required to merge a new parent node
     if (trace.size() != 0 && NeedMerge(new_parent)) {
