@@ -127,7 +127,7 @@ class LeafNodeFixture : public testing::Test
     } else {
       record_length = key_length + payload_length;
     }
-    max_record_num = (kPageSize - kHeaderLength) / (record_length + kWordLength);
+    max_record_num = kMaxUnsortedRecNum;
   }
 
   void
@@ -245,8 +245,8 @@ class LeafNodeFixture : public testing::Test
       const size_t end_index)
   {
     WriteOrderedKeys(begin_index, end_index);
-    auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
-    node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
+    auto [metadata, rec_count] = LeafNode_t::GatherSortedLiveMetadata(node.get());
+    node.reset(LeafNode_t::Consolidate(node.get(), metadata, rec_count));
   }
 
   bool
@@ -254,7 +254,8 @@ class LeafNodeFixture : public testing::Test
   {
     const auto expected_occupied_size =
         kHeaderLength + (expected_record_count * kWordLength) + expected_block_size;
-    return kPageSize - expected_occupied_size < kWordLength + key_length;
+    return expected_record_count >= max_record_num
+           || kPageSize - expected_occupied_size < kWordLength + key_length;
   }
 
   /*################################################################################################
@@ -313,43 +314,6 @@ class LeafNodeFixture : public testing::Test
         EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], actual.get()));
       } else {
         EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], actual));
-      }
-    }
-  }
-
-  void
-  VerifyScan(  //
-      const size_t begin_id,
-      const bool begin_is_closed,
-      const size_t end_id,
-      const bool end_is_closed,
-      const std::vector<size_t> &expected_keys,
-      const std::vector<size_t> &expected_payloads,
-      const bool begin_is_inf = false,
-      const bool end_is_inf = false)
-  {
-    Key *begin_key = nullptr, *end_key = nullptr;
-    if (!begin_is_inf) {
-      begin_key = &keys[begin_id];
-    }
-    if (!end_is_inf) {
-      end_key = &keys[end_id];
-    }
-
-    auto [rc, results] =
-        LeafNode_t::Scan(node.get(), begin_key, begin_is_closed, end_key, end_is_closed);
-
-    EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-    EXPECT_EQ(expected_keys.size(), results.size());
-    for (size_t i = 0; i < expected_keys.size(); ++i) {
-      const auto key_id = expected_keys[i];
-      const auto payload_id = expected_payloads[i];
-      if constexpr (std::is_same_v<Key, char *> || std::is_same_v<Payload, char *>) {
-        EXPECT_TRUE(IsEqual<KeyComp>(keys[key_id], results[i]->GetKey()));
-        EXPECT_TRUE(IsEqual<PayloadComp>(payloads[payload_id], results[i]->GetPayload()));
-      } else {
-        EXPECT_TRUE(IsEqual<KeyComp>(keys[key_id], results[i].GetKey()));
-        EXPECT_TRUE(IsEqual<PayloadComp>(payloads[payload_id], results[i].GetPayload()));
       }
     }
   }
@@ -433,14 +397,14 @@ class LeafNodeFixture : public testing::Test
   void
   VerifyGatherSortedLiveMetadata(std::vector<size_t> &expected_ids)
   {
-    auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
+    auto [metadata, rec_count] = LeafNode_t::GatherSortedLiveMetadata(node.get());
 
-    EXPECT_EQ(expected_ids.size(), meta_vec.size());
+    EXPECT_EQ(expected_ids.size(), rec_count);
     for (size_t i = 0; i < expected_ids.size(); ++i) {
       const auto key_id = expected_ids[i];
-      const auto [actual_key, meta] = meta_vec[i];
+      const auto meta = metadata[i];
 
-      EXPECT_TRUE(IsEqual<KeyComp>(keys[key_id], actual_key));
+      EXPECT_TRUE(IsEqual<KeyComp>(keys[key_id], node->GetKey(meta)));
       VerifyMetadata(meta);
     }
   }
@@ -448,8 +412,8 @@ class LeafNodeFixture : public testing::Test
   void
   VerifyConsolidation()
   {
-    auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
-    node.reset(LeafNode_t::Consolidate(node.get(), meta_vec));
+    auto [metadata, rec_count] = LeafNode_t::GatherSortedLiveMetadata(node.get());
+    node.reset(LeafNode_t::Consolidate(node.get(), metadata, rec_count));
 
     expected_record_count -= expected_deleted_rec_count;
     expected_block_size -= expected_deleted_block_size;
@@ -463,12 +427,13 @@ class LeafNodeFixture : public testing::Test
   VerifySplit(  //
       const size_t begin_index,
       const size_t end_index,
-      const size_t left_record_count,
+      const size_t left_rec_count,
       const bool target_is_left)
   {
     WriteOrderedKeys(begin_index, end_index);
-    auto meta_vec = LeafNode_t::GatherSortedLiveMetadata(node.get());
-    auto [left_node, right_node] = LeafNode_t::Split(node.get(), meta_vec, left_record_count);
+    auto [metadata, rec_count] = LeafNode_t::GatherSortedLiveMetadata(node.get());
+    auto [left_node, right_node] =
+        LeafNode_t::Split(node.get(), metadata, rec_count, left_rec_count);
 
     if (target_is_left) {
       node.reset(left_node);
@@ -478,7 +443,7 @@ class LeafNodeFixture : public testing::Test
       delete left_node;
     }
 
-    expected_record_count = left_record_count;
+    expected_record_count = left_rec_count;
     expected_block_size = expected_record_count * record_length;
 
     VerifyStatusWord(node->GetStatusWord());
@@ -492,15 +457,16 @@ class LeafNodeFixture : public testing::Test
       const size_t right_end)
   {
     WriteOrderedKeys(left_begin, left_end);
-    auto left_meta = LeafNode_t::GatherSortedLiveMetadata(node.get());
+    auto [left_meta, left_rec_count] = LeafNode_t::GatherSortedLiveMetadata(node.get());
 
     auto right_node = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
     for (size_t id = right_begin; id <= right_end; ++id) {
       LeafNode_t::Write(right_node.get(), keys[id], key_length, payloads[id], payload_length);
     }
-    auto right_meta = LeafNode_t::GatherSortedLiveMetadata(right_node.get());
+    auto [right_meta, right_rec_count] = LeafNode_t::GatherSortedLiveMetadata(right_node.get());
 
-    node.reset(LeafNode_t::Merge(node.get(), left_meta, right_node.get(), right_meta));
+    node.reset(LeafNode_t::Merge(node.get(), left_meta, left_rec_count,  //
+                                 right_node.get(), right_meta, right_rec_count));
 
     expected_record_count = (left_end - left_begin + 1) + (right_end - right_begin + 1);
     expected_block_size = expected_record_count * record_length;
@@ -550,176 +516,6 @@ TYPED_TEST(LeafNodeFixture, Read_DeletedKey_ReadFail)
 /*--------------------------------------------------------------------------------------------------
  * Scan operation
  *------------------------------------------------------------------------------------------------*/
-
-TYPED_TEST(LeafNodeFixture, Scan_EmptyNode_NoResult)
-{
-  std::vector<size_t> expected_ids = {};
-  TestFixture::VerifyScan(1, true, 10, true, expected_ids, expected_ids);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_BothClosed_ScanTargetValues)
-{
-  TestFixture::WriteOrderedKeys(1, 10);
-
-  std::vector<size_t> expected_ids = {2, 3, 4, 5, 6, 7, 8};
-  TestFixture::VerifyScan(2, true, 8, true, expected_ids, expected_ids);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_LeftClosed_ScanTargetValues)
-{
-  TestFixture::WriteOrderedKeys(1, 10);
-
-  std::vector<size_t> expected_ids = {2, 3, 4, 5, 6, 7};
-  TestFixture::VerifyScan(2, true, 8, false, expected_ids, expected_ids);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_RightClosed_ScanTargetValues)
-{
-  TestFixture::WriteOrderedKeys(1, 10);
-
-  std::vector<size_t> expected_ids = {3, 4, 5, 6, 7, 8};
-  TestFixture::VerifyScan(2, false, 8, true, expected_ids, expected_ids);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_BothOpened_ScanTargetValues)
-{
-  TestFixture::WriteOrderedKeys(1, 10);
-
-  std::vector<size_t> expected_ids = {3, 4, 5, 6, 7};
-  TestFixture::VerifyScan(2, false, 8, false, expected_ids, expected_ids);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_LeftInfinity_ScanTargetValues)
-{
-  TestFixture::WriteOrderedKeys(1, 10);
-
-  std::vector<size_t> expected_ids = {1, 2, 3, 4, 5, 6, 7, 8};
-  TestFixture::VerifyScan(2, true, 8, true, expected_ids, expected_ids, true);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_RightInfinity_ScanTargetValues)
-{
-  TestFixture::WriteOrderedKeys(1, 10);
-
-  std::vector<size_t> expected_ids = {2, 3, 4, 5, 6, 7, 8, 9, 10};
-  TestFixture::VerifyScan(2, true, 8, true, expected_ids, expected_ids, false, true);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_LeftOutsideRange_NoResults)
-{
-  TestFixture::WriteOrderedKeys(6, 10);
-
-  std::vector<size_t> expected_ids = {};
-  TestFixture::VerifyScan(1, true, 5, true, expected_ids, expected_ids);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_RightOutsideRange_NoResults)
-{
-  TestFixture::WriteOrderedKeys(1, 5);
-
-  std::vector<size_t> expected_ids = {};
-  TestFixture::VerifyScan(6, true, 10, true, expected_ids, expected_ids);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_WithUpdateDelete_ScanLatestValues)
-{
-  TestFixture::WriteOrderedKeys(1, 10);
-  TestFixture::Update(5, 11);
-  TestFixture::Delete(7);
-
-  std::vector<size_t> expected_keys = {2, 3, 4, 5, 6, 8};
-  std::vector<size_t> expected_payloads = {2, 3, 4, 11, 6, 8};
-  TestFixture::VerifyScan(2, true, 8, true, expected_keys, expected_payloads);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_BothClosedWithConsolidatedNode_ScanTargetValues)
-{
-  TestFixture::PrepareConsolidatedNode(4, 7);
-  TestFixture::WriteOrderedKeys(1, 3);
-  TestFixture::WriteOrderedKeys(8, 10);
-
-  std::vector<size_t> expected_ids = {2, 3, 4, 5, 6, 7, 8};
-  TestFixture::VerifyScan(2, true, 8, true, expected_ids, expected_ids);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_LeftClosedWithConsolidatedNode_ScanTargetValues)
-{
-  TestFixture::PrepareConsolidatedNode(4, 7);
-  TestFixture::WriteOrderedKeys(1, 3);
-  TestFixture::WriteOrderedKeys(8, 10);
-
-  std::vector<size_t> expected_ids = {2, 3, 4, 5, 6, 7};
-  TestFixture::VerifyScan(2, true, 8, false, expected_ids, expected_ids);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_RightClosedWithConsolidatedNode_ScanTargetValues)
-{
-  TestFixture::PrepareConsolidatedNode(4, 7);
-  TestFixture::WriteOrderedKeys(1, 3);
-  TestFixture::WriteOrderedKeys(8, 10);
-
-  std::vector<size_t> expected_ids = {3, 4, 5, 6, 7, 8};
-  TestFixture::VerifyScan(2, false, 8, true, expected_ids, expected_ids);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_BothOpenedWithConsolidatedNode_ScanTargetValues)
-{
-  TestFixture::PrepareConsolidatedNode(4, 7);
-  TestFixture::WriteOrderedKeys(1, 3);
-  TestFixture::WriteOrderedKeys(8, 10);
-
-  std::vector<size_t> expected_ids = {3, 4, 5, 6, 7};
-  TestFixture::VerifyScan(2, false, 8, false, expected_ids, expected_ids);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_LeftInfinityWithConsolidatedNode_ScanTargetValues)
-{
-  TestFixture::PrepareConsolidatedNode(4, 7);
-  TestFixture::WriteOrderedKeys(1, 3);
-  TestFixture::WriteOrderedKeys(8, 10);
-
-  std::vector<size_t> expected_ids = {1, 2, 3, 4, 5, 6, 7, 8};
-  TestFixture::VerifyScan(2, true, 8, true, expected_ids, expected_ids, true);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_RightInfinityWithConsolidatedNode_ScanTargetValues)
-{
-  TestFixture::PrepareConsolidatedNode(4, 7);
-  TestFixture::WriteOrderedKeys(1, 3);
-  TestFixture::WriteOrderedKeys(8, 10);
-
-  std::vector<size_t> expected_ids = {2, 3, 4, 5, 6, 7, 8, 9, 10};
-  TestFixture::VerifyScan(2, true, 8, true, expected_ids, expected_ids, false, true);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_LeftOutsideRangeWithConsolidatedNode_NoResults)
-{
-  TestFixture::PrepareConsolidatedNode(6, 10);
-
-  std::vector<size_t> expected_ids = {};
-  TestFixture::VerifyScan(1, true, 5, true, expected_ids, expected_ids);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_RightOutsideRangeWithConsolidatedNode_NoResults)
-{
-  TestFixture::PrepareConsolidatedNode(1, 5);
-
-  std::vector<size_t> expected_ids = {};
-  TestFixture::VerifyScan(6, true, 10, true, expected_ids, expected_ids);
-}
-
-TYPED_TEST(LeafNodeFixture, Scan_WithUpdateDeleteWithConsolidatedNode_ScanLatestValues)
-{
-  TestFixture::PrepareConsolidatedNode(4, 7);
-  TestFixture::WriteOrderedKeys(1, 3);
-  TestFixture::WriteOrderedKeys(8, 10);
-  TestFixture::Update(5, 11);
-  TestFixture::Delete(7);
-
-  std::vector<size_t> expected_keys = {2, 3, 4, 5, 6, 8};
-  std::vector<size_t> expected_payloads = {2, 3, 4, 11, 6, 8};
-  TestFixture::VerifyScan(2, true, 8, true, expected_keys, expected_payloads);
-}
 
 /*--------------------------------------------------------------------------------------------------
  * Write operation
