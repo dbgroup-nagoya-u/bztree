@@ -30,7 +30,32 @@
 
 namespace dbgroup::index::bztree
 {
-template <class Key, class Payload, class Compare = std::less<Key>>
+template <class Key, class Compare>
+struct MetaRecord {
+  Metadata meta;
+  Key key;
+  bool in_sorted;
+
+  constexpr bool
+  operator<(const MetaRecord &obj)
+  {
+    return Compare{}(this->key, obj.key);
+  }
+
+  constexpr bool
+  operator==(const MetaRecord &obj)
+  {
+    return !Compare{}(this->key, obj.key) && !Compare{}(obj.key, this->key);
+  }
+
+  constexpr bool
+  operator!=(const MetaRecord &obj)
+  {
+    return Compare{}(this->key, obj.key) || Compare{}(obj.key, this->key);
+  }
+};
+
+template <class Key, class Payload, class Compare>
 class LeafNode
 {
   using BaseNode_t = BaseNode<Key, Payload, Compare>;
@@ -307,6 +332,46 @@ class LeafNode
       const size_t block_size)
   {
     return status.GetOccupiedSize() + block_size <= kPageSize - kWordLength;
+  }
+
+  static constexpr std::array<MetaRecord<Key, Compare>, kMaxUnsortedRecNum>
+  SortUnsortedRecords(const BaseNode_t *node)
+  {
+    const auto record_count = node->GetStatusWord().GetRecordCount();
+    const int64_t sorted_count = node->GetSortedCount();
+
+    std::array<MetaRecord<Key, Compare>, kMaxUnsortedRecNum> arr;
+
+    // sort unsorted records by insertion sort
+    size_t count = 0;
+    for (int64_t index = record_count - 1; index >= sorted_count; --index) {
+      const auto meta = node->GetMetadataProtected(index);
+      if (!meta.IsInProgress()) {
+        if (count == 0) {
+          // insert a first record
+          arr[0] = MetaRecord{meta, Cast<Key>(node->GetKeyAddr(meta)), false};
+          ++count;
+          continue;
+        }
+
+        // insert a new record into an appropiate position
+        MetaRecord target{meta, Cast<Key>(node->GetKeyAddr(meta)), false};
+        const auto ins_iter = std::lower_bound(arr.begin(), arr.begin() + count, target);
+        if (*ins_iter != target) {
+          const auto ins_id = std::distance(arr.begin(), ins_iter);
+          if (ins_id < count) {
+            // shift upper records
+            memmove(&(arr[ins_id + 1]), &(arr[ins_id]), sizeof(MetaRecord) * (count - ins_id));
+          }
+
+          // insert a new record
+          arr[ins_id] = std::move(target);
+          ++count;
+        }
+      }
+    }
+
+    return std::move(arr);
   }
 
  public:

@@ -45,50 +45,6 @@ class BzTree
   using NodeReturnCode = typename BaseNode<Key, Payload, Compare>::NodeReturnCode;
 
   /*################################################################################################
-   * Internal constants
-   *##############################################################################################*/
-
-#ifdef BZTREE_MAX_UNSORTED_REC_NUM
-  /// Invoking consolidation if the number of unsorted records exceeds this threshold
-  static constexpr size_t kMaxUnsortedRecNum = BZTREE_MAX_UNSORTED_REC_NUM;
-#else
-  /// Invoking consolidation if the number of unsorted records exceeds this threshold
-  static constexpr size_t kMaxUnsortedRecNum = 32;
-#endif
-
-#ifdef BZTREE_MAX_DELETED_SPACE_SIZE
-  /// Invoking consolidation if the size of deleted records exceeds this threshold
-  static constexpr size_t kMaxDeletedSpaceSize = BZTREE_MAX_DELETED_SPACE_SIZE;
-#else
-  /// Invoking consolidation if the size of deleted records exceeds this threshold
-  static constexpr size_t kMaxDeletedSpaceSize = kPageSize / 8;
-#endif
-
-#ifdef BZTREE_MIN_FREE_SPACE_SIZE
-  /// Invoking a split if the size of free space in a node exceeds this threshold
-  static constexpr size_t kMinFreeSpaceSize = BZTREE_MIN_FREE_SPACE_SIZE;
-#else
-  /// Invoking a split if the size of free space in a node exceeds this threshold
-  static constexpr size_t kMinFreeSpaceSize = kMaxUnsortedRecNum * kWordLength * 3;
-#endif
-
-#ifdef BZTREE_MIN_SORTED_REC_NUM
-  /// Invoking merging if the number of sorted records falls below this threshold
-  static constexpr size_t kMinSortedRecNum = BZTREE_MIN_SORTED_REC_NUM;
-#else
-  /// Invoking merging if the number of sorted records falls below this threshold
-  static constexpr size_t kMinSortedRecNum = 16;
-#endif
-
-#ifdef BZTREE_MAX_MERGED_SIZE
-  /// Canceling merging if the size of a merged node exceeds this threshold
-  static constexpr size_t kMaxMergedSize = BZTREE_MAX_MERGED_SIZE;
-#else
-  /// Canceling merging if the size of a merged node exceeds this threshold
-  static constexpr size_t kMaxMergedSize = kPageSize / 2;
-#endif
-
-  /*################################################################################################
    * Internal member variables
    *##############################################################################################*/
 
