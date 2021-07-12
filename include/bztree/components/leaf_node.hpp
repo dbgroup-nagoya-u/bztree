@@ -61,6 +61,7 @@ class LeafNode
   using BaseNode_t = BaseNode<Key, Payload, Compare>;
   using KeyExistence = typename BaseNode_t::KeyExistence;
   using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
+  using MetaRecord_t = MetaRecord<Key, Compare>;
 
  private:
   /*################################################################################################
@@ -334,13 +335,13 @@ class LeafNode
     return status.GetOccupiedSize() + block_size <= kPageSize - kWordLength;
   }
 
-  static constexpr std::array<MetaRecord<Key, Compare>, kMaxUnsortedRecNum>
+  static constexpr std::pair<std::array<MetaRecord_t, kMaxUnsortedRecNum>, size_t>
   SortUnsortedRecords(const BaseNode_t *node)
   {
-    const auto record_count = node->GetStatusWord().GetRecordCount();
+    const auto record_count = node->GetStatusWordProtected().GetRecordCount();
     const int64_t sorted_count = node->GetSortedCount();
 
-    std::array<MetaRecord<Key, Compare>, kMaxUnsortedRecNum> arr;
+    std::array<MetaRecord_t, kMaxUnsortedRecNum> arr;
 
     // sort unsorted records by insertion sort
     size_t count = 0;
@@ -349,19 +350,19 @@ class LeafNode
       if (!meta.IsInProgress()) {
         if (count == 0) {
           // insert a first record
-          arr[0] = MetaRecord{meta, Cast<Key>(node->GetKeyAddr(meta)), false};
+          arr[0] = MetaRecord_t{meta, Cast<Key>(node->GetKeyAddr(meta)), false};
           ++count;
           continue;
         }
 
         // insert a new record into an appropiate position
-        MetaRecord target{meta, Cast<Key>(node->GetKeyAddr(meta)), false};
+        MetaRecord_t target{meta, Cast<Key>(node->GetKeyAddr(meta)), false};
         const auto ins_iter = std::lower_bound(arr.begin(), arr.begin() + count, target);
         if (*ins_iter != target) {
           const auto ins_id = std::distance(arr.begin(), ins_iter);
           if (ins_id < count) {
             // shift upper records
-            memmove(&(arr[ins_id + 1]), &(arr[ins_id]), sizeof(MetaRecord) * (count - ins_id));
+            memmove(&(arr[ins_id + 1]), &(arr[ins_id]), sizeof(MetaRecord_t) * (count - ins_id));
           }
 
           // insert a new record
@@ -371,7 +372,7 @@ class LeafNode
       }
     }
 
-    return std::move(arr);
+    return {std::move(arr), count};
   }
 
  public:
@@ -836,45 +837,51 @@ class LeafNode
    * Public utility functions
    *##############################################################################################*/
 
-  static constexpr std::vector<std::pair<Key, Metadata>>
+  static constexpr std::pair<std::array<MetaRecord_t, kMaxRecordNum>, size_t>
   GatherSortedLiveMetadata(const BaseNode_t *node)
   {
-    const auto record_count = node->GetStatusWord().GetRecordCount();
-    const int64_t sorted_count = node->GetSortedCount();
+    const auto sorted_count = node->GetSortedCount();
 
-    // gather valid (live or deleted) records
-    std::vector<std::pair<Key, Metadata>> meta_arr;
-    meta_arr.reserve(record_count);
+    // sort records in an unsorted region
+    auto [new_records, new_rec_num] = SortUnsortedRecords(node);
 
-    // search unsorted metadata in reverse order
-    for (int64_t index = record_count - 1; index >= sorted_count; --index) {
+    // sort all records by merge sort
+    std::array<MetaRecord_t, kMaxRecordNum> results;
+    size_t count = 0, j = 0;
+    for (size_t i = 0; i < sorted_count; ++i) {
       const auto meta = node->GetMetadataProtected(index);
-      if (meta.IsVisible() || meta.IsDeleted()) {
-        const auto key = Cast<Key>(node->GetKeyAddr(meta));
-        meta_arr.emplace_back(key, meta);
+      MetaRecord_t target{meta, Cast<Key>(node->GetKeyAddr(meta)), true};
+
+      // move lower new records
+      while (j < new_rec_num && new_records[j] < target) {
+        if (new_records[j].meta.IsVisible()) {
+          results[count++] = std::move(new_records[j]);
+        }
+        ++j;
+      }
+
+      // insert a target record
+      if (j < new_rec_num && new_records[j] == target) {
+        if (new_records[j].meta.IsVisible()) {
+          results[count++] = std::move(new_records[j]);
+        }
+        ++j;
       } else {
-        // there is a key, but it is in inserting or corrupted.
-        // NOTE: we can ignore inserting records because concurrent writes are aborted due to SMOs.
+        if (target.meta.IsVisible()) {
+          results[count++] = std::move(target);
+        }
       }
     }
 
-    // search sorted metadata
-    for (int64_t index = 0; index < sorted_count; ++index) {
-      const auto meta = node->GetMetadataProtected(index);
-      const auto key = Cast<Key>(node->GetKeyAddr(meta));
-      meta_arr.emplace_back(key, meta);
+    // move remaining new records
+    while (j < new_rec_num) {
+      if (new_records[j].meta.IsVisible()) {
+        results[count++] = std::move(new_records[j]);
+      }
+      ++j;
     }
 
-    // make unique with keeping the order of writes
-    std::stable_sort(meta_arr.begin(), meta_arr.end(), PairComp{});
-    auto end_iter = std::unique(meta_arr.begin(), meta_arr.end(), PairEqual{});
-
-    // gather live records
-    end_iter = std::remove_if(meta_arr.begin(), end_iter,
-                              [](auto &obj) { return obj.second.IsDeleted(); });
-    meta_arr.erase(end_iter, meta_arr.end());
-
-    return meta_arr;
+    return {std::move(results), count};
   }
 };
 

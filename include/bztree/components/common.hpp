@@ -159,6 +159,9 @@ constexpr size_t kMaxMergedSize = BZTREE_MAX_MERGED_SIZE;
 constexpr size_t kMaxMergedSize = kPageSize / 2;
 #endif
 
+/// the maximum number of records in a node
+constexpr size_t kMaxRecordNum = (kPageSize - kHeaderLength) / (kWordLength + 2);
+
 /// a flag to indicate creating leaf nodes
 constexpr bool kLeafFlag = true;
 
