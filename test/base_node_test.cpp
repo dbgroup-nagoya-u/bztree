@@ -16,6 +16,7 @@
 
 #include "bztree/components/base_node.hpp"
 
+#include <functional>
 #include <memory>
 
 #include "bztree/components/leaf_node.hpp"
@@ -29,7 +30,7 @@ using Key = uint64_t;
 using Payload = uint64_t;
 using Record_t = Record<Key, Payload>;
 using BaseNode_t = BaseNode<Key, Payload>;
-using LeafNode_t = LeafNode<Key, Payload>;
+using LeafNode_t = LeafNode<Key, Payload, std::less<Key>>;
 using NodeReturnCode = BaseNode<Key, Payload>::NodeReturnCode;
 using KeyExistence = BaseNode<Key, Payload>::KeyExistence;
 
@@ -97,8 +98,8 @@ class BaseNodeFixture : public testing::Test
   {
     auto tmp_leaf_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
-    auto tmp_meta = LeafNode_t::GatherSortedLiveMetadata(tmp_leaf_node);
-    return LeafNode_t::Consolidate(tmp_leaf_node, tmp_meta);
+    auto [tmp_meta, rec_count] = LeafNode_t::GatherSortedLiveMetadata(tmp_leaf_node);
+    return LeafNode_t::Consolidate(tmp_leaf_node, tmp_meta, rec_count);
   }
 };
 
@@ -179,9 +180,9 @@ TEST_F(BaseNodeFixture, SearchSortedMeta_SearchNotPresentKey_FindNextIndex)
   LeafNode_t::Write(tmp_node.get(), keys[5], kKeyLength, payloads[5], kPayloadLength);
   LeafNode_t::Write(tmp_node.get(), keys[7], kKeyLength, payloads[7], kPayloadLength);
   LeafNode_t::Write(tmp_node.get(), keys[8], kKeyLength, payloads[8], kPayloadLength);
-  auto tmp_meta = LeafNode_t::GatherSortedLiveMetadata(tmp_node.get());
+  auto [tmp_meta, rec_count] = LeafNode_t::GatherSortedLiveMetadata(tmp_node.get());
 
-  node.reset(LeafNode_t::Consolidate(tmp_node.get(), tmp_meta));
+  node.reset(LeafNode_t::Consolidate(tmp_node.get(), tmp_meta, rec_count));
 
   // perform tests
   auto target_index = 3;

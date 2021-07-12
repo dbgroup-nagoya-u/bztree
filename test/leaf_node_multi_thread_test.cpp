@@ -149,7 +149,7 @@ class LeafNodeFixture : public testing::Test
     } else {
       record_length = key_length + payload_length;
     }
-    max_record_num = (kPageSize - kHeaderLength) / (record_length + kWordLength);
+    max_record_num = kMaxUnsortedRecNum;
   }
 
   void

@@ -109,15 +109,6 @@ class BzTree
   }
 
   static constexpr bool
-  NeedConsolidation(  //
-      const BaseNode_t *leaf_node,
-      const StatusWord status)
-  {
-    return status.GetRecordCount() - leaf_node->GetSortedCount() > kMaxUnsortedRecNum
-           || status.GetDeletedSize() > kMaxDeletedSpaceSize;
-  }
-
-  static constexpr bool
   NeedSplit(  //
       const BaseNode_t *internal_node,
       const size_t key_length)
@@ -588,7 +579,6 @@ class BzTree
           LeafNode_t::Write(leaf_node, key, key_length, payload, payload_length, index_epoch_);
 
       if (rc == NodeReturnCode::kSuccess) {
-        if (NeedConsolidation(leaf_node, status)) ConsolidateLeafNode(leaf_node, key, key_length);
         break;
       } else if (rc == NodeReturnCode::kNoSpace) {
         ConsolidateLeafNode(leaf_node, key, key_length);
@@ -612,7 +602,6 @@ class BzTree
           LeafNode_t::Insert(leaf_node, key, key_length, payload, payload_length, index_epoch_);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyExist) {
-        if (NeedConsolidation(leaf_node, status)) ConsolidateLeafNode(leaf_node, key, key_length);
         if (rc == NodeReturnCode::kKeyExist) return ReturnCode::kKeyExist;
         break;
       } else if (rc == NodeReturnCode::kNoSpace) {
@@ -637,7 +626,6 @@ class BzTree
           LeafNode_t::Update(leaf_node, key, key_length, payload, payload_length, index_epoch_);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
-        if (NeedConsolidation(leaf_node, status)) ConsolidateLeafNode(leaf_node, key, key_length);
         if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
         break;
       } else if (rc == NodeReturnCode::kNoSpace) {
@@ -659,7 +647,6 @@ class BzTree
       const auto [rc, status] = LeafNode_t::Delete(leaf_node, key, key_length);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
-        if (NeedConsolidation(leaf_node, status)) ConsolidateLeafNode(leaf_node, key, key_length);
         if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
         break;
       } else if (rc == NodeReturnCode::kNoSpace) {
