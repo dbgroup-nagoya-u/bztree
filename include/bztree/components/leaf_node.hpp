@@ -30,65 +30,38 @@
 
 namespace dbgroup::index::bztree
 {
-template <class Key, class Compare>
-struct MetaRecord {
-  Metadata meta;
-  Key key;
-  bool in_sorted;
-
-  constexpr bool
-  operator<(const MetaRecord &obj)
-  {
-    return Compare{}(this->key, obj.key);
-  }
-
-  constexpr bool
-  operator==(const MetaRecord &obj)
-  {
-    return !Compare{}(this->key, obj.key) && !Compare{}(obj.key, this->key);
-  }
-
-  constexpr bool
-  operator!=(const MetaRecord &obj)
-  {
-    return Compare{}(this->key, obj.key) || Compare{}(obj.key, this->key);
-  }
-};
-
 template <class Key, class Payload, class Compare>
 class LeafNode
 {
   using BaseNode_t = BaseNode<Key, Payload, Compare>;
   using KeyExistence = typename BaseNode_t::KeyExistence;
   using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
-  using MetaRecord_t = MetaRecord<Key, Compare>;
 
  private:
   /*################################################################################################
    * Internal structs to cpmare key & metadata pairs
    *##############################################################################################*/
 
-  struct PairComp {
-    PairComp() {}
+  struct MetaRecord {
+    Metadata meta;
+    Key key;
 
     constexpr bool
-    operator()(  //
-        const std::pair<Key, Metadata> &a,
-        const std::pair<Key, Metadata> &b) const noexcept
+    operator<(const MetaRecord &obj)
     {
-      return Compare{}(a.first, b.first);
+      return Compare{}(this->key, obj.key);
     }
-  };
-
-  struct PairEqual {
-    PairEqual() {}
 
     constexpr bool
-    operator()(  //
-        const std::pair<Key, Metadata> &a,
-        const std::pair<Key, Metadata> &b) const noexcept
+    operator==(const MetaRecord &obj)
     {
-      return IsEqual<Compare>(a.first, b.first);
+      return !Compare{}(this->key, obj.key) && !Compare{}(obj.key, this->key);
+    }
+
+    constexpr bool
+    operator!=(const MetaRecord &obj)
+    {
+      return Compare{}(this->key, obj.key) || Compare{}(obj.key, this->key);
     }
   };
 
@@ -198,6 +171,22 @@ class LeafNode
     return block_size;
   }
 
+  static constexpr size_t
+  AlignOffset(const size_t offset)
+  {
+    if constexpr (!std::is_same_v<Payload, char *> && sizeof(Payload) == kWordLength) {
+      if constexpr (std::is_same_v<Key, char *>) {
+        const auto align_size = offset & (kWordLength - 1);
+        if (align_size > 0) {
+          return offset - (kWordLength - align_size);
+        }
+      } else if constexpr (sizeof(Key) % kWordLength != 0) {
+        return offset - (kWordLength - (sizeof(Key) % kWordLength));
+      }
+    }
+    return offset;
+  }
+
   static constexpr auto
   GetPayload(  //
       const BaseNode_t *node,
@@ -278,51 +267,38 @@ class LeafNode
     }
   }
 
-  static constexpr void
-  CopyRecordsViaMetadata(  //
-      BaseNode_t *copied_node,
+  static constexpr size_t
+  CopyRecords(  //
+      BaseNode_t *target_node,
+      size_t offset,
+      size_t current_rec_count,
       const BaseNode_t *original_node,
-      const typename std::vector<std::pair<Key, Metadata>>::const_iterator begin_iter,
-      const typename std::vector<std::pair<Key, Metadata>>::const_iterator end_iter)
+      const std::array<Metadata, kMaxRecordNum> &metadata,
+      const size_t begin_id,
+      const size_t end_id)
   {
-    auto record_count = copied_node->GetSortedCount();
-    auto offset = kPageSize - copied_node->GetStatusWord().GetBlockSize();
-    for (auto iter = begin_iter; iter != end_iter; ++record_count, ++iter) {
+    for (size_t i = begin_id; i < end_id; ++i, ++current_rec_count) {
       // copy a record
-      const auto [key, meta] = *iter;
-      offset = CopyRecord(copied_node, offset, original_node, meta);
+      const auto meta = metadata[i];
+      offset = CopyRecord(target_node, offset, original_node, meta);
       // copy metadata
       const auto new_meta = meta.UpdateOffset(offset);
-      copied_node->SetMetadata(record_count, new_meta);
+      target_node->SetMetadata(current_rec_count, new_meta);
     }
-    const auto aligned_block_size = GetAlignedSize(kPageSize - offset);
-    copied_node->SetStatus(StatusWord{}.AddRecordInfo(record_count, aligned_block_size, 0));
-    copied_node->SetSortedCount(record_count);
+    return offset;
   }
 
   static constexpr size_t
   CopyRecord(  //
-      BaseNode_t *copied_node,
+      BaseNode_t *target_node,
       size_t offset,
       const BaseNode_t *original_node,
       const Metadata meta)
   {
-    if constexpr (!std::is_same_v<Payload, char *> && sizeof(Payload) == kWordLength) {
-      // align memory address
-      if constexpr (std::is_same_v<Key, char *>) {
-        offset -= (offset & (kWordLength - 1));
-      } else if constexpr (sizeof(Key) % kWordLength != 0) {
-        constexpr auto kAlignedSize = sizeof(Key) - (sizeof(Key) % kWordLength);
-        offset -= kAlignedSize;
-      }
-    }
-
     const auto total_length = meta.GetTotalLength();
 
-    offset -= total_length;
-    const auto dest = ShiftAddress(copied_node, offset);
-    const auto src = original_node->GetKeyAddr(meta);
-    memcpy(dest, src, total_length);
+    offset = AlignOffset(offset) - total_length;
+    memcpy(ShiftAddress(target_node, offset), original_node->GetKeyAddr(meta), total_length);
 
     return offset;
   }
@@ -335,13 +311,13 @@ class LeafNode
     return status.GetOccupiedSize() + block_size <= kPageSize - kWordLength;
   }
 
-  static constexpr std::pair<std::array<MetaRecord_t, kMaxUnsortedRecNum>, size_t>
+  static constexpr std::pair<std::array<MetaRecord, kMaxUnsortedRecNum>, size_t>
   SortUnsortedRecords(const BaseNode_t *node)
   {
     const auto record_count = node->GetStatusWordProtected().GetRecordCount();
     const int64_t sorted_count = node->GetSortedCount();
 
-    std::array<MetaRecord_t, kMaxUnsortedRecNum> arr;
+    std::array<MetaRecord, kMaxUnsortedRecNum> arr;
 
     // sort unsorted records by insertion sort
     size_t count = 0;
@@ -350,19 +326,19 @@ class LeafNode
       if (!meta.IsInProgress()) {
         if (count == 0) {
           // insert a first record
-          arr[0] = MetaRecord_t{meta, Cast<Key>(node->GetKeyAddr(meta)), false};
+          arr[0] = MetaRecord{meta, Cast<Key>(node->GetKeyAddr(meta))};
           ++count;
           continue;
         }
 
         // insert a new record into an appropiate position
-        MetaRecord_t target{meta, Cast<Key>(node->GetKeyAddr(meta)), false};
+        MetaRecord target{meta, Cast<Key>(node->GetKeyAddr(meta))};
         const auto ins_iter = std::lower_bound(arr.begin(), arr.begin() + count, target);
         if (*ins_iter != target) {
           const auto ins_id = std::distance(arr.begin(), ins_iter);
           if (ins_id < count) {
             // shift upper records
-            memmove(&(arr[ins_id + 1]), &(arr[ins_id]), sizeof(MetaRecord_t) * (count - ins_id));
+            memmove(&(arr[ins_id + 1]), &(arr[ins_id]), sizeof(MetaRecord) * (count - ins_id));
           }
 
           // insert a new record
@@ -789,31 +765,42 @@ class LeafNode
 
   static constexpr BaseNode_t *
   Consolidate(  //
-      const BaseNode_t *node,
-      const std::vector<std::pair<Key, Metadata>> &live_meta)
+      const BaseNode_t *orig_node,
+      const std::array<Metadata, kMaxRecordNum> &metadata,
+      const size_t rec_count)
   {
     // create a new node and copy records
     auto new_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
-    CopyRecordsViaMetadata(new_node, node, live_meta.begin(), live_meta.end());
+    const auto offset = CopyRecords(new_node, kPageSize, 0, orig_node, metadata, 0, rec_count);
+    new_node->SetSortedCount(rec_count);
+    new_node->SetStatus(StatusWord{}.AddRecordInfo(rec_count, kPageSize - AlignOffset(offset), 0));
 
     return new_node;
   }
 
   static constexpr std::pair<BaseNode_t *, BaseNode_t *>
   Split(  //
-      const BaseNode_t *node,
-      const std::vector<std::pair<Key, Metadata>> &sorted_meta,
-      const size_t left_record_count)
+      const BaseNode_t *orig_node,
+      const std::array<Metadata, kMaxRecordNum> &metadata,
+      const size_t rec_count,
+      const size_t left_rec_count)
   {
-    const auto split_iter = sorted_meta.begin() + left_record_count;
+    const auto split_id = metadata.begin() + left_rec_count;
+    const auto right_rec_count = rec_count - left_rec_count;
 
     // create a split left node
     auto left_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
-    CopyRecordsViaMetadata(left_node, node, sorted_meta.begin(), split_iter);
+    auto offset = CopyRecords(left_node, kPageSize, 0, orig_node, metadata, 0, left_rec_count);
+    left_node->SetSortedCount(left_rec_count);
+    left_node->SetStatus(
+        StatusWord{}.AddRecordInfo(left_rec_count, kPageSize - AlignOffset(offset), 0));
 
     // create a split right node
     auto right_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
-    CopyRecordsViaMetadata(right_node, node, split_iter, sorted_meta.end());
+    offset = CopyRecords(right_node, kPageSize, 0, orig_node, metadata, left_rec_count, rec_count);
+    right_node->SetSortedCount(right_rec_count);
+    right_node->SetStatus(
+        StatusWord{}.AddRecordInfo(right_rec_count, kPageSize - AlignOffset(offset), 0));
 
     return {left_node, right_node};
   }
@@ -821,23 +808,29 @@ class LeafNode
   static constexpr BaseNode_t *
   Merge(  //
       const BaseNode_t *left_node,
-      const std::vector<std::pair<Key, Metadata>> &left_meta,
+      const std::array<Metadata, kMaxRecordNum> &left_meta,
+      const size_t l_rec_count,
       const BaseNode_t *right_node,
-      const std::vector<std::pair<Key, Metadata>> &right_meta)
+      const std::array<Metadata, kMaxRecordNum> &right_meta,
+      const size_t r_rec_count)
   {
-    // create a merged node
-    auto merged_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
-    CopyRecordsViaMetadata(merged_node, left_node, left_meta.begin(), left_meta.end());
-    CopyRecordsViaMetadata(merged_node, right_node, right_meta.begin(), right_meta.end());
+    const auto rec_count = l_rec_count + r_rec_count;
 
-    return merged_node;
+    // create a merged node
+    auto new_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
+    auto offset = CopyRecords(new_node, kPageSize, 0, left_node, left_meta, 0, l_rec_count);
+    offset = CopyRecords(new_node, offset, l_rec_count, right_node, right_meta, 0, r_rec_count);
+    new_node->SetSortedCount(rec_count);
+    new_node->SetStatus(StatusWord{}.AddRecordInfo(rec_count, kPageSize - AlignOffset(offset), 0));
+
+    return new_node;
   }
 
   /*################################################################################################
    * Public utility functions
    *##############################################################################################*/
 
-  static constexpr std::pair<std::array<MetaRecord_t, kMaxRecordNum>, size_t>
+  static constexpr std::pair<std::array<Metadata, kMaxRecordNum>, size_t>
   GatherSortedLiveMetadata(const BaseNode_t *node)
   {
     const auto sorted_count = node->GetSortedCount();
@@ -846,16 +839,16 @@ class LeafNode
     auto [new_records, new_rec_num] = SortUnsortedRecords(node);
 
     // sort all records by merge sort
-    std::array<MetaRecord_t, kMaxRecordNum> results;
+    std::array<Metadata, kMaxRecordNum> results;
     size_t count = 0, j = 0;
     for (size_t i = 0; i < sorted_count; ++i) {
       const auto meta = node->GetMetadataProtected(index);
-      MetaRecord_t target{meta, Cast<Key>(node->GetKeyAddr(meta)), true};
+      MetaRecord target{meta, Cast<Key>(node->GetKeyAddr(meta))};
 
       // move lower new records
       while (j < new_rec_num && new_records[j] < target) {
         if (new_records[j].meta.IsVisible()) {
-          results[count++] = std::move(new_records[j]);
+          results[count++] = new_records[j].meta;
         }
         ++j;
       }
@@ -863,12 +856,12 @@ class LeafNode
       // insert a target record
       if (j < new_rec_num && new_records[j] == target) {
         if (new_records[j].meta.IsVisible()) {
-          results[count++] = std::move(new_records[j]);
+          results[count++] = new_records[j].meta;
         }
         ++j;
       } else {
         if (target.meta.IsVisible()) {
-          results[count++] = std::move(target);
+          results[count++] = meta;
         }
       }
     }
@@ -876,7 +869,7 @@ class LeafNode
     // move remaining new records
     while (j < new_rec_num) {
       if (new_records[j].meta.IsVisible()) {
-        results[count++] = std::move(new_records[j]);
+        results[count++] = new_records[j].meta;
       }
       ++j;
     }
