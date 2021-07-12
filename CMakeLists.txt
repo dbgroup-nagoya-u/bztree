@@ -22,47 +22,29 @@ set(MEMORY_MANAGER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/memory-manag
 # Compile options
 #--------------------------------------------------------------------------------------#
 
-set(
-  BZTREE_PAGE_SIZE
-  "8192"
-  CACHE STRING
-  "The byte length of each node page"
-)
+if(NOT DEFINED BZTREE_PAGE_SIZE)
+  set(BZTREE_PAGE_SIZE "8192")
+endif()
 
-set(
-  BZTREE_MAX_UNSORTED_REC_NUM
-  "32"
-  CACHE STRING
-  "Invoking consolidation if the number of unsorted records exceeds this threshold"
-)
+if(NOT DEFINED BZTREE_MAX_UNSORTED_REC_NUM)
+  set(BZTREE_MAX_UNSORTED_REC_NUM "64")
+endif()
 
-set(
-  BZTREE_MAX_DELETED_SPACE_SIZE
-  "1024"
-  CACHE STRING
-  "Invoking consolidation if the size of deleted records exceeds this threshold"
-)
+if(NOT DEFINED BZTREE_MAX_DELETED_SPACE_SIZ)
+  set(BZTREE_MAX_DELETED_SPACE_SIZE "2048")
+endif()
 
-set(
-  BZTREE_MIN_FREE_SPACE_SIZE
-  "768"
-  CACHE STRING
-  "Invoking a split if the size of free space in a node exceeds this threshold"
-)
+if(NOT DEFINED BZTREE_MIN_FREE_SPACE_SIZE)
+  set(BZTREE_MIN_FREE_SPACE_SIZE "768")
+endif()
 
-set(
-  BZTREE_MIN_SORTED_REC_NUM
-  "16"
-  CACHE STRING
-  "Invoking merging if the number of sorted records falls below this threshold"
-)
+if(NOT DEFINED BZTREE_MIN_SORTED_REC_NUM)
+  set(BZTREE_MIN_SORTED_REC_NUM "16")
+endif()
 
-set(
-  BZTREE_MAX_MERGED_SIZE
-  "4096"
-  CACHE STRING
-  "Canceling merging if the size of a merged node exceeds this threshold"
-)
+if(NOT DEFINED BZTREE_MAX_MERGED_SIZE)
+  set(BZTREE_MAX_MERGED_SIZE "4096")
+endif()
 
 #--------------------------------------------------------------------------------------#
 # Configure external libraries

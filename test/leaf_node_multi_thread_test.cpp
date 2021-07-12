@@ -395,7 +395,6 @@ class LeafNodeFixture : public testing::Test
 
       auto inserted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
       auto deleted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kDelete);
-      EXPECT_EQ(inserted_ids.size(), deleted_ids.size());
       for (auto&& id : deleted_ids) {
         VerifyRead(id, id, true);
       }
