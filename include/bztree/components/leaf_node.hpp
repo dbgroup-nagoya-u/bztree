@@ -532,7 +532,7 @@ class LeafNode
         }
 
         if constexpr (CanCASUpdate<Payload>()) {
-          if (uniqueness == KeyExistence::kExist) {
+          if (uniqueness == KeyExistence::kExist && target_index < node->GetSortedCount()) {
             const auto target_meta = node->GetMetadataProtected(target_index);
 
             // update a record directly
@@ -629,7 +629,7 @@ class LeafNode
         }
 
         if constexpr (CanCASUpdate<Payload>()) {
-          if (uniqueness == KeyExistence::kExist) {
+          if (uniqueness == KeyExistence::kExist && target_index < node->GetSortedCount()) {
             const auto target_meta = node->GetMetadataProtected(target_index);
             const auto deleted_meta = target_meta.Delete();
             const auto deleted_size = kWordLength + GetAlignedSize(target_meta.GetTotalLength());
