@@ -66,32 +66,37 @@ class LeafNode
   };
 
   /*################################################################################################
+   * Internal constants
+   *##############################################################################################*/
+
+  /// the maximum number of records in a node
+  static constexpr size_t kMaxRecordNum = GetMaxRecordNum<Key, Payload>();
+
+  /*################################################################################################
    * Internal utility functions
    *##############################################################################################*/
 
   static constexpr std::pair<KeyExistence, size_t>
-  SearchUnsortedMetaToWrite(  //
+  SearchUnsortedMeta(  //
       const BaseNode_t *node,
       const Key key,
       const int64_t begin_index,
       const int64_t sorted_count,
-      const size_t index_epoch)
+      const size_t index_epoch = 0)
   {
     // perform a linear search in revese order
     for (int64_t index = begin_index; index >= sorted_count; --index) {
       const auto meta = node->GetMetadataProtected(index);
       if (meta.IsInProgress()) {
-        if (meta.GetOffset() == index_epoch) {
+        if (index_epoch > 0 && meta.GetOffset() == index_epoch) {
           return {KeyExistence::kUncertain, index};
         }
-        continue;  // failed record
+        continue;
       }
 
       const auto target_key = Cast<Key>(node->GetKeyAddr(meta));
       if (IsEqual<Compare>(key, target_key)) {
-        if (meta.IsVisible()) {
-          return {KeyExistence::kExist, index};
-        }
+        if (meta.IsVisible()) return {KeyExistence::kExist, index};
         return {KeyExistence::kDeleted, index};
       }
     }
@@ -102,62 +107,31 @@ class LeafNode
   CheckUniqueness(  //
       const BaseNode_t *node,
       const Key key,
-      const int64_t record_count,
-      const size_t index_epoch)
+      const int64_t rec_count,
+      const size_t epoch = 0)
   {
-    const auto [existence, index] =
-        SearchUnsortedMetaToWrite(node, key, record_count - 1, node->GetSortedCount(), index_epoch);
-    if (existence == KeyExistence::kNotExist) {
-      // there is no key in unsorted metadata, so search a sorted region
-      return node->SearchSortedMetadata(key, true);
-    } else {
-      return {existence, index};
-    }
-  }
-
-  static constexpr std::pair<KeyExistence, size_t>
-  SearchUnsortedMetaToRead(  //
-      const BaseNode_t *node,
-      const Key key,
-      const int64_t end_index,
-      const int64_t record_count)
-  {
-    for (int64_t index = record_count - 1; index >= end_index; --index) {
-      const auto meta = node->GetMetadataProtected(index);
-      if (meta.IsInProgress()) {
-        continue;
+    if constexpr (CanCASUpdate<Payload>()) {
+      const auto [rc, index] = node->SearchSortedMetadata(key, true);
+      if (rc == KeyExistence::kNotExist || rc == KeyExistence::kDeleted) {
+        // a new record may be inserted in an unsorted region
+        return SearchUnsortedMeta(node, key, rec_count - 1, node->GetSortedCount(), epoch);
       }
-
-      const auto target_key = Cast<Key>(node->GetKeyAddr(meta));
-      if (IsEqual<Compare>(key, target_key)) {
-        if (meta.IsVisible()) {
-          return {KeyExistence::kExist, index};
-        }
-        return {KeyExistence::kDeleted, index};
-      }
-    }
-    return {KeyExistence::kNotExist, 0};
-  }
-
-  static constexpr std::pair<KeyExistence, size_t>
-  SearchMetadataToRead(  //
-      const BaseNode_t *node,
-      const Key key,
-      const size_t record_count)
-  {
-    const auto [existence, index] =
-        SearchUnsortedMetaToRead(node, key, node->GetSortedCount(), record_count);
-    if (existence == KeyExistence::kExist || existence == KeyExistence::kDeleted) {
-      return {existence, index};
+      return {rc, index};
     } else {
-      return node->SearchSortedMetadata(key, true);
+      const auto [rc, index] =
+          SearchUnsortedMeta(node, key, rec_count - 1, node->GetSortedCount(), epoch);
+      if (rc == KeyExistence::kNotExist) {
+        // a record may be in a sorted region
+        return node->SearchSortedMetadata(key, true);
+      }
+      return {rc, index};
     }
   }
 
   static constexpr size_t
   GetAlignedSize(const size_t block_size)
   {
-    if constexpr (!std::is_same_v<Payload, char *> && sizeof(Payload) == kWordLength) {
+    if constexpr (CanCASUpdate<Payload>()) {
       if constexpr (std::is_same_v<Key, char *>) {
         const auto align_size = block_size & (kWordLength - 1);
         if (align_size > 0) {
@@ -174,7 +148,7 @@ class LeafNode
   static constexpr size_t
   AlignOffset(const size_t offset)
   {
-    if constexpr (!std::is_same_v<Payload, char *> && sizeof(Payload) == kWordLength) {
+    if constexpr (CanCASUpdate<Payload>()) {
       if constexpr (std::is_same_v<Key, char *>) {
         const auto align_size = offset & (kWordLength - 1);
         if (align_size > 0) {
@@ -185,21 +159,6 @@ class LeafNode
       }
     }
     return offset;
-  }
-
-  static constexpr auto
-  GetPayload(  //
-      const BaseNode_t *node,
-      const Metadata meta)
-  {
-    if constexpr (std::is_same_v<Payload, char *>) {
-      const auto payload_length = meta.GetPayloadLength();
-      auto payload = malloc(payload_length);
-      memcpy(payload, node->GetPayloadAddr(meta), payload_length);
-      return std::unique_ptr<char>(static_cast<char *>(payload));
-    } else {
-      return Cast<Payload>(node->GetPayloadAddr(meta));
-    }
   }
 
   static constexpr auto
@@ -317,14 +276,14 @@ class LeafNode
   static constexpr std::pair<std::array<MetaRecord, kMaxUnsortedRecNum>, size_t>
   SortUnsortedRecords(const BaseNode_t *node)
   {
-    const auto record_count = node->GetStatusWordProtected().GetRecordCount();
+    const auto rec_count = node->GetStatusWordProtected().GetRecordCount();
     const int64_t sorted_count = node->GetSortedCount();
 
     std::array<MetaRecord, kMaxUnsortedRecNum> arr;
 
     // sort unsorted records by insertion sort
     size_t count = 0;
-    for (int64_t index = record_count - 1; index >= sorted_count; --index) {
+    for (int64_t index = rec_count - 1; index >= sorted_count; --index) {
       const auto meta = node->GetMetadataProtected(index);
       if (!meta.IsInProgress()) {
         if (count == 0) {
@@ -365,7 +324,7 @@ class LeafNode
       const Key key)
   {
     const auto status = node->GetStatusWordProtected();
-    const auto [existence, index] = SearchMetadataToRead(node, key, status.GetRecordCount());
+    const auto [existence, index] = CheckUniqueness(node, key, status.GetRecordCount());
     if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
       if constexpr (std::is_same_v<Payload, char *>) {
         return std::make_pair(NodeReturnCode::kKeyNotExist,
@@ -375,7 +334,7 @@ class LeafNode
       }
     }
     const auto meta = node->GetMetadataProtected(index);
-    return std::make_pair(NodeReturnCode::kSuccess, GetPayload(node, meta));
+    return std::make_pair(NodeReturnCode::kSuccess, node->GetPayload(meta));
   }
 
   /*################################################################################################
@@ -396,7 +355,7 @@ class LeafNode
     const auto block_size = GetAlignedSize(total_length);
     const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
     StatusWord cur_status;
-    size_t record_count;
+    size_t rec_count;
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: reserve free space to write a record
@@ -406,14 +365,30 @@ class LeafNode
       if (cur_status.IsFrozen()) return {NodeReturnCode::kFrozen, StatusWord{}};
       if (!HasSpace(node, cur_status, block_size)) return {NodeReturnCode::kNoSpace, StatusWord{}};
 
-      // prepare for MwCAS
-      record_count = cur_status.GetRecordCount();
+      rec_count = cur_status.GetRecordCount();
+      if constexpr (CanCASUpdate<Payload>()) {
+        // check whether a node includes a target key
+        const auto [uniqueness, target_index] = node->SearchSortedMetadata(key, true);
+        if (uniqueness == KeyExistence::kExist && target_index < node->GetSortedCount()) {
+          const auto target_meta = node->GetMetadataProtected(target_index);
+
+          // update a record directly
+          auto desc = MwCASDescriptor{};
+          node->SetStatusForMwCAS(desc, cur_status, cur_status);
+          node->SetMetadataForMwCAS(desc, target_index, target_meta, target_meta);
+          node->SetPayloadForMwCAS(desc, target_meta, payload);
+          if (desc.MwCAS()) return {NodeReturnCode::kSuccess, cur_status};
+          continue;
+        }
+      }
+
+      // prepare new status for MwCAS
       const auto new_status = cur_status.AddRecordInfo(1, block_size, 0);
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
       node->SetStatusForMwCAS(desc, cur_status, new_status);
-      node->SetMetadataForMwCAS(desc, record_count, Metadata{}, in_progress_meta);
+      node->SetMetadataForMwCAS(desc, rec_count, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -439,7 +414,7 @@ class LeafNode
       // perform MwCAS to complete a write
       auto desc = MwCASDescriptor{};
       node->SetStatusForMwCAS(desc, cur_status, cur_status);
-      node->SetMetadataForMwCAS(desc, record_count, in_progress_meta, inserted_meta);
+      node->SetMetadataForMwCAS(desc, rec_count, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -460,7 +435,7 @@ class LeafNode
     const auto block_size = GetAlignedSize(total_length);
     const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
     StatusWord cur_status;
-    size_t record_count;
+    size_t rec_count;
 
     // local flags for insertion
     auto uniqueness = KeyExistence::kNotExist;
@@ -474,9 +449,9 @@ class LeafNode
       if (!HasSpace(node, cur_status, block_size)) return {NodeReturnCode::kNoSpace, StatusWord{}};
 
       // check uniqueness
-      record_count = cur_status.GetRecordCount();
+      rec_count = cur_status.GetRecordCount();
       if (uniqueness != KeyExistence::kUncertain) {
-        uniqueness = CheckUniqueness(node, key, record_count, index_epoch).first;
+        uniqueness = CheckUniqueness(node, key, rec_count, index_epoch).first;
         if (uniqueness == KeyExistence::kExist) {
           return {NodeReturnCode::kKeyExist, cur_status};
         }
@@ -488,7 +463,7 @@ class LeafNode
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
       node->SetStatusForMwCAS(desc, cur_status, new_status);
-      node->SetMetadataForMwCAS(desc, record_count, Metadata{}, in_progress_meta);
+      node->SetMetadataForMwCAS(desc, rec_count, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
 
       // set retry flag (described in Section 4.2.1 Inserts: Concurrency issues)
@@ -512,16 +487,16 @@ class LeafNode
       cur_status = node->GetStatusWordProtected();
       if (cur_status.IsFrozen()) {
         // delete an inserted record
-        node->SetMetadataByCAS(record_count, in_progress_meta.UpdateOffset(0));
+        node->SetMetadataByCAS(rec_count, in_progress_meta.UpdateOffset(0));
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
       // recheck uniqueness if required
       if (uniqueness == KeyExistence::kUncertain) {
-        uniqueness = CheckUniqueness(node, key, record_count, index_epoch).first;
+        uniqueness = CheckUniqueness(node, key, rec_count, index_epoch).first;
         if (uniqueness == KeyExistence::kExist) {
           // delete an inserted record
-          node->SetMetadataByCAS(record_count, in_progress_meta.UpdateOffset(0));
+          node->SetMetadataByCAS(rec_count, in_progress_meta.UpdateOffset(0));
           return {NodeReturnCode::kKeyExist, cur_status};
         } else if (uniqueness == KeyExistence::kUncertain) {
           // retry if there are still uncertain records
@@ -532,7 +507,7 @@ class LeafNode
       // perform MwCAS to complete an insert
       auto desc = MwCASDescriptor{};
       node->SetStatusForMwCAS(desc, cur_status, cur_status);
-      node->SetMetadataForMwCAS(desc, record_count, in_progress_meta, inserted_meta);
+      node->SetMetadataForMwCAS(desc, rec_count, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -553,7 +528,7 @@ class LeafNode
     const auto block_size = GetAlignedSize(total_length);
     const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
     StatusWord cur_status;
-    size_t record_count, target_index = 0;
+    size_t rec_count, target_index = 0;
     auto uniqueness = KeyExistence::kNotExist;
 
     /*----------------------------------------------------------------------------------------------
@@ -565,11 +540,25 @@ class LeafNode
       if (!HasSpace(node, cur_status, block_size)) return {NodeReturnCode::kNoSpace, StatusWord{}};
 
       // check whether a node includes a target key
-      record_count = cur_status.GetRecordCount();
+      rec_count = cur_status.GetRecordCount();
       if (uniqueness != KeyExistence::kUncertain) {
-        std::tie(uniqueness, target_index) = CheckUniqueness(node, key, record_count, index_epoch);
+        std::tie(uniqueness, target_index) = CheckUniqueness(node, key, rec_count, index_epoch);
         if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
           return {NodeReturnCode::kKeyNotExist, cur_status};
+        }
+
+        if constexpr (CanCASUpdate<Payload>()) {
+          if (uniqueness == KeyExistence::kExist && target_index < node->GetSortedCount()) {
+            const auto target_meta = node->GetMetadataProtected(target_index);
+
+            // update a record directly
+            auto desc = MwCASDescriptor{};
+            node->SetStatusForMwCAS(desc, cur_status, cur_status);
+            node->SetMetadataForMwCAS(desc, target_index, target_meta, target_meta);
+            node->SetPayloadForMwCAS(desc, target_meta, payload);
+            if (desc.MwCAS()) return {NodeReturnCode::kSuccess, cur_status};
+            continue;
+          }
         }
       }
 
@@ -581,8 +570,11 @@ class LeafNode
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
       node->SetStatusForMwCAS(desc, cur_status, new_status);
-      node->SetMetadataForMwCAS(desc, record_count, Metadata{}, in_progress_meta);
+      node->SetMetadataForMwCAS(desc, rec_count, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
+
+      // set retry flag (described in Section 4.2.1 Inserts: Concurrency issues)
+      uniqueness = KeyExistence::kUncertain;
     }
 
     /*----------------------------------------------------------------------------------------------
@@ -606,10 +598,10 @@ class LeafNode
 
       // recheck uniqueness if required
       if (uniqueness == KeyExistence::kUncertain) {
-        uniqueness = CheckUniqueness(node, key, record_count, index_epoch).first;
+        uniqueness = CheckUniqueness(node, key, rec_count, index_epoch).first;
         if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
           // delete an inserted record
-          node->SetMetadataByCAS(record_count, in_progress_meta.UpdateOffset(0));
+          node->SetMetadataByCAS(rec_count, in_progress_meta.UpdateOffset(0));
           return {NodeReturnCode::kKeyNotExist, cur_status};
         } else if (uniqueness == KeyExistence::kUncertain) {
           continue;
@@ -619,7 +611,7 @@ class LeafNode
       // perform MwCAS to complete an update
       auto desc = MwCASDescriptor{};
       node->SetStatusForMwCAS(desc, cur_status, cur_status);
-      node->SetMetadataForMwCAS(desc, record_count, in_progress_meta, inserted_meta);
+      node->SetMetadataForMwCAS(desc, rec_count, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -636,7 +628,7 @@ class LeafNode
     // variables and constants
     const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
     StatusWord cur_status;
-    size_t record_count, target_index = 0;
+    size_t rec_count, target_index = 0;
     auto uniqueness = KeyExistence::kNotExist;
 
     /*----------------------------------------------------------------------------------------------
@@ -648,25 +640,44 @@ class LeafNode
       if (!HasSpace(node, cur_status, key_length)) return {NodeReturnCode::kNoSpace, StatusWord{}};
 
       // check whether a node includes a target key
-      record_count = cur_status.GetRecordCount();
+      rec_count = cur_status.GetRecordCount();
       if (uniqueness != KeyExistence::kUncertain) {
-        std::tie(uniqueness, target_index) = CheckUniqueness(node, key, record_count, index_epoch);
+        std::tie(uniqueness, target_index) = CheckUniqueness(node, key, rec_count, index_epoch);
         if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
           return {NodeReturnCode::kKeyNotExist, cur_status};
+        }
+
+        if constexpr (CanCASUpdate<Payload>()) {
+          if (uniqueness == KeyExistence::kExist && target_index < node->GetSortedCount()) {
+            const auto target_meta = node->GetMetadataProtected(target_index);
+            const auto deleted_meta = target_meta.Delete();
+            const auto deleted_size = kWordLength + GetAlignedSize(target_meta.GetTotalLength());
+            const auto new_status = cur_status.AddRecordInfo(0, 0, deleted_size);
+
+            // delete a record directly
+            auto desc = MwCASDescriptor{};
+            node->SetStatusForMwCAS(desc, cur_status, new_status);
+            node->SetMetadataForMwCAS(desc, target_index, target_meta, deleted_meta);
+            if (desc.MwCAS()) return {NodeReturnCode::kSuccess, new_status};
+            continue;
+          }
         }
       }
 
       // prepare new status for MwCAS
       const auto target_meta = node->GetMetadataProtected(target_index);
-      const auto deleted_block_size =
-          (kWordLength << 1) + GetAlignedSize(target_meta.GetTotalLength()) + key_length;
-      const auto new_status = cur_status.AddRecordInfo(1, key_length, deleted_block_size);
+      const auto deleted_size =
+          (2 * kWordLength) + GetAlignedSize(target_meta.GetTotalLength()) + key_length;
+      const auto new_status = cur_status.AddRecordInfo(1, key_length, deleted_size);
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
       node->SetStatusForMwCAS(desc, cur_status, new_status);
-      node->SetMetadataForMwCAS(desc, record_count, Metadata{}, in_progress_meta);
+      node->SetMetadataForMwCAS(desc, rec_count, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
+
+      // set retry flag (described in Section 4.2.1 Inserts: Concurrency issues)
+      uniqueness = KeyExistence::kUncertain;
     }
 
     /*----------------------------------------------------------------------------------------------
@@ -685,16 +696,16 @@ class LeafNode
       cur_status = node->GetStatusWordProtected();
       if (cur_status.IsFrozen()) {
         // delete an inserted record
-        node->SetMetadataByCAS(record_count, in_progress_meta.UpdateOffset(0));
+        node->SetMetadataByCAS(rec_count, in_progress_meta.UpdateOffset(0));
         return {NodeReturnCode::kFrozen, StatusWord{}};
       }
 
       // recheck uniqueness if required
       if (uniqueness == KeyExistence::kUncertain) {
-        uniqueness = CheckUniqueness(node, key, record_count, index_epoch).first;
+        uniqueness = CheckUniqueness(node, key, rec_count, index_epoch).first;
         if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
           // delete an inserted record
-          node->SetMetadataByCAS(record_count, in_progress_meta.UpdateOffset(0));
+          node->SetMetadataByCAS(rec_count, in_progress_meta.UpdateOffset(0));
           return {NodeReturnCode::kKeyNotExist, cur_status};
         } else if (uniqueness == KeyExistence::kUncertain) {
           // retry if there are still uncertain records
@@ -705,7 +716,7 @@ class LeafNode
       // perform MwCAS to complete an insert
       auto desc = MwCASDescriptor{};
       node->SetStatusForMwCAS(desc, cur_status, cur_status);
-      node->SetMetadataForMwCAS(desc, record_count, in_progress_meta, deleted_meta);
+      node->SetMetadataForMwCAS(desc, rec_count, in_progress_meta, deleted_meta);
       if (desc.MwCAS()) break;
     }
 

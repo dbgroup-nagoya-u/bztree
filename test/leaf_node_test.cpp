@@ -153,9 +153,10 @@ class LeafNodeFixture : public testing::Test
   Write(  //
       const size_t key_id,
       const size_t payload_id,
-      const bool expect_full = false)
+      const bool expect_full = false,
+      const bool expect_in_sorted = false)
   {
-    if (!expect_full) {
+    if (!expect_full && (!expect_in_sorted || !CanCASUpdate<Payload>())) {
       expected_record_count += 1;
       expected_block_size += record_length;
     }
@@ -185,9 +186,10 @@ class LeafNodeFixture : public testing::Test
       const size_t key_id,
       const size_t payload_id,
       const bool expect_not_exist = false,
-      const bool expect_full = false)
+      const bool expect_full = false,
+      const bool expect_in_sorted = false)
   {
-    if (!expect_not_exist && !expect_full) {
+    if (!expect_not_exist && !expect_full && (!expect_in_sorted || !CanCASUpdate<Payload>())) {
       expected_record_count += 1;
       expected_block_size += record_length;
       expected_deleted_rec_count += 1;
@@ -202,13 +204,19 @@ class LeafNodeFixture : public testing::Test
   Delete(  //
       const size_t key_id,
       const bool expect_not_exist = false,
-      const bool expect_full = false)
+      const bool expect_full = false,
+      const bool expect_in_sorted = false)
   {
     if (!expect_not_exist && !expect_full) {
-      expected_record_count += 1;
-      expected_block_size += key_length;
-      expected_deleted_rec_count += 2;
-      expected_deleted_block_size += record_length + key_length;
+      if (!expect_in_sorted || !CanCASUpdate<Payload>()) {
+        expected_record_count += 1;
+        expected_block_size += key_length;
+        expected_deleted_rec_count += 2;
+        expected_deleted_block_size += record_length + key_length;
+      } else {
+        expected_deleted_rec_count += 1;
+        expected_deleted_block_size += record_length;
+      }
     }
 
     return LeafNode_t::Delete(node.get(), keys[key_id], key_length);
@@ -322,16 +330,17 @@ class LeafNodeFixture : public testing::Test
   VerifyWrite(  //
       const size_t key_id,
       const size_t payload_id,
-      const bool expect_full = false)
+      const bool expect_full = false,
+      const bool expect_in_sorted = false)
   {
-    auto [rc, status] = Write(key_id, payload_id, expect_full);
+    auto [rc, status] = Write(key_id, payload_id, expect_full, expect_in_sorted);
 
     if (expect_full) {
       EXPECT_EQ(NodeReturnCode::kNoSpace, rc);
     } else {
       EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-      VerifyMetadata(node->GetMetadata(expected_record_count - 1));
       VerifyStatusWord(status);
+      VerifyRead(key_id, payload_id);
     }
   }
 
@@ -350,8 +359,8 @@ class LeafNodeFixture : public testing::Test
       EXPECT_EQ(NodeReturnCode::kKeyExist, rc);
     } else {
       EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-      VerifyMetadata(node->GetMetadata(expected_record_count - 1));
       VerifyStatusWord(status);
+      VerifyRead(key_id, payload_id);
     }
   }
 
@@ -360,9 +369,10 @@ class LeafNodeFixture : public testing::Test
       const size_t key_id,
       const size_t payload_id,
       const bool expect_not_exist = false,
-      const bool expect_full = false)
+      const bool expect_full = false,
+      const bool expect_in_sorted = false)
   {
-    auto [rc, status] = Update(key_id, payload_id, expect_not_exist, expect_full);
+    auto [rc, status] = Update(key_id, payload_id, expect_not_exist, expect_full, expect_in_sorted);
 
     if (expect_full) {
       EXPECT_EQ(NodeReturnCode::kNoSpace, rc);
@@ -370,8 +380,8 @@ class LeafNodeFixture : public testing::Test
       EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
     } else {
       EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-      VerifyMetadata(node->GetMetadata(expected_record_count - 1));
       VerifyStatusWord(status);
+      VerifyRead(key_id, payload_id);
     }
   }
 
@@ -379,9 +389,10 @@ class LeafNodeFixture : public testing::Test
   VerifyDelete(  //
       const size_t key_id,
       const bool expect_not_exist = false,
-      const bool expect_full = false)
+      const bool expect_full = false,
+      const bool expect_in_sorted = false)
   {
-    auto [rc, status] = Delete(key_id, expect_not_exist, expect_full);
+    auto [rc, status] = Delete(key_id, expect_not_exist, expect_full, expect_in_sorted);
 
     if (expect_full) {
       EXPECT_EQ(NodeReturnCode::kNoSpace, rc);
@@ -389,7 +400,6 @@ class LeafNodeFixture : public testing::Test
       EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
     } else {
       EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-      VerifyMetadata(node->GetMetadata(expected_record_count - 1), false);
       VerifyStatusWord(status);
     }
   }
@@ -525,16 +535,13 @@ TYPED_TEST(LeafNodeFixture, Write_UniqueKeys_ReadWrittenValues)
 {
   for (size_t i = 1; i <= TestFixture::max_record_num; ++i) {
     TestFixture::VerifyWrite(i, i);
-    TestFixture::VerifyRead(i, i);
   }
 }
 
 TYPED_TEST(LeafNodeFixture, Write_DuplicateKey_ReadLatestValue)
 {
   TestFixture::Write(1, 1);
-  TestFixture::Write(1, 2);
-
-  TestFixture::VerifyRead(1, 2);
+  TestFixture::VerifyWrite(1, 2);
 }
 
 TYPED_TEST(LeafNodeFixture, Write_FilledNode_GetCorrectReturnCodes)
@@ -549,7 +556,8 @@ TYPED_TEST(LeafNodeFixture, Write_ConsolidatedNode_ReadWrittenValue)
 {
   TestFixture::PrepareConsolidatedNode(1, 5);
 
-  TestFixture::VerifyWrite(6, 6);
+  TestFixture::VerifyWrite(6, 6, false, false);
+  TestFixture::VerifyWrite(1, 2, false, true);
 }
 
 /*--------------------------------------------------------------------------------------------------
@@ -560,7 +568,6 @@ TYPED_TEST(LeafNodeFixture, Insert_UniqueKeys_ReadInsertedValues)
 {
   for (size_t i = 1; i <= TestFixture::max_record_num; ++i) {
     TestFixture::VerifyInsert(i, i);
-    TestFixture::VerifyRead(i, i);
   }
 }
 
@@ -631,8 +638,8 @@ TYPED_TEST(LeafNodeFixture, Update_ConsolidatedNode_ReadUpdatedValue)
 {
   TestFixture::PrepareConsolidatedNode(1, 5);
 
-  TestFixture::VerifyUpdate(1, 2);
-  TestFixture::VerifyUpdate(1, 3);
+  TestFixture::VerifyUpdate(1, 2, false, false, true);
+  TestFixture::VerifyUpdate(1, 3, false, false, true);
 }
 
 TYPED_TEST(LeafNodeFixture, Update_ConsolidatedNodeWithNotInsertedKey_UpdatedFail)
@@ -687,7 +694,7 @@ TYPED_TEST(LeafNodeFixture, Delete_ConsolidatedNode_DeleteSucceed)
 {
   TestFixture::PrepareConsolidatedNode(1, 5);
 
-  TestFixture::VerifyDelete(1);
+  TestFixture::VerifyDelete(1, false, false, true);
 }
 
 TYPED_TEST(LeafNodeFixture, Delete_ConsolidatedNodeWithNotInsertedKey_DeleteFail)
