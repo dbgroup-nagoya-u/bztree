@@ -94,7 +94,7 @@ class LeafNode
         continue;
       }
 
-      const auto target_key = Cast<Key>(node->GetKeyAddr(meta));
+      const auto target_key = node->GetKey(meta);
       if (IsEqual<Compare>(key, target_key)) {
         if (meta.IsVisible()) return {KeyExistence::kExist, index};
         return {KeyExistence::kDeleted, index};
@@ -288,13 +288,13 @@ class LeafNode
       if (!meta.IsInProgress()) {
         if (count == 0) {
           // insert a first record
-          arr[0] = MetaRecord{meta, Cast<Key>(node->GetKeyAddr(meta))};
+          arr[0] = MetaRecord{meta, node->GetKey(meta)};
           ++count;
           continue;
         }
 
         // insert a new record into an appropiate position
-        MetaRecord target{meta, Cast<Key>(node->GetKeyAddr(meta))};
+        MetaRecord target{meta, node->GetKey(meta)};
         const auto ins_iter = std::lower_bound(arr.begin(), arr.begin() + count, target);
         if (*ins_iter != target) {
           const size_t ins_id = std::distance(arr.begin(), ins_iter);
@@ -806,7 +806,7 @@ class LeafNode
     size_t count = 0, j = 0;
     for (size_t i = 0; i < sorted_count; ++i) {
       const auto meta = node->GetMetadataProtected(i);
-      MetaRecord target{meta, Cast<Key>(node->GetKeyAddr(meta))};
+      MetaRecord target{meta, node->GetKey(meta)};
 
       // move lower new records
       while (j < new_rec_num && new_records[j] < target) {
