@@ -19,34 +19,6 @@ set(MWCAS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/mwcas")
 set(MEMORY_MANAGER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/memory-manager")
 
 #--------------------------------------------------------------------------------------#
-# Compile options
-#--------------------------------------------------------------------------------------#
-
-if(NOT DEFINED BZTREE_PAGE_SIZE)
-  set(BZTREE_PAGE_SIZE "8192")
-endif()
-
-if(NOT DEFINED BZTREE_MAX_UNSORTED_REC_NUM)
-  set(BZTREE_MAX_UNSORTED_REC_NUM "64")
-endif()
-
-if(NOT DEFINED BZTREE_MAX_DELETED_SPACE_SIZ)
-  set(BZTREE_MAX_DELETED_SPACE_SIZE "2048")
-endif()
-
-if(NOT DEFINED BZTREE_MIN_FREE_SPACE_SIZE)
-  set(BZTREE_MIN_FREE_SPACE_SIZE "768")
-endif()
-
-if(NOT DEFINED BZTREE_MIN_SORTED_REC_NUM)
-  set(BZTREE_MIN_SORTED_REC_NUM "16")
-endif()
-
-if(NOT DEFINED BZTREE_MAX_MERGED_SIZE)
-  set(BZTREE_MAX_MERGED_SIZE "4096")
-endif()
-
-#--------------------------------------------------------------------------------------#
 # Configure external libraries
 #--------------------------------------------------------------------------------------#
 
@@ -74,15 +46,6 @@ target_compile_options(
   $<$<STREQUAL:${CMAKE_BUILD_TYPE},"RelWithDebInfo">:"-g3 -Og -pg">
   $<$<STREQUAL:${CMAKE_BUILD_TYPE},"Debug">:"-g3 -O0 -pg">
 )
-target_compile_definitions(
-  bztree INTERFACE
-  BZTREE_PAGE_SIZE=${BZTREE_PAGE_SIZE}
-  BZTREE_MAX_UNSORTED_REC_NUM=${BZTREE_MAX_UNSORTED_REC_NUM}
-  BZTREE_MAX_DELETED_SPACE_SIZE=${BZTREE_MAX_DELETED_SPACE_SIZE}
-  BZTREE_MIN_FREE_SPACE_SIZE=${BZTREE_MIN_FREE_SPACE_SIZE}
-  BZTREE_MIN_SORTED_REC_NUM=${BZTREE_MIN_SORTED_REC_NUM}
-  BZTREE_MAX_MERGED_SIZE=${BZTREE_MAX_MERGED_SIZE}
-)
 target_include_directories(
   bztree INTERFACE
   "${BZTREE_SOURCE_DIR}/include"
@@ -94,10 +57,56 @@ target_link_libraries(
 )
 
 #--------------------------------------------------------------------------------------#
+# Add compile options
+#--------------------------------------------------------------------------------------#
+
+if(DEFINED BZTREE_PAGE_SIZE)
+  target_compile_definitions(
+    bztree INTERFACE
+    BZTREE_PAGE_SIZE=${BZTREE_PAGE_SIZE}
+  )
+endif()
+
+if(DEFINED BZTREE_MAX_UNSORTED_REC_NUM)
+  target_compile_definitions(
+    bztree INTERFACE
+    BZTREE_MAX_UNSORTED_REC_NUM=${BZTREE_MAX_UNSORTED_REC_NUM}
+  )
+endif()
+
+if(DEFINED BZTREE_MAX_DELETED_SPACE_SIZ)
+  target_compile_definitions(
+    bztree INTERFACE
+    BZTREE_MAX_DELETED_SPACE_SIZE=${BZTREE_MAX_DELETED_SPACE_SIZE}
+  )
+endif()
+
+if(DEFINED BZTREE_MIN_FREE_SPACE_SIZE)
+  target_compile_definitions(
+    bztree INTERFACE
+    BZTREE_MIN_FREE_SPACE_SIZE=${BZTREE_MIN_FREE_SPACE_SIZE}
+  )
+endif()
+
+if(DEFINED BZTREE_MIN_SORTED_REC_NUM)
+  target_compile_definitions(
+    bztree INTERFACE
+    BZTREE_MIN_SORTED_REC_NUM=${BZTREE_MIN_SORTED_REC_NUM}
+  )
+endif()
+
+if(DEFINED BZTREE_MAX_MERGED_SIZE)
+  target_compile_definitions(
+    bztree INTERFACE
+    BZTREE_MAX_MERGED_SIZE=${BZTREE_MAX_MERGED_SIZE}
+  )
+endif()
+
+#--------------------------------------------------------------------------------------#
 # Build unit tests
 #--------------------------------------------------------------------------------------#
 
-option(BZTREE_BUILD_TESTS, "Build unit tests for BzTree" OFF)
+option(BZTREE_BUILD_TESTS "Build unit tests for BzTree" OFF)
 if(${BZTREE_BUILD_TESTS})
   enable_testing()
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/test")
