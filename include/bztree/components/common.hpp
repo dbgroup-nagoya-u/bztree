@@ -41,12 +41,6 @@ enum ReturnCode
   kKeyExist
 };
 
-constexpr uintptr_t
-PayloadToNodeAddr(const void *payload)
-{
-  return *static_cast<const uintptr_t *>(payload);
-}
-
 template <class T>
 constexpr T
 Cast(const void *addr)
