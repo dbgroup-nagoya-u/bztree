@@ -170,6 +170,14 @@ class alignas(kWordLength) Metadata
     new_meta.total_length_ = total_length;
     return new_meta;
   }
+
+  constexpr Metadata
+  Delete() const
+  {
+    auto new_meta = *this;
+    new_meta.visible_ = 0;
+    return new_meta;
+  }
 };
 
 }  // namespace dbgroup::index::bztree

@@ -627,13 +627,29 @@ class LeafNode
         if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
           return {NodeReturnCode::kKeyNotExist, cur_status};
         }
+
+        if constexpr (CanCASUpdate<Payload>()) {
+          if (uniqueness == KeyExistence::kExist) {
+            const auto target_meta = node->GetMetadataProtected(target_index);
+            const auto deleted_meta = target_meta.Delete();
+            const auto deleted_size = kWordLength + GetAlignedSize(target_meta.GetTotalLength());
+            const auto new_status = cur_status.AddRecordInfo(0, 0, deleted_size);
+
+            // delete a record directly
+            auto desc = MwCASDescriptor{};
+            node->SetStatusForMwCAS(desc, cur_status, new_status);
+            node->SetMetadataForMwCAS(desc, target_index, target_meta, deleted_meta);
+            if (desc.MwCAS()) return {NodeReturnCode::kSuccess, new_status};
+            continue;
+          }
+        }
       }
 
       // prepare new status for MwCAS
       const auto target_meta = node->GetMetadataProtected(target_index);
-      const auto deleted_block_size =
-          (kWordLength << 1) + GetAlignedSize(target_meta.GetTotalLength()) + key_length;
-      const auto new_status = cur_status.AddRecordInfo(1, key_length, deleted_block_size);
+      const auto deleted_size =
+          (2 * kWordLength) + GetAlignedSize(target_meta.GetTotalLength()) + key_length;
+      const auto new_status = cur_status.AddRecordInfo(1, key_length, deleted_size);
 
       // perform MwCAS to reserve space
       auto desc = MwCASDescriptor{};
