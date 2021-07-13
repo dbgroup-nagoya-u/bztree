@@ -572,6 +572,9 @@ class LeafNode
       node->SetStatusForMwCAS(desc, cur_status, new_status);
       node->SetMetadataForMwCAS(desc, rec_count, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
+
+      // set retry flag (described in Section 4.2.1 Inserts: Concurrency issues)
+      uniqueness = KeyExistence::kUncertain;
     }
 
     /*----------------------------------------------------------------------------------------------
@@ -672,6 +675,9 @@ class LeafNode
       node->SetStatusForMwCAS(desc, cur_status, new_status);
       node->SetMetadataForMwCAS(desc, rec_count, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
+
+      // set retry flag (described in Section 4.2.1 Inserts: Concurrency issues)
+      uniqueness = KeyExistence::kUncertain;
     }
 
     /*----------------------------------------------------------------------------------------------
