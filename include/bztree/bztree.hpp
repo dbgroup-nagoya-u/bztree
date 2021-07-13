@@ -45,6 +45,13 @@ class BzTree
   using NodeReturnCode = typename BaseNode<Key, Payload, Compare>::NodeReturnCode;
 
   /*################################################################################################
+   * Internal constants
+   *##############################################################################################*/
+
+  /// the maximum number of records in a node
+  static constexpr size_t kMaxRecordNum = GetMaxRecordNum<Key, Payload>();
+
+  /*################################################################################################
    * Internal member variables
    *##############################################################################################*/
 

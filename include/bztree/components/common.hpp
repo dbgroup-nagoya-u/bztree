@@ -159,14 +159,29 @@ constexpr size_t kMaxMergedSize = BZTREE_MAX_MERGED_SIZE;
 constexpr size_t kMaxMergedSize = kPageSize / 2;
 #endif
 
-/// the maximum number of records in a node
-constexpr size_t kMaxRecordNum = (kPageSize - kHeaderLength) / (kWordLength + 2);
-
 /// a flag to indicate creating leaf nodes
 constexpr bool kLeafFlag = true;
 
 /// a flag to indicate creating internal nodes
 constexpr bool kInternalFlag = false;
+
+template <class Key, class Payload>
+constexpr size_t
+GetMaxRecordNum()
+{
+  auto record_min_length = kWordLength;
+  if constexpr (std::is_same_v<Key, char *>) {
+    record_min_length += 1;
+  } else {
+    record_min_length += sizeof(Key);
+  }
+  if constexpr (std::is_same_v<Payload, char *>) {
+    record_min_length += 1;
+  } else {
+    record_min_length += sizeof(Payload);
+  }
+  return (kPageSize - kHeaderLength) / record_min_length;
+}
 
 /**
  * @brief
