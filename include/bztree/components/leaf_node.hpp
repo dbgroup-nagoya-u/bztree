@@ -530,6 +530,20 @@ class LeafNode
         if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
           return {NodeReturnCode::kKeyNotExist, cur_status};
         }
+
+        if constexpr (CanCASUpdate<Payload>()) {
+          if (uniqueness == KeyExistence::kExist) {
+            const auto target_meta = node->GetMetadataProtected(target_index);
+
+            // update a record directly
+            auto desc = MwCASDescriptor{};
+            node->SetStatusForMwCAS(desc, cur_status, cur_status);
+            node->SetMetadataForMwCAS(desc, target_index, target_meta, target_meta);
+            node->SetPayloadForMwCAS(desc, target_meta, payload);
+            if (desc.MwCAS()) return {NodeReturnCode::kSuccess, cur_status};
+            continue;
+          }
+        }
       }
 
       // prepare new status for MwCAS
