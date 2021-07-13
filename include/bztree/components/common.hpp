@@ -183,6 +183,13 @@ GetMaxRecordNum()
   return (kPageSize - kHeaderLength) / record_min_length;
 }
 
+template <class Payload>
+constexpr bool
+CanCASUpdate()
+{
+  return !std::is_same_v<Payload, char *> && sizeof(Payload) == kWordLength;
+}
+
 /**
  * @brief
  *

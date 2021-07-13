@@ -109,16 +109,23 @@ class LeafNode
   CheckUniqueness(  //
       const BaseNode_t *node,
       const Key key,
-      const int64_t record_count,
-      const size_t index_epoch)
+      const int64_t rec_count,
+      const size_t epoch)
   {
-    const auto [existence, index] =
-        SearchUnsortedMetaToWrite(node, key, record_count - 1, node->GetSortedCount(), index_epoch);
-    if (existence == KeyExistence::kNotExist) {
-      // there is no key in unsorted metadata, so search a sorted region
-      return node->SearchSortedMetadata(key, true);
+    if constexpr (CanCASUpdate<Payload>()) {
+      const auto [rc, index] = node->SearchSortedMetadata(key, true);
+      if (rc == KeyExistence::kNotExist || rc == KeyExistence::kDeleted) {
+        return SearchUnsortedMetaToWrite(node, key, rec_count - 1, node->GetSortedCount(), epoch);
+      } else {
+        return {rc, index};
+      }
     } else {
-      return {existence, index};
+      const auto [rc, index] =
+          SearchUnsortedMetaToWrite(node, key, rec_count - 1, node->GetSortedCount(), epoch);
+      if (rc == KeyExistence::kNotExist) {
+        return node->SearchSortedMetadata(key, true);
+      }
+      return {rc, index};
     }
   }
 
@@ -164,7 +171,7 @@ class LeafNode
   static constexpr size_t
   GetAlignedSize(const size_t block_size)
   {
-    if constexpr (!std::is_same_v<Payload, char *> && sizeof(Payload) == kWordLength) {
+    if constexpr (CanCASUpdate<Payload>()) {
       if constexpr (std::is_same_v<Key, char *>) {
         const auto align_size = block_size & (kWordLength - 1);
         if (align_size > 0) {
@@ -181,7 +188,7 @@ class LeafNode
   static constexpr size_t
   AlignOffset(const size_t offset)
   {
-    if constexpr (!std::is_same_v<Payload, char *> && sizeof(Payload) == kWordLength) {
+    if constexpr (CanCASUpdate<Payload>()) {
       if constexpr (std::is_same_v<Key, char *>) {
         const auto align_size = offset & (kWordLength - 1);
         if (align_size > 0) {
