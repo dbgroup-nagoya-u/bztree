@@ -179,6 +179,19 @@ class alignas(kCacheLineSize) BaseNode
     return ShiftAddress(this, meta.GetOffset() + meta.GetKeyLength());
   }
 
+  constexpr auto
+  GetPayload(const Metadata meta) const
+  {
+    if constexpr (std::is_same_v<Payload, char *>) {
+      const auto payload_length = meta.GetPayloadLength();
+      auto payload = malloc(payload_length);
+      memcpy(payload, this->GetPayloadAddr(meta), payload_length);
+      return std::unique_ptr<char>(static_cast<char *>(payload));
+    } else {
+      return Cast<Payload>(this->GetPayloadAddr(meta));
+    }
+  }
+
   void
   SetSortedCount(const size_t sorted_count)
   {
@@ -257,6 +270,17 @@ class alignas(kCacheLineSize) BaseNode
       const Metadata new_meta)
   {
     desc.AddMwCASTarget(meta_array_ + index, old_meta, new_meta);
+  }
+
+  void
+  SetPayloadForMwCAS(  //
+      MwCASDescriptor &desc,
+      const Metadata meta,
+      const Payload new_payload)
+  {
+    const auto old_payload = this->GetPayload(meta);
+    desc.AddMwCASTarget(ShiftAddress(this, meta.GetOffset() + meta.GetKeyLength()),  //
+                        old_payload, new_payload);
   }
 
   template <class T>

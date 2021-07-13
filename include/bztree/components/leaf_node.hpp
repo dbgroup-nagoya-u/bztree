@@ -162,21 +162,6 @@ class LeafNode
   }
 
   static constexpr auto
-  GetPayload(  //
-      const BaseNode_t *node,
-      const Metadata meta)
-  {
-    if constexpr (std::is_same_v<Payload, char *>) {
-      const auto payload_length = meta.GetPayloadLength();
-      auto payload = malloc(payload_length);
-      memcpy(payload, node->GetPayloadAddr(meta), payload_length);
-      return std::unique_ptr<char>(static_cast<char *>(payload));
-    } else {
-      return Cast<Payload>(node->GetPayloadAddr(meta));
-    }
-  }
-
-  static constexpr auto
   GetRecord(  //
       const BaseNode_t *node,
       const Metadata meta)
@@ -349,7 +334,7 @@ class LeafNode
       }
     }
     const auto meta = node->GetMetadataProtected(index);
-    return std::make_pair(NodeReturnCode::kSuccess, GetPayload(node, meta));
+    return std::make_pair(NodeReturnCode::kSuccess, node->GetPayload(meta));
   }
 
   /*################################################################################################
