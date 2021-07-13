@@ -153,9 +153,10 @@ class LeafNodeFixture : public testing::Test
   Write(  //
       const size_t key_id,
       const size_t payload_id,
-      const bool expect_full = false)
+      const bool expect_full = false,
+      const bool expect_in_sorted = false)
   {
-    if (!expect_full) {
+    if (!expect_full && (!expect_in_sorted || !CanCASUpdate<Payload>())) {
       expected_record_count += 1;
       expected_block_size += record_length;
     }
@@ -186,10 +187,9 @@ class LeafNodeFixture : public testing::Test
       const size_t payload_id,
       const bool expect_not_exist = false,
       const bool expect_full = false,
-      const bool expect_after_consolidation = false)
+      const bool expect_in_sorted = false)
   {
-    if (!expect_not_exist && !expect_full
-        && (!expect_after_consolidation || !CanCASUpdate<Payload>())) {
+    if (!expect_not_exist && !expect_full && (!expect_in_sorted || !CanCASUpdate<Payload>())) {
       expected_record_count += 1;
       expected_block_size += record_length;
       expected_deleted_rec_count += 1;
@@ -205,10 +205,10 @@ class LeafNodeFixture : public testing::Test
       const size_t key_id,
       const bool expect_not_exist = false,
       const bool expect_full = false,
-      const bool expect_after_consolidation = false)
+      const bool expect_in_sorted = false)
   {
     if (!expect_not_exist && !expect_full) {
-      if (!expect_after_consolidation || !CanCASUpdate<Payload>()) {
+      if (!expect_in_sorted || !CanCASUpdate<Payload>()) {
         expected_record_count += 1;
         expected_block_size += key_length;
         expected_deleted_rec_count += 2;
@@ -330,9 +330,10 @@ class LeafNodeFixture : public testing::Test
   VerifyWrite(  //
       const size_t key_id,
       const size_t payload_id,
-      const bool expect_full = false)
+      const bool expect_full = false,
+      const bool expect_in_sorted = false)
   {
-    auto [rc, status] = Write(key_id, payload_id, expect_full);
+    auto [rc, status] = Write(key_id, payload_id, expect_full, expect_in_sorted);
 
     if (expect_full) {
       EXPECT_EQ(NodeReturnCode::kNoSpace, rc);
@@ -369,10 +370,9 @@ class LeafNodeFixture : public testing::Test
       const size_t payload_id,
       const bool expect_not_exist = false,
       const bool expect_full = false,
-      const bool expect_after_consolidation = false)
+      const bool expect_in_sorted = false)
   {
-    auto [rc, status] =
-        Update(key_id, payload_id, expect_not_exist, expect_full, expect_after_consolidation);
+    auto [rc, status] = Update(key_id, payload_id, expect_not_exist, expect_full, expect_in_sorted);
 
     if (expect_full) {
       EXPECT_EQ(NodeReturnCode::kNoSpace, rc);
@@ -390,9 +390,9 @@ class LeafNodeFixture : public testing::Test
       const size_t key_id,
       const bool expect_not_exist = false,
       const bool expect_full = false,
-      const bool expect_after_consolidation = false)
+      const bool expect_in_sorted = false)
   {
-    auto [rc, status] = Delete(key_id, expect_not_exist, expect_full, expect_after_consolidation);
+    auto [rc, status] = Delete(key_id, expect_not_exist, expect_full, expect_in_sorted);
 
     if (expect_full) {
       EXPECT_EQ(NodeReturnCode::kNoSpace, rc);
@@ -556,7 +556,8 @@ TYPED_TEST(LeafNodeFixture, Write_ConsolidatedNode_ReadWrittenValue)
 {
   TestFixture::PrepareConsolidatedNode(1, 5);
 
-  TestFixture::VerifyWrite(6, 6);
+  TestFixture::VerifyWrite(6, 6, false, false);
+  TestFixture::VerifyWrite(1, 2, false, true);
 }
 
 /*--------------------------------------------------------------------------------------------------

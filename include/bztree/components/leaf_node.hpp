@@ -365,8 +365,24 @@ class LeafNode
       if (cur_status.IsFrozen()) return {NodeReturnCode::kFrozen, StatusWord{}};
       if (!HasSpace(node, cur_status, block_size)) return {NodeReturnCode::kNoSpace, StatusWord{}};
 
-      // prepare for MwCAS
       rec_count = cur_status.GetRecordCount();
+      if constexpr (CanCASUpdate<Payload>()) {
+        // check whether a node includes a target key
+        const auto [uniqueness, target_index] = node->SearchSortedMetadata(key, true);
+        if (uniqueness == KeyExistence::kExist && target_index < node->GetSortedCount()) {
+          const auto target_meta = node->GetMetadataProtected(target_index);
+
+          // update a record directly
+          auto desc = MwCASDescriptor{};
+          node->SetStatusForMwCAS(desc, cur_status, cur_status);
+          node->SetMetadataForMwCAS(desc, target_index, target_meta, target_meta);
+          node->SetPayloadForMwCAS(desc, target_meta, payload);
+          if (desc.MwCAS()) return {NodeReturnCode::kSuccess, cur_status};
+          continue;
+        }
+      }
+
+      // prepare new status for MwCAS
       const auto new_status = cur_status.AddRecordInfo(1, block_size, 0);
 
       // perform MwCAS to reserve space
