@@ -327,14 +327,14 @@ class LeafNode
     const auto [existence, index] = CheckUniqueness(node, key, status.GetRecordCount());
     if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
       if constexpr (std::is_same_v<Payload, char *>) {
-        return std::make_pair(NodeReturnCode::kKeyNotExist,
-                              static_cast<std::unique_ptr<char>>(nullptr));
+        return std::move(std::make_pair(NodeReturnCode::kKeyNotExist,
+                                        static_cast<std::unique_ptr<char>>(nullptr)));
       } else {
-        return std::make_pair(NodeReturnCode::kKeyNotExist, Payload{});
+        return std::move(std::make_pair(NodeReturnCode::kKeyNotExist, Payload{}));
       }
     }
     const auto meta = node->GetMetadataProtected(index);
-    return std::make_pair(NodeReturnCode::kSuccess, node->GetPayload(meta));
+    return std::move(std::make_pair(NodeReturnCode::kSuccess, node->GetPayload(meta)));
   }
 
   /*################################################################################################
