@@ -330,7 +330,7 @@ class alignas(kCacheLineSize) BaseNode
    */
   constexpr std::pair<KeyExistence, size_t>
   SearchSortedMetadata(  //
-      const Key &key,
+      const Key key,
       const bool range_is_closed) const
   {
     const int64_t sorted_count = GetSortedCount();

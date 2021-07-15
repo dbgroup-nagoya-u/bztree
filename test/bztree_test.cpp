@@ -67,7 +67,7 @@ class BzTreeFixture : public testing::Test
   Payload payloads[kKeyNumForTest];
 
   // a test target BzTree
-  BzTree_t bztree = BzTree_t{};
+  BzTree_t bztree = BzTree_t{10000};
 
   /*################################################################################################
    * Setup/Teardown
