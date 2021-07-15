@@ -578,9 +578,9 @@ class BzTree
     const auto leaf_node = SearchLeafNode(&key, true).second;
     auto [rc, payload] = LeafNode_t::Read(leaf_node, key);
     if (rc == NodeReturnCode::kSuccess) {
-      return std::make_pair(ReturnCode::kSuccess, std::move(payload));
+      return std::move(std::make_pair(ReturnCode::kSuccess, std::move(payload)));
     }
-    return std::make_pair(ReturnCode::kKeyNotExist, std::move(payload));
+    return std::move(std::make_pair(ReturnCode::kKeyNotExist, std::move(payload)));
   }
 
   /*################################################################################################
