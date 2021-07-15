@@ -536,6 +536,19 @@ class BzTree
     }
   }
 
+  constexpr static void
+  DeleteChildren(BaseNode_t *node)
+  {
+    if (!node->IsLeaf()) {
+      for (size_t i = 0; i < node->GetSortedCount(); ++i) {
+        auto child_node = InternalNode_t::GetChildNode(node, i);
+        DeleteChildren(child_node);
+      }
+    }
+
+    delete node;
+  }
+
  public:
   /*################################################################################################
    * Public constructor/destructor
@@ -543,7 +556,7 @@ class BzTree
 
   BzTree() : index_epoch_{1}, root_{InternalNode_t::CreateInitialRoot()}, gc_{1000} {}
 
-  ~BzTree() = default;
+  ~BzTree() { DeleteChildren(GetRoot()); }
 
   BzTree(const BzTree &) = delete;
   BzTree &operator=(const BzTree &) = delete;
