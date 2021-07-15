@@ -74,26 +74,29 @@ class BzTree
     return ReadMwCASField<BaseNode_t *>(&root_);
   }
 
-  constexpr std::pair<void *, BaseNode_t *>
+  constexpr BaseNode_t *
   SearchLeafNode(  //
-      const Key *key,
+      const Key key,
       const bool range_is_closed)
   {
     auto current_node = GetRoot();
-    void *node_key = nullptr;
     do {
-      const auto index =
-          (key == nullptr) ? 0 : current_node->SearchSortedMetadata(*key, range_is_closed).second;
-      const auto meta = current_node->GetMetadata(index);
-      if (meta.GetKeyLength() == 0) {
-        node_key = nullptr;
-      } else {
-        node_key = current_node->GetKeyAddr(meta);
-      }
+      const auto index = current_node->SearchSortedMetadata(key, range_is_closed).second;
       current_node = InternalNode_t::GetChildNode(current_node, index);
     } while (!current_node->IsLeaf());
 
-    return {node_key, current_node};
+    return current_node;
+  }
+
+  constexpr BaseNode_t *
+  SearchLeftEdgeLeaf()
+  {
+    auto current_node = GetRoot();
+    do {
+      current_node = InternalNode_t::GetChildNode(current_node, 0);
+    } while (!current_node->IsLeaf());
+
+    return current_node;
   }
 
   constexpr std::stack<std::pair<BaseNode_t *, size_t>>
@@ -161,29 +164,6 @@ class BzTree
     block_size += kHeaderLength + (kWordLength * rec_count);
 
     return block_size;
-  }
-
-  constexpr auto
-  ScanPerLeaf(  //
-      const Key *begin_key,
-      const bool begin_is_closed,
-      const Key *end_key,
-      const bool end_is_closed)
-  {
-    const auto guard = gc_.CreateEpochGuard();
-
-    auto [node_key, leaf_node] = SearchLeafNode(begin_key, begin_is_closed);
-    auto [rc, scan_results] =
-        LeafNode_t::Scan(leaf_node, begin_key, begin_is_closed, end_key, end_is_closed);
-
-    if (node_key == nullptr
-        || (end_key != nullptr
-            && (Compare{}(*end_key, Cast<Key>(node_key))
-                || IsEqual<Compare>(*end_key, Cast<Key>(node_key))))) {
-      return std::make_pair(ReturnCode::kSuccess, std::move(scan_results));
-    } else {
-      return std::make_pair(ReturnCode::kScanInProgress, std::move(scan_results));
-    }
   }
 
   /*################################################################################################
@@ -575,7 +555,7 @@ class BzTree
   {
     const auto guard = gc_.CreateEpochGuard();
 
-    const auto leaf_node = SearchLeafNode(&key, true).second;
+    const auto leaf_node = SearchLeafNode(key, true);
     auto [rc, payload] = LeafNode_t::Read(leaf_node, key);
     if (rc == NodeReturnCode::kSuccess) {
       return std::make_pair(ReturnCode::kSuccess, std::move(payload));
@@ -597,7 +577,7 @@ class BzTree
     const auto guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto leaf_node = SearchLeafNode(&key, true).second;
+      auto leaf_node = SearchLeafNode(key, true);
       const auto [rc, status] =
           LeafNode_t::Write(leaf_node, key, key_length, payload, payload_length, index_epoch_);
 
@@ -620,7 +600,7 @@ class BzTree
     const auto guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto leaf_node = SearchLeafNode(&key, true).second;
+      auto leaf_node = SearchLeafNode(key, true);
       const auto [rc, status] =
           LeafNode_t::Insert(leaf_node, key, key_length, payload, payload_length, index_epoch_);
 
@@ -644,7 +624,7 @@ class BzTree
     const auto guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto leaf_node = SearchLeafNode(&key, true).second;
+      auto leaf_node = SearchLeafNode(key, true);
       const auto [rc, status] =
           LeafNode_t::Update(leaf_node, key, key_length, payload, payload_length, index_epoch_);
 
@@ -666,7 +646,7 @@ class BzTree
     const auto guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto leaf_node = SearchLeafNode(&key, true).second;
+      auto leaf_node = SearchLeafNode(key, true);
       const auto [rc, status] = LeafNode_t::Delete(leaf_node, key, key_length);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
