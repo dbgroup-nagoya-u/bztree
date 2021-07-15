@@ -554,7 +554,7 @@ class BzTree
    * Public constructor/destructor
    *##############################################################################################*/
 
-  BzTree() : index_epoch_{1}, root_{InternalNode_t::CreateInitialRoot()}, gc_{1000} {}
+  BzTree() : index_epoch_{1}, root_{InternalNode_t::CreateInitialRoot()}, gc_{1000000} {}
 
   ~BzTree() { DeleteChildren(GetRoot()); }
 
