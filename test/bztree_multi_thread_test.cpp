@@ -89,7 +89,7 @@ class BzTreeFixture : public testing::Test
   Payload payloads[kKeyNumForTest];
 
   // a test target BzTree
-  BzTree_t bztree = BzTree_t{};
+  BzTree_t bztree = BzTree_t{10000};
 
   std::uniform_int_distribution<size_t> id_dist{0, kKeyNumForTest - 2};
 
