@@ -330,7 +330,7 @@ class LeafNode
         return std::make_pair(NodeReturnCode::kKeyNotExist,
                               std::move(static_cast<std::unique_ptr<char>>(nullptr)));
       } else {
-        return std::make_pair(NodeReturnCode::kKeyNotExist, Payload{});
+        return std::move(std::make_pair(NodeReturnCode::kKeyNotExist, Payload{}));
       }
     }
     const auto meta = node->GetMetadataProtected(index);
