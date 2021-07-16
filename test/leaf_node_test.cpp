@@ -333,13 +333,12 @@ class LeafNodeFixture : public testing::Test
       const bool expect_full = false,
       const bool expect_in_sorted = false)
   {
-    auto [rc, status] = Write(key_id, payload_id, expect_full, expect_in_sorted);
+    auto rc = Write(key_id, payload_id, expect_full, expect_in_sorted);
 
     if (expect_full) {
       EXPECT_EQ(NodeReturnCode::kNoSpace, rc);
     } else {
       EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-      VerifyStatusWord(status);
       VerifyRead(key_id, payload_id);
     }
   }
@@ -351,7 +350,7 @@ class LeafNodeFixture : public testing::Test
       const bool expect_exist = false,
       const bool expect_full = false)
   {
-    auto [rc, status] = Insert(key_id, payload_id, expect_exist, expect_full);
+    auto rc = Insert(key_id, payload_id, expect_exist, expect_full);
 
     if (expect_full) {
       EXPECT_EQ(NodeReturnCode::kNoSpace, rc);
@@ -359,7 +358,6 @@ class LeafNodeFixture : public testing::Test
       EXPECT_EQ(NodeReturnCode::kKeyExist, rc);
     } else {
       EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-      VerifyStatusWord(status);
       VerifyRead(key_id, payload_id);
     }
   }
@@ -372,7 +370,7 @@ class LeafNodeFixture : public testing::Test
       const bool expect_full = false,
       const bool expect_in_sorted = false)
   {
-    auto [rc, status] = Update(key_id, payload_id, expect_not_exist, expect_full, expect_in_sorted);
+    auto rc = Update(key_id, payload_id, expect_not_exist, expect_full, expect_in_sorted);
 
     if (expect_full) {
       EXPECT_EQ(NodeReturnCode::kNoSpace, rc);
@@ -380,7 +378,6 @@ class LeafNodeFixture : public testing::Test
       EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
     } else {
       EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-      VerifyStatusWord(status);
       VerifyRead(key_id, payload_id);
     }
   }
@@ -392,7 +389,7 @@ class LeafNodeFixture : public testing::Test
       const bool expect_full = false,
       const bool expect_in_sorted = false)
   {
-    auto [rc, status] = Delete(key_id, expect_not_exist, expect_full, expect_in_sorted);
+    auto rc = Delete(key_id, expect_not_exist, expect_full, expect_in_sorted);
 
     if (expect_full) {
       EXPECT_EQ(NodeReturnCode::kNoSpace, rc);
@@ -400,7 +397,6 @@ class LeafNodeFixture : public testing::Test
       EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
     } else {
       EXPECT_EQ(NodeReturnCode::kSuccess, rc);
-      VerifyStatusWord(status);
     }
   }
 

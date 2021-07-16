@@ -171,7 +171,7 @@ class LeafNodeFixture : public testing::Test
    * Utility functions
    *##############################################################################################*/
 
-  std::pair<NodeReturnCode, StatusWord>
+  NodeReturnCode
   PerformWriteOperation(const Operation& ops)
   {
     const auto key = keys[ops.key_id];
@@ -246,7 +246,7 @@ class LeafNodeFixture : public testing::Test
 
       // perform and gather results
       for (auto&& ops : operations) {
-        if (PerformWriteOperation(ops).first == NodeReturnCode::kSuccess) {
+        if (PerformWriteOperation(ops) == NodeReturnCode::kSuccess) {
           written_ids.emplace_back(ops.key_id);
         }
       }
