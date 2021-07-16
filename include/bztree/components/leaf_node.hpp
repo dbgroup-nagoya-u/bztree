@@ -318,23 +318,21 @@ class LeafNode
    * Read operations
    *##############################################################################################*/
 
-  static constexpr auto
+  static constexpr NodeReturnCode
   Read(  //
       const BaseNode_t *node,
-      const Key key)
+      const Key key,
+      Payload &out_payload)
   {
     const auto status = node->GetStatusWordProtected();
     const auto [existence, index] = CheckUniqueness(node, key, status.GetRecordCount());
     if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
-      if constexpr (std::is_same_v<Payload, char *>) {
-        return std::make_pair(NodeReturnCode::kKeyNotExist,
-                              std::move(static_cast<std::unique_ptr<char>>(nullptr)));
-      } else {
-        return std::move(std::make_pair(NodeReturnCode::kKeyNotExist, Payload{}));
-      }
+      return NodeReturnCode::kKeyNotExist;
     }
+
     const auto meta = node->GetMetadataProtected(index);
-    return std::make_pair(NodeReturnCode::kSuccess, std::move(node->GetPayload(meta)));
+    node->GetPayload(meta, out_payload);
+    return NodeReturnCode::kSuccess;
   }
 
   /*################################################################################################

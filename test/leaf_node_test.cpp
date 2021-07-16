@@ -312,16 +312,17 @@ class LeafNodeFixture : public testing::Test
       const size_t expected_id,
       const bool expect_fail = false)
   {
-    auto [rc, actual] = LeafNode_t::Read(node.get(), keys[key_id]);
+    Payload payload{};
+
+    const auto rc = LeafNode_t::Read(node.get(), keys[key_id], payload);
 
     if (expect_fail) {
       EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
     } else {
       EXPECT_EQ(NodeReturnCode::kSuccess, rc);
+      EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], payload));
       if constexpr (std::is_same_v<Payload, char *>) {
-        EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], actual.get()));
-      } else {
-        EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], actual));
+        free(payload);
       }
     }
   }
