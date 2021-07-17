@@ -136,17 +136,16 @@ class BzTreeFixture : public testing::Test
       const size_t expected_id,
       const bool expect_fail = false)
   {
-    Payload payload{};
-
-    const auto rc = bztree.Read(keys[key_id], payload);
+    const auto [rc, actual] = bztree.Read(keys[key_id]);
 
     if (expect_fail) {
       EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
     } else {
       EXPECT_EQ(ReturnCode::kSuccess, rc);
-      EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], payload));
       if constexpr (std::is_same_v<Payload, char *>) {
-        free(payload);
+        EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], actual.get()));
+      } else {
+        EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], actual));
       }
     }
   }
