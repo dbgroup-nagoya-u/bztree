@@ -556,11 +556,22 @@ class BzTree
     const auto guard = gc_.CreateEpochGuard();
 
     const auto leaf_node = SearchLeafNode(key, true);
-    auto [rc, payload] = LeafNode_t::Read(leaf_node, key);
-    if (rc == NodeReturnCode::kSuccess) {
-      return std::make_pair(ReturnCode::kSuccess, std::move(payload));
+
+    if constexpr (std::is_same_v<Payload, char *>) {
+      Payload payload = nullptr;
+      const auto rc = LeafNode_t::Read(leaf_node, key, payload);
+      if (rc == NodeReturnCode::kSuccess) {
+        return std::make_pair(ReturnCode::kSuccess, std::unique_ptr<char>(std::move(payload)));
+      }
+      return std::make_pair(ReturnCode::kKeyNotExist, std::unique_ptr<char>(std::move(payload)));
+    } else {
+      Payload out_payload{};
+      const auto rc = LeafNode_t::Read(leaf_node, key, out_payload);
+      if (rc == NodeReturnCode::kSuccess) {
+        return std::make_pair(ReturnCode::kSuccess, std::move(out_payload));
+      }
+      return std::make_pair(ReturnCode::kKeyNotExist, Payload{});
     }
-    return std::make_pair(ReturnCode::kKeyNotExist, std::move(payload));
   }
 
   /*################################################################################################
@@ -578,7 +589,7 @@ class BzTree
 
     while (true) {
       auto leaf_node = SearchLeafNode(key, true);
-      const auto [rc, status] =
+      const auto rc =
           LeafNode_t::Write(leaf_node, key, key_length, payload, payload_length, index_epoch_);
 
       if (rc == NodeReturnCode::kSuccess) {
@@ -601,7 +612,7 @@ class BzTree
 
     while (true) {
       auto leaf_node = SearchLeafNode(key, true);
-      const auto [rc, status] =
+      const auto rc =
           LeafNode_t::Insert(leaf_node, key, key_length, payload, payload_length, index_epoch_);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyExist) {
@@ -625,7 +636,7 @@ class BzTree
 
     while (true) {
       auto leaf_node = SearchLeafNode(key, true);
-      const auto [rc, status] =
+      const auto rc =
           LeafNode_t::Update(leaf_node, key, key_length, payload, payload_length, index_epoch_);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
@@ -647,7 +658,7 @@ class BzTree
 
     while (true) {
       auto leaf_node = SearchLeafNode(key, true);
-      const auto [rc, status] = LeafNode_t::Delete(leaf_node, key, key_length);
+      const auto rc = LeafNode_t::Delete(leaf_node, key, key_length);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
         if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;

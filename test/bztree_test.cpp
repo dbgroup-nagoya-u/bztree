@@ -136,7 +136,7 @@ class BzTreeFixture : public testing::Test
       const size_t expected_id,
       const bool expect_fail = false)
   {
-    auto [rc, actual] = bztree.Read(keys[key_id]);
+    const auto [rc, actual] = bztree.Read(keys[key_id]);
 
     if (expect_fail) {
       EXPECT_EQ(ReturnCode::kKeyNotExist, rc);

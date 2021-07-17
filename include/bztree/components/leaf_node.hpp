@@ -318,30 +318,28 @@ class LeafNode
    * Read operations
    *##############################################################################################*/
 
-  static constexpr auto
+  static constexpr NodeReturnCode
   Read(  //
       const BaseNode_t *node,
-      const Key key)
+      const Key key,
+      Payload &out_payload)
   {
     const auto status = node->GetStatusWordProtected();
     const auto [existence, index] = CheckUniqueness(node, key, status.GetRecordCount());
     if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
-      if constexpr (std::is_same_v<Payload, char *>) {
-        return std::make_pair(NodeReturnCode::kKeyNotExist,
-                              std::move(static_cast<std::unique_ptr<char>>(nullptr)));
-      } else {
-        return std::move(std::make_pair(NodeReturnCode::kKeyNotExist, Payload{}));
-      }
+      return NodeReturnCode::kKeyNotExist;
     }
+
     const auto meta = node->GetMetadataProtected(index);
-    return std::make_pair(NodeReturnCode::kSuccess, std::move(node->GetPayload(meta)));
+    node->GetPayload(meta, out_payload);
+    return NodeReturnCode::kSuccess;
   }
 
   /*################################################################################################
    * Write operations
    *##############################################################################################*/
 
-  static constexpr std::pair<NodeReturnCode, StatusWord>
+  static constexpr NodeReturnCode
   Write(  //
       BaseNode_t *node,
       const Key key,
@@ -362,8 +360,8 @@ class LeafNode
      *--------------------------------------------------------------------------------------------*/
     while (true) {
       cur_status = node->GetStatusWordProtected();
-      if (cur_status.IsFrozen()) return {NodeReturnCode::kFrozen, StatusWord{}};
-      if (!HasSpace(node, cur_status, block_size)) return {NodeReturnCode::kNoSpace, StatusWord{}};
+      if (cur_status.IsFrozen()) return NodeReturnCode::kFrozen;
+      if (!HasSpace(node, cur_status, block_size)) return NodeReturnCode::kNoSpace;
 
       rec_count = cur_status.GetRecordCount();
       if constexpr (CanCASUpdate<Payload>()) {
@@ -377,7 +375,7 @@ class LeafNode
           node->SetStatusForMwCAS(desc, cur_status, cur_status);
           node->SetMetadataForMwCAS(desc, target_index, target_meta, target_meta);
           node->SetPayloadForMwCAS(desc, target_meta, payload);
-          if (desc.MwCAS()) return {NodeReturnCode::kSuccess, cur_status};
+          if (desc.MwCAS()) return NodeReturnCode::kSuccess;
           continue;
         }
       }
@@ -406,22 +404,22 @@ class LeafNode
 
     // check conflicts (concurrent SMOs)
     while (true) {
-      cur_status = node->GetStatusWordProtected();
-      if (cur_status.IsFrozen()) {
-        return {NodeReturnCode::kFrozen, StatusWord{}};
+      const auto status = node->GetStatusWordProtected();
+      if (status.IsFrozen()) {
+        return NodeReturnCode::kFrozen;
       }
 
       // perform MwCAS to complete a write
       auto desc = MwCASDescriptor{};
-      node->SetStatusForMwCAS(desc, cur_status, cur_status);
+      node->SetStatusForMwCAS(desc, status, status);
       node->SetMetadataForMwCAS(desc, rec_count, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
     }
 
-    return {NodeReturnCode::kSuccess, cur_status};
+    return NodeReturnCode::kSuccess;
   }
 
-  static constexpr std::pair<NodeReturnCode, StatusWord>
+  static constexpr NodeReturnCode
   Insert(  //
       BaseNode_t *node,
       const Key key,
@@ -445,15 +443,15 @@ class LeafNode
      *--------------------------------------------------------------------------------------------*/
     while (true) {
       cur_status = node->GetStatusWordProtected();
-      if (cur_status.IsFrozen()) return {NodeReturnCode::kFrozen, StatusWord{}};
-      if (!HasSpace(node, cur_status, block_size)) return {NodeReturnCode::kNoSpace, StatusWord{}};
+      if (cur_status.IsFrozen()) return NodeReturnCode::kFrozen;
+      if (!HasSpace(node, cur_status, block_size)) return NodeReturnCode::kNoSpace;
 
       // check uniqueness
       rec_count = cur_status.GetRecordCount();
       if (uniqueness != KeyExistence::kUncertain) {
         uniqueness = CheckUniqueness(node, key, rec_count, index_epoch).first;
         if (uniqueness == KeyExistence::kExist) {
-          return {NodeReturnCode::kKeyExist, cur_status};
+          return NodeReturnCode::kKeyExist;
         }
       }
 
@@ -484,11 +482,11 @@ class LeafNode
 
     while (true) {
       // check concurrent SMOs
-      cur_status = node->GetStatusWordProtected();
-      if (cur_status.IsFrozen()) {
+      const auto status = node->GetStatusWordProtected();
+      if (status.IsFrozen()) {
         // delete an inserted record
         node->SetMetadataByCAS(rec_count, in_progress_meta.UpdateOffset(0));
-        return {NodeReturnCode::kFrozen, StatusWord{}};
+        return NodeReturnCode::kFrozen;
       }
 
       // recheck uniqueness if required
@@ -497,7 +495,7 @@ class LeafNode
         if (uniqueness == KeyExistence::kExist) {
           // delete an inserted record
           node->SetMetadataByCAS(rec_count, in_progress_meta.UpdateOffset(0));
-          return {NodeReturnCode::kKeyExist, cur_status};
+          return NodeReturnCode::kKeyExist;
         } else if (uniqueness == KeyExistence::kUncertain) {
           // retry if there are still uncertain records
           continue;
@@ -506,15 +504,15 @@ class LeafNode
 
       // perform MwCAS to complete an insert
       auto desc = MwCASDescriptor{};
-      node->SetStatusForMwCAS(desc, cur_status, cur_status);
+      node->SetStatusForMwCAS(desc, status, status);
       node->SetMetadataForMwCAS(desc, rec_count, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
     }
 
-    return {NodeReturnCode::kSuccess, cur_status};
+    return NodeReturnCode::kSuccess;
   }
 
-  static constexpr std::pair<NodeReturnCode, StatusWord>
+  static constexpr NodeReturnCode
   Update(  //
       BaseNode_t *node,
       const Key key,
@@ -536,15 +534,15 @@ class LeafNode
      *--------------------------------------------------------------------------------------------*/
     while (true) {
       cur_status = node->GetStatusWordProtected();
-      if (cur_status.IsFrozen()) return {NodeReturnCode::kFrozen, StatusWord{}};
-      if (!HasSpace(node, cur_status, block_size)) return {NodeReturnCode::kNoSpace, StatusWord{}};
+      if (cur_status.IsFrozen()) return NodeReturnCode::kFrozen;
+      if (!HasSpace(node, cur_status, block_size)) return NodeReturnCode::kNoSpace;
 
       // check whether a node includes a target key
       rec_count = cur_status.GetRecordCount();
       if (uniqueness != KeyExistence::kUncertain) {
         std::tie(uniqueness, target_index) = CheckUniqueness(node, key, rec_count, index_epoch);
         if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
-          return {NodeReturnCode::kKeyNotExist, cur_status};
+          return NodeReturnCode::kKeyNotExist;
         }
 
         if constexpr (CanCASUpdate<Payload>()) {
@@ -556,7 +554,7 @@ class LeafNode
             node->SetStatusForMwCAS(desc, cur_status, cur_status);
             node->SetMetadataForMwCAS(desc, target_index, target_meta, target_meta);
             node->SetPayloadForMwCAS(desc, target_meta, payload);
-            if (desc.MwCAS()) return {NodeReturnCode::kSuccess, cur_status};
+            if (desc.MwCAS()) return NodeReturnCode::kSuccess;
             continue;
           }
         }
@@ -591,9 +589,9 @@ class LeafNode
 
     while (true) {
       // check conflicts (concurrent SMOs)
-      cur_status = node->GetStatusWordProtected();
-      if (cur_status.IsFrozen()) {
-        return {NodeReturnCode::kFrozen, StatusWord{}};
+      const auto status = node->GetStatusWordProtected();
+      if (status.IsFrozen()) {
+        return NodeReturnCode::kFrozen;
       }
 
       // recheck uniqueness if required
@@ -602,7 +600,7 @@ class LeafNode
         if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
           // delete an inserted record
           node->SetMetadataByCAS(rec_count, in_progress_meta.UpdateOffset(0));
-          return {NodeReturnCode::kKeyNotExist, cur_status};
+          return NodeReturnCode::kKeyNotExist;
         } else if (uniqueness == KeyExistence::kUncertain) {
           continue;
         }
@@ -610,15 +608,15 @@ class LeafNode
 
       // perform MwCAS to complete an update
       auto desc = MwCASDescriptor{};
-      node->SetStatusForMwCAS(desc, cur_status, cur_status);
+      node->SetStatusForMwCAS(desc, status, status);
       node->SetMetadataForMwCAS(desc, rec_count, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
     }
 
-    return {NodeReturnCode::kSuccess, cur_status};
+    return NodeReturnCode::kSuccess;
   }
 
-  static constexpr std::pair<NodeReturnCode, StatusWord>
+  static constexpr NodeReturnCode
   Delete(  //
       BaseNode_t *node,
       const Key key,
@@ -636,15 +634,15 @@ class LeafNode
      *--------------------------------------------------------------------------------------------*/
     while (true) {
       cur_status = node->GetStatusWordProtected();
-      if (cur_status.IsFrozen()) return {NodeReturnCode::kFrozen, StatusWord{}};
-      if (!HasSpace(node, cur_status, key_length)) return {NodeReturnCode::kNoSpace, StatusWord{}};
+      if (cur_status.IsFrozen()) return NodeReturnCode::kFrozen;
+      if (!HasSpace(node, cur_status, key_length)) return NodeReturnCode::kNoSpace;
 
       // check whether a node includes a target key
       rec_count = cur_status.GetRecordCount();
       if (uniqueness != KeyExistence::kUncertain) {
         std::tie(uniqueness, target_index) = CheckUniqueness(node, key, rec_count, index_epoch);
         if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
-          return {NodeReturnCode::kKeyNotExist, cur_status};
+          return NodeReturnCode::kKeyNotExist;
         }
 
         if constexpr (CanCASUpdate<Payload>()) {
@@ -658,7 +656,7 @@ class LeafNode
             auto desc = MwCASDescriptor{};
             node->SetStatusForMwCAS(desc, cur_status, new_status);
             node->SetMetadataForMwCAS(desc, target_index, target_meta, deleted_meta);
-            if (desc.MwCAS()) return {NodeReturnCode::kSuccess, new_status};
+            if (desc.MwCAS()) return NodeReturnCode::kSuccess;
             continue;
           }
         }
@@ -693,11 +691,11 @@ class LeafNode
 
     while (true) {
       // check concurrent SMOs
-      cur_status = node->GetStatusWordProtected();
-      if (cur_status.IsFrozen()) {
+      const auto status = node->GetStatusWordProtected();
+      if (status.IsFrozen()) {
         // delete an inserted record
         node->SetMetadataByCAS(rec_count, in_progress_meta.UpdateOffset(0));
-        return {NodeReturnCode::kFrozen, StatusWord{}};
+        return NodeReturnCode::kFrozen;
       }
 
       // recheck uniqueness if required
@@ -706,7 +704,7 @@ class LeafNode
         if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
           // delete an inserted record
           node->SetMetadataByCAS(rec_count, in_progress_meta.UpdateOffset(0));
-          return {NodeReturnCode::kKeyNotExist, cur_status};
+          return NodeReturnCode::kKeyNotExist;
         } else if (uniqueness == KeyExistence::kUncertain) {
           // retry if there are still uncertain records
           continue;
@@ -715,12 +713,12 @@ class LeafNode
 
       // perform MwCAS to complete an insert
       auto desc = MwCASDescriptor{};
-      node->SetStatusForMwCAS(desc, cur_status, cur_status);
+      node->SetStatusForMwCAS(desc, status, status);
       node->SetMetadataForMwCAS(desc, rec_count, in_progress_meta, deleted_meta);
       if (desc.MwCAS()) break;
     }
 
-    return {NodeReturnCode::kSuccess, cur_status};
+    return NodeReturnCode::kSuccess;
   }
 
   /*################################################################################################
