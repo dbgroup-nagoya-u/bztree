@@ -331,7 +331,7 @@ class LeafNode
     }
 
     const auto meta = node->GetMetadataProtected(index);
-    node->GetPayload(meta, out_payload);
+    node->CopyPayload(meta, out_payload);
     return NodeReturnCode::kSuccess;
   }
 
