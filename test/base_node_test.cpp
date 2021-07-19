@@ -28,7 +28,6 @@ namespace dbgroup::index::bztree
 {
 using Key = uint64_t;
 using Payload = uint64_t;
-using Record_t = Record<Key, Payload>;
 using BaseNode_t = BaseNode<Key, Payload>;
 using LeafNode_t = LeafNode<Key, Payload, std::less<Key>>;
 using NodeReturnCode = BaseNode<Key, Payload>::NodeReturnCode;

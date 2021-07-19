@@ -28,6 +28,7 @@
 
 #include "components/internal_node.hpp"
 #include "components/leaf_node.hpp"
+#include "components/record_page.hpp"
 #include "memory/manager/tls_based_memory_manager.hpp"
 
 namespace dbgroup::index::bztree
@@ -41,8 +42,8 @@ class BzTree
   using BaseNode_t = BaseNode<Key, Payload, Compare>;
   using LeafNode_t = LeafNode<Key, Payload, Compare>;
   using InternalNode_t = InternalNode<Key, Payload, Compare>;
-  using Record_t = Record<Key, Payload>;
   using NodeReturnCode = typename BaseNode<Key, Payload, Compare>::NodeReturnCode;
+  using RecordPage_t = RecordPage<Key, Payload>;
 
   /*################################################################################################
    * Internal constants
@@ -565,13 +566,28 @@ class BzTree
       }
       return std::make_pair(ReturnCode::kKeyNotExist, std::unique_ptr<char>(std::move(payload)));
     } else {
-      Payload out_payload{};
-      const auto rc = LeafNode_t::Read(leaf_node, key, out_payload);
+      Payload payload{};
+      const auto rc = LeafNode_t::Read(leaf_node, key, payload);
       if (rc == NodeReturnCode::kSuccess) {
-        return std::make_pair(ReturnCode::kSuccess, std::move(out_payload));
+        return std::make_pair(ReturnCode::kSuccess, std::move(payload));
       }
       return std::make_pair(ReturnCode::kKeyNotExist, Payload{});
     }
+  }
+
+  constexpr RecordPage_t
+  Scan(  //
+      const Key *begin_key = nullptr,
+      const bool begin_is_closed = false,
+      const Key *end_key = nullptr,
+      const bool end_is_closed = false)
+  {
+    const auto guard = gc_.CreateEpochGuard();
+
+    const auto leaf_node =
+        (begin_key == nullptr) ? SearchLeftEdgeLeaf() : SearchLeafNode(*begin_key, begin_is_closed);
+
+    return LeafNode_t::Scan(leaf_node, begin_key, begin_is_closed, end_key, end_is_closed);
   }
 
   /*################################################################################################

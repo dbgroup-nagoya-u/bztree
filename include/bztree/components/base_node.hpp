@@ -197,7 +197,7 @@ class alignas(kCacheLineSize) BaseNode
       auto tmp = malloc(payload_length);
       memcpy(tmp, this->GetPayloadAddr(meta), payload_length);
       out_payload = reinterpret_cast<char *>(tmp);
-    } else if (sizeof(Payload) == kWordLength) {
+    } else if constexpr (sizeof(Payload) == kWordLength) {
       out_payload = ReadMwCASField<Payload>(this->GetPayloadAddr(meta));
     } else {
       memcpy(&out_payload, this->GetPayloadAddr(meta), sizeof(Payload));

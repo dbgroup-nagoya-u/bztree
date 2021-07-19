@@ -104,9 +104,6 @@ class RecordIterator
         current_addr_ += sizeof(size_t);
       }
     }
-    if (current_addr_ == end_addr_) {
-      last_key_addr_ = current_addr_ - (GetKeyLength() + GetPayloadLength());
-    }
   }
 
   constexpr bool

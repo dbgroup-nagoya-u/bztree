@@ -43,7 +43,6 @@ class InternalNodeFixture : public testing::Test
   using PayloadComp = typename KeyPayloadPair::PayloadComp;
 
   // define type aliases for simplicity
-  using Record_t = Record<Key, Payload>;
   using BaseNode_t = BaseNode<Key, Payload, KeyComp>;
   using LeafNode_t = LeafNode<Key, Payload, KeyComp>;
   using InternalNode_t = InternalNode<Key, Payload, KeyComp>;
