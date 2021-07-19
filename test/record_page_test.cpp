@@ -223,6 +223,24 @@ class RecordPageFixture : public ::testing::Test
     VerifyKey(key, expected_id);
     VerifyPayload(payload, expected_id);
   }
+
+  void
+  VerifyPlusPlusOperator(const size_t rec_num)
+  {
+    auto iter = page.begin();
+    size_t count = 0;
+
+    for (; iter != page.end(); ++iter, ++count) {
+      ASSERT_LT(count, rec_num);
+
+      const auto [key, payload] = *iter;
+      VerifyKey(key, count);
+      VerifyPayload(payload, count);
+    }
+
+    EXPECT_EQ(count, rec_num);
+    EXPECT_TRUE(iter == page.end());
+  }
 };
 
 /*##################################################################################################
@@ -265,6 +283,12 @@ TYPED_TEST(RecordPageFixture, GetLastKey_NotEmptyPage_ReturnExpectedKey)
 {  //
   TestFixture::PreparePage(TestFixture::kKeyNumForTest);
   TestFixture::VerifyGetLastKey(TestFixture::kKeyNumForTest);
+}
+
+TYPED_TEST(RecordPageFixture, PlusPlusOperator_NotEmptyPage_ReadEveryRecord)
+{  //
+  TestFixture::PreparePage(TestFixture::kKeyNumForTest);
+  TestFixture::VerifyPlusPlusOperator(TestFixture::kKeyNumForTest);
 }
 
 }  // namespace dbgroup::index::bztree
