@@ -229,6 +229,13 @@ class LeafNodeFixture : public testing::Test
     return LeafNode_t::Delete(node.get(), keys[key_id], key_length);
   }
 
+  void
+  Consolidation()
+  {
+    auto [metadata, rec_count] = LeafNode_t::GatherSortedLiveMetadata(node.get());
+    node.reset(LeafNode_t::Consolidate(node.get(), metadata, rec_count));
+  }
+
   /*################################################################################################
    * Utility functions
    *##############################################################################################*/
@@ -260,8 +267,7 @@ class LeafNodeFixture : public testing::Test
       const size_t end_index)
   {
     WriteOrderedKeys(begin_index, end_index);
-    auto [metadata, rec_count] = LeafNode_t::GatherSortedLiveMetadata(node.get());
-    node.reset(LeafNode_t::Consolidate(node.get(), metadata, rec_count));
+    Consolidation();
   }
 
   bool
@@ -453,8 +459,7 @@ class LeafNodeFixture : public testing::Test
   void
   VerifyConsolidation()
   {
-    auto [metadata, rec_count] = LeafNode_t::GatherSortedLiveMetadata(node.get());
-    node.reset(LeafNode_t::Consolidate(node.get(), metadata, rec_count));
+    Consolidation();
 
     expected_record_count -= expected_deleted_rec_count;
     expected_block_size -= expected_deleted_block_size;
@@ -601,6 +606,58 @@ TYPED_TEST(LeafNodeFixture, Scan_DeletedKeys_ScanEmptyPage)
   for (size_t i = 1; i <= half_key_num; ++i) {
     TestFixture::Insert(i, i);
   }
+  for (size_t i = 1; i <= half_key_num; ++i) {
+    TestFixture::Delete(i);
+  }
+
+  TestFixture::VerifyScan(0, true, true, 0, true, true, expected_ids, expected_ids);
+}
+
+TYPED_TEST(LeafNodeFixture, Scan_UniqueKeysWithSMOs_ScanInsertedKeys)
+{  //
+  std::vector<size_t> expected_ids;
+  for (size_t i = 1; i <= TestFixture::max_record_num; i += 2) {
+    TestFixture::Insert(i, i);
+    expected_ids.emplace_back(i);
+  }
+  TestFixture::Consolidation();
+  for (size_t i = 2; i <= TestFixture::max_record_num; i += 2) {
+    TestFixture::Insert(i, i);
+    expected_ids.emplace_back(i);
+  }
+  std::sort(expected_ids.begin(), expected_ids.end());
+
+  TestFixture::VerifyScan(0, true, true, 0, true, true, expected_ids, expected_ids);
+}
+
+TYPED_TEST(LeafNodeFixture, Scan_DuplicateKeysWithSMOs_ScanUpdatedKeys)
+{  //
+  const size_t half_key_num = TestFixture::max_record_num / 2;
+
+  std::vector<size_t> expected_keys;
+  std::vector<size_t> expected_payloads;
+  for (size_t i = 1; i <= half_key_num; ++i) {
+    TestFixture::Insert(i, i);
+  }
+  TestFixture::Consolidation();
+  for (size_t i = 1; i <= half_key_num; ++i) {
+    TestFixture::Update(i, i + 1);
+    expected_keys.emplace_back(i);
+    expected_payloads.emplace_back(i + 1);
+  }
+
+  TestFixture::VerifyScan(0, true, true, 0, true, true, expected_keys, expected_payloads);
+}
+
+TYPED_TEST(LeafNodeFixture, Scan_DeletedKeysWithSMOs_ScanEmptyPage)
+{  //
+  const size_t half_key_num = TestFixture::max_record_num / 2;
+
+  std::vector<size_t> expected_ids;
+  for (size_t i = 1; i <= half_key_num; ++i) {
+    TestFixture::Insert(i, i);
+  }
+  TestFixture::Consolidation();
   for (size_t i = 1; i <= half_key_num; ++i) {
     TestFixture::Delete(i);
   }
