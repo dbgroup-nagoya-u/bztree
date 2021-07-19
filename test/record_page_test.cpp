@@ -128,7 +128,6 @@ class RecordPageFixture : public ::testing::Test
   void
   PreparePage(const size_t record_num)
   {
-    page = RecordPage_t{};
     auto cur_addr = reinterpret_cast<std::byte *>(&page) + kHeaderLength;
 
     for (size_t i = 0; i < record_num; ++i) {
@@ -241,6 +240,19 @@ class RecordPageFixture : public ::testing::Test
     EXPECT_EQ(count, rec_num);
     EXPECT_TRUE(iter == page.end());
   }
+
+  void
+  VerifyRangeBasedForLoop(const size_t rec_num)
+  {
+    size_t count = 0;
+    for (auto &&[key, payload] : page) {
+      VerifyKey(key, count);
+      VerifyPayload(payload, count);
+      ++count;
+    }
+
+    EXPECT_EQ(count, rec_num);
+  }
 };
 
 /*##################################################################################################
@@ -289,6 +301,12 @@ TYPED_TEST(RecordPageFixture, PlusPlusOperator_NotEmptyPage_ReadEveryRecord)
 {  //
   TestFixture::PreparePage(TestFixture::kKeyNumForTest);
   TestFixture::VerifyPlusPlusOperator(TestFixture::kKeyNumForTest);
+}
+
+TYPED_TEST(RecordPageFixture, RangeBasedForLoop_NotEmptyPage_ReadEveryRecord)
+{  //
+  TestFixture::PreparePage(TestFixture::kKeyNumForTest);
+  TestFixture::VerifyRangeBasedForLoop(TestFixture::kKeyNumForTest);
 }
 
 }  // namespace dbgroup::index::bztree
