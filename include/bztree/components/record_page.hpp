@@ -100,18 +100,18 @@ class RecordPage
     if constexpr (std::is_same_v<Key, char*> && std::is_same_v<Payload, char*>) {
       size_t key_length{}, payload_length{};
       memcpy(&key_length, record_block_, sizeof(size_t));
-      memcpy(&payload_length, record_block_ + key_length, sizeof(size_t));
-      return RecordIterator_t{record_block_ + key_length + payload_length, end_addr_,
+      memcpy(&payload_length, record_block_ + sizeof(size_t), sizeof(size_t));
+      return RecordIterator_t{record_block_ + sizeof(size_t) + sizeof(size_t), end_addr_,
                               std::move(key_length), std::move(payload_length)};
     } else if constexpr (std::is_same_v<Key, char*> && !std::is_same_v<Payload, char*>) {
       size_t key_length{};
       memcpy(&key_length, record_block_, sizeof(size_t));
-      return RecordIterator_t{record_block_ + key_length, end_addr_,  //
+      return RecordIterator_t{record_block_ + sizeof(size_t), end_addr_,  //
                               std::move(key_length), sizeof(Payload)};
     } else if constexpr (!std::is_same_v<Key, char*> && std::is_same_v<Payload, char*>) {
       size_t payload_length{};
       memcpy(&payload_length, record_block_, sizeof(size_t));
-      return RecordIterator_t{record_block_ + payload_length, end_addr_,  //
+      return RecordIterator_t{record_block_ + sizeof(size_t), end_addr_,  //
                               sizeof(Key), std::move(payload_length)};
     } else {
       return RecordIterator_t{record_block_, end_addr_, sizeof(Key), sizeof(Payload)};

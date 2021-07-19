@@ -39,6 +39,7 @@ class RecordPageFixture : public ::testing::Test
 
   // define type aliases for simplicity
   using RecordPage_t = RecordPage<Key, Payload>;
+  using RecordIterator_t = RecordIterator<Key, Payload>;
 
  protected:
   /*################################################################################################
@@ -71,16 +72,16 @@ class RecordPageFixture : public ::testing::Test
     if constexpr (std::is_same_v<Key, char *>) {
       // variable-length keys
       key_length = 7;
-      for (size_t index = 0; index < kKeyNumForTest; ++index) {
+      for (size_t i = 0; i < kKeyNumForTest; ++i) {
         auto key = new char[kWordLength];
-        snprintf(key, kWordLength, "%06lu", index);
-        keys[index] = key;
+        snprintf(key, kWordLength, "%06lu", i);
+        keys[i] = key;
       }
     } else {
       // static-length keys
       key_length = sizeof(Key);
-      for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        keys[index] = index;
+      for (size_t i = 0; i < kKeyNumForTest; ++i) {
+        keys[i] = i;
       }
     }
 
@@ -88,16 +89,16 @@ class RecordPageFixture : public ::testing::Test
     if constexpr (std::is_same_v<Payload, char *>) {
       // variable-length payloads
       payload_length = 7;
-      for (size_t index = 0; index < kKeyNumForTest; ++index) {
+      for (size_t i = 0; i < kKeyNumForTest; ++i) {
         auto payload = new char[kWordLength];
-        snprintf(payload, kWordLength, "%06lu", index);
-        payloads[index] = payload;
+        snprintf(payload, kWordLength, "%06lu", i);
+        payloads[i] = payload;
       }
     } else {
       // static-length payloads
       payload_length = sizeof(Payload);
-      for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        payloads[index] = index;
+      for (size_t i = 0; i < kKeyNumForTest; ++i) {
+        payloads[i] = i;
       }
     }
 
@@ -109,13 +110,13 @@ class RecordPageFixture : public ::testing::Test
   TearDown() override
   {
     if constexpr (std::is_same_v<Key, char *>) {
-      for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        delete[] keys[index];
+      for (size_t i = 0; i < kKeyNumForTest; ++i) {
+        delete[] keys[i];
       }
     }
     if constexpr (std::is_same_v<Payload, char *>) {
-      for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        delete[] payloads[index];
+      for (size_t i = 0; i < kKeyNumForTest; ++i) {
+        delete[] payloads[i];
       }
     }
   }
@@ -163,6 +164,30 @@ class RecordPageFixture : public ::testing::Test
    *##############################################################################################*/
 
   void
+  VerifyKey(  //
+      const Key key,
+      const size_t expected_id)
+  {
+    if constexpr (std::is_same_v<Key, char *>) {
+      EXPECT_STREQ(keys[expected_id], key);
+    } else {
+      EXPECT_EQ(keys[expected_id], key);
+    }
+  }
+
+  void
+  VerifyPayload(  //
+      const Payload payload,
+      const size_t expected_id)
+  {
+    if constexpr (std::is_same_v<Payload, char *>) {
+      EXPECT_STREQ(payloads[expected_id], payload);
+    } else {
+      EXPECT_EQ(payloads[expected_id], payload);
+    }
+  }
+
+  void
   VerifyEmpty(const bool expect_true)
   {
     if (expect_true) {
@@ -179,17 +204,24 @@ class RecordPageFixture : public ::testing::Test
       EXPECT_TRUE(page.begin() == page.end());
     } else {
       EXPECT_TRUE(page.begin() != page.end());
+      VerifyPlusOperator(page.begin(), 0);
     }
   }
 
   void
   VerifyGetLastKey(const size_t rec_num)
   {
-    if constexpr (std::is_same_v<Key, char *>) {
-      EXPECT_STREQ(keys[rec_num - 1], page.GetLastKey());
-    } else {
-      EXPECT_EQ(keys[rec_num - 1], page.GetLastKey());
-    }
+    VerifyKey(page.GetLastKey(), rec_num - 1);
+  }
+
+  void
+  VerifyPlusOperator(  //
+      const RecordIterator_t &iter,
+      const size_t expected_id)
+  {
+    const auto [key, payload] = *iter;
+    VerifyKey(key, expected_id);
+    VerifyPayload(payload, expected_id);
   }
 };
 

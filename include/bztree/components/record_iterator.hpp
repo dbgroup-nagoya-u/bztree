@@ -83,7 +83,7 @@ class RecordIterator
    *##############################################################################################*/
 
   constexpr std::pair<Key, Payload>
-  operator*()
+  operator*() const
   {
     return {GetKey(), GetPayload()};
   }
@@ -131,9 +131,7 @@ class RecordIterator
     if constexpr (std::is_same_v<Key, char*>) {
       return reinterpret_cast<Key>(current_addr_);
     } else {
-      Key key{};
-      memcpy(&key, current_addr_, GetKeyLength());
-      return key;
+      return *reinterpret_cast<Key*>(current_addr_);
     }
   }
 
@@ -143,18 +141,10 @@ class RecordIterator
   constexpr Payload
   GetPayload() const
   {
-    if constexpr (std::is_same_v<Key, char*> && std::is_same_v<Payload, char*>) {
+    if constexpr (std::is_same_v<Payload, char*>) {
       return reinterpret_cast<Payload>(current_addr_ + GetKeyLength());
-    } else if (!std::is_same_v<Key, char*> && std::is_same_v<Payload, char*>) {
-      return reinterpret_cast<Payload>(current_addr_);
-    } else if (std::is_same_v<Key, char*> && !std::is_same_v<Payload, char*>) {
-      Payload payload{};
-      memcpy(&payload, current_addr_ + GetKeyLength(), GetPayloadLength());
-      return payload;
     } else {
-      Payload payload{};
-      memcpy(&payload, current_addr_, GetPayloadLength());
-      return payload;
+      return *reinterpret_cast<Payload*>(current_addr_ + GetKeyLength());
     }
   }
 
