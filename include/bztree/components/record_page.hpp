@@ -43,7 +43,7 @@ class RecordPage
   std::byte* end_addr_;
 
   /// an address of the last record's key
-  Key* last_key_addr_;
+  void* last_key_addr_;
 
   /// scan result records
   std::byte record_block_[kPageSize - kHeaderLength];
@@ -69,19 +69,23 @@ class RecordPage
   constexpr Key
   GetLastKey() const
   {
-    return *last_key_addr_;
+    if constexpr (std::is_same_v<Key, char*>) {
+      return reinterpret_cast<Key>(last_key_addr_);
+    } else {
+      return *reinterpret_cast<Key*>(last_key_addr_);
+    }
   }
 
   constexpr void
   SetEndAddress(const std::byte* end_addr)
   {
-    end_addr_ = end_addr;
+    end_addr_ = const_cast<std::byte*>(end_addr);
   }
 
   constexpr void
   SetLastKeyAddress(const void* last_key_addr)
   {
-    last_key_addr_ = reinterpret_cast<Key*>(const_cast<void*>(last_key_addr));
+    last_key_addr_ = const_cast<void*>(last_key_addr);
   }
 
   /*################################################################################################
@@ -99,12 +103,12 @@ class RecordPage
       memcpy(&payload_length, record_block_ + key_length, sizeof(size_t));
       return RecordIterator_t{record_block_ + key_length + payload_length, end_addr_,
                               std::move(key_length), std::move(payload_length)};
-    } else if (std::is_same_v<Key, char*> && !std::is_same_v<Payload, char*>) {
+    } else if constexpr (std::is_same_v<Key, char*> && !std::is_same_v<Payload, char*>) {
       size_t key_length{};
       memcpy(&key_length, record_block_, sizeof(size_t));
       return RecordIterator_t{record_block_ + key_length, end_addr_,  //
                               std::move(key_length), sizeof(Payload)};
-    } else if (!std::is_same_v<Key, char*> && std::is_same_v<Payload, char*>) {
+    } else if constexpr (!std::is_same_v<Key, char*> && std::is_same_v<Payload, char*>) {
       size_t payload_length{};
       memcpy(&payload_length, record_block_, sizeof(size_t));
       return RecordIterator_t{record_block_ + payload_length, end_addr_,  //

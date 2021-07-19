@@ -64,7 +64,7 @@ class RecordIterator
       const std::byte* end_addr,
       const size_t key_length,
       const size_t payload_length)
-      : current_addr_{src_addr},
+      : current_addr_{const_cast<std::byte*>(src_addr)},
         end_addr_{end_addr},
         key_length_{key_length},
         payload_length_{payload_length}
