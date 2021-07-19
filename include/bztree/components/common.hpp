@@ -229,7 +229,7 @@ IsInRange(  //
     return Compare{}(key, *end_key) || (end_is_closed && !Compare{}(*end_key, key));
   } else if (end_key == nullptr) {
     // greater than or equal to
-    return Compare{}(*begin_key, key) || (begin_is_closed && !Compare{}(*begin_key, key));
+    return Compare{}(*begin_key, key) || (begin_is_closed && !Compare{}(key, *begin_key));
   } else {
     // between
     return (Compare{}(*begin_key, key) && Compare{}(key, *end_key))
