@@ -351,11 +351,11 @@ class LeafNode
 
     size_t j = 0;
     const auto begin_index =
-        (begin_index == nullptr) ? 0 : node->SearchSortedMetadata(*begin_k, begin_closed).second;
+        (begin_k == nullptr) ? 0 : node->SearchSortedMetadata(*begin_k, begin_closed).second;
     for (size_t i = begin_index; i < sorted_count; ++i) {
       const auto meta = node->GetMetadataProtected(i);
       auto key = node->GetKey(meta);
-      if (end_k != nullptr && (Compare{}(*end_k, key) || (end_closed && !Compare{}(key, end_k)))) {
+      if (end_k != nullptr && (Compare{}(*end_k, key) || (end_closed && !Compare{}(key, *end_k)))) {
         break;
       }
 
@@ -452,6 +452,7 @@ class LeafNode
         }
         *(reinterpret_cast<Payload *>(cur_addr)) =
             ReadMwCASField<Payload>(node->GetPayloadAddr(meta));
+        cur_addr += kWordLength;
       } else {
         memcpy(cur_addr, node->GetKeyAddr(meta), meta.GetTotalLength());
         cur_addr += meta.GetTotalLength();

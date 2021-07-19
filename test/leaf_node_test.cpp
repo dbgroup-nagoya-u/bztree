@@ -37,7 +37,6 @@ struct KeyPayloadPair {
 template <class KeyPayloadPair>
 class LeafNodeFixture : public testing::Test
 {
- protected:
   // extract key-payload types
   using Key = typename KeyPayloadPair::Key;
   using Payload = typename KeyPayloadPair::Payload;
@@ -49,11 +48,20 @@ class LeafNodeFixture : public testing::Test
   using LeafNode_t = LeafNode<Key, Payload, KeyComp>;
   using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
 
+ protected:
+  /*################################################################################################
+   * Internal constants
+   *##############################################################################################*/
+
   // constant values for testing
   static constexpr size_t kIndexEpoch = 1;
   static constexpr size_t kKeyNumForTest = 1024;
   static constexpr size_t kKeyLength = kWordLength;
   static constexpr size_t kPayloadLength = kWordLength;
+
+  /*################################################################################################
+   * Internal member variables
+   *##############################################################################################*/
 
   // actual keys and payloads
   size_t key_length;
@@ -327,6 +335,33 @@ class LeafNodeFixture : public testing::Test
   }
 
   void
+  VerifyScan(  //
+      const size_t begin_key_id,
+      const bool begin_null,
+      const bool begin_closed,
+      const size_t end_key_id,
+      const bool end_null,
+      const bool end_closed,
+      const std::vector<size_t> &expected_keys,
+      const std::vector<size_t> &expected_payloads)
+  {
+    const Key *begin_key = nullptr, *end_key = nullptr;
+    if (!begin_null) begin_key = &keys[begin_key_id];
+    if (!end_null) end_key = &keys[end_key_id];
+
+    const auto page = LeafNode_t::Scan(node.get(), begin_key, begin_closed, end_key, end_closed);
+
+    size_t count = 0;
+    for (auto &&[key, payload] : page) {
+      EXPECT_TRUE(IsEqual<KeyComp>(keys[expected_keys[count]], key));
+      EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_payloads[count]], payload));
+      ++count;
+    }
+
+    EXPECT_EQ(expected_keys.size(), count);
+  }
+
+  void
   VerifyWrite(  //
       const size_t key_id,
       const size_t payload_id,
@@ -522,6 +557,56 @@ TYPED_TEST(LeafNodeFixture, Read_DeletedKey_ReadFail)
 /*--------------------------------------------------------------------------------------------------
  * Scan operation
  *------------------------------------------------------------------------------------------------*/
+
+TYPED_TEST(LeafNodeFixture, Scan_EmptyNode_ScanEmptyPage)
+{  //
+  std::vector<size_t> expected_ids;
+  TestFixture::VerifyScan(0, true, true, 0, true, true, expected_ids, expected_ids);
+}
+
+TYPED_TEST(LeafNodeFixture, Scan_UniqueKeys_ScanInsertedKeys)
+{  //
+  std::vector<size_t> expected_ids;
+  for (size_t i = 1; i <= TestFixture::max_record_num; ++i) {
+    TestFixture::Insert(i, i);
+    expected_ids.emplace_back(i);
+  }
+
+  TestFixture::VerifyScan(0, true, true, 0, true, true, expected_ids, expected_ids);
+}
+
+TYPED_TEST(LeafNodeFixture, Scan_DuplicateKeys_ScanUpdatedKeys)
+{  //
+  const size_t half_key_num = TestFixture::max_record_num / 2;
+
+  std::vector<size_t> expected_keys;
+  std::vector<size_t> expected_payloads;
+  for (size_t i = 1; i <= half_key_num; ++i) {
+    TestFixture::Insert(i, i);
+  }
+  for (size_t i = 1; i <= half_key_num; ++i) {
+    TestFixture::Update(i, i + 1);
+    expected_keys.emplace_back(i);
+    expected_payloads.emplace_back(i + 1);
+  }
+
+  TestFixture::VerifyScan(0, true, true, 0, true, true, expected_keys, expected_payloads);
+}
+
+TYPED_TEST(LeafNodeFixture, Scan_DeletedKeys_ScanEmptyPage)
+{  //
+  const size_t half_key_num = TestFixture::max_record_num / 2;
+
+  std::vector<size_t> expected_ids;
+  for (size_t i = 1; i <= half_key_num; ++i) {
+    TestFixture::Insert(i, i);
+  }
+  for (size_t i = 1; i <= half_key_num; ++i) {
+    TestFixture::Delete(i);
+  }
+
+  TestFixture::VerifyScan(0, true, true, 0, true, true, expected_ids, expected_ids);
+}
 
 /*--------------------------------------------------------------------------------------------------
  * Write operation
