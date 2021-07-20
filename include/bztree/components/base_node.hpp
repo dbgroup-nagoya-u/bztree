@@ -160,6 +160,21 @@ class alignas(kCacheLineSize) BaseNode
     return Cast<Key>(GetKeyAddr(meta));
   }
 
+  constexpr void
+  CopyKey(  //
+      const Metadata meta,
+      Key &out_key) const
+  {
+    if constexpr (std::is_same_v<Key, char *>) {
+      const auto key_length = meta.GetKeyLength();
+      auto tmp = malloc(key_length);
+      memcpy(tmp, this->GetKeyAddr(meta), key_length);
+      out_key = reinterpret_cast<char *>(tmp);
+    } else {
+      memcpy(&out_key, this->GetKeyAddr(meta), sizeof(Key));
+    }
+  }
+
   constexpr void *
   GetKeyAddr(const Metadata meta) const
   {
@@ -173,7 +188,7 @@ class alignas(kCacheLineSize) BaseNode
   }
 
   constexpr void
-  GetPayload(  //
+  CopyPayload(  //
       const Metadata meta,
       Payload &out_payload) const
   {
@@ -182,6 +197,8 @@ class alignas(kCacheLineSize) BaseNode
       auto tmp = malloc(payload_length);
       memcpy(tmp, this->GetPayloadAddr(meta), payload_length);
       out_payload = reinterpret_cast<char *>(tmp);
+    } else if constexpr (sizeof(Payload) == kWordLength) {
+      out_payload = ReadMwCASField<Payload>(this->GetPayloadAddr(meta));
     } else {
       memcpy(&out_payload, this->GetPayloadAddr(meta), sizeof(Payload));
     }
@@ -276,7 +293,7 @@ class alignas(kCacheLineSize) BaseNode
     static_assert(!std::is_same_v<Payload, char *>);
 
     Payload old_payload{};
-    this->GetPayload(meta, old_payload);
+    this->CopyPayload(meta, old_payload);
     desc.AddMwCASTarget(ShiftAddress(this, meta.GetOffset() + meta.GetKeyLength()),  //
                         old_payload, new_payload);
   }

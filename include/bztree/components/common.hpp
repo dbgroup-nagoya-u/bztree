@@ -214,21 +214,22 @@ IsEqual(const Key &obj_1, const Key &obj_2)
  */
 template <class Compare, class Key>
 constexpr bool
-IsInRange(const Key &key,
-          const Key *begin_key,
-          const bool begin_is_closed,
-          const Key *end_key,
-          const bool end_is_closed)
+IsInRange(  //
+    const Key key,
+    const Key *begin_key,
+    const bool begin_is_closed,
+    const Key *end_key,
+    const bool end_is_closed)
 {
   if (begin_key == nullptr && end_key == nullptr) {
     // no range condition
     return true;
   } else if (begin_key == nullptr) {
     // less than or equal to
-    return Compare{}(key, *end_key) || (end_is_closed && IsEqual<Compare>(key, *end_key));
+    return Compare{}(key, *end_key) || (end_is_closed && !Compare{}(*end_key, key));
   } else if (end_key == nullptr) {
     // greater than or equal to
-    return Compare{}(*begin_key, key) || (begin_is_closed && IsEqual<Compare>(key, *begin_key));
+    return Compare{}(*begin_key, key) || (begin_is_closed && !Compare{}(key, *begin_key));
   } else {
     // between
     return (Compare{}(*begin_key, key) && Compare{}(key, *end_key))

@@ -116,9 +116,9 @@ function(ADD_BZTREE_TEST BZTREE_TEST_TARGET)
 endfunction()
 
 # add unit tests to build targets
-ADD_BZTREE_TEST(record_test)
 ADD_BZTREE_TEST(status_word_test)
 ADD_BZTREE_TEST(metadata_test)
+ADD_BZTREE_TEST(record_page_test)
 ADD_BZTREE_TEST(base_node_test)
 ADD_BZTREE_TEST(leaf_node_test)
 ADD_BZTREE_TEST(leaf_node_multi_thread_test)

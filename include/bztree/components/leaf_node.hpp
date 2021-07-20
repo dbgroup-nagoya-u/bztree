@@ -26,7 +26,7 @@
 #include <vector>
 
 #include "base_node.hpp"
-#include "record.hpp"
+#include "record_page.hpp"
 
 namespace dbgroup::index::bztree
 {
@@ -36,6 +36,7 @@ class LeafNode
   using BaseNode_t = BaseNode<Key, Payload, Compare>;
   using KeyExistence = typename BaseNode_t::KeyExistence;
   using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
+  using RecordPage_t = RecordPage<Key, Payload>;
 
  private:
   /*################################################################################################
@@ -47,19 +48,19 @@ class LeafNode
     Key key = Key{};
 
     constexpr bool
-    operator<(const MetaRecord &obj)
+    operator<(const MetaRecord &obj) const
     {
       return Compare{}(this->key, obj.key);
     }
 
     constexpr bool
-    operator==(const MetaRecord &obj)
+    operator==(const MetaRecord &obj) const
     {
       return !Compare{}(this->key, obj.key) && !Compare{}(obj.key, this->key);
     }
 
     constexpr bool
-    operator!=(const MetaRecord &obj)
+    operator!=(const MetaRecord &obj) const
     {
       return Compare{}(this->key, obj.key) || Compare{}(obj.key, this->key);
     }
@@ -161,71 +162,6 @@ class LeafNode
     return offset;
   }
 
-  static constexpr auto
-  GetRecord(  //
-      const BaseNode_t *node,
-      const Metadata meta)
-  {
-    const auto record_addr = node->GetKeyAddr(meta);
-    if constexpr (std::is_same_v<Key, char *> && std::is_same_v<Payload, char *>) {
-      const auto key_length = meta.GetKeyLength();
-      const auto payload_length = meta.GetPayloadLength();
-      return VarRecord::Create(record_addr, key_length, payload_length);
-    } else if constexpr (std::is_same_v<Key, char *>) {
-      const auto key_length = meta.GetKeyLength();
-      return VarKeyRecord<Payload>::Create(record_addr, key_length);
-    } else if constexpr (std::is_same_v<Payload, char *>) {
-      const auto payload_length = meta.GetPayloadLength();
-      return VarPayloadRecord<Key>::Create(record_addr, payload_length);
-    } else {
-      return Record<Key, Payload>{record_addr};
-    }
-  }
-
-  static constexpr auto
-  CreateScanResults(  //
-      const BaseNode_t *node,
-      const std::vector<std::pair<Key, Metadata>> &meta_arr)
-  {
-    if constexpr (std::is_same_v<Key, char *> && std::is_same_v<Payload, char *>) {
-      std::vector<std::unique_ptr<VarRecord>> scan_results;
-      scan_results.reserve(meta_arr.size());
-      for (auto &&[key, meta] : meta_arr) {
-        if (meta.IsVisible()) {
-          scan_results.emplace_back(GetRecord(node, meta));
-        }
-      }
-      return scan_results;
-    } else if constexpr (std::is_same_v<Key, char *>) {
-      std::vector<std::unique_ptr<VarKeyRecord<Payload>>> scan_results;
-      scan_results.reserve(meta_arr.size());
-      for (auto &&[key, meta] : meta_arr) {
-        if (meta.IsVisible()) {
-          scan_results.emplace_back(GetRecord(node, meta));
-        }
-      }
-      return scan_results;
-    } else if constexpr (std::is_same_v<Payload, char *>) {
-      std::vector<std::unique_ptr<VarPayloadRecord<Key>>> scan_results;
-      scan_results.reserve(meta_arr.size());
-      for (auto &&[key, meta] : meta_arr) {
-        if (meta.IsVisible()) {
-          scan_results.emplace_back(GetRecord(node, meta));
-        }
-      }
-      return scan_results;
-    } else {
-      std::vector<Record<Key, Payload>> scan_results;
-      scan_results.reserve(meta_arr.size());
-      for (auto &&[key, meta] : meta_arr) {
-        if (meta.IsVisible()) {
-          scan_results.emplace_back(GetRecord(node, meta));
-        }
-      }
-      return scan_results;
-    }
-  }
-
   static constexpr size_t
   CopyRecords(  //
       BaseNode_t *target_node,
@@ -273,16 +209,16 @@ class LeafNode
            && status.GetDeletedSize() < kMaxDeletedSpaceSize;
   }
 
-  static constexpr std::pair<std::array<MetaRecord, kMaxUnsortedRecNum>, size_t>
-  SortUnsortedRecords(const BaseNode_t *node)
+  static constexpr void
+  SortUnsortedRecords(  //
+      const BaseNode_t *node,
+      std::array<MetaRecord, kMaxUnsortedRecNum> &arr,
+      size_t &count)
   {
     const auto rec_count = node->GetStatusWordProtected().GetRecordCount();
     const int64_t sorted_count = node->GetSortedCount();
 
-    std::array<MetaRecord, kMaxUnsortedRecNum> arr;
-
     // sort unsorted records by insertion sort
-    size_t count = 0;
     for (int64_t index = rec_count - 1; index >= sorted_count; --index) {
       const auto meta = node->GetMetadataProtected(index);
       if (!meta.IsInProgress()) {
@@ -309,8 +245,147 @@ class LeafNode
         }
       }
     }
+  }
 
-    return {std::move(arr), count};
+  static constexpr void
+  SortUnsortedRecords(  //
+      const BaseNode_t *node,
+      const Key *begin_key,
+      const bool begin_closed,
+      const Key *end_key,
+      const bool end_closed,
+      std::array<MetaRecord, kMaxUnsortedRecNum> &arr,
+      size_t &count)
+  {
+    const auto rec_count = node->GetStatusWordProtected().GetRecordCount();
+    const int64_t sorted_count = node->GetSortedCount();
+
+    // sort unsorted records by insertion sort
+    for (int64_t index = rec_count - 1; index >= sorted_count; --index) {
+      const auto meta = node->GetMetadataProtected(index);
+      if (!meta.IsInProgress()) {
+        auto key = node->GetKey(meta);
+        if (!IsInRange<Compare>(key, begin_key, begin_closed, end_key, end_closed)) continue;
+
+        if (count == 0) {
+          // insert a first record
+          arr[0] = MetaRecord{meta, std::move(key)};
+          ++count;
+          continue;
+        }
+
+        // insert a new record into an appropiate position
+        MetaRecord target{meta, node->GetKey(meta)};
+        const auto ins_iter = std::lower_bound(arr.begin(), arr.begin() + count, target);
+        if (*ins_iter != target) {
+          const size_t ins_id = std::distance(arr.begin(), ins_iter);
+          if (ins_id < count) {
+            // shift upper records
+            memmove(&(arr[ins_id + 1]), &(arr[ins_id]), sizeof(MetaRecord) * (count - ins_id));
+          }
+
+          // insert a new record
+          arr[ins_id] = std::move(target);
+          ++count;
+        }
+      }
+    }
+  }
+
+  static constexpr void
+  MergeSortedRecords(  //
+      const BaseNode_t *node,
+      const std::array<MetaRecord, kMaxUnsortedRecNum> &new_records,
+      const size_t new_rec_num,
+      std::array<Metadata, kMaxRecordNum> &arr,
+      size_t &count)
+  {
+    const auto sorted_count = node->GetSortedCount();
+
+    size_t j = 0;
+    for (size_t i = 0; i < sorted_count; ++i) {
+      const auto meta = node->GetMetadataProtected(i);
+      MetaRecord target{meta, node->GetKey(meta)};
+
+      // move lower new records
+      for (; j < new_rec_num && new_records[j] < target; ++j) {
+        if (new_records[j].meta.IsVisible()) {
+          arr[count++] = new_records[j].meta;
+        }
+      }
+
+      // insert a target record
+      if (j < new_rec_num && new_records[j] == target) {
+        if (new_records[j].meta.IsVisible()) {
+          arr[count++] = new_records[j].meta;
+        }
+        ++j;
+      } else {
+        if (target.meta.IsVisible()) {
+          arr[count++] = meta;
+        }
+      }
+    }
+
+    // move remaining new records
+    for (; j < new_rec_num; ++j) {
+      if (new_records[j].meta.IsVisible()) {
+        arr[count++] = new_records[j].meta;
+      }
+    }
+  }
+
+  static constexpr void
+  MergeSortedRecords(  //
+      const BaseNode_t *node,
+      const std::array<MetaRecord, kMaxUnsortedRecNum> &new_records,
+      const size_t new_rec_num,
+      const Key *begin_k,
+      const bool begin_closed,
+      const Key *end_k,
+      const bool end_closed,
+      std::array<Metadata, kMaxRecordNum> &arr,
+      size_t &count)
+  {
+    const auto sorted_count = node->GetSortedCount();
+
+    size_t j = 0;
+    const auto begin_index =
+        (begin_k == nullptr) ? 0 : node->SearchSortedMetadata(*begin_k, begin_closed).second;
+    for (size_t i = begin_index; i < sorted_count; ++i) {
+      const auto meta = node->GetMetadataProtected(i);
+      auto key = node->GetKey(meta);
+      if (end_k != nullptr && (Compare{}(*end_k, key) || (end_closed && !Compare{}(key, *end_k)))) {
+        break;
+      }
+
+      // move lower new records
+      MetaRecord target{meta, std::move(key)};
+      for (; j < new_rec_num && new_records[j] < target; ++j) {
+        if (new_records[j].meta.IsVisible()) {
+          arr[count++] = new_records[j].meta;
+        }
+      }
+
+      // insert a target record
+      if (j < new_rec_num && new_records[j] == target) {
+        if (new_records[j].meta.IsVisible()) {
+          arr[count++] = new_records[j].meta;
+        }
+        ++j;
+      } else {
+        if (target.meta.IsVisible()) {
+          arr[count++] = meta;
+        }
+      }
+    }
+
+    // move remaining new records
+    for (; j < new_rec_num; ++j) {
+      if (new_records[j].meta.IsVisible()) {
+        arr[count++] = new_records[j].meta;
+      }
+    }
   }
 
  public:
@@ -331,8 +406,62 @@ class LeafNode
     }
 
     const auto meta = node->GetMetadataProtected(index);
-    node->GetPayload(meta, out_payload);
+    node->CopyPayload(meta, out_payload);
     return NodeReturnCode::kSuccess;
+  }
+
+  static constexpr void
+  Scan(  //
+      const BaseNode_t *node,
+      const Key *begin_k,
+      const bool begin_closed,
+      const Key *end_k,
+      const bool end_closed,
+      RecordPage_t &page)
+  {
+    // sort records in an unsorted region
+    std::array<MetaRecord, kMaxUnsortedRecNum> new_records;
+    size_t new_rec_num = 0;
+    SortUnsortedRecords(node, begin_k, begin_closed, end_k, end_closed, new_records, new_rec_num);
+
+    // sort all records by merge sort
+    std::array<Metadata, kMaxRecordNum> metadata;
+    size_t count = 0;
+    MergeSortedRecords(node, new_records, new_rec_num, begin_k, begin_closed, end_k, end_closed,
+                       metadata, count);
+
+    // copy scan results to a page for returning
+    std::byte *cur_addr = reinterpret_cast<std::byte *>(&page) + kHeaderLength;
+    for (size_t i = 0; i < count; ++i) {
+      const Metadata meta = metadata[i];
+      if constexpr (std::is_same_v<Key, char *>) {
+        *(reinterpret_cast<uint32_t *>(cur_addr)) = meta.GetKeyLength();
+        cur_addr += sizeof(uint32_t);
+      }
+      if constexpr (std::is_same_v<Payload, char *>) {
+        *(reinterpret_cast<uint32_t *>(cur_addr)) = meta.GetPayloadLength();
+        cur_addr += sizeof(uint32_t);
+      }
+      if constexpr (CanCASUpdate<Payload>()) {
+        if constexpr (std::is_same_v<Key, char *>) {
+          memcpy(cur_addr, node->GetKeyAddr(meta), meta.GetKeyLength());
+          cur_addr += meta.GetKeyLength();
+        } else {
+          memcpy(cur_addr, node->GetKeyAddr(meta), sizeof(Key));
+          cur_addr += sizeof(Key);
+        }
+        *(reinterpret_cast<Payload *>(cur_addr)) =
+            ReadMwCASField<Payload>(node->GetPayloadAddr(meta));
+        cur_addr += kWordLength;
+      } else {
+        memcpy(cur_addr, node->GetKeyAddr(meta), meta.GetTotalLength());
+        cur_addr += meta.GetTotalLength();
+      }
+    }
+    page.SetEndAddress(cur_addr);
+    if (count > 0) {
+      page.SetLastKeyAddress(cur_addr - metadata[count - 1].GetTotalLength());
+    }
   }
 
   /*################################################################################################
@@ -794,48 +923,17 @@ class LeafNode
   static constexpr std::pair<std::array<Metadata, kMaxRecordNum>, size_t>
   GatherSortedLiveMetadata(const BaseNode_t *node)
   {
-    const auto sorted_count = node->GetSortedCount();
-
     // sort records in an unsorted region
-    auto [new_records, new_rec_num] = SortUnsortedRecords(node);
+    std::array<MetaRecord, kMaxUnsortedRecNum> new_records;
+    size_t new_rec_num = 0;
+    SortUnsortedRecords(node, new_records, new_rec_num);
 
     // sort all records by merge sort
     std::array<Metadata, kMaxRecordNum> results;
-    size_t count = 0, j = 0;
-    for (size_t i = 0; i < sorted_count; ++i) {
-      const auto meta = node->GetMetadataProtected(i);
-      MetaRecord target{meta, node->GetKey(meta)};
+    size_t count = 0;
+    MergeSortedRecords(node, new_records, new_rec_num, results, count);
 
-      // move lower new records
-      while (j < new_rec_num && new_records[j] < target) {
-        if (new_records[j].meta.IsVisible()) {
-          results[count++] = new_records[j].meta;
-        }
-        ++j;
-      }
-
-      // insert a target record
-      if (j < new_rec_num && new_records[j] == target) {
-        if (new_records[j].meta.IsVisible()) {
-          results[count++] = new_records[j].meta;
-        }
-        ++j;
-      } else {
-        if (target.meta.IsVisible()) {
-          results[count++] = meta;
-        }
-      }
-    }
-
-    // move remaining new records
-    while (j < new_rec_num) {
-      if (new_records[j].meta.IsVisible()) {
-        results[count++] = new_records[j].meta;
-      }
-      ++j;
-    }
-
-    return {std::move(results), count};
+    return {std::move(results), std::move(count)};
   }
 };
 
