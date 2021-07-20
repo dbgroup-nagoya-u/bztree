@@ -47,6 +47,7 @@ class LeafNodeFixture : public testing::Test
   using BaseNode_t = BaseNode<Key, Payload, KeyComp>;
   using LeafNode_t = LeafNode<Key, Payload, KeyComp>;
   using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
+  using RecordPage_t = RecordPage<Key, Payload>;
 
  protected:
   /*################################################################################################
@@ -355,7 +356,8 @@ class LeafNodeFixture : public testing::Test
     if (!begin_null) begin_key = &keys[begin_key_id];
     if (!end_null) end_key = &keys[end_key_id];
 
-    const auto page = LeafNode_t::Scan(node.get(), begin_key, begin_closed, end_key, end_closed);
+    RecordPage_t page;
+    LeafNode_t::Scan(node.get(), begin_key, begin_closed, end_key, end_closed, page);
 
     size_t count = 0;
     for (auto &&[key, payload] : page) {

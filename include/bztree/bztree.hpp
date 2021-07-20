@@ -575,8 +575,9 @@ class BzTree
     }
   }
 
-  constexpr RecordPage_t
+  constexpr void
   Scan(  //
+      RecordPage_t &page,
       const Key *begin_key = nullptr,
       const bool begin_is_closed = false,
       const Key *end_key = nullptr,
@@ -587,7 +588,7 @@ class BzTree
     const auto leaf_node =
         (begin_key == nullptr) ? SearchLeftEdgeLeaf() : SearchLeafNode(*begin_key, begin_is_closed);
 
-    return LeafNode_t::Scan(leaf_node, begin_key, begin_is_closed, end_key, end_is_closed);
+    LeafNode_t::Scan(leaf_node, begin_key, begin_is_closed, end_key, end_is_closed, page);
   }
 
   /*################################################################################################

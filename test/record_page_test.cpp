@@ -132,12 +132,12 @@ class RecordPageFixture : public ::testing::Test
 
     for (size_t i = 0; i < record_num; ++i) {
       if constexpr (std::is_same_v<Key, char *>) {
-        *(reinterpret_cast<size_t *>(cur_addr)) = key_length;
-        cur_addr += sizeof(size_t);
+        *(reinterpret_cast<uint32_t *>(cur_addr)) = key_length;
+        cur_addr += sizeof(uint32_t);
       }
       if constexpr (std::is_same_v<Payload, char *>) {
-        *(reinterpret_cast<size_t *>(cur_addr)) = payload_length;
-        cur_addr += sizeof(size_t);
+        *(reinterpret_cast<uint32_t *>(cur_addr)) = payload_length;
+        cur_addr += sizeof(uint32_t);
       }
 
       if constexpr (std::is_same_v<Key, char *>) {

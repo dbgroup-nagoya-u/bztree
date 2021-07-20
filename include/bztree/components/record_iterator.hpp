@@ -44,10 +44,10 @@ class RecordIterator
   const std::byte* end_addr_;
 
   /// the length of a current key
-  size_t key_length_;
+  uint32_t key_length_;
 
   /// the length of a current payload
-  size_t payload_length_;
+  uint32_t payload_length_;
 
  public:
   /*################################################################################################
@@ -62,8 +62,8 @@ class RecordIterator
   constexpr RecordIterator(  //
       const std::byte* src_addr,
       const std::byte* end_addr,
-      const size_t key_length,
-      const size_t payload_length)
+      const uint32_t key_length,
+      const uint32_t payload_length)
       : current_addr_{const_cast<std::byte*>(src_addr)},
         end_addr_{end_addr},
         key_length_{key_length},
@@ -94,14 +94,14 @@ class RecordIterator
     current_addr_ += GetKeyLength() + GetPayloadLength();
     if constexpr (std::is_same_v<Key, char*>) {
       if (current_addr_ != end_addr_) {
-        memcpy(&key_length_, current_addr_, sizeof(size_t));
-        current_addr_ += sizeof(size_t);
+        memcpy(&key_length_, current_addr_, sizeof(uint32_t));
+        current_addr_ += sizeof(uint32_t);
       }
     }
     if constexpr (std::is_same_v<Payload, char*>) {
       if (current_addr_ != end_addr_) {
-        memcpy(&payload_length_, current_addr_, sizeof(size_t));
-        current_addr_ += sizeof(size_t);
+        memcpy(&payload_length_, current_addr_, sizeof(uint32_t));
+        current_addr_ += sizeof(uint32_t);
       }
     }
   }

@@ -410,13 +410,14 @@ class LeafNode
     return NodeReturnCode::kSuccess;
   }
 
-  static constexpr RecordPage_t
+  static constexpr void
   Scan(  //
       const BaseNode_t *node,
       const Key *begin_k,
       const bool begin_closed,
       const Key *end_k,
-      const bool end_closed)
+      const bool end_closed,
+      RecordPage_t &page)
   {
     // sort records in an unsorted region
     std::array<MetaRecord, kMaxUnsortedRecNum> new_records;
@@ -430,17 +431,16 @@ class LeafNode
                        metadata, count);
 
     // copy scan results to a page for returning
-    RecordPage_t page;
     std::byte *cur_addr = reinterpret_cast<std::byte *>(&page) + kHeaderLength;
     for (size_t i = 0; i < count; ++i) {
       const Metadata meta = metadata[i];
       if constexpr (std::is_same_v<Key, char *>) {
-        *(reinterpret_cast<size_t *>(cur_addr)) = meta.GetKeyLength();
-        cur_addr += sizeof(size_t);
+        *(reinterpret_cast<uint32_t *>(cur_addr)) = meta.GetKeyLength();
+        cur_addr += sizeof(uint32_t);
       }
       if constexpr (std::is_same_v<Payload, char *>) {
-        *(reinterpret_cast<size_t *>(cur_addr)) = meta.GetPayloadLength();
-        cur_addr += sizeof(size_t);
+        *(reinterpret_cast<uint32_t *>(cur_addr)) = meta.GetPayloadLength();
+        cur_addr += sizeof(uint32_t);
       }
       if constexpr (CanCASUpdate<Payload>()) {
         if constexpr (std::is_same_v<Key, char *>) {
@@ -462,8 +462,6 @@ class LeafNode
     if (count > 0) {
       page.SetLastKeyAddress(cur_addr - metadata[count - 1].GetTotalLength());
     }
-
-    return page;
   }
 
   /*################################################################################################

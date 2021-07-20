@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <memory>
 #include <utility>
 
 #include "common.hpp"
@@ -43,7 +44,7 @@ class RecordPage
   std::byte* end_addr_;
 
   /// an address of the last record's key
-  void* last_key_addr_;
+  std::byte* last_key_addr_;
 
   /// scan result records
   std::byte record_block_[kPageSize - kHeaderLength];
@@ -83,9 +84,9 @@ class RecordPage
   }
 
   constexpr void
-  SetLastKeyAddress(const void* last_key_addr)
+  SetLastKeyAddress(const std::byte* last_key_addr)
   {
-    last_key_addr_ = const_cast<void*>(last_key_addr);
+    last_key_addr_ = const_cast<std::byte*>(last_key_addr);
   }
 
   /*################################################################################################
@@ -98,20 +99,20 @@ class RecordPage
     if (this->empty()) return this->end();
 
     if constexpr (std::is_same_v<Key, char*> && std::is_same_v<Payload, char*>) {
-      size_t key_length{}, payload_length{};
-      memcpy(&key_length, record_block_, sizeof(size_t));
-      memcpy(&payload_length, record_block_ + sizeof(size_t), sizeof(size_t));
-      return RecordIterator_t{record_block_ + sizeof(size_t) + sizeof(size_t), end_addr_,
+      uint32_t key_length{}, payload_length{};
+      memcpy(&key_length, record_block_, sizeof(uint32_t));
+      memcpy(&payload_length, record_block_ + sizeof(uint32_t), sizeof(uint32_t));
+      return RecordIterator_t{record_block_ + sizeof(uint32_t) + sizeof(uint32_t), end_addr_,
                               std::move(key_length), std::move(payload_length)};
     } else if constexpr (std::is_same_v<Key, char*> && !std::is_same_v<Payload, char*>) {
-      size_t key_length{};
-      memcpy(&key_length, record_block_, sizeof(size_t));
-      return RecordIterator_t{record_block_ + sizeof(size_t), end_addr_,  //
+      uint32_t key_length{};
+      memcpy(&key_length, record_block_, sizeof(uint32_t));
+      return RecordIterator_t{record_block_ + sizeof(uint32_t), end_addr_,  //
                               std::move(key_length), sizeof(Payload)};
     } else if constexpr (!std::is_same_v<Key, char*> && std::is_same_v<Payload, char*>) {
-      size_t payload_length{};
-      memcpy(&payload_length, record_block_, sizeof(size_t));
-      return RecordIterator_t{record_block_ + sizeof(size_t), end_addr_,  //
+      uint32_t payload_length{};
+      memcpy(&payload_length, record_block_, sizeof(uint32_t));
+      return RecordIterator_t{record_block_ + sizeof(uint32_t), end_addr_,  //
                               sizeof(Key), std::move(payload_length)};
     } else {
       return RecordIterator_t{record_block_, end_addr_, sizeof(Key), sizeof(Payload)};
