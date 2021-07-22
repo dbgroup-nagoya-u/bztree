@@ -19,10 +19,7 @@
 #include <array>
 #include <atomic>
 #include <functional>
-#include <map>
 #include <memory>
-#include <stack>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -42,6 +39,8 @@ class BzTree
   using NodeReturnCode = typename BaseNode<Key, Payload, Compare>::NodeReturnCode;
   using RecordPage_t = RecordPage<Key, Payload>;
   using EpochBasedGC_t = dbgroup::memory::EpochBasedGC<BaseNode_t>;
+  using NodeRef = std::pair<BaseNode_t *, size_t>;
+  using NodeStack = std::vector<NodeRef, STLAlloc<NodeRef>>;
 
  private:
   /*################################################################################################
@@ -99,21 +98,21 @@ class BzTree
     return current_node;
   }
 
-  constexpr std::stack<std::pair<BaseNode_t *, size_t>>
+  constexpr NodeStack
   TraceTargetNode(  //
       const Key key,
       const void *target_node)
   {
     // trace nodes to a target internal node
-    std::stack<std::pair<BaseNode_t *, size_t>> trace;
+    NodeStack trace;
     size_t index = 0;
     auto current_node = GetRoot();
     while (!HaveSameAddress(current_node, target_node) && !current_node->IsLeaf()) {
-      trace.emplace(current_node, index);
+      trace.emplace_back(current_node, index);
       index = current_node->SearchSortedMetadata(key, true).second;
       current_node = InternalNode_t::GetChildNode(current_node, index);
     }
-    trace.emplace(current_node, index);
+    trace.emplace_back(current_node, index);
 
     return trace;
   }
@@ -214,17 +213,17 @@ class BzTree
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
 
-    std::stack<std::pair<BaseNode_t *, size_t>> trace;
+    NodeStack trace;
     BaseNode_t *parent = nullptr;
     size_t target_index = 0;
     while (true) {
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(target_key, target_node);
-      target_index = trace.top().second;
-      trace.pop();
+      target_index = trace.back().second;
+      trace.pop_back();
 
       // check whether it is required to split a parent node
-      parent = trace.top().first;
+      parent = trace.back().first;
       if (NeedSplit(parent, split_key_length)) {
         SplitInternalNode(parent, target_key);
         continue;
@@ -263,7 +262,7 @@ class BzTree
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
 
-    std::stack<std::pair<BaseNode_t *, size_t>> trace;
+    NodeStack trace;
     BaseNode_t *parent = nullptr;
     size_t target_index = 0;
     while (true) {
@@ -273,13 +272,13 @@ class BzTree
 
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(target_key, target_node);
-      target_index = trace.top().second;
+      target_index = trace.back().second;
 
       // check whether it is required to split a parent node
       MwCASDescriptor desc;
       if (trace.size() > 1) {  // target is not a root node (i.e., there is a parent node)
-        trace.pop();
-        parent = trace.top().first;
+        trace.pop_back();
+        parent = trace.back().first;
         if (NeedSplit(parent, split_key_length)) {
           SplitInternalNode(parent, target_key);
           continue;
@@ -333,18 +332,18 @@ class BzTree
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
 
-    std::stack<std::pair<BaseNode_t *, size_t>> trace;
+    NodeStack trace;
     BaseNode_t *parent = nullptr, *sib_node = nullptr;
     bool sib_is_left = true;
     size_t target_index = 0;
     while (true) {
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(target_key, target_node);
-      target_index = trace.top().second;
-      trace.pop();
+      target_index = trace.back().second;
+      trace.pop_back();
 
       // check a parent node is live
-      parent = trace.top().first;
+      parent = trace.back().first;
       const auto parent_status = parent->GetStatusWordProtected();
       if (parent_status.IsFrozen()) continue;
 
@@ -406,7 +405,7 @@ class BzTree
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
 
-    std::stack<std::pair<BaseNode_t *, size_t>> trace;
+    NodeStack trace;
     BaseNode_t *parent = nullptr, *sibling_node = nullptr;
     bool sibling_is_left;
     size_t target_index = 0;
@@ -417,11 +416,11 @@ class BzTree
 
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(target_key, target_node);
-      target_index = trace.top().second;
-      trace.pop();
+      target_index = trace.back().second;
+      trace.pop_back();
 
       // check a parent node is live
-      parent = trace.top().first;
+      parent = trace.back().first;
       const auto parent_status = parent->GetStatusWordProtected();
       if (parent_status.IsFrozen()) continue;
 
@@ -471,7 +470,7 @@ class BzTree
 
   constexpr void
   InstallNewNode(  //
-      std::stack<std::pair<BaseNode_t *, size_t>> &trace,
+      NodeStack &trace,
       BaseNode_t *new_node,
       const Key target_key,
       const BaseNode_t *target_node)
@@ -484,10 +483,10 @@ class BzTree
          *----------------------------------------------------------------------------------------*/
 
         // prepare installing nodes
-        auto [old_node, index] = trace.top();
+        auto [old_node, index] = trace.back();
         if (!HaveSameAddress(old_node, target_node)) return;
-        trace.pop();
-        auto parent_node = trace.top().first;
+        trace.pop_back();
+        auto parent_node = trace.back().first;
 
         // check wether related nodes are frozen
         const auto parent_status = parent_node->GetStatusWordProtected();
@@ -504,9 +503,9 @@ class BzTree
          * Swapping a new root node
          *----------------------------------------------------------------------------------------*/
 
-        const auto old_node = trace.top().first;
+        const auto old_node = trace.back().first;
         if (!HaveSameAddress(old_node, target_node)) return;
-        trace.pop();
+        trace.pop_back();
         desc.AddMwCASTarget(&root_, old_node, new_node);
       }
 

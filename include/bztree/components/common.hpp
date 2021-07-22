@@ -19,7 +19,6 @@
 #include <cassert>
 #include <cstring>
 #include <memory>
-#include <sstream>
 
 #include "memory/utility.hpp"
 #include "mwcas/mwcas_descriptor.hpp"
@@ -102,6 +101,8 @@ using ::dbgroup::atomic::mwcas::MwCASDescriptor;
 using ::dbgroup::atomic::mwcas::ReadMwCASField;
 
 using ::dbgroup::memory::CallocNew;
+
+using ::dbgroup::memory::STLAlloc;
 
 /// Assumes that one word is represented by 8 bytes
 constexpr size_t kWordLength = 8;

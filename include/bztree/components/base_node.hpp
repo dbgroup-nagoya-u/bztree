@@ -19,11 +19,8 @@
 #include <algorithm>
 #include <atomic>
 #include <functional>
-#include <map>
 #include <memory>
-#include <string>
 #include <utility>
-#include <vector>
 
 #include "metadata.hpp"
 #include "status_word.hpp"
