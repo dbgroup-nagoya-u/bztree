@@ -526,7 +526,7 @@ class BzTree
       }
     }
 
-    delete node;
+    ::dbgroup::memory::Delete(node);
   }
 
  public:

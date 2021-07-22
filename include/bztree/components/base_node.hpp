@@ -26,14 +26,10 @@
 #include <vector>
 
 #include "metadata.hpp"
-#include "mwcas/mwcas_descriptor.hpp"
 #include "status_word.hpp"
 
 namespace dbgroup::index::bztree
 {
-using dbgroup::atomic::mwcas::MwCASDescriptor;
-using dbgroup::atomic::mwcas::ReadMwCASField;
-
 template <class Key, class Payload, class Compare = std::less<Key>>
 class alignas(kCacheLineSize) BaseNode
 {
@@ -53,16 +49,6 @@ class alignas(kCacheLineSize) BaseNode
   StatusWord status_;
 
   Metadata meta_array_[0];
-
-  /*################################################################################################
-   * Internal constructors
-   *##############################################################################################*/
-
-  constexpr BaseNode(  //
-      const bool is_leaf)
-      : node_size_{kPageSize}, is_leaf_{is_leaf}, sorted_count_{0}, status_{}
-  {
-  }
 
  public:
   /*################################################################################################
@@ -95,6 +81,11 @@ class alignas(kCacheLineSize) BaseNode
    * Public constructors/destructors
    *##############################################################################################*/
 
+  constexpr BaseNode(const bool is_leaf)
+      : node_size_{kPageSize}, is_leaf_{is_leaf}, sorted_count_{0}, status_{}
+  {
+  }
+
   ~BaseNode() = default;
 
   BaseNode(const BaseNode &) = delete;
@@ -106,12 +97,10 @@ class alignas(kCacheLineSize) BaseNode
    * Public builders
    *##############################################################################################*/
 
-  constexpr static BaseNode *
+  static BaseNode *
   CreateEmptyNode(const bool is_leaf)
   {
-    auto page = calloc(1, kPageSize);
-    auto new_node = new (page) BaseNode{is_leaf};
-    return new_node;
+    return CallocNew<BaseNode>(kPageSize, is_leaf);
   }
 
   /*################################################################################################

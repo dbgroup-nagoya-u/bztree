@@ -21,6 +21,9 @@
 #include <memory>
 #include <sstream>
 
+#include "memory/utility.hpp"
+#include "mwcas/mwcas_descriptor.hpp"
+
 namespace dbgroup::index::bztree
 {
 /*--------------------------------------------------------------------------------------------------
@@ -93,6 +96,12 @@ struct CompareAsCString {
 /*--------------------------------------------------------------------------------------------------
  * Common constants and utility functions
  *------------------------------------------------------------------------------------------------*/
+
+using ::dbgroup::atomic::mwcas::MwCASDescriptor;
+
+using ::dbgroup::atomic::mwcas::ReadMwCASField;
+
+using ::dbgroup::memory::CallocNew;
 
 /// Assumes that one word is represented by 8 bytes
 constexpr size_t kWordLength = 8;

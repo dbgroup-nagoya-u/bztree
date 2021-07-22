@@ -48,59 +48,11 @@ function(ADD_BZTREE_TEST BZTREE_TEST_TARGET)
     $<$<STREQUAL:${CMAKE_BUILD_TYPE},"RelWithDebInfo">:"-g3 -Og -pg">
     $<$<STREQUAL:${CMAKE_BUILD_TYPE},"Debug">:"-g3 -O0 -pg">
   )
-  target_include_directories(
-    ${BZTREE_TEST_TARGET} PRIVATE
-    "${BZTREE_SOURCE_DIR}/include"
-  )
   target_link_libraries(
     ${BZTREE_TEST_TARGET} PRIVATE
-    pthread
-    mwcas
-    memory_manager
+    bztree
     gtest_main
   )
-
-  if(DEFINED BZTREE_PAGE_SIZE)
-    target_compile_definitions(
-      ${BZTREE_TEST_TARGET} PRIVATE
-      BZTREE_PAGE_SIZE=${BZTREE_PAGE_SIZE}
-    )
-  endif()
-
-  if(DEFINED BZTREE_MAX_UNSORTED_REC_NUM)
-    target_compile_definitions(
-      ${BZTREE_TEST_TARGET} PRIVATE
-      BZTREE_MAX_UNSORTED_REC_NUM=${BZTREE_MAX_UNSORTED_REC_NUM}
-    )
-  endif()
-
-  if(DEFINED BZTREE_MAX_DELETED_SPACE_SIZ)
-    target_compile_definitions(
-      ${BZTREE_TEST_TARGET} PRIVATE
-      BZTREE_MAX_DELETED_SPACE_SIZE=${BZTREE_MAX_DELETED_SPACE_SIZE}
-    )
-  endif()
-
-  if(DEFINED BZTREE_MIN_FREE_SPACE_SIZE)
-    target_compile_definitions(
-      ${BZTREE_TEST_TARGET} PRIVATE
-      BZTREE_MIN_FREE_SPACE_SIZE=${BZTREE_MIN_FREE_SPACE_SIZE}
-    )
-  endif()
-
-  if(DEFINED BZTREE_MIN_SORTED_REC_NUM)
-    target_compile_definitions(
-      ${BZTREE_TEST_TARGET} PRIVATE
-      BZTREE_MIN_SORTED_REC_NUM=${BZTREE_MIN_SORTED_REC_NUM}
-    )
-  endif()
-
-  if(DEFINED BZTREE_MAX_MERGED_SIZE)
-    target_compile_definitions(
-      ${BZTREE_TEST_TARGET} PRIVATE
-      BZTREE_MAX_MERGED_SIZE=${BZTREE_MAX_MERGED_SIZE}
-    )
-  endif()
 
   if(DEFINED BZTREE_TEST_THREAD_NUM)
     target_compile_definitions(
