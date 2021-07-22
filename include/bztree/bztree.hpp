@@ -29,22 +29,21 @@
 #include "components/internal_node.hpp"
 #include "components/leaf_node.hpp"
 #include "components/record_page.hpp"
-#include "memory/manager/tls_based_memory_manager.hpp"
+#include "memory/epoch_based_gc.hpp"
 
 namespace dbgroup::index::bztree
 {
-using dbgroup::memory::manager::TLSBasedMemoryManager;
-
 template <class Key, class Payload, class Compare = std::less<Key>>
 class BzTree
 {
- private:
   using BaseNode_t = BaseNode<Key, Payload, Compare>;
   using LeafNode_t = LeafNode<Key, Payload, Compare>;
   using InternalNode_t = InternalNode<Key, Payload, Compare>;
   using NodeReturnCode = typename BaseNode<Key, Payload, Compare>::NodeReturnCode;
   using RecordPage_t = RecordPage<Key, Payload>;
+  using EpochBasedGC_t = dbgroup::memory::EpochBasedGC<BaseNode_t>;
 
+ private:
   /*################################################################################################
    * Internal constants
    *##############################################################################################*/
@@ -63,7 +62,7 @@ class BzTree
   BaseNode_t *root_;
 
   /// garbage collector
-  TLSBasedMemoryManager<BaseNode_t> gc_;
+  EpochBasedGC_t gc_;
 
   /*################################################################################################
    * Internal utility functions
@@ -535,7 +534,7 @@ class BzTree
    * Public constructor/destructor
    *##############################################################################################*/
 
-  explicit BzTree(const size_t gc_interval_microsec = 1000000)
+  explicit BzTree(const size_t gc_interval_microsec = 100000)
       : index_epoch_{1}, root_{InternalNode_t::CreateInitialRoot()}, gc_{gc_interval_microsec}
   {
   }
