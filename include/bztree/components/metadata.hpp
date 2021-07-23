@@ -18,7 +18,7 @@
 
 #include "common.hpp"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component
 {
 /**
  * @brief Record metadata accessor:
@@ -180,4 +180,4 @@ class alignas(kWordLength) Metadata
   }
 };
 
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component

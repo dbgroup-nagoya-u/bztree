@@ -22,7 +22,7 @@
 
 #include "gtest/gtest.h"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::test
 {
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
@@ -43,13 +43,13 @@ class BzTreeFixture : public testing::Test
   using PayloadComp = typename KeyPayloadPair::PayloadComp;
 
   // define type aliases for simplicity
-  using BaseNode_t = BaseNode<Key, Payload, KeyComp>;
-  using LeafNode_t = LeafNode<Key, Payload, KeyComp>;
-  using InternalNode_t = InternalNode<Key, Payload, KeyComp>;
+  using BaseNode_t = component::BaseNode<Key, Payload, KeyComp>;
+  using LeafNode_t = component::LeafNode<Key, Payload, KeyComp>;
+  using InternalNode_t = component::InternalNode<Key, Payload, KeyComp>;
   using BzTree_t = BzTree<Key, Payload, KeyComp>;
   using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
   using KeyExistence = typename BaseNode_t::KeyExistence;
-  using RecordPage_t = RecordPage<Key, Payload>;
+  using RecordPage_t = component::RecordPage<Key, Payload>;
 
  protected:
   /*################################################################################################
@@ -151,9 +151,9 @@ class BzTreeFixture : public testing::Test
     } else {
       EXPECT_EQ(ReturnCode::kSuccess, rc);
       if constexpr (std::is_same_v<Payload, char *>) {
-        EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], actual.get()));
+        EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads[expected_id], actual.get()));
       } else {
-        EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], actual));
+        EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads[expected_id], actual));
       }
     }
   }
@@ -182,8 +182,8 @@ class BzTreeFixture : public testing::Test
     bztree.Scan(page, begin_ptr, begin_closed, end_ptr, end_closed);
     while (!page.empty()) {
       for (auto &&[key, payload] : page) {
-        EXPECT_TRUE(IsEqual<KeyComp>(keys[expected_keys[count]], key));
-        EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_payloads[count]], payload));
+        EXPECT_TRUE(component::IsEqual<KeyComp>(keys[expected_keys[count]], key));
+        EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads[expected_payloads[count]], payload));
         ++count;
       }
       begin_key = page.GetLastKey();
@@ -621,4 +621,4 @@ TYPED_TEST(BzTreeFixture, Delete_DeletedKeysWithSMOs_DeleteFail)
   }
 }
 
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::test

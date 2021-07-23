@@ -21,7 +21,7 @@
 #include "bztree/components/leaf_node.hpp"
 #include "gtest/gtest.h"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component::test
 {
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
@@ -362,4 +362,4 @@ TYPED_TEST(InternalNodeFixture, NewParentForMerge_DummyChildren_ParentHasCorrect
   TestFixture::VerifyNewParentForMerge();
 }
 
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component::test

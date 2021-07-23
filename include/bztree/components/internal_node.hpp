@@ -21,7 +21,7 @@
 
 #include "base_node.hpp"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component
 {
 template <class Key, class Payload, class Compare = std::less<Key>>
 class InternalNode
@@ -306,4 +306,4 @@ class InternalNode
   }
 };
 
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component

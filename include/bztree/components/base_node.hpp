@@ -25,7 +25,7 @@
 #include "metadata.hpp"
 #include "status_word.hpp"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component
 {
 template <class Key, class Payload, class Compare = std::less<Key>>
 class alignas(kCacheLineSize) BaseNode
@@ -374,4 +374,4 @@ class alignas(kCacheLineSize) BaseNode
   }
 };
 
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component

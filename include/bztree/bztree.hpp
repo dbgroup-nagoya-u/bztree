@@ -27,20 +27,23 @@
 #include "components/leaf_node.hpp"
 #include "components/record_page.hpp"
 #include "memory/epoch_based_gc.hpp"
+#include "utility.hpp"
 
 namespace dbgroup::index::bztree
 {
 template <class Key, class Payload, class Compare = std::less<Key>>
 class BzTree
 {
-  using BaseNode_t = BaseNode<Key, Payload, Compare>;
-  using LeafNode_t = LeafNode<Key, Payload, Compare>;
-  using InternalNode_t = InternalNode<Key, Payload, Compare>;
-  using NodeReturnCode = typename BaseNode<Key, Payload, Compare>::NodeReturnCode;
-  using RecordPage_t = RecordPage<Key, Payload>;
-  using EpochBasedGC_t = dbgroup::memory::EpochBasedGC<BaseNode_t>;
+  using Metadata = component::Metadata;
+  using StatusWord = component::StatusWord;
+  using BaseNode_t = component::BaseNode<Key, Payload, Compare>;
+  using LeafNode_t = component::LeafNode<Key, Payload, Compare>;
+  using InternalNode_t = component::InternalNode<Key, Payload, Compare>;
+  using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
+  using RecordPage_t = component::RecordPage<Key, Payload>;
+  using EpochBasedGC_t = ::dbgroup::memory::EpochBasedGC<BaseNode_t>;
   using NodeRef = std::pair<BaseNode_t *, size_t>;
-  using NodeStack = std::vector<NodeRef, STLAlloc<NodeRef>>;
+  using NodeStack = std::vector<NodeRef, ::dbgroup::memory::STLAlloc<NodeRef>>;
 
  private:
   /*################################################################################################
@@ -48,7 +51,7 @@ class BzTree
    *##############################################################################################*/
 
   /// the maximum number of records in a node
-  static constexpr size_t kMaxRecordNum = GetMaxRecordNum<Key, Payload>();
+  static constexpr size_t kMaxRecordNum = component::GetMaxRecordNum<Key, Payload>();
 
   /*################################################################################################
    * Internal member variables
@@ -70,7 +73,7 @@ class BzTree
   constexpr BaseNode_t *
   GetRoot()
   {
-    return ReadMwCASField<BaseNode_t *>(&root_);
+    return component::ReadMwCASField<BaseNode_t *>(&root_);
   }
 
   constexpr BaseNode_t *
@@ -101,13 +104,13 @@ class BzTree
   constexpr NodeStack
   TraceTargetNode(  //
       const Key key,
-      const void *target_node)
+      const BaseNode_t *target_node)
   {
     // trace nodes to a target internal node
     NodeStack trace;
     size_t index = 0;
     auto current_node = GetRoot();
-    while (!HaveSameAddress(current_node, target_node) && !current_node->IsLeaf()) {
+    while (current_node != target_node && !current_node->IsLeaf()) {
       trace.emplace_back(current_node, index);
       index = current_node->SearchSortedMetadata(key, true).second;
       current_node = InternalNode_t::GetChildNode(current_node, index);
@@ -160,7 +163,7 @@ class BzTree
     for (size_t i = 0; i < rec_count; ++i) {
       block_size += metadata[i].GetTotalLength();
     }
-    block_size += kHeaderLength + (kWordLength * rec_count);
+    block_size += component::kHeaderLength + (kWordLength * rec_count);
 
     return block_size;
   }
@@ -275,7 +278,7 @@ class BzTree
       target_index = trace.back().second;
 
       // check whether it is required to split a parent node
-      MwCASDescriptor desc;
+      component::MwCASDescriptor desc;
       if (trace.size() > 1) {  // target is not a root node (i.e., there is a parent node)
         trace.pop_back();
         parent = trace.back().first;
@@ -357,7 +360,7 @@ class BzTree
       }
 
       // pre-freezing of SMO targets
-      MwCASDescriptor desc;
+      component::MwCASDescriptor desc;
       parent->SetStatusForMwCAS(desc, parent_status, parent_status.Freeze());
       sib_node->SetStatusForMwCAS(desc, sibling_status, sibling_status.Freeze());
       if (desc.MwCAS()) break;
@@ -433,7 +436,7 @@ class BzTree
       if (sibling_status.IsFrozen()) continue;
 
       // pre-freezing of SMO targets
-      auto desc = MwCASDescriptor{};
+      auto desc = component::MwCASDescriptor{};
       parent->SetStatusForMwCAS(desc, parent_status, parent_status.Freeze());
       target_node->SetStatusForMwCAS(desc, target_status, target_status.Freeze());
       sibling_node->SetStatusForMwCAS(desc, sibling_status, sibling_status.Freeze());
@@ -476,7 +479,7 @@ class BzTree
       const BaseNode_t *target_node)
   {
     while (true) {
-      MwCASDescriptor desc;
+      component::MwCASDescriptor desc;
       if (trace.size() > 1) {
         /*------------------------------------------------------------------------------------------
          * Swapping a new internal node

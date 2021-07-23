@@ -24,7 +24,7 @@
 #include "base_node.hpp"
 #include "record_page.hpp"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component
 {
 template <class Key, class Payload, class Compare>
 class LeafNode
@@ -933,4 +933,4 @@ class LeafNode
   }
 };
 
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component

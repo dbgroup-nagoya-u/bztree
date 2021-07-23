@@ -25,7 +25,7 @@
 #include "bztree/components/leaf_node.hpp"
 #include "gtest/gtest.h"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component::test
 {
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
@@ -492,4 +492,4 @@ TYPED_TEST(LeafNodeFixture, InsertUpdateDelete_MultiThreads_WrittenValuesLineari
   TestFixture::VerifyConcurrentInsertUpdateDelete();
 }
 
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component::test

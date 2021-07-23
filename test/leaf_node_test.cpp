@@ -23,7 +23,7 @@
 
 #include "gtest/gtest.h"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component::test
 {
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
@@ -1012,4 +1012,4 @@ TYPED_TEST(LeafNodeFixture, Merge_LeftSiblingNode_NodesHaveCorrectKeyPayloads)
     TestFixture::VerifyRead(id, id);
   }
 }
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component::test

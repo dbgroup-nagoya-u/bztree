@@ -24,7 +24,7 @@
 
 using std::byte;
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component::test
 {
 using Key = uint64_t;
 using Payload = uint64_t;
@@ -219,4 +219,4 @@ TEST_F(BaseNodeFixture, SearchSortedMeta_SearchOutOfNodeKey_FindBorderIndex)
   EXPECT_EQ(target_index, index);
 }
 
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component::test
