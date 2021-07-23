@@ -19,7 +19,7 @@
 #include <functional>
 #include <utility>
 
-#include "base_node.hpp"
+#include "node.hpp"
 
 namespace dbgroup::index::bztree::internal
 {

@@ -21,7 +21,7 @@
 #include <memory>
 #include <utility>
 
-#include "base_node.hpp"
+#include "node.hpp"
 #include "record_page.hpp"
 
 namespace dbgroup::index::bztree::leaf

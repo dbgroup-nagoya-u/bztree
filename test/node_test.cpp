@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-#include "bztree/component/base_node.hpp"
+#include "bztree/component/node.hpp"
 
 #include <functional>
 #include <memory>
 
-#include "bztree/component/leaf_node.hpp"
+#include "bztree/component/leaf_node_api.hpp"
 #include "gtest/gtest.h"
 
 using std::byte;
