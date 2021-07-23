@@ -27,7 +27,7 @@
 
 namespace dbgroup::index::bztree::component
 {
-template <class Key, class Payload, class Compare = std::less<Key>>
+template <class Key, class Payload, class Compare>
 class alignas(kCacheLineSize) Node
 {
  private:

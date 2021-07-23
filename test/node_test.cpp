@@ -28,7 +28,7 @@ namespace dbgroup::index::bztree::component::test
 {
 using Key = uint64_t;
 using Payload = uint64_t;
-using Node_t = Node<Key, Payload>;
+using Node_t = Node<Key, Payload, std::less<Key>>;
 
 static constexpr size_t kNodeSize = 256;
 static constexpr size_t kIndexEpoch = 0;
