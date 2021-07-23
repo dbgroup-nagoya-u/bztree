@@ -61,8 +61,7 @@ _InsertChild(  //
   const auto key = child_node->GetKey(meta);
   const auto key_length = meta.GetKeyLength();
   _SetChild(target_node, key, key_length, child_node, offset);
-  const auto inserted_meta = Metadata{}.SetRecordInfo(offset, key_length, key_length + kWordLength);
-  target_node->SetMetadata(target_index, inserted_meta);
+  target_node->SetMetadata(target_index, Metadata{offset, key_length, key_length + kWordLength});
 }
 
 template <class Key, class Payload, class Compare>
@@ -151,7 +150,7 @@ CreateInitialRoot()
   // set an inital leaf node
   auto offset = kPageSize;
   root->SetPayload(offset, leaf_node, kWordLength);
-  root->SetMetadata(0, Metadata{}.SetRecordInfo(offset, 0, kWordLength));
+  root->SetMetadata(0, Metadata{offset, 0, kWordLength});
 
   // set a new header
   root->SetSortedCount(1);

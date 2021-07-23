@@ -63,6 +63,19 @@ class alignas(kWordLength) Metadata
   {
   }
 
+  constexpr Metadata(  //
+      const size_t offset,
+      const size_t key_length,
+      const size_t total_length)
+      : offset_{offset},
+        visible_{1},
+        in_progress_{0},
+        key_length_{key_length},
+        total_length_{total_length},
+        control_region_{0}
+  {
+  }
+
   ~Metadata() = default;
 
   constexpr Metadata(const Metadata &) = default;
