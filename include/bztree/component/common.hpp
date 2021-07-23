@@ -20,10 +20,11 @@
 #include <cstring>
 #include <memory>
 
+#include "../utility.hpp"
 #include "memory/utility.hpp"
 #include "mwcas/mwcas_descriptor.hpp"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component
 {
 /*--------------------------------------------------------------------------------------------------
  * public utility: divide `utility.h` when reconstruct directory structure
@@ -32,15 +33,25 @@ namespace dbgroup::index::bztree
 constexpr auto mo_relax = std::memory_order_relaxed;
 
 /**
- * @brief Return codes for BzTree.
+ * @brief Return codes for functions in Base/Leaf/InternalNode.
  *
  */
-enum ReturnCode
+enum NodeReturnCode
 {
   kSuccess = 0,
-  kScanInProgress,
   kKeyNotExist,
-  kKeyExist
+  kKeyExist,
+  kScanInProgress,
+  kFrozen,
+  kNoSpace
+};
+
+enum KeyExistence
+{
+  kExist = 0,
+  kNotExist,
+  kDeleted,
+  kUncertain
 };
 
 template <class T>
@@ -74,24 +85,6 @@ CastAddress(const void *addr)
   }
 }
 
-/**
- * @brief Compare binary keys as C_String. The end of every key must be '\\0'.
- *
- */
-struct CompareAsCString {
-  constexpr bool
-  operator()(const void *a, const void *b) const noexcept
-  {
-    if (a == nullptr) {
-      return false;
-    } else if (b == nullptr) {
-      return true;
-    } else {
-      return strcmp(static_cast<const char *>(a), static_cast<const char *>(b)) < 0;
-    }
-  }
-};
-
 /*--------------------------------------------------------------------------------------------------
  * Common constants and utility functions
  *------------------------------------------------------------------------------------------------*/
@@ -104,64 +97,8 @@ using ::dbgroup::memory::CallocNew;
 
 using ::dbgroup::memory::STLAlloc;
 
-/// Assumes that one word is represented by 8 bytes
-constexpr size_t kWordLength = 8;
-
-/// Assumes that one word is represented by 8 bytes
-constexpr size_t kCacheLineSize = 64;
-
 /// Header length in bytes
 constexpr size_t kHeaderLength = 2 * kWordLength;
-
-#ifdef BZTREE_PAGE_SIZE
-/// The page size of each node
-constexpr size_t kPageSize = BZTREE_PAGE_SIZE;
-#else
-constexpr size_t kPageSize = 8192;
-#endif
-
-/// check whether the specified page size is valid
-static_assert(kPageSize % kWordLength == 0);
-
-#ifdef BZTREE_MAX_UNSORTED_REC_NUM
-/// Invoking consolidation if the number of unsorted records exceeds this threshold
-constexpr size_t kMaxUnsortedRecNum = BZTREE_MAX_UNSORTED_REC_NUM;
-#else
-/// Invoking consolidation if the number of unsorted records exceeds this threshold
-constexpr size_t kMaxUnsortedRecNum = 32;
-#endif
-
-#ifdef BZTREE_MAX_DELETED_SPACE_SIZE
-/// Invoking consolidation if the size of deleted records exceeds this threshold
-constexpr size_t kMaxDeletedSpaceSize = BZTREE_MAX_DELETED_SPACE_SIZE;
-#else
-/// Invoking consolidation if the size of deleted records exceeds this threshold
-constexpr size_t kMaxDeletedSpaceSize = kPageSize / 4;
-#endif
-
-#ifdef BZTREE_MIN_FREE_SPACE_SIZE
-/// Invoking a split if the size of free space in a node exceeds this threshold
-constexpr size_t kMinFreeSpaceSize = BZTREE_MIN_FREE_SPACE_SIZE;
-#else
-/// Invoking a split if the size of free space in a node exceeds this threshold
-constexpr size_t kMinFreeSpaceSize = kMaxUnsortedRecNum * kWordLength * 3;
-#endif
-
-#ifdef BZTREE_MIN_SORTED_REC_NUM
-/// Invoking merging if the number of sorted records falls below this threshold
-constexpr size_t kMinSortedRecNum = BZTREE_MIN_SORTED_REC_NUM;
-#else
-/// Invoking merging if the number of sorted records falls below this threshold
-constexpr size_t kMinSortedRecNum = 16;
-#endif
-
-#ifdef BZTREE_MAX_MERGED_SIZE
-/// Canceling merging if the size of a merged node exceeds this threshold
-constexpr size_t kMaxMergedSize = BZTREE_MAX_MERGED_SIZE;
-#else
-/// Canceling merging if the size of a merged node exceeds this threshold
-constexpr size_t kMaxMergedSize = kPageSize / 2;
-#endif
 
 /// a flag to indicate creating leaf nodes
 constexpr bool kLeafFlag = true;
@@ -192,6 +129,21 @@ constexpr bool
 CanCASUpdate()
 {
   return !std::is_same_v<Payload, char *> && sizeof(Payload) == kWordLength;
+}
+
+template <class Key>
+constexpr size_t
+AlignOffset(const size_t offset)
+{
+  if constexpr (std::is_same_v<Key, char *>) {
+    const auto align_size = offset & (kWordLength - 1);
+    if (align_size > 0) {
+      return offset - align_size;
+    }
+  } else if constexpr (sizeof(Key) % kWordLength != 0) {
+    return offset - (kWordLength - (sizeof(Key) % kWordLength));
+  }
+  return offset;
 }
 
 /**
@@ -267,4 +219,5 @@ HaveSameAddress(const void *a, const void *b)
 {
   return a == b;
 }
-}  // namespace dbgroup::index::bztree
+
+}  // namespace dbgroup::index::bztree::component

@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-#include "bztree/components/record_page.hpp"
+#include "bztree/component/record_page.hpp"
 
 #include <memory>
 #include <utility>
 
 #include "gtest/gtest.h"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component::test
 {
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType>
@@ -309,4 +309,4 @@ TYPED_TEST(RecordPageFixture, RangeBasedForLoop_NotEmptyPage_ReadEveryRecord)
   TestFixture::VerifyRangeBasedForLoop(TestFixture::kKeyNumForTest);
 }
 
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component::test

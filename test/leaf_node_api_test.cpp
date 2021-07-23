@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "bztree/components/leaf_node.hpp"
+#include "bztree/component/leaf_node_api.hpp"
 
 #include <functional>
 #include <memory>
@@ -23,7 +23,7 @@
 
 #include "gtest/gtest.h"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component::test
 {
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
@@ -44,9 +44,7 @@ class LeafNodeFixture : public testing::Test
   using PayloadComp = typename KeyPayloadPair::PayloadComp;
 
   // define type aliases for simplicity
-  using BaseNode_t = BaseNode<Key, Payload, KeyComp>;
-  using LeafNode_t = LeafNode<Key, Payload, KeyComp>;
-  using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
+  using Node_t = Node<Key, Payload, KeyComp>;
   using RecordPage_t = RecordPage<Key, Payload>;
 
  protected:
@@ -75,7 +73,7 @@ class LeafNodeFixture : public testing::Test
   size_t max_record_num;
 
   // a leaf node and its statistics
-  std::unique_ptr<BaseNode_t> node;
+  std::unique_ptr<Node_t> node;
   size_t expected_record_count;
   size_t expected_block_size;
   size_t expected_deleted_block_size;
@@ -89,7 +87,7 @@ class LeafNodeFixture : public testing::Test
   SetUp()
   {
     // initialize a leaf node and expected statistics
-    node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
+    node.reset(Node_t::CreateEmptyNode(kLeafFlag));
     expected_record_count = 0;
     expected_block_size = 0;
     expected_deleted_block_size = 0;
@@ -169,8 +167,7 @@ class LeafNodeFixture : public testing::Test
       expected_block_size += record_length;
     }
 
-    return LeafNode_t::Write(node.get(), keys[key_id], key_length, payloads[payload_id],
-                             payload_length);
+    return leaf::Write(node.get(), keys[key_id], key_length, payloads[payload_id], payload_length);
   }
 
   auto
@@ -185,8 +182,7 @@ class LeafNodeFixture : public testing::Test
       expected_block_size += record_length;
     }
 
-    return LeafNode_t::Insert(node.get(), keys[key_id], key_length, payloads[payload_id],
-                              payload_length);
+    return leaf::Insert(node.get(), keys[key_id], key_length, payloads[payload_id], payload_length);
   }
 
   auto
@@ -204,8 +200,7 @@ class LeafNodeFixture : public testing::Test
       expected_deleted_block_size += record_length;
     }
 
-    return LeafNode_t::Update(node.get(), keys[key_id], key_length, payloads[payload_id],
-                              payload_length);
+    return leaf::Update(node.get(), keys[key_id], key_length, payloads[payload_id], payload_length);
   }
 
   auto
@@ -227,14 +222,14 @@ class LeafNodeFixture : public testing::Test
       }
     }
 
-    return LeafNode_t::Delete(node.get(), keys[key_id], key_length);
+    return leaf::Delete(node.get(), keys[key_id], key_length);
   }
 
   void
   Consolidation()
   {
-    auto [metadata, rec_count] = LeafNode_t::GatherSortedLiveMetadata(node.get());
-    node.reset(LeafNode_t::Consolidate(node.get(), metadata, rec_count));
+    auto [metadata, rec_count] = leaf::GatherSortedLiveMetadata(node.get());
+    node.reset(leaf::Consolidate(node.get(), metadata, rec_count));
   }
 
   /*################################################################################################
@@ -328,7 +323,7 @@ class LeafNodeFixture : public testing::Test
   {
     Payload payload{};
 
-    const auto rc = LeafNode_t::Read(node.get(), keys[key_id], payload);
+    const auto rc = leaf::Read(node.get(), keys[key_id], payload);
 
     if (expect_fail) {
       EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
@@ -357,7 +352,7 @@ class LeafNodeFixture : public testing::Test
     if (!end_null) end_key = &keys[end_key_id];
 
     RecordPage_t page;
-    LeafNode_t::Scan(node.get(), begin_key, begin_closed, end_key, end_closed, page);
+    leaf::Scan(node.get(), begin_key, begin_closed, end_key, end_closed, page);
 
     size_t count = 0;
     for (auto &&[key, payload] : page) {
@@ -446,7 +441,7 @@ class LeafNodeFixture : public testing::Test
   void
   VerifyGatherSortedLiveMetadata(std::vector<size_t> &expected_ids)
   {
-    auto [metadata, rec_count] = LeafNode_t::GatherSortedLiveMetadata(node.get());
+    auto [metadata, rec_count] = leaf::GatherSortedLiveMetadata(node.get());
 
     EXPECT_EQ(expected_ids.size(), rec_count);
     for (size_t i = 0; i < expected_ids.size(); ++i) {
@@ -479,9 +474,8 @@ class LeafNodeFixture : public testing::Test
       const bool target_is_left)
   {
     WriteOrderedKeys(begin_index, end_index);
-    auto [metadata, rec_count] = LeafNode_t::GatherSortedLiveMetadata(node.get());
-    auto [left_node, right_node] =
-        LeafNode_t::Split(node.get(), metadata, rec_count, left_rec_count);
+    auto [metadata, rec_count] = leaf::GatherSortedLiveMetadata(node.get());
+    auto [left_node, right_node] = leaf::Split(node.get(), metadata, rec_count, left_rec_count);
 
     if (target_is_left) {
       node.reset(left_node);
@@ -505,16 +499,16 @@ class LeafNodeFixture : public testing::Test
       const size_t right_end)
   {
     WriteOrderedKeys(left_begin, left_end);
-    auto [left_meta, left_rec_count] = LeafNode_t::GatherSortedLiveMetadata(node.get());
+    auto [left_meta, left_rec_count] = leaf::GatherSortedLiveMetadata(node.get());
 
-    auto right_node = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
+    auto right_node = std::unique_ptr<Node_t>(Node_t::CreateEmptyNode(kLeafFlag));
     for (size_t id = right_begin; id <= right_end; ++id) {
-      LeafNode_t::Write(right_node.get(), keys[id], key_length, payloads[id], payload_length);
+      leaf::Write(right_node.get(), keys[id], key_length, payloads[id], payload_length);
     }
-    auto [right_meta, right_rec_count] = LeafNode_t::GatherSortedLiveMetadata(right_node.get());
+    auto [right_meta, right_rec_count] = leaf::GatherSortedLiveMetadata(right_node.get());
 
-    node.reset(LeafNode_t::Merge(node.get(), left_meta, left_rec_count,  //
-                                 right_node.get(), right_meta, right_rec_count));
+    node.reset(leaf::Merge(node.get(), left_meta, left_rec_count,  //
+                           right_node.get(), right_meta, right_rec_count));
 
     expected_record_count = (left_end - left_begin + 1) + (right_end - right_begin + 1);
     expected_block_size = expected_record_count * record_length;
@@ -1012,4 +1006,4 @@ TYPED_TEST(LeafNodeFixture, Merge_LeftSiblingNode_NodesHaveCorrectKeyPayloads)
     TestFixture::VerifyRead(id, id);
   }
 }
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component::test

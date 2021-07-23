@@ -21,7 +21,7 @@
 
 #include "common.hpp"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component
 {
 /**
  * @brief A class to represent a iterator for scan results.
@@ -175,4 +175,4 @@ class RecordIterator
   }
 };
 
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component

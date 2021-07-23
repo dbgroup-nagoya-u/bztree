@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-#include "bztree/components/internal_node.hpp"
+#include "bztree/component/internal_node_api.hpp"
 
 #include <memory>
 
-#include "bztree/components/leaf_node.hpp"
+#include "bztree/component/leaf_node_api.hpp"
 #include "gtest/gtest.h"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component::test
 {
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
@@ -43,10 +43,7 @@ class InternalNodeFixture : public testing::Test
   using PayloadComp = typename KeyPayloadPair::PayloadComp;
 
   // define type aliases for simplicity
-  using BaseNode_t = BaseNode<Key, Payload, KeyComp>;
-  using LeafNode_t = LeafNode<Key, Payload, KeyComp>;
-  using InternalNode_t = InternalNode<Key, Payload, KeyComp>;
-  using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
+  using Node_t = Node<Key, Payload, KeyComp>;
 
   // constant values for testing
   static constexpr size_t kKeyNumForTest = 1024;
@@ -64,7 +61,7 @@ class InternalNodeFixture : public testing::Test
   size_t max_record_num;
 
   // a leaf node
-  std::unique_ptr<BaseNode_t> node;
+  std::unique_ptr<Node_t> node;
 
   /*################################################################################################
    * Setup/Teardown
@@ -74,7 +71,7 @@ class InternalNodeFixture : public testing::Test
   SetUp()
   {
     // initialize a leaf node and expected statistics
-    node.reset(BaseNode_t::CreateEmptyNode(kInternalFlag));
+    node.reset(Node_t::CreateEmptyNode(kInternalFlag));
 
     // prepare keys
     if constexpr (std::is_same_v<Key, char*>) {
@@ -112,12 +109,12 @@ class InternalNodeFixture : public testing::Test
    * Utility functions
    *##############################################################################################*/
 
-  BaseNode_t*
+  Node_t*
   PrepareDummyNode(  //
       const size_t child_num,
       const size_t payload_begin = 0)
   {
-    auto dummy_node = BaseNode_t::CreateEmptyNode(kInternalFlag);
+    auto dummy_node = Node_t::CreateEmptyNode(kInternalFlag);
 
     // embeds dummy childrens
     auto offset = kPageSize;
@@ -144,7 +141,7 @@ class InternalNodeFixture : public testing::Test
   ReleaseChildren()
   {
     for (size_t i = 0; i < node->GetSortedCount(); ++i) {
-      delete InternalNode_t::GetChildNode(node.get(), i);
+      delete internal::GetChildNode(node.get(), i);
     }
   }
 
@@ -154,7 +151,7 @@ class InternalNodeFixture : public testing::Test
 
   void
   VerifyInternalNode(  //
-      const BaseNode_t* target_node,
+      const Node_t* target_node,
       const size_t child_num)
   {
     EXPECT_FALSE(target_node->IsLeaf());
@@ -164,12 +161,12 @@ class InternalNodeFixture : public testing::Test
 
   void
   VerifyChildren(  //
-      const BaseNode_t* target_node,
+      const Node_t* target_node,
       const size_t child_num,
-      const std::vector<BaseNode_t*>* expected_children)
+      const std::vector<Node_t*>* expected_children)
   {
     for (size_t i = 0; i < child_num; ++i) {
-      auto child = InternalNode_t::GetChildNode(target_node, i);
+      auto child = internal::GetChildNode(target_node, i);
       if (expected_children != nullptr) {
         EXPECT_TRUE(HaveSameAddress(expected_children->at(i), child));
       }
@@ -178,12 +175,12 @@ class InternalNodeFixture : public testing::Test
 
   void
   VerifyDummyChildren(  //
-      const BaseNode_t* target_node,
+      const Node_t* target_node,
       const size_t child_num,
       const size_t begin_payload)
   {
     for (size_t i = 0; i < child_num; ++i) {
-      auto child = InternalNode_t::GetChildNode(target_node, i);
+      auto child = internal::GetChildNode(target_node, i);
       EXPECT_EQ(begin_payload + i, reinterpret_cast<uintptr_t>(child));
     }
   }
@@ -199,7 +196,7 @@ class InternalNodeFixture : public testing::Test
   void
   VerifyInitialRoot()
   {
-    node.reset(InternalNode_t::CreateInitialRoot());
+    node.reset(internal::CreateInitialRoot<Key, Payload, KeyComp>());
 
     VerifyInternalNode(node.get(), 1);
     VerifyChildren(node.get(), 1, nullptr);
@@ -213,7 +210,7 @@ class InternalNodeFixture : public testing::Test
     node.reset(PrepareDummyNode(kDummyNodeNum));
 
     const size_t left_rec_count = kDummyNodeNum / 2;
-    auto [left_node, right_node] = InternalNode_t::Split(node.get(), left_rec_count);
+    auto [left_node, right_node] = internal::Split(node.get(), left_rec_count);
 
     VerifyInternalNode(left_node, left_rec_count);
     VerifyDummyChildren(left_node, left_rec_count, 0);
@@ -227,11 +224,11 @@ class InternalNodeFixture : public testing::Test
   void
   VerifyMerge()
   {
-    BaseNode_t *sibling_node, *merged_node;
+    Node_t *sibling_node, *merged_node;
     node.reset(PrepareDummyNode(kDummyNodeNum));
     sibling_node = PrepareDummyNode(kDummyNodeNum, kDummyNodeNum);
 
-    merged_node = InternalNode_t::Merge(node.get(), sibling_node);
+    merged_node = internal::Merge(node.get(), sibling_node);
 
     VerifyInternalNode(merged_node, kDummyNodeNum * 2);
     VerifyDummyChildren(merged_node, kDummyNodeNum * 2, 0);
@@ -245,9 +242,9 @@ class InternalNodeFixture : public testing::Test
   {
     auto left_node = PrepareDummyNode(kDummyNodeNum);
     auto right_node = PrepareDummyNode(kDummyNodeNum);
-    std::vector<BaseNode_t*> expected_children = {left_node, right_node};
+    std::vector<Node_t*> expected_children = {left_node, right_node};
 
-    node.reset(InternalNode_t::CreateNewRoot(left_node, right_node));
+    node.reset(internal::CreateNewRoot(left_node, right_node));
 
     VerifyInternalNode(node.get(), 2);
     VerifyChildren(node.get(), 2, &expected_children);
@@ -265,11 +262,11 @@ class InternalNodeFixture : public testing::Test
     auto right_left = PrepareDummyNode(kDummyNodeNum);
     auto right_right = PrepareDummyNode(kDummyNodeNum);
 
-    node.reset(InternalNode_t::CreateNewRoot(init_left, init_right));
-    node.reset(InternalNode_t::NewParentForSplit(node.get(), left_left, left_right, 0));
-    node.reset(InternalNode_t::NewParentForSplit(node.get(), right_left, right_right, 2));
+    node.reset(internal::CreateNewRoot(init_left, init_right));
+    node.reset(internal::NewParentForSplit(node.get(), left_left, left_right, 0));
+    node.reset(internal::NewParentForSplit(node.get(), right_left, right_right, 2));
 
-    std::vector<BaseNode_t*> expected_children = {left_left, left_right, right_left, right_right};
+    std::vector<Node_t*> expected_children = {left_left, left_right, right_left, right_right};
 
     VerifyInternalNode(node.get(), 4);
     VerifyChildren(node.get(), 4, &expected_children);
@@ -290,13 +287,13 @@ class InternalNodeFixture : public testing::Test
     auto right_left = PrepareDummyNode(kDummyNodeNum);
     auto right_right = PrepareDummyNode(kDummyNodeNum);
 
-    node.reset(InternalNode_t::CreateNewRoot(init_left, init_right));
-    node.reset(InternalNode_t::NewParentForSplit(node.get(), left_left, left_right, 0));
-    node.reset(InternalNode_t::NewParentForSplit(node.get(), right_left, right_right, 2));
-    node.reset(InternalNode_t::NewParentForMerge(node.get(), init_left, 0));
-    node.reset(InternalNode_t::NewParentForMerge(node.get(), init_right, 1));
+    node.reset(internal::CreateNewRoot(init_left, init_right));
+    node.reset(internal::NewParentForSplit(node.get(), left_left, left_right, 0));
+    node.reset(internal::NewParentForSplit(node.get(), right_left, right_right, 2));
+    node.reset(internal::NewParentForMerge(node.get(), init_left, 0));
+    node.reset(internal::NewParentForMerge(node.get(), init_right, 1));
 
-    std::vector<BaseNode_t*> expected_children = {init_left, init_right};
+    std::vector<Node_t*> expected_children = {init_left, init_right};
 
     VerifyInternalNode(node.get(), 2);
     VerifyChildren(node.get(), 2, &expected_children);
@@ -362,4 +359,4 @@ TYPED_TEST(InternalNodeFixture, NewParentForMerge_DummyChildren_ParentHasCorrect
   TestFixture::VerifyNewParentForMerge();
 }
 
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component::test

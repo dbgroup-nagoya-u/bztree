@@ -22,7 +22,7 @@
 #include "common.hpp"
 #include "record_iterator.hpp"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component
 {
 /**
  * @brief A class to represent scan results.
@@ -132,4 +132,4 @@ class RecordPage
   }
 };
 
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component

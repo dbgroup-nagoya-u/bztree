@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-#include "bztree/components/status_word.hpp"
+#include "bztree/component/status_word.hpp"
 
 #include "gtest/gtest.h"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component::test
 {
 class StatusWordFixture : public testing::Test
 {
@@ -72,4 +72,4 @@ TEST_F(StatusWordFixture, AddRecordInfo_InitialStatus_AddInfoWithoutSideEffect)
   EXPECT_EQ((kWordLength * 16) + block_size - deleted_size, updated_status.GetLiveDataSize());
 }
 
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component::test

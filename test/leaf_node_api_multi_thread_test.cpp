@@ -22,10 +22,10 @@
 #include <utility>
 #include <vector>
 
-#include "bztree/components/leaf_node.hpp"
+#include "bztree/component/leaf_node_api.hpp"
 #include "gtest/gtest.h"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component::test
 {
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
@@ -47,9 +47,7 @@ class LeafNodeFixture : public testing::Test
   using PayloadComp = typename KeyPayloadPair::PayloadComp;
 
   // define type aliases for simplicity
-  using BaseNode_t = BaseNode<Key, Payload, KeyComp>;
-  using LeafNode_t = LeafNode<Key, Payload, KeyComp>;
-  using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
+  using Node_t = Node<Key, Payload, KeyComp>;
 
   enum WriteType
   {
@@ -90,7 +88,7 @@ class LeafNodeFixture : public testing::Test
   size_t max_record_num;
 
   // a leaf node
-  std::unique_ptr<BaseNode_t> node;
+  std::unique_ptr<Node_t> node;
 
   std::uniform_int_distribution<size_t> id_dist{0, kKeyNumForTest - 2};
 
@@ -106,7 +104,7 @@ class LeafNodeFixture : public testing::Test
   SetUp()
   {
     // initialize a leaf node and expected statistics
-    node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
+    node.reset(Node_t::CreateEmptyNode(kLeafFlag));
 
     // prepare keys
     if constexpr (std::is_same_v<Key, char*>) {
@@ -178,16 +176,16 @@ class LeafNodeFixture : public testing::Test
 
     switch (ops.w_type) {
       case kInsert:
-        return LeafNode_t::Insert(node.get(), key, key_length, payload, payload_length);
+        return leaf::Insert(node.get(), key, key_length, payload, payload_length);
       case kUpdate:
-        return LeafNode_t::Update(node.get(), key, key_length, payload, payload_length);
+        return leaf::Update(node.get(), key, key_length, payload, payload_length);
       case kDelete:
-        return LeafNode_t::Delete(node.get(), key, kKeyLength);
+        return leaf::Delete(node.get(), key, kKeyLength);
       case kWrite:
       case kMixed:
         break;
     }
-    return LeafNode_t::Write(node.get(), key, key_length, payload, payload_length);
+    return leaf::Write(node.get(), key, key_length, payload, payload_length);
   }
 
   Operation
@@ -316,7 +314,7 @@ class LeafNodeFixture : public testing::Test
   {
     Payload payload{};
 
-    const auto rc = LeafNode_t::Read(node.get(), keys[key_id], payload);
+    const auto rc = leaf::Read(node.get(), keys[key_id], payload);
 
     if (expect_fail) {
       EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);
@@ -336,7 +334,7 @@ class LeafNodeFixture : public testing::Test
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
       // initialize a leaf node and expected statistics
-      node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
+      node.reset(Node_t::CreateEmptyNode(kLeafFlag));
 
       auto written_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kWrite);
       for (auto&& id : written_ids) {
@@ -352,7 +350,7 @@ class LeafNodeFixture : public testing::Test
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
       // initialize a leaf node and expected statistics
-      node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
+      node.reset(Node_t::CreateEmptyNode(kLeafFlag));
 
       auto inserted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
       for (auto&& id : inserted_ids) {
@@ -368,7 +366,7 @@ class LeafNodeFixture : public testing::Test
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
       // initialize a leaf node and expected statistics
-      node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
+      node.reset(Node_t::CreateEmptyNode(kLeafFlag));
 
       auto inserted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
       auto updated_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kUpdate);
@@ -391,7 +389,7 @@ class LeafNodeFixture : public testing::Test
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
       // initialize a leaf node and expected statistics
-      node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
+      node.reset(Node_t::CreateEmptyNode(kLeafFlag));
 
       auto inserted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
       auto deleted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kDelete);
@@ -408,7 +406,7 @@ class LeafNodeFixture : public testing::Test
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
       // initialize a leaf node and expected statistics
-      node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
+      node.reset(Node_t::CreateEmptyNode(kLeafFlag));
 
       // insert/update/delete the same key by multi-threads
       RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kMixed);
@@ -492,4 +490,4 @@ TYPED_TEST(LeafNodeFixture, InsertUpdateDelete_MultiThreads_WrittenValuesLineari
   TestFixture::VerifyConcurrentInsertUpdateDelete();
 }
 
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component::test

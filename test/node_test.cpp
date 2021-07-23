@@ -14,24 +14,21 @@
  * limitations under the License.
  */
 
-#include "bztree/components/base_node.hpp"
+#include "bztree/component/node.hpp"
 
 #include <functional>
 #include <memory>
 
-#include "bztree/components/leaf_node.hpp"
+#include "bztree/component/leaf_node_api.hpp"
 #include "gtest/gtest.h"
 
 using std::byte;
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component::test
 {
 using Key = uint64_t;
 using Payload = uint64_t;
-using BaseNode_t = BaseNode<Key, Payload>;
-using LeafNode_t = LeafNode<Key, Payload, std::less<Key>>;
-using NodeReturnCode = BaseNode<Key, Payload>::NodeReturnCode;
-using KeyExistence = BaseNode<Key, Payload>::KeyExistence;
+using Node_t = Node<Key, Payload>;
 
 static constexpr size_t kNodeSize = 256;
 static constexpr size_t kIndexEpoch = 0;
@@ -48,13 +45,13 @@ class BaseNodeFixture : public testing::Test
   Key key_null = 0;          // null key must have 8 bytes to fill a node
   Payload payload_null = 0;  // null payload must have 8 bytes to fill a node
 
-  std::unique_ptr<BaseNode_t> node;
+  std::unique_ptr<Node_t> node;
 
  protected:
   void
   SetUp() override
   {
-    node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
+    node.reset(Node_t::CreateEmptyNode(kLeafFlag));
 
     for (size_t index = 0; index < kKeyNumForTest; index++) {
       keys[index] = index + 1;
@@ -69,36 +66,36 @@ class BaseNodeFixture : public testing::Test
 
   void
   WriteNullKey(  //
-      BaseNode_t* target_node,
+      Node_t* target_node,
       const size_t write_num)
   {
     for (size_t index = 0; index < write_num; ++index) {
-      LeafNode_t::Write(target_node, key_null, kKeyLength, payload_null, kPayloadLength);
+      leaf::Write(target_node, key_null, kKeyLength, payload_null, kPayloadLength);
     }
   }
 
   void
   WriteOrderedKeys(  //
-      BaseNode_t* target_node,
+      Node_t* target_node,
       const size_t begin_index,
       const size_t end_index)
   {
     assert(end_index < kKeyNumForTest);
 
     for (size_t index = begin_index; index <= end_index; ++index) {
-      LeafNode_t::Write(target_node, keys[index], kKeyLength, payloads[index], kPayloadLength);
+      leaf::Write(target_node, keys[index], kKeyLength, payloads[index], kPayloadLength);
     }
   }
 
-  BaseNode_t*
+  Node_t*
   CreateSortedLeafNodeWithOrderedKeys(  //
       const size_t begin_index,
       const size_t end_index)
   {
-    auto tmp_leaf_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
+    auto tmp_leaf_node = Node_t::CreateEmptyNode(kLeafFlag);
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
-    auto [tmp_meta, rec_count] = LeafNode_t::GatherSortedLiveMetadata(tmp_leaf_node);
-    return LeafNode_t::Consolidate(tmp_leaf_node, tmp_meta, rec_count);
+    auto [tmp_meta, rec_count] = leaf::GatherSortedLiveMetadata(tmp_leaf_node);
+    return leaf::Consolidate(tmp_leaf_node, tmp_meta, rec_count);
   }
 };
 
@@ -172,16 +169,16 @@ TEST_F(BaseNodeFixture, SearchSortedMeta_SearchPresentKeyWithOpenedRange_FindNex
 TEST_F(BaseNodeFixture, SearchSortedMeta_SearchNotPresentKey_FindNextIndex)
 {
   // prepare a target node
-  auto tmp_node = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
-  LeafNode_t::Write(tmp_node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
-  LeafNode_t::Write(tmp_node.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
-  LeafNode_t::Write(tmp_node.get(), keys[4], kKeyLength, payloads[4], kPayloadLength);
-  LeafNode_t::Write(tmp_node.get(), keys[5], kKeyLength, payloads[5], kPayloadLength);
-  LeafNode_t::Write(tmp_node.get(), keys[7], kKeyLength, payloads[7], kPayloadLength);
-  LeafNode_t::Write(tmp_node.get(), keys[8], kKeyLength, payloads[8], kPayloadLength);
-  auto [tmp_meta, rec_count] = LeafNode_t::GatherSortedLiveMetadata(tmp_node.get());
+  auto tmp_node = std::unique_ptr<Node_t>(Node_t::CreateEmptyNode(kLeafFlag));
+  leaf::Write(tmp_node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
+  leaf::Write(tmp_node.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
+  leaf::Write(tmp_node.get(), keys[4], kKeyLength, payloads[4], kPayloadLength);
+  leaf::Write(tmp_node.get(), keys[5], kKeyLength, payloads[5], kPayloadLength);
+  leaf::Write(tmp_node.get(), keys[7], kKeyLength, payloads[7], kPayloadLength);
+  leaf::Write(tmp_node.get(), keys[8], kKeyLength, payloads[8], kPayloadLength);
+  auto [tmp_meta, rec_count] = leaf::GatherSortedLiveMetadata(tmp_node.get());
 
-  node.reset(LeafNode_t::Consolidate(tmp_node.get(), tmp_meta, rec_count));
+  node.reset(leaf::Consolidate(tmp_node.get(), tmp_meta, rec_count));
 
   // perform tests
   auto target_index = 3;
@@ -219,4 +216,4 @@ TEST_F(BaseNodeFixture, SearchSortedMeta_SearchOutOfNodeKey_FindBorderIndex)
   EXPECT_EQ(target_index, index);
 }
 
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component::test

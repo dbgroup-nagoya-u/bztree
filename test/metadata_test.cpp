@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-#include "bztree/components/metadata.hpp"
+#include "bztree/component/metadata.hpp"
 
 #include "gtest/gtest.h"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component::test
 {
 class MetadataFixture : public testing::Test
 {
@@ -137,4 +137,4 @@ TEST_F(MetadataFixture, SetDeleteInfo_InitMeta_DeleteWithoutSideEffect)
   EXPECT_FALSE(test_meta.IsFailedRecord(epoch));
 }
 
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component::test

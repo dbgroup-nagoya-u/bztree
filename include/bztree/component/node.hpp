@@ -25,10 +25,10 @@
 #include "metadata.hpp"
 #include "status_word.hpp"
 
-namespace dbgroup::index::bztree
+namespace dbgroup::index::bztree::component
 {
 template <class Key, class Payload, class Compare = std::less<Key>>
-class alignas(kCacheLineSize) BaseNode
+class alignas(kCacheLineSize) Node
 {
  private:
   /*################################################################################################
@@ -49,55 +49,63 @@ class alignas(kCacheLineSize) BaseNode
 
  public:
   /*################################################################################################
-   * Public enum and constants
+   * Public constants
    *##############################################################################################*/
 
-  /**
-   * @brief Return codes for functions in Base/Leaf/InternalNode.
-   *
-   */
-  enum NodeReturnCode
-  {
-    kSuccess = 0,
-    kKeyNotExist,
-    kKeyExist,
-    kScanInProgress,
-    kFrozen,
-    kNoSpace
-  };
+  /// the maximum number of records in a node
+  static constexpr size_t kMaxRecordNum = GetMaxRecordNum<Key, Payload>();
 
-  enum KeyExistence
-  {
-    kExist = 0,
-    kNotExist,
-    kDeleted,
-    kUncertain
+  /*################################################################################################
+   * Public structs to cpmare key & metadata pairs
+   *##############################################################################################*/
+
+  struct MetaRecord {
+    Metadata meta = Metadata{};
+    Key key = Key{};
+
+    constexpr bool
+    operator<(const MetaRecord &obj) const
+    {
+      return Compare{}(this->key, obj.key);
+    }
+
+    constexpr bool
+    operator==(const MetaRecord &obj) const
+    {
+      return !Compare{}(this->key, obj.key) && !Compare{}(obj.key, this->key);
+    }
+
+    constexpr bool
+    operator!=(const MetaRecord &obj) const
+    {
+      return Compare{}(this->key, obj.key) || Compare{}(obj.key, this->key);
+    }
   };
 
   /*################################################################################################
    * Public constructors/destructors
    *##############################################################################################*/
 
-  constexpr BaseNode(const bool is_leaf)
+  constexpr Node(const bool is_leaf)
       : node_size_{kPageSize}, is_leaf_{is_leaf}, sorted_count_{0}, status_{}
   {
   }
 
-  ~BaseNode() = default;
+  ~Node() = default;
 
-  BaseNode(const BaseNode &) = delete;
-  BaseNode &operator=(const BaseNode &) = delete;
-  BaseNode(BaseNode &&) = delete;
-  BaseNode &operator=(BaseNode &&) = delete;
+  Node(const Node &) = delete;
+  Node &operator=(const Node &) = delete;
+  Node(Node &&) = delete;
+  Node &operator=(Node &&) = delete;
 
   /*################################################################################################
    * Public builders
    *##############################################################################################*/
 
-  static BaseNode *
+  static Node *
   CreateEmptyNode(const bool is_leaf)
   {
-    return CallocNew<BaseNode>(kPageSize, is_leaf);
+    return CallocNew<Node>(kPageSize, is_leaf);
   }
 
   /*################################################################################################
@@ -304,7 +312,7 @@ class alignas(kCacheLineSize) BaseNode
    * @brief Freeze this node to prevent concurrent writes/SMOs.
    *
    * @param pmwcas_pool
-   * @return BaseNode::NodeReturnCode
+   * @return Node::NodeReturnCode
    * 1) `kSuccess` if the function successfully freeze this node, or
    * 2) `kFrozen` if this node is already frozen.
    */
@@ -374,4 +382,4 @@ class alignas(kCacheLineSize) BaseNode
   }
 };
 
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component
