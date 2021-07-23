@@ -37,6 +37,7 @@ class BzTree
   using Metadata = component::Metadata;
   using StatusWord = component::StatusWord;
   using Node_t = component::Node<Key, Payload, Compare>;
+  using SortedMetaArray = std::array<Metadata, Node_t::kMaxRecordNum>;
   using LeafNode_t = component::LeafNode<Key, Payload, Compare>;
   using InternalNode_t = component::InternalNode<Key, Payload, Compare>;
   using NodeReturnCode = component::NodeReturnCode;
@@ -46,13 +47,6 @@ class BzTree
   using NodeStack = std::vector<NodeRef, ::dbgroup::memory::STLAlloc<NodeRef>>;
 
  private:
-  /*################################################################################################
-   * Internal constants
-   *##############################################################################################*/
-
-  /// the maximum number of records in a node
-  static constexpr size_t kMaxRecordNum = component::GetMaxRecordNum<Key, Payload>();
-
   /*################################################################################################
    * Internal member variables
    *##############################################################################################*/
@@ -156,7 +150,7 @@ class BzTree
 
   static constexpr size_t
   ComputeOccupiedSize(  //
-      const std::array<Metadata, kMaxRecordNum> &metadata,
+      const SortedMetaArray &metadata,
       const size_t rec_count)
   {
     size_t block_size = 0;
@@ -206,7 +200,7 @@ class BzTree
   SplitLeafNode(  //
       const Node_t *target_node,
       const Key target_key,
-      const std::array<Metadata, kMaxRecordNum> &metadata,
+      const SortedMetaArray &metadata,
       const size_t rec_count)
   {
     const size_t left_rec_count = rec_count / 2;
@@ -328,7 +322,7 @@ class BzTree
       const Key target_key,
       const size_t target_key_length,
       const size_t target_size,
-      const std::array<Metadata, kMaxRecordNum> &target_meta,
+      const SortedMetaArray &target_meta,
       const size_t rec_count)
   {
     /*----------------------------------------------------------------------------------------------

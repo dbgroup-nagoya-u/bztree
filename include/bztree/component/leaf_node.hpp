@@ -30,6 +30,7 @@ template <class Key, class Payload, class Compare>
 class LeafNode
 {
   using Node_t = Node<Key, Payload, Compare>;
+  using SortedMetaArray = std::array<Metadata, Node_t::kMaxRecordNum>;
   using RecordPage_t = RecordPage<Key, Payload>;
 
  private:
@@ -59,13 +60,6 @@ class LeafNode
       return Compare{}(this->key, obj.key) || Compare{}(obj.key, this->key);
     }
   };
-
-  /*################################################################################################
-   * Internal constants
-   *##############################################################################################*/
-
-  /// the maximum number of records in a node
-  static constexpr size_t kMaxRecordNum = GetMaxRecordNum<Key, Payload>();
 
   /*################################################################################################
    * Internal utility functions
@@ -162,7 +156,7 @@ class LeafNode
       size_t offset,
       size_t current_rec_count,
       const Node_t *original_node,
-      const std::array<Metadata, kMaxRecordNum> &metadata,
+      const SortedMetaArray &metadata,
       const size_t begin_id,
       const size_t end_id)
   {
@@ -291,7 +285,7 @@ class LeafNode
       const Node_t *node,
       const std::array<MetaRecord, kMaxUnsortedRecNum> &new_records,
       const size_t new_rec_num,
-      std::array<Metadata, kMaxRecordNum> &arr,
+      SortedMetaArray &arr,
       size_t &count)
   {
     const auto sorted_count = node->GetSortedCount();
@@ -338,7 +332,7 @@ class LeafNode
       const bool begin_closed,
       const Key *end_k,
       const bool end_closed,
-      std::array<Metadata, kMaxRecordNum> &arr,
+      SortedMetaArray &arr,
       size_t &count)
   {
     const auto sorted_count = node->GetSortedCount();
@@ -419,7 +413,7 @@ class LeafNode
     SortUnsortedRecords(node, begin_k, begin_closed, end_k, end_closed, new_records, new_rec_num);
 
     // sort all records by merge sort
-    std::array<Metadata, kMaxRecordNum> metadata;
+    SortedMetaArray metadata;
     size_t count = 0;
     MergeSortedRecords(node, new_records, new_rec_num, begin_k, begin_closed, end_k, end_closed,
                        metadata, count);
@@ -851,7 +845,7 @@ class LeafNode
   static constexpr Node_t *
   Consolidate(  //
       const Node_t *orig_node,
-      const std::array<Metadata, kMaxRecordNum> &metadata,
+      const SortedMetaArray &metadata,
       const size_t rec_count)
   {
     // create a new node and copy records
@@ -866,7 +860,7 @@ class LeafNode
   static constexpr std::pair<Node_t *, Node_t *>
   Split(  //
       const Node_t *orig_node,
-      const std::array<Metadata, kMaxRecordNum> &metadata,
+      const SortedMetaArray &metadata,
       const size_t rec_count,
       const size_t left_rec_count)
   {
@@ -892,10 +886,10 @@ class LeafNode
   static constexpr Node_t *
   Merge(  //
       const Node_t *left_node,
-      const std::array<Metadata, kMaxRecordNum> &left_meta,
+      const SortedMetaArray &left_meta,
       const size_t l_rec_count,
       const Node_t *right_node,
-      const std::array<Metadata, kMaxRecordNum> &right_meta,
+      const SortedMetaArray &right_meta,
       const size_t r_rec_count)
   {
     const auto rec_count = l_rec_count + r_rec_count;
@@ -914,7 +908,7 @@ class LeafNode
    * Public utility functions
    *##############################################################################################*/
 
-  static constexpr std::pair<std::array<Metadata, kMaxRecordNum>, size_t>
+  static constexpr std::pair<SortedMetaArray, size_t>
   GatherSortedLiveMetadata(const Node_t *node)
   {
     // sort records in an unsorted region
@@ -923,7 +917,7 @@ class LeafNode
     SortUnsortedRecords(node, new_records, new_rec_num);
 
     // sort all records by merge sort
-    std::array<Metadata, kMaxRecordNum> results;
+    SortedMetaArray results;
     size_t count = 0;
     MergeSortedRecords(node, new_records, new_rec_num, results, count);
 
