@@ -418,6 +418,8 @@ class LeafNodeFixture : public testing::Test
       // check inserted/updated/deleted records linearly
       for (int64_t index = rec_count - 1; index >= 0; --index) {
         const auto meta = node->GetMetadata(index);
+        if (meta.IsInProgress()) continue;
+
         if (meta.IsVisible()) {
           // an inserted or updated record
           const auto payload = GetPayload(meta);

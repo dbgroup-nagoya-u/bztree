@@ -124,7 +124,7 @@ class InternalNodeFixture : public testing::Test
       dummy_node->SetKey(offset, keys[i], key_length);
 
       // set a corresponding metadata
-      const auto meta = Metadata{}.SetRecordInfo(offset, key_length, key_length + kWordLength);
+      const auto meta = Metadata{offset, key_length, key_length + kWordLength};
       dummy_node->SetMetadata(i, meta);
 
       offset -= offset & (kWordLength - 1);

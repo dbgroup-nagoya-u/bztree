@@ -455,7 +455,7 @@ Write(  //
   // variables and constants shared in Phase 1 & 2
   const auto total_length = key_length + payload_length;
   const auto block_size = _GetAlignedSize<Key, Payload>(total_length);
-  const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
+  const auto in_progress_meta = Metadata{index_epoch, key_length, total_length, true};
   StatusWord cur_status;
   size_t rec_count;
 
@@ -504,7 +504,7 @@ Write(  //
   node->SetKey(offset, key, key_length);
 
   // prepare record metadata for MwCAS
-  const auto inserted_meta = in_progress_meta.SetRecordInfo(offset, key_length, total_length);
+  const auto inserted_meta = in_progress_meta.MakeVisible(offset);
 
   // check conflicts (concurrent SMOs)
   while (true) {
@@ -536,7 +536,7 @@ Insert(  //
   // variables and constants shared in Phase 1 & 2
   const auto total_length = key_length + payload_length;
   const auto block_size = _GetAlignedSize<Key, Payload>(total_length);
-  const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
+  const auto in_progress_meta = Metadata{index_epoch, key_length, total_length, true};
   StatusWord cur_status;
   size_t rec_count;
 
@@ -583,7 +583,7 @@ Insert(  //
   node->SetKey(offset, key, key_length);
 
   // prepare record metadata for MwCAS
-  const auto inserted_meta = in_progress_meta.SetRecordInfo(offset, key_length, total_length);
+  const auto inserted_meta = in_progress_meta.MakeVisible(offset);
 
   while (true) {
     // check concurrent SMOs
@@ -630,7 +630,7 @@ Update(  //
   // variables and constants shared in Phase 1 & 2
   const auto total_length = key_length + payload_length;
   const auto block_size = _GetAlignedSize<Key, Payload>(total_length);
-  const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
+  const auto in_progress_meta = Metadata{index_epoch, key_length, total_length, true};
   StatusWord cur_status;
   size_t rec_count, target_index = 0;
   auto uniqueness = KeyExistence::kNotExist;
@@ -692,7 +692,7 @@ Update(  //
   node->SetKey(offset, key, key_length);
 
   // prepare record metadata for MwCAS
-  const auto inserted_meta = in_progress_meta.SetRecordInfo(offset, key_length, total_length);
+  const auto inserted_meta = in_progress_meta.MakeVisible(offset);
 
   while (true) {
     // check conflicts (concurrent SMOs)
@@ -732,7 +732,7 @@ Delete(  //
     const size_t index_epoch = 1)
 {
   // variables and constants
-  const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
+  const auto in_progress_meta = Metadata{index_epoch, key_length, key_length, true};
   StatusWord cur_status;
   size_t rec_count, target_index = 0;
   auto uniqueness = KeyExistence::kNotExist;
@@ -797,7 +797,7 @@ Delete(  //
   node->SetKey(offset, key, key_length);
 
   // prepare record metadata for MwCAS
-  const auto deleted_meta = in_progress_meta.SetDeleteInfo(offset, key_length, key_length);
+  const auto deleted_meta = in_progress_meta.MakeInvisible(offset);
 
   while (true) {
     // check concurrent SMOs
