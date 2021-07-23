@@ -132,18 +132,15 @@ CanCASUpdate()
 }
 
 template <class Key>
-constexpr size_t
-AlignOffset(const size_t offset)
+constexpr void
+AlignOffset(size_t &offset)
 {
-  if constexpr (std::is_same_v<Key, char *>) {
+  if constexpr (std::is_same_v<Key, char *> || sizeof(Key) % kWordLength != 0) {
     const auto align_size = offset & (kWordLength - 1);
     if (align_size > 0) {
-      return offset - align_size;
+      offset -= align_size;
     }
-  } else if constexpr (sizeof(Key) % kWordLength != 0) {
-    return offset - (kWordLength - (sizeof(Key) % kWordLength));
   }
-  return offset;
 }
 
 /**

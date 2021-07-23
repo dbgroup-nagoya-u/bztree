@@ -120,8 +120,8 @@ class InternalNodeFixture : public testing::Test
     auto offset = kPageSize;
     for (size_t i = 0; i < child_num; ++i) {
       // set a key and a dummy payload
-      offset = dummy_node->SetPayload(offset, payload_begin + i, kWordLength);
-      offset = dummy_node->SetKey(offset, keys[i], key_length);
+      dummy_node->SetPayload(offset, payload_begin + i, kWordLength);
+      dummy_node->SetKey(offset, keys[i], key_length);
 
       // set a corresponding metadata
       const auto meta = Metadata{}.SetRecordInfo(offset, key_length, key_length + kWordLength);

@@ -226,9 +226,9 @@ class alignas(kCacheLineSize) Node
     CastAddress<std::atomic<Metadata> *>(meta_array_ + index)->store(new_meta, mo_relax);
   }
 
-  constexpr size_t
+  constexpr void
   SetKey(  //
-      size_t offset,
+      size_t &offset,
       const Key key,
       const size_t key_length)
   {
@@ -239,13 +239,12 @@ class alignas(kCacheLineSize) Node
       offset -= sizeof(Key);
       memcpy(ShiftAddress(this, offset), &key, sizeof(Key));
     }
-    return offset;
   }
 
   template <class T>
-  constexpr size_t
+  constexpr void
   SetPayload(  //
-      size_t offset,
+      size_t &offset,
       const T payload,
       const size_t payload_length)
   {
@@ -256,7 +255,6 @@ class alignas(kCacheLineSize) Node
       offset -= sizeof(T);
       memcpy(ShiftAddress(this, offset), &payload, sizeof(T));
     }
-    return offset;
   }
 
   void

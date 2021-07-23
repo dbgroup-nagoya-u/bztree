@@ -127,31 +127,28 @@ _GetAlignedSize(const size_t block_size)
 }
 
 template <class Key, class Payload, class Compare>
-size_t
+void
 _CopyRecord(  //
     Node<Key, Payload, Compare> *target_node,
-    size_t offset,
+    size_t &offset,
     const Node<Key, Payload, Compare> *original_node,
     const Metadata meta)
 {
   const auto total_length = meta.GetTotalLength();
   if constexpr (CanCASUpdate<Payload>()) {
-    offset = AlignOffset<Key>(offset) - total_length;
-  } else {
-    offset -= total_length;
+    AlignOffset<Key>(offset);
   }
+  offset -= total_length;
 
   memcpy(ShiftAddress(target_node, offset), original_node->GetKeyAddr(meta), total_length);
-
-  return offset;
 }
 
 template <class Key, class Payload, class Compare>
-constexpr size_t
+constexpr void
 _CopyRecords(  //
     Node<Key, Payload, Compare> *target_node,
-    size_t offset,
     size_t current_rec_count,
+    size_t &offset,
     const Node<Key, Payload, Compare> *original_node,
     const MetaArray<Key, Payload, Compare> &metadata,
     const size_t begin_id,
@@ -160,12 +157,11 @@ _CopyRecords(  //
   for (size_t i = begin_id; i < end_id; ++i, ++current_rec_count) {
     // copy a record
     const auto meta = metadata[i];
-    offset = _CopyRecord(target_node, offset, original_node, meta);
+    _CopyRecord(target_node, offset, original_node, meta);
     // copy metadata
     const auto new_meta = meta.UpdateOffset(offset);
     target_node->SetMetadata(current_rec_count, new_meta);
   }
-  return offset;
 }
 
 template <class Key, class Payload, class Compare>
@@ -504,8 +500,8 @@ Write(  //
 
   // insert a record
   auto offset = kPageSize - cur_status.GetBlockSize();
-  offset = node->SetPayload(offset, payload, payload_length);
-  offset = node->SetKey(offset, key, key_length);
+  node->SetPayload(offset, payload, payload_length);
+  node->SetKey(offset, key, key_length);
 
   // prepare record metadata for MwCAS
   const auto inserted_meta = in_progress_meta.SetRecordInfo(offset, key_length, total_length);
@@ -583,8 +579,8 @@ Insert(  //
 
   // insert a record
   auto offset = kPageSize - cur_status.GetBlockSize();
-  offset = node->SetPayload(offset, payload, payload_length);
-  offset = node->SetKey(offset, key, key_length);
+  node->SetPayload(offset, payload, payload_length);
+  node->SetKey(offset, key, key_length);
 
   // prepare record metadata for MwCAS
   const auto inserted_meta = in_progress_meta.SetRecordInfo(offset, key_length, total_length);
@@ -692,8 +688,8 @@ Update(  //
 
   // insert a record
   auto offset = kPageSize - cur_status.GetBlockSize();
-  offset = node->SetPayload(offset, payload, payload_length);
-  offset = node->SetKey(offset, key, key_length);
+  node->SetPayload(offset, payload, payload_length);
+  node->SetKey(offset, key, key_length);
 
   // prepare record metadata for MwCAS
   const auto inserted_meta = in_progress_meta.SetRecordInfo(offset, key_length, total_length);
@@ -798,7 +794,7 @@ Delete(  //
 
   // insert a null record
   auto offset = kPageSize - cur_status.GetBlockSize();
-  offset = node->SetKey(offset, key, key_length);
+  node->SetKey(offset, key, key_length);
 
   // prepare record metadata for MwCAS
   const auto deleted_meta = in_progress_meta.SetDeleteInfo(offset, key_length, key_length);
@@ -848,14 +844,14 @@ Consolidate(  //
 {
   // create a new node and copy records
   auto new_node = Node<Key, Payload, Compare>::CreateEmptyNode(true);
-  const auto offset = _CopyRecords(new_node, kPageSize, 0, orig_node, metadata, 0, rec_count);
+  auto offset = kPageSize;
+  _CopyRecords(new_node, 0, offset, orig_node, metadata, 0, rec_count);
   new_node->SetSortedCount(rec_count);
   if constexpr (CanCASUpdate<Payload>()) {
-    new_node->SetStatus(
-        StatusWord{}.AddRecordInfo(rec_count, kPageSize - AlignOffset<Key>(offset), 0));
-  } else {
-    new_node->SetStatus(StatusWord{}.AddRecordInfo(rec_count, kPageSize - offset, 0));
+    AlignOffset<Key>(offset);
   }
+  new_node->SetStatus(StatusWord{}.AddRecordInfo(rec_count, kPageSize - offset, 0));
+
   return new_node;
 }
 
@@ -871,25 +867,23 @@ Split(  //
 
   // create a split left node
   auto left_node = Node<Key, Payload, Compare>::CreateEmptyNode(true);
-  auto offset = _CopyRecords(left_node, kPageSize, 0, orig_node, metadata, 0, left_rec_count);
+  auto offset = kPageSize;
+  _CopyRecords(left_node, 0, offset, orig_node, metadata, 0, left_rec_count);
   left_node->SetSortedCount(left_rec_count);
   if constexpr (CanCASUpdate<Payload>()) {
-    left_node->SetStatus(
-        StatusWord{}.AddRecordInfo(left_rec_count, kPageSize - AlignOffset<Key>(offset), 0));
-  } else {
-    left_node->SetStatus(StatusWord{}.AddRecordInfo(left_rec_count, kPageSize - offset, 0));
+    AlignOffset<Key>(offset);
   }
+  left_node->SetStatus(StatusWord{}.AddRecordInfo(left_rec_count, kPageSize - offset, 0));
 
   // create a split right node
   auto right_node = Node<Key, Payload, Compare>::CreateEmptyNode(true);
-  offset = _CopyRecords(right_node, kPageSize, 0, orig_node, metadata, left_rec_count, rec_count);
+  offset = kPageSize;
+  _CopyRecords(right_node, 0, offset, orig_node, metadata, left_rec_count, rec_count);
   right_node->SetSortedCount(right_rec_count);
   if constexpr (CanCASUpdate<Payload>()) {
-    right_node->SetStatus(
-        StatusWord{}.AddRecordInfo(right_rec_count, kPageSize - AlignOffset<Key>(offset), 0));
-  } else {
-    right_node->SetStatus(StatusWord{}.AddRecordInfo(right_rec_count, kPageSize - offset, 0));
+    AlignOffset<Key>(offset);
   }
+  right_node->SetStatus(StatusWord{}.AddRecordInfo(right_rec_count, kPageSize - offset, 0));
 
   return {left_node, right_node};
 }
@@ -908,15 +902,14 @@ Merge(  //
 
   // create a merged node
   auto new_node = Node<Key, Payload, Compare>::CreateEmptyNode(true);
-  auto offset = _CopyRecords(new_node, kPageSize, 0, left_node, left_meta, 0, l_rec_count);
-  offset = _CopyRecords(new_node, offset, l_rec_count, right_node, right_meta, 0, r_rec_count);
+  auto offset = kPageSize;
+  _CopyRecords(new_node, 0, offset, left_node, left_meta, 0, l_rec_count);
+  _CopyRecords(new_node, l_rec_count, offset, right_node, right_meta, 0, r_rec_count);
   new_node->SetSortedCount(rec_count);
   if constexpr (CanCASUpdate<Payload>()) {
-    new_node->SetStatus(
-        StatusWord{}.AddRecordInfo(rec_count, kPageSize - AlignOffset<Key>(offset), 0));
-  } else {
-    new_node->SetStatus(StatusWord{}.AddRecordInfo(rec_count, kPageSize - offset, 0));
+    AlignOffset<Key>(offset);
   }
+  new_node->SetStatus(StatusWord{}.AddRecordInfo(rec_count, kPageSize - offset, 0));
 
   return new_node;
 }
