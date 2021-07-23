@@ -48,7 +48,6 @@ class LeafNodeFixture : public testing::Test
 
   // define type aliases for simplicity
   using Node_t = Node<Key, Payload, KeyComp>;
-  using LeafNode_t = LeafNode<Key, Payload, KeyComp>;
 
   enum WriteType
   {
@@ -177,16 +176,16 @@ class LeafNodeFixture : public testing::Test
 
     switch (ops.w_type) {
       case kInsert:
-        return LeafNode_t::Insert(node.get(), key, key_length, payload, payload_length);
+        return leaf::Insert(node.get(), key, key_length, payload, payload_length);
       case kUpdate:
-        return LeafNode_t::Update(node.get(), key, key_length, payload, payload_length);
+        return leaf::Update(node.get(), key, key_length, payload, payload_length);
       case kDelete:
-        return LeafNode_t::Delete(node.get(), key, kKeyLength);
+        return leaf::Delete(node.get(), key, kKeyLength);
       case kWrite:
       case kMixed:
         break;
     }
-    return LeafNode_t::Write(node.get(), key, key_length, payload, payload_length);
+    return leaf::Write(node.get(), key, key_length, payload, payload_length);
   }
 
   Operation
@@ -315,7 +314,7 @@ class LeafNodeFixture : public testing::Test
   {
     Payload payload{};
 
-    const auto rc = LeafNode_t::Read(node.get(), keys[key_id], payload);
+    const auto rc = leaf::Read(node.get(), keys[key_id], payload);
 
     if (expect_fail) {
       EXPECT_EQ(NodeReturnCode::kKeyNotExist, rc);

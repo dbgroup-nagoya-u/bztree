@@ -44,7 +44,6 @@ class InternalNodeFixture : public testing::Test
 
   // define type aliases for simplicity
   using Node_t = Node<Key, Payload, KeyComp>;
-  using LeafNode_t = LeafNode<Key, Payload, KeyComp>;
   using InternalNode_t = InternalNode<Key, Payload, KeyComp>;
 
   // constant values for testing

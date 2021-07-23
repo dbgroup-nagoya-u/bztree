@@ -38,7 +38,6 @@ class BzTree
   using StatusWord = component::StatusWord;
   using Node_t = component::Node<Key, Payload, Compare>;
   using SortedMetaArray = std::array<Metadata, Node_t::kMaxRecordNum>;
-  using LeafNode_t = component::LeafNode<Key, Payload, Compare>;
   using InternalNode_t = component::InternalNode<Key, Payload, Compare>;
   using NodeReturnCode = component::NodeReturnCode;
   using RecordPage_t = component::RecordPage<Key, Payload>;
@@ -176,7 +175,7 @@ class BzTree
     if (target_node->Freeze() != NodeReturnCode::kSuccess) return;
 
     // gather sorted live metadata of a targetnode, and check whether split/merge is required
-    const auto [metadata, rec_count] = LeafNode_t::GatherSortedLiveMetadata(target_node);
+    const auto [metadata, rec_count] = leaf::GatherSortedLiveMetadata(target_node);
     const auto target_size = ComputeOccupiedSize(metadata, rec_count);
     if (target_size > kPageSize - kMinFreeSpaceSize) {
       SplitLeafNode(target_node, key, metadata, rec_count);
@@ -188,7 +187,7 @@ class BzTree
     }
 
     // install a new node
-    const auto new_node = LeafNode_t::Consolidate(target_node, metadata, rec_count);
+    const auto new_node = leaf::Consolidate(target_node, metadata, rec_count);
     auto trace = TraceTargetNode(key, target_node);
     InstallNewNode(trace, new_node, key, target_node);
 
@@ -236,7 +235,7 @@ class BzTree
 
     // create new nodes
     const auto [left_node, right_node] =
-        LeafNode_t::Split(target_node, metadata, rec_count, left_rec_count);
+        leaf::Split(target_node, metadata, rec_count, left_rec_count);
     const auto new_parent =
         InternalNode_t::NewParentForSplit(parent, left_node, right_node, target_index);
 
@@ -365,16 +364,16 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    const auto [sib_meta, sib_rec_count] = LeafNode_t::GatherSortedLiveMetadata(sib_node);
+    const auto [sib_meta, sib_rec_count] = leaf::GatherSortedLiveMetadata(sib_node);
     Node_t *merged_node;
     size_t deleted_index;
     if (sib_is_left) {
       merged_node =
-          LeafNode_t::Merge(sib_node, sib_meta, sib_rec_count, target_node, target_meta, rec_count);
+          leaf::Merge(sib_node, sib_meta, sib_rec_count, target_node, target_meta, rec_count);
       deleted_index = target_index - 1;
     } else {
       merged_node =
-          LeafNode_t::Merge(target_node, target_meta, rec_count, sib_node, sib_meta, sib_rec_count);
+          leaf::Merge(target_node, target_meta, rec_count, sib_node, sib_meta, sib_rec_count);
       deleted_index = target_index;
     }
     const auto new_parent = InternalNode_t::NewParentForMerge(parent, merged_node, deleted_index);
@@ -556,14 +555,14 @@ class BzTree
 
     if constexpr (std::is_same_v<Payload, char *>) {
       Payload payload = nullptr;
-      const auto rc = LeafNode_t::Read(leaf_node, key, payload);
+      const auto rc = leaf::Read(leaf_node, key, payload);
       if (rc == NodeReturnCode::kSuccess) {
         return std::make_pair(ReturnCode::kSuccess, std::unique_ptr<char>(std::move(payload)));
       }
       return std::make_pair(ReturnCode::kKeyNotExist, std::unique_ptr<char>(std::move(payload)));
     } else {
       Payload payload{};
-      const auto rc = LeafNode_t::Read(leaf_node, key, payload);
+      const auto rc = leaf::Read(leaf_node, key, payload);
       if (rc == NodeReturnCode::kSuccess) {
         return std::make_pair(ReturnCode::kSuccess, std::move(payload));
       }
@@ -584,7 +583,7 @@ class BzTree
     const auto leaf_node =
         (begin_key == nullptr) ? SearchLeftEdgeLeaf() : SearchLeafNode(*begin_key, begin_is_closed);
 
-    LeafNode_t::Scan(leaf_node, begin_key, begin_is_closed, end_key, end_is_closed, page);
+    leaf::Scan(leaf_node, begin_key, begin_is_closed, end_key, end_is_closed, page);
   }
 
   /*################################################################################################
@@ -603,7 +602,7 @@ class BzTree
     while (true) {
       auto leaf_node = SearchLeafNode(key, true);
       const auto rc =
-          LeafNode_t::Write(leaf_node, key, key_length, payload, payload_length, index_epoch_);
+          leaf::Write(leaf_node, key, key_length, payload, payload_length, index_epoch_);
 
       if (rc == NodeReturnCode::kSuccess) {
         break;
@@ -626,7 +625,7 @@ class BzTree
     while (true) {
       auto leaf_node = SearchLeafNode(key, true);
       const auto rc =
-          LeafNode_t::Insert(leaf_node, key, key_length, payload, payload_length, index_epoch_);
+          leaf::Insert(leaf_node, key, key_length, payload, payload_length, index_epoch_);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyExist) {
         if (rc == NodeReturnCode::kKeyExist) return ReturnCode::kKeyExist;
@@ -650,7 +649,7 @@ class BzTree
     while (true) {
       auto leaf_node = SearchLeafNode(key, true);
       const auto rc =
-          LeafNode_t::Update(leaf_node, key, key_length, payload, payload_length, index_epoch_);
+          leaf::Update(leaf_node, key, key_length, payload, payload_length, index_epoch_);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
         if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
@@ -671,7 +670,7 @@ class BzTree
 
     while (true) {
       auto leaf_node = SearchLeafNode(key, true);
-      const auto rc = LeafNode_t::Delete(leaf_node, key, key_length);
+      const auto rc = leaf::Delete(leaf_node, key, key_length);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
         if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
