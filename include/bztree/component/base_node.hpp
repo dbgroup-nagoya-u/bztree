@@ -56,6 +56,33 @@ class alignas(kCacheLineSize) Node
   static constexpr size_t kMaxRecordNum = GetMaxRecordNum<Key, Payload>();
 
   /*################################################################################################
+   * Public structs to cpmare key & metadata pairs
+   *##############################################################################################*/
+
+  struct MetaRecord {
+    Metadata meta = Metadata{};
+    Key key = Key{};
+
+    constexpr bool
+    operator<(const MetaRecord &obj) const
+    {
+      return Compare{}(this->key, obj.key);
+    }
+
+    constexpr bool
+    operator==(const MetaRecord &obj) const
+    {
+      return !Compare{}(this->key, obj.key) && !Compare{}(obj.key, this->key);
+    }
+
+    constexpr bool
+    operator!=(const MetaRecord &obj) const
+    {
+      return Compare{}(this->key, obj.key) || Compare{}(obj.key, this->key);
+    }
+  };
+
+  /*################################################################################################
    * Public constructors/destructors
    *##############################################################################################*/
 

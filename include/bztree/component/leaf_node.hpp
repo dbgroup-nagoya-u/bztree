@@ -30,37 +30,11 @@ template <class Key, class Payload, class Compare>
 class LeafNode
 {
   using Node_t = Node<Key, Payload, Compare>;
+  using MetaRecord = typename Node_t::MetaRecord;
   using SortedMetaArray = std::array<Metadata, Node_t::kMaxRecordNum>;
   using RecordPage_t = RecordPage<Key, Payload>;
 
  private:
-  /*################################################################################################
-   * Internal structs to cpmare key & metadata pairs
-   *##############################################################################################*/
-
-  struct MetaRecord {
-    Metadata meta = Metadata{};
-    Key key = Key{};
-
-    constexpr bool
-    operator<(const MetaRecord &obj) const
-    {
-      return Compare{}(this->key, obj.key);
-    }
-
-    constexpr bool
-    operator==(const MetaRecord &obj) const
-    {
-      return !Compare{}(this->key, obj.key) && !Compare{}(obj.key, this->key);
-    }
-
-    constexpr bool
-    operator!=(const MetaRecord &obj) const
-    {
-      return Compare{}(this->key, obj.key) || Compare{}(obj.key, this->key);
-    }
-  };
-
   /*################################################################################################
    * Internal utility functions
    *##############################################################################################*/
