@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "bztree/components/leaf_node.hpp"
+#include "bztree/component/leaf_node.hpp"
 
 #include <functional>
 #include <memory>

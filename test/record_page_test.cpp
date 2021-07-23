@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "bztree/components/record_page.hpp"
+#include "bztree/component/record_page.hpp"
 
 #include <memory>
 #include <utility>

@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-#include "bztree/components/internal_node.hpp"
+#include "bztree/component/internal_node.hpp"
 
 #include <memory>
 
-#include "bztree/components/leaf_node.hpp"
+#include "bztree/component/leaf_node.hpp"
 #include "gtest/gtest.h"
 
 namespace dbgroup::index::bztree::component::test

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "bztree/components/metadata.hpp"
+#include "bztree/component/metadata.hpp"
 
 #include "gtest/gtest.h"
 

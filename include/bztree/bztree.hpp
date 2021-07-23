@@ -23,9 +23,9 @@
 #include <utility>
 #include <vector>
 
-#include "components/internal_node.hpp"
-#include "components/leaf_node.hpp"
-#include "components/record_page.hpp"
+#include "component/internal_node.hpp"
+#include "component/leaf_node.hpp"
+#include "component/record_page.hpp"
 #include "memory/epoch_based_gc.hpp"
 #include "utility.hpp"
 

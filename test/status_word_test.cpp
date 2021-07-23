@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "bztree/components/status_word.hpp"
+#include "bztree/component/status_word.hpp"
 
 #include "gtest/gtest.h"
 
