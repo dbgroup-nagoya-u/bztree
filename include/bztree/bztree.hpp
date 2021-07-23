@@ -536,6 +536,7 @@ class BzTree
   explicit BzTree(const size_t gc_interval_microsec = 100000)
       : index_epoch_{1}, root_{InternalNode_t::CreateInitialRoot()}, gc_{gc_interval_microsec}
   {
+    gc_.StartGC();
   }
 
   ~BzTree() { DeleteChildren(GetRoot()); }
