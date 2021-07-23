@@ -130,7 +130,7 @@ class InternalNodeFixture : public testing::Test
       offset -= offset & (kWordLength - 1);
     }
 
-    const auto status = StatusWord{}.AddRecordInfo(child_num, kPageSize - offset, 0);
+    const auto status = StatusWord{child_num, kPageSize - offset};
     dummy_node->SetStatus(status);
     dummy_node->SetSortedCount(kDummyNodeNum);
 

@@ -850,7 +850,7 @@ Consolidate(  //
   if constexpr (CanCASUpdate<Payload>()) {
     AlignOffset<Key>(offset);
   }
-  new_node->SetStatus(StatusWord{}.AddRecordInfo(rec_count, kPageSize - offset, 0));
+  new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
 
   return new_node;
 }
@@ -873,7 +873,7 @@ Split(  //
   if constexpr (CanCASUpdate<Payload>()) {
     AlignOffset<Key>(offset);
   }
-  left_node->SetStatus(StatusWord{}.AddRecordInfo(left_rec_count, kPageSize - offset, 0));
+  left_node->SetStatus(StatusWord{left_rec_count, kPageSize - offset});
 
   // create a split right node
   auto right_node = Node<Key, Payload, Compare>::CreateEmptyNode(true);
@@ -883,7 +883,7 @@ Split(  //
   if constexpr (CanCASUpdate<Payload>()) {
     AlignOffset<Key>(offset);
   }
-  right_node->SetStatus(StatusWord{}.AddRecordInfo(right_rec_count, kPageSize - offset, 0));
+  right_node->SetStatus(StatusWord{right_rec_count, kPageSize - offset});
 
   return {left_node, right_node};
 }
@@ -909,7 +909,7 @@ Merge(  //
   if constexpr (CanCASUpdate<Payload>()) {
     AlignOffset<Key>(offset);
   }
-  new_node->SetStatus(StatusWord{}.AddRecordInfo(rec_count, kPageSize - offset, 0));
+  new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
 
   return new_node;
 }

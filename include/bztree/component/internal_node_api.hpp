@@ -155,7 +155,7 @@ CreateInitialRoot()
 
   // set a new header
   root->SetSortedCount(1);
-  root->SetStatus(StatusWord{}.AddRecordInfo(1, kWordLength, 0));
+  root->SetStatus(StatusWord{1, kWordLength});
 
   return root;
 }
@@ -176,7 +176,7 @@ Split(  //
 
   AlignOffset<Key>(offset);
   left_node->SetSortedCount(left_rec_count);
-  left_node->SetStatus(StatusWord{}.AddRecordInfo(left_rec_count, kPageSize - offset, 0));
+  left_node->SetStatus(StatusWord{left_rec_count, kPageSize - offset});
 
   // create a split right node
   auto right_node = Node<Key, Payload, Compare>::CreateEmptyNode(false);
@@ -185,7 +185,7 @@ Split(  //
 
   AlignOffset<Key>(offset);
   right_node->SetSortedCount(right_rec_count);
-  right_node->SetStatus(StatusWord{}.AddRecordInfo(right_rec_count, kPageSize - offset, 0));
+  right_node->SetStatus(StatusWord{right_rec_count, kPageSize - offset});
 
   return {left_node, right_node};
 }
@@ -208,7 +208,7 @@ Merge(  //
 
   AlignOffset<Key>(offset);
   merged_node->SetSortedCount(rec_count);
-  merged_node->SetStatus(StatusWord{}.AddRecordInfo(rec_count, kPageSize - offset, 0));
+  merged_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
 
   return merged_node;
 }
@@ -229,7 +229,7 @@ CreateNewRoot(  //
   // set a new header
   AlignOffset<Key>(offset);
   new_root->SetSortedCount(2);
-  new_root->SetStatus(StatusWord{}.AddRecordInfo(2, kPageSize - offset, 0));
+  new_root->SetStatus(StatusWord{2, kPageSize - offset});
 
   return new_root;
 }
@@ -264,7 +264,7 @@ NewParentForSplit(  //
   // set an updated header
   AlignOffset<Key>(offset);
   new_parent->SetSortedCount(rec_count + 1);
-  new_parent->SetStatus(StatusWord{}.AddRecordInfo(rec_count + 1, kPageSize - offset, 0));
+  new_parent->SetStatus(StatusWord{rec_count + 1, kPageSize - offset});
 
   return new_parent;
 }
@@ -296,7 +296,7 @@ NewParentForMerge(  //
 
   AlignOffset<Key>(offset);
   new_parent->SetSortedCount(rec_count - 1);
-  new_parent->SetStatus(StatusWord{}.AddRecordInfo(rec_count - 1, kPageSize - offset, 0));
+  new_parent->SetStatus(StatusWord{rec_count - 1, kPageSize - offset});
 
   return new_parent;
 }

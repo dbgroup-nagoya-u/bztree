@@ -47,6 +47,17 @@ class alignas(kWordLength) StatusWord
   {
   }
 
+  constexpr StatusWord(  //
+      const size_t record_count,
+      const size_t block_size)
+      : record_count_{record_count},
+        block_size_{block_size},
+        deleted_size_{0},
+        frozen_{0},
+        control_region_{0}
+  {
+  }
+
   ~StatusWord() = default;
 
   constexpr StatusWord(const StatusWord &) = default;
