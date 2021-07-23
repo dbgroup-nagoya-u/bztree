@@ -16,14 +16,10 @@
 
 #pragma once
 
+#include <array>
 #include <functional>
-#include <list>
-#include <map>
 #include <memory>
-#include <string>
-#include <tuple>
 #include <utility>
-#include <vector>
 
 #include "base_node.hpp"
 #include "record_page.hpp"
