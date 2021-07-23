@@ -104,7 +104,7 @@ class LeafNodeFixture : public testing::Test
   SetUp()
   {
     // initialize a leaf node and expected statistics
-    node.reset(Node_t::CreateEmptyNode(kLeafFlag));
+    node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
 
     // prepare keys
     if constexpr (std::is_same_v<Key, char*>) {
@@ -334,7 +334,7 @@ class LeafNodeFixture : public testing::Test
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
       // initialize a leaf node and expected statistics
-      node.reset(Node_t::CreateEmptyNode(kLeafFlag));
+      node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
 
       auto written_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kWrite);
       for (auto&& id : written_ids) {
@@ -350,7 +350,7 @@ class LeafNodeFixture : public testing::Test
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
       // initialize a leaf node and expected statistics
-      node.reset(Node_t::CreateEmptyNode(kLeafFlag));
+      node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
 
       auto inserted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
       for (auto&& id : inserted_ids) {
@@ -366,7 +366,7 @@ class LeafNodeFixture : public testing::Test
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
       // initialize a leaf node and expected statistics
-      node.reset(Node_t::CreateEmptyNode(kLeafFlag));
+      node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
 
       auto inserted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
       auto updated_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kUpdate);
@@ -389,7 +389,7 @@ class LeafNodeFixture : public testing::Test
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
       // initialize a leaf node and expected statistics
-      node.reset(Node_t::CreateEmptyNode(kLeafFlag));
+      node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
 
       auto inserted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
       auto deleted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kDelete);
@@ -406,7 +406,7 @@ class LeafNodeFixture : public testing::Test
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
       // initialize a leaf node and expected statistics
-      node.reset(Node_t::CreateEmptyNode(kLeafFlag));
+      node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
 
       // insert/update/delete the same key by multi-threads
       RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kMixed);

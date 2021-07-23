@@ -87,7 +87,7 @@ class LeafNodeFixture : public testing::Test
   SetUp()
   {
     // initialize a leaf node and expected statistics
-    node.reset(Node_t::CreateEmptyNode(kLeafFlag));
+    node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
     expected_record_count = 0;
     expected_block_size = 0;
     expected_deleted_block_size = 0;
@@ -501,7 +501,7 @@ class LeafNodeFixture : public testing::Test
     WriteOrderedKeys(left_begin, left_end);
     auto [left_meta, left_rec_count] = leaf::GatherSortedLiveMetadata(node.get());
 
-    auto right_node = std::unique_ptr<Node_t>(Node_t::CreateEmptyNode(kLeafFlag));
+    auto right_node = std::unique_ptr<Node_t>(CallocNew<Node_t>(kPageSize, kLeafFlag));
     for (size_t id = right_begin; id <= right_end; ++id) {
       leaf::Write(right_node.get(), keys[id], key_length, payloads[id], payload_length);
     }

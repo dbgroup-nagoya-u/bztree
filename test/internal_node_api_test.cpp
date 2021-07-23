@@ -71,7 +71,7 @@ class InternalNodeFixture : public testing::Test
   SetUp()
   {
     // initialize a leaf node and expected statistics
-    node.reset(Node_t::CreateEmptyNode(kInternalFlag));
+    node.reset(CallocNew<Node_t>(kPageSize, kInternalFlag));
 
     // prepare keys
     if constexpr (std::is_same_v<Key, char*>) {
@@ -114,7 +114,7 @@ class InternalNodeFixture : public testing::Test
       const size_t child_num,
       const size_t payload_begin = 0)
   {
-    auto dummy_node = Node_t::CreateEmptyNode(kInternalFlag);
+    auto dummy_node = CallocNew<Node_t>(kPageSize, kInternalFlag);
 
     // embeds dummy childrens
     auto offset = kPageSize;

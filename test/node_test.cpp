@@ -51,7 +51,7 @@ class BaseNodeFixture : public testing::Test
   void
   SetUp() override
   {
-    node.reset(Node_t::CreateEmptyNode(kLeafFlag));
+    node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
 
     for (size_t index = 0; index < kKeyNumForTest; index++) {
       keys[index] = index + 1;
@@ -92,7 +92,7 @@ class BaseNodeFixture : public testing::Test
       const size_t begin_index,
       const size_t end_index)
   {
-    auto tmp_leaf_node = Node_t::CreateEmptyNode(kLeafFlag);
+    auto tmp_leaf_node = CallocNew<Node_t>(kPageSize, kLeafFlag);
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
     auto [tmp_meta, rec_count] = leaf::GatherSortedLiveMetadata(tmp_leaf_node);
     return leaf::Consolidate(tmp_leaf_node, tmp_meta, rec_count);
@@ -169,7 +169,7 @@ TEST_F(BaseNodeFixture, SearchSortedMeta_SearchPresentKeyWithOpenedRange_FindNex
 TEST_F(BaseNodeFixture, SearchSortedMeta_SearchNotPresentKey_FindNextIndex)
 {
   // prepare a target node
-  auto tmp_node = std::unique_ptr<Node_t>(Node_t::CreateEmptyNode(kLeafFlag));
+  auto tmp_node = std::unique_ptr<Node_t>(CallocNew<Node_t>(kPageSize, kLeafFlag));
   leaf::Write(tmp_node.get(), keys[1], kKeyLength, payloads[1], kPayloadLength);
   leaf::Write(tmp_node.get(), keys[2], kKeyLength, payloads[2], kPayloadLength);
   leaf::Write(tmp_node.get(), keys[4], kKeyLength, payloads[4], kPayloadLength);

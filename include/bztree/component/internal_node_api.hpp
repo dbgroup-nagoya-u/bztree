@@ -24,10 +24,15 @@
 namespace dbgroup::index::bztree::internal
 {
 using component::AlignOffset;
+using component::CallocNew;
 using component::Metadata;
 using component::Node;
 using component::ReadMwCASField;
 using component::StatusWord;
+
+constexpr bool kLeafFlag = true;
+
+constexpr bool kInternalFlag = false;
 
 /*################################################################################################
  * Internal utility functions
@@ -144,8 +149,8 @@ template <class Key, class Payload, class Compare>
 constexpr Node<Key, Payload, Compare> *
 CreateInitialRoot()
 {
-  auto root = Node<Key, Payload, Compare>::CreateEmptyNode(false);
-  const auto leaf_node = Node<Key, Payload, Compare>::CreateEmptyNode(true);
+  auto root = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kInternalFlag);
+  const auto leaf_node = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kLeafFlag);
 
   // set an inital leaf node
   auto offset = kPageSize;
@@ -169,7 +174,7 @@ Split(  //
   const auto right_rec_count = rec_count - left_rec_count;
 
   // create a split left node
-  auto left_node = Node<Key, Payload, Compare>::CreateEmptyNode(false);
+  auto left_node = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kInternalFlag);
   auto offset = kPageSize;
   _CopySortedRecords(left_node, 0, offset, target_node, 0, left_rec_count);
 
@@ -178,7 +183,7 @@ Split(  //
   left_node->SetStatus(StatusWord{left_rec_count, kPageSize - offset});
 
   // create a split right node
-  auto right_node = Node<Key, Payload, Compare>::CreateEmptyNode(false);
+  auto right_node = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kInternalFlag);
   offset = kPageSize;
   _CopySortedRecords(right_node, 0, offset, target_node, left_rec_count, rec_count);
 
@@ -200,7 +205,7 @@ Merge(  //
   const auto rec_count = left_rec_count + right_rec_count;
 
   // create a merged node
-  auto merged_node = Node<Key, Payload, Compare>::CreateEmptyNode(false);
+  auto merged_node = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kInternalFlag);
   auto offset = kPageSize;
   _CopySortedRecords(merged_node, 0, offset, left_node, 0, left_rec_count);
   _CopySortedRecords(merged_node, left_rec_count, offset, right_node, 0, right_rec_count);
@@ -219,7 +224,7 @@ CreateNewRoot(  //
     const Node<Key, Payload, Compare> *right_child)
 {
   auto offset = kPageSize;
-  auto new_root = Node<Key, Payload, Compare>::CreateEmptyNode(false);
+  auto new_root = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kInternalFlag);
 
   // insert children
   _InsertChild(new_root, left_child, 0, offset);
@@ -242,7 +247,7 @@ NewParentForSplit(  //
     const size_t split_index)
 {
   const auto rec_count = old_parent->GetSortedCount();
-  auto new_parent = Node<Key, Payload, Compare>::CreateEmptyNode(false);
+  auto new_parent = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kInternalFlag);
   auto offset = kPageSize;
 
   if (split_index > 0) {
@@ -276,7 +281,7 @@ NewParentForMerge(  //
     const size_t del_index)
 {
   const auto rec_count = old_parent->GetSortedCount();
-  auto new_parent = Node<Key, Payload, Compare>::CreateEmptyNode(false);
+  auto new_parent = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kInternalFlag);
   auto offset = kPageSize;
 
   if (del_index > 0) {
