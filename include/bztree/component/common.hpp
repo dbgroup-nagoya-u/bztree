@@ -58,31 +58,9 @@ template <class T>
 constexpr T
 Cast(const void *addr)
 {
-  if constexpr (std::is_same_v<T, char *>) {
-    return static_cast<T>(const_cast<void *>(addr));
-  } else {
-    return *static_cast<T *>(const_cast<void *>(addr));
-  }
-}
-
-/**
- * @brief Cast a memory address to a target pointer.
- *
- * @tparam T a target class
- * @param addr an original address
- * @return a pointer of \c T
- */
-template <class T>
-constexpr T
-CastAddress(const void *addr)
-{
   static_assert(std::is_pointer_v<T>);
 
-  if constexpr (std::is_const_v<T>) {
-    return static_cast<T>(addr);
-  } else {
-    return static_cast<T>(const_cast<void *>(addr));
-  }
+  return static_cast<T>(const_cast<void *>(addr));
 }
 
 /*--------------------------------------------------------------------------------------------------
@@ -99,12 +77,6 @@ using ::dbgroup::memory::STLAlloc;
 
 /// Header length in bytes
 constexpr size_t kHeaderLength = 2 * kWordLength;
-
-/// a flag to indicate creating leaf nodes
-constexpr bool kLeafFlag = true;
-
-/// a flag to indicate creating internal nodes
-constexpr bool kInternalFlag = false;
 
 template <class Key, class Payload>
 constexpr size_t
@@ -156,7 +128,7 @@ template <class Compare, class Key>
 constexpr bool
 IsEqual(const Key &obj_1, const Key &obj_2)
 {
-  return !(Compare{}(obj_1, obj_2) || Compare{}(obj_2, obj_1));
+  return !Compare{}(obj_1, obj_2) && !Compare{}(obj_2, obj_1);
 }
 
 /**
@@ -209,12 +181,6 @@ constexpr void *
 ShiftAddress(const void *ptr, const size_t offset)
 {
   return static_cast<std::byte *>(const_cast<void *>(ptr)) + offset;
-}
-
-constexpr bool
-HaveSameAddress(const void *a, const void *b)
-{
-  return a == b;
 }
 
 }  // namespace dbgroup::index::bztree::component

@@ -147,7 +147,7 @@ _CopyRecord(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr void
+void
 _CopyRecords(  //
     Node<Key, Payload, Compare> *target_node,
     size_t current_rec_count,
@@ -180,7 +180,7 @@ _HasSpace(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr void
+void
 _SortUnsortedRecords(  //
     const Node<Key, Payload, Compare> *node,
     UnsortedMeta<Key, Payload, Compare> &arr,
@@ -220,7 +220,7 @@ _SortUnsortedRecords(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr void
+void
 _SortUnsortedRecords(  //
     const Node<Key, Payload, Compare> *node,
     const Key *begin_key,
@@ -267,7 +267,7 @@ _SortUnsortedRecords(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr void
+void
 _MergeSortedRecords(  //
     const Node<Key, Payload, Compare> *node,
     const UnsortedMeta<Key, Payload, Compare> &new_records,
@@ -311,7 +311,7 @@ _MergeSortedRecords(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr void
+void
 _MergeSortedRecords(  //
     const Node<Key, Payload, Compare> *node,
     const UnsortedMeta<Key, Payload, Compare> &new_records,
@@ -369,7 +369,7 @@ _MergeSortedRecords(  //
  *##############################################################################################*/
 
 template <class Key, class Payload, class Compare>
-constexpr NodeReturnCode
+NodeReturnCode
 Read(  //
     const Node<Key, Payload, Compare> *node,
     const Key key,
@@ -387,7 +387,7 @@ Read(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr void
+void
 Scan(  //
     const Node<Key, Payload, Compare> *node,
     const Key *begin_k,
@@ -446,7 +446,7 @@ Scan(  //
  *##############################################################################################*/
 
 template <class Key, class Payload, class Compare>
-constexpr NodeReturnCode
+NodeReturnCode
 Write(  //
     Node<Key, Payload, Compare> *node,
     const Key key,
@@ -527,7 +527,7 @@ Write(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr NodeReturnCode
+NodeReturnCode
 Insert(  //
     Node<Key, Payload, Compare> *node,
     const Key key,
@@ -621,7 +621,7 @@ Insert(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr NodeReturnCode
+NodeReturnCode
 Update(  //
     Node<Key, Payload, Compare> *node,
     const Key key,
@@ -727,7 +727,7 @@ Update(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr NodeReturnCode
+NodeReturnCode
 Delete(  //
     Node<Key, Payload, Compare> *node,
     const Key key,
@@ -839,7 +839,7 @@ Delete(  //
  *##############################################################################################*/
 
 template <class Key, class Payload, class Compare>
-constexpr Node<Key, Payload, Compare> *
+Node<Key, Payload, Compare> *
 Consolidate(  //
     const Node<Key, Payload, Compare> *orig_node,
     const MetaArray<Key, Payload, Compare> &metadata,
@@ -859,7 +859,7 @@ Consolidate(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr std::pair<Node<Key, Payload, Compare> *, Node<Key, Payload, Compare> *>
+std::pair<Node<Key, Payload, Compare> *, Node<Key, Payload, Compare> *>
 Split(  //
     const Node<Key, Payload, Compare> *orig_node,
     const MetaArray<Key, Payload, Compare> &metadata,
@@ -892,7 +892,7 @@ Split(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr Node<Key, Payload, Compare> *
+Node<Key, Payload, Compare> *
 Merge(  //
     const Node<Key, Payload, Compare> *left_node,
     const MetaArray<Key, Payload, Compare> &left_meta,
@@ -922,7 +922,7 @@ Merge(  //
  *##############################################################################################*/
 
 template <class Key, class Payload, class Compare>
-constexpr std::pair<MetaArray<Key, Payload, Compare>, size_t>
+std::pair<MetaArray<Key, Payload, Compare>, size_t>
 GatherSortedLiveMetadata(const Node<Key, Payload, Compare> *node)
 {
   // sort records in an unsorted region

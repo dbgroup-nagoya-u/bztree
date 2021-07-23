@@ -60,8 +60,8 @@ class RecordPage
 
   RecordPage(const RecordPage&) = delete;
   RecordPage& operator=(const RecordPage&) = delete;
-  constexpr RecordPage(RecordPage&&) = default;
-  constexpr RecordPage& operator=(RecordPage&&) = default;
+  RecordPage(RecordPage&&) = delete;
+  RecordPage& operator=(RecordPage&&) = delete;
 
   /*################################################################################################
    * Public getters/setters
@@ -71,9 +71,9 @@ class RecordPage
   GetLastKey() const
   {
     if constexpr (std::is_same_v<Key, char*>) {
-      return reinterpret_cast<Key>(last_key_addr_);
+      return Cast<Key>(last_key_addr_);
     } else {
-      return *reinterpret_cast<Key*>(last_key_addr_);
+      return *Cast<Key*>(last_key_addr_);
     }
   }
 
@@ -93,7 +93,7 @@ class RecordPage
    * Public utility functions
    *##############################################################################################*/
 
-  constexpr RecordIterator_t
+  RecordIterator_t
   begin() const
   {
     if (this->empty()) return this->end();

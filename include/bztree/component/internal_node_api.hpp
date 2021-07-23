@@ -39,7 +39,7 @@ constexpr bool kInternalFlag = false;
  *##############################################################################################*/
 
 template <class Key, class Payload, class Compare>
-constexpr void
+void
 _SetChild(  //
     Node<Key, Payload, Compare> *node,
     const Key key,
@@ -55,7 +55,7 @@ _SetChild(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr void
+void
 _InsertChild(  //
     Node<Key, Payload, Compare> *target_node,
     const Node<Key, Payload, Compare> *child_node,
@@ -70,7 +70,7 @@ _InsertChild(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr void
+void
 _InsertChild(  //
     Node<Key, Payload, Compare> *target_node,
     const Node<Key, Payload, Compare> *child_node,
@@ -87,7 +87,7 @@ _InsertChild(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr void
+void
 _CopySortedRecords(  //
     Node<Key, Payload, Compare> *target_node,
     size_t record_count,
@@ -132,7 +132,7 @@ _CopySortedRecords(  //
  *##############################################################################################*/
 
 template <class Key, class Payload, class Compare>
-constexpr Node<Key, Payload, Compare> *
+Node<Key, Payload, Compare> *
 GetChildNode(  //
     const Node<Key, Payload, Compare> *node,
     const size_t index)
@@ -146,7 +146,7 @@ GetChildNode(  //
  *##############################################################################################*/
 
 template <class Key, class Payload, class Compare>
-constexpr Node<Key, Payload, Compare> *
+Node<Key, Payload, Compare> *
 CreateInitialRoot()
 {
   auto root = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kInternalFlag);
@@ -165,7 +165,7 @@ CreateInitialRoot()
 }
 
 template <class Key, class Payload, class Compare>
-constexpr std::pair<Node<Key, Payload, Compare> *, Node<Key, Payload, Compare> *>
+std::pair<Node<Key, Payload, Compare> *, Node<Key, Payload, Compare> *>
 Split(  //
     const Node<Key, Payload, Compare> *target_node,
     const size_t left_rec_count)
@@ -195,7 +195,7 @@ Split(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr Node<Key, Payload, Compare> *
+Node<Key, Payload, Compare> *
 Merge(  //
     const Node<Key, Payload, Compare> *left_node,
     const Node<Key, Payload, Compare> *right_node)
@@ -218,7 +218,7 @@ Merge(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr Node<Key, Payload, Compare> *
+Node<Key, Payload, Compare> *
 CreateNewRoot(  //
     const Node<Key, Payload, Compare> *left_child,
     const Node<Key, Payload, Compare> *right_child)
@@ -239,7 +239,7 @@ CreateNewRoot(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr Node<Key, Payload, Compare> *
+Node<Key, Payload, Compare> *
 NewParentForSplit(  //
     const Node<Key, Payload, Compare> *old_parent,
     const Node<Key, Payload, Compare> *left_node,
@@ -274,7 +274,7 @@ NewParentForSplit(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr Node<Key, Payload, Compare> *
+Node<Key, Payload, Compare> *
 NewParentForMerge(  //
     const Node<Key, Payload, Compare> *old_parent,
     const Node<Key, Payload, Compare> *merged_node,

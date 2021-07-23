@@ -88,7 +88,7 @@ class RecordIterator
     return {GetKey(), GetPayload()};
   }
 
-  constexpr void
+  void
   operator++()
   {
     current_addr_ += GetKeyLength() + GetPayloadLength();
@@ -129,9 +129,9 @@ class RecordIterator
   GetKey() const
   {
     if constexpr (std::is_same_v<Key, char*>) {
-      return reinterpret_cast<Key>(current_addr_);
+      return Cast<Key>(current_addr_);
     } else {
-      return *reinterpret_cast<Key*>(current_addr_);
+      return *Cast<Key*>(current_addr_);
     }
   }
 
@@ -142,9 +142,9 @@ class RecordIterator
   GetPayload() const
   {
     if constexpr (std::is_same_v<Payload, char*>) {
-      return reinterpret_cast<Payload>(current_addr_ + GetKeyLength());
+      return Cast<Payload>(current_addr_ + GetKeyLength());
     } else {
-      return *reinterpret_cast<Payload*>(current_addr_ + GetKeyLength());
+      return *Cast<Payload*>(current_addr_ + GetKeyLength());
     }
   }
 

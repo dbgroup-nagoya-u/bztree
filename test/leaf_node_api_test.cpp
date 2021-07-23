@@ -23,7 +23,7 @@
 
 #include "gtest/gtest.h"
 
-namespace dbgroup::index::bztree::component::test
+namespace dbgroup::index::bztree::leaf::test
 {
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
@@ -44,8 +44,8 @@ class LeafNodeFixture : public testing::Test
   using PayloadComp = typename KeyPayloadPair::PayloadComp;
 
   // define type aliases for simplicity
-  using Node_t = Node<Key, Payload, KeyComp>;
-  using RecordPage_t = RecordPage<Key, Payload>;
+  using Node_t = component::Node<Key, Payload, KeyComp>;
+  using RecordPage_t = component::RecordPage<Key, Payload>;
 
  protected:
   /*################################################################################################
@@ -270,7 +270,7 @@ class LeafNodeFixture : public testing::Test
   NodeIsFull()
   {
     const auto expected_occupied_size =
-        kHeaderLength + (expected_record_count * kWordLength) + expected_block_size;
+        component::kHeaderLength + (expected_record_count * kWordLength) + expected_block_size;
     return expected_record_count >= max_record_num
            || kPageSize - expected_occupied_size < kWordLength + key_length;
   }
@@ -1006,4 +1006,4 @@ TYPED_TEST(LeafNodeFixture, Merge_LeftSiblingNode_NodesHaveCorrectKeyPayloads)
     TestFixture::VerifyRead(id, id);
   }
 }
-}  // namespace dbgroup::index::bztree::component::test
+}  // namespace dbgroup::index::bztree::leaf::test

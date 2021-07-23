@@ -21,7 +21,7 @@
 #include "bztree/component/leaf_node_api.hpp"
 #include "gtest/gtest.h"
 
-namespace dbgroup::index::bztree::component::test
+namespace dbgroup::index::bztree::internal::test
 {
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
@@ -43,7 +43,7 @@ class InternalNodeFixture : public testing::Test
   using PayloadComp = typename KeyPayloadPair::PayloadComp;
 
   // define type aliases for simplicity
-  using Node_t = Node<Key, Payload, KeyComp>;
+  using Node_t = component::Node<Key, Payload, KeyComp>;
 
   // constant values for testing
   static constexpr size_t kKeyNumForTest = 1024;
@@ -92,7 +92,7 @@ class InternalNodeFixture : public testing::Test
 
     // set a record length and its maximum number
     record_length = 2 * kWordLength;
-    max_record_num = (kPageSize - kHeaderLength) / (record_length + kWordLength);
+    max_record_num = (kPageSize - component::kHeaderLength) / (record_length + kWordLength);
   }
 
   void
@@ -168,7 +168,7 @@ class InternalNodeFixture : public testing::Test
     for (size_t i = 0; i < child_num; ++i) {
       auto child = internal::GetChildNode(target_node, i);
       if (expected_children != nullptr) {
-        EXPECT_TRUE(HaveSameAddress(expected_children->at(i), child));
+        EXPECT_TRUE(expected_children->at(i) == child);
       }
     }
   }
@@ -359,4 +359,4 @@ TYPED_TEST(InternalNodeFixture, NewParentForMerge_DummyChildren_ParentHasCorrect
   TestFixture::VerifyNewParentForMerge();
 }
 
-}  // namespace dbgroup::index::bztree::component::test
+}  // namespace dbgroup::index::bztree::internal::test

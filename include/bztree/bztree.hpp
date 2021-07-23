@@ -62,13 +62,13 @@ class BzTree
    * Internal utility functions
    *##############################################################################################*/
 
-  constexpr Node_t *
+  Node_t *
   GetRoot()
   {
     return component::ReadMwCASField<Node_t *>(&root_);
   }
 
-  constexpr Node_t *
+  Node_t *
   SearchLeafNode(  //
       const Key key,
       const bool range_is_closed)
@@ -82,7 +82,7 @@ class BzTree
     return current_node;
   }
 
-  constexpr Node_t *
+  Node_t *
   SearchLeftEdgeLeaf()
   {
     auto current_node = GetRoot();
@@ -93,7 +93,7 @@ class BzTree
     return current_node;
   }
 
-  constexpr NodeStack
+  NodeStack
   TraceTargetNode(  //
       const Key key,
       const Node_t *target_node)
@@ -127,7 +127,7 @@ class BzTree
     return internal_node->GetSortedCount() < kMinSortedRecNum;
   }
 
-  static constexpr std::pair<Node_t *, bool>
+  static std::pair<Node_t *, bool>
   GetSiblingNode(  //
       Node_t *parent_node,
       const size_t target_index,
@@ -164,7 +164,7 @@ class BzTree
    * Internal structure modification functoins
    *##############################################################################################*/
 
-  constexpr void
+  void
   ConsolidateLeafNode(  //
       Node_t *target_node,
       const Key key,
@@ -194,7 +194,7 @@ class BzTree
     gc_.AddGarbage(target_node);
   }
 
-  constexpr void
+  void
   SplitLeafNode(  //
       const Node_t *target_node,
       const Key target_key,
@@ -244,7 +244,7 @@ class BzTree
     gc_.AddGarbage(parent);
   }
 
-  constexpr void
+  void
   SplitInternalNode(  //
       Node_t *target_node,
       const Key target_key)
@@ -314,7 +314,7 @@ class BzTree
     if (parent != target_node) gc_.AddGarbage(parent);
   }
 
-  constexpr bool
+  bool
   MergeLeafNodes(  //
       const Node_t *target_node,
       const Key target_key,
@@ -390,7 +390,7 @@ class BzTree
     return true;
   }
 
-  constexpr void
+  void
   MergeInternalNodes(  //
       Node_t *target_node,
       const Key target_key,
@@ -463,7 +463,7 @@ class BzTree
     }
   }
 
-  constexpr void
+  void
   InstallNewNode(  //
       NodeStack &trace,
       Node_t *new_node,
@@ -479,7 +479,7 @@ class BzTree
 
         // prepare installing nodes
         auto [old_node, index] = trace.back();
-        if (!HaveSameAddress(old_node, target_node)) return;
+        if (old_node != target_node) return;
         trace.pop_back();
         auto parent_node = trace.back().first;
 
@@ -499,7 +499,7 @@ class BzTree
          *----------------------------------------------------------------------------------------*/
 
         const auto old_node = trace.back().first;
-        if (!HaveSameAddress(old_node, target_node)) return;
+        if (old_node != target_node) return;
         trace.pop_back();
         desc.AddMwCASTarget(&root_, old_node, new_node);
       }
@@ -510,7 +510,7 @@ class BzTree
     }
   }
 
-  constexpr static void
+  static void
   DeleteChildren(Node_t *node)
   {
     if (!node->IsLeaf()) {
@@ -547,7 +547,7 @@ class BzTree
    * Public read APIs
    *##############################################################################################*/
 
-  constexpr auto
+  auto
   Read(const Key key)
   {
     const auto guard = gc_.CreateEpochGuard();
@@ -571,7 +571,7 @@ class BzTree
     }
   }
 
-  constexpr void
+  void
   Scan(  //
       RecordPage_t &page,
       const Key *begin_key = nullptr,
@@ -591,7 +591,7 @@ class BzTree
    * Public write APIs
    *##############################################################################################*/
 
-  constexpr ReturnCode
+  ReturnCode
   Write(  //
       const Key key,
       const Payload payload,
@@ -614,7 +614,7 @@ class BzTree
     return ReturnCode::kSuccess;
   }
 
-  constexpr ReturnCode
+  ReturnCode
   Insert(  //
       const Key key,
       const Payload payload,
@@ -638,7 +638,7 @@ class BzTree
     return ReturnCode::kSuccess;
   }
 
-  constexpr ReturnCode
+  ReturnCode
   Update(  //
       const Key key,
       const Payload payload,
@@ -662,7 +662,7 @@ class BzTree
     return ReturnCode::kSuccess;
   }
 
-  constexpr ReturnCode
+  ReturnCode
   Delete(  //
       const Key key,
       const size_t key_length = sizeof(Key))

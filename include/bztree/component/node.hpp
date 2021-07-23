@@ -120,7 +120,7 @@ class alignas(kCacheLineSize) Node
     return status_;
   }
 
-  constexpr StatusWord
+  StatusWord
   GetStatusWordProtected() const
   {
     return ReadMwCASField<StatusWord>(&status_);
@@ -132,19 +132,33 @@ class alignas(kCacheLineSize) Node
     return meta_array_[index];
   }
 
-  constexpr Metadata
+  Metadata
   GetMetadataProtected(const size_t index) const
   {
     return ReadMwCASField<Metadata>(&meta_array_[index]);
   }
 
+  constexpr auto
+  GetKeyAddr(const Metadata meta) const
+  {
+    if constexpr (std::is_pointer_v<Key>) {
+      return Cast<Key>(ShiftAddress(this, meta.GetOffset()));
+    } else {
+      return Cast<Key *>(ShiftAddress(this, meta.GetOffset()));
+    }
+  }
+
   constexpr Key
   GetKey(const Metadata meta) const
   {
-    return Cast<Key>(GetKeyAddr(meta));
+    if constexpr (std::is_pointer_v<Key>) {
+      return GetKeyAddr(meta);
+    } else {
+      return *GetKeyAddr(meta);
+    }
   }
 
-  constexpr void
+  void
   CopyKey(  //
       const Metadata meta,
       Key &out_key) const
@@ -160,18 +174,12 @@ class alignas(kCacheLineSize) Node
   }
 
   constexpr void *
-  GetKeyAddr(const Metadata meta) const
-  {
-    return ShiftAddress(this, meta.GetOffset());
-  }
-
-  constexpr void *
   GetPayloadAddr(const Metadata meta) const
   {
     return ShiftAddress(this, meta.GetOffset() + meta.GetKeyLength());
   }
 
-  constexpr void
+  void
   CopyPayload(  //
       const Metadata meta,
       Payload &out_payload) const
@@ -188,19 +196,19 @@ class alignas(kCacheLineSize) Node
     }
   }
 
-  void
+  constexpr void
   SetSortedCount(const size_t sorted_count)
   {
     sorted_count_ = sorted_count;
   }
 
-  void
+  constexpr void
   SetStatus(const StatusWord status)
   {
     status_ = status;
   }
 
-  void
+  constexpr void
   SetMetadata(  //
       const size_t index,
       const Metadata new_meta)
@@ -213,10 +221,10 @@ class alignas(kCacheLineSize) Node
       const size_t index,
       const Metadata new_meta)
   {
-    CastAddress<std::atomic<Metadata> *>(meta_array_ + index)->store(new_meta, mo_relax);
+    reinterpret_cast<std::atomic<Metadata> *>(meta_array_ + index)->store(new_meta, mo_relax);
   }
 
-  constexpr void
+  void
   SetKey(  //
       size_t &offset,
       const Key key,
@@ -232,7 +240,7 @@ class alignas(kCacheLineSize) Node
   }
 
   template <class T>
-  constexpr void
+  void
   SetPayload(  //
       size_t &offset,
       const T payload,
@@ -247,7 +255,7 @@ class alignas(kCacheLineSize) Node
     }
   }
 
-  void
+  constexpr void
   SetStatusForMwCAS(  //
       MwCASDescriptor &desc,
       const StatusWord old_status,
@@ -256,7 +264,7 @@ class alignas(kCacheLineSize) Node
     desc.AddMwCASTarget(&status_, old_status, new_status);
   }
 
-  void
+  constexpr void
   SetMetadataForMwCAS(  //
       MwCASDescriptor &desc,
       const size_t index,
@@ -281,7 +289,7 @@ class alignas(kCacheLineSize) Node
   }
 
   template <class T>
-  void
+  constexpr void
   SetPayloadForMwCAS(  //
       MwCASDescriptor &desc,
       const Metadata meta,
@@ -304,7 +312,7 @@ class alignas(kCacheLineSize) Node
    * 1) `kSuccess` if the function successfully freeze this node, or
    * 2) `kFrozen` if this node is already frozen.
    */
-  constexpr NodeReturnCode
+  NodeReturnCode
   Freeze()
   {
     bool mwcas_success;
@@ -332,7 +340,7 @@ class alignas(kCacheLineSize) Node
    * @param comp
    * @return std::pair<KeyExistence, size_t>
    */
-  constexpr std::pair<KeyExistence, size_t>
+  std::pair<KeyExistence, size_t>
   SearchSortedMetadata(  //
       const Key key,
       const bool range_is_closed) const
@@ -345,7 +353,7 @@ class alignas(kCacheLineSize) Node
 
     while (begin_index <= end_index && index < sorted_count) {
       const auto meta = GetMetadataProtected(index);
-      const auto index_key = Cast<Key>(GetKeyAddr(meta));
+      const auto index_key = GetKey(meta);
       const auto index_key_length = meta.GetKeyLength();
 
       if (index_key_length == 0 || Compare{}(key, index_key)) {

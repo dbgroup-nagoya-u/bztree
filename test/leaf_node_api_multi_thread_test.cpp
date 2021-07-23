@@ -25,7 +25,7 @@
 #include "bztree/component/leaf_node_api.hpp"
 #include "gtest/gtest.h"
 
-namespace dbgroup::index::bztree::component::test
+namespace dbgroup::index::bztree::leaf::test
 {
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
@@ -47,7 +47,7 @@ class LeafNodeFixture : public testing::Test
   using PayloadComp = typename KeyPayloadPair::PayloadComp;
 
   // define type aliases for simplicity
-  using Node_t = Node<Key, Payload, KeyComp>;
+  using Node_t = component::Node<Key, Payload, KeyComp>;
 
   enum WriteType
   {
@@ -492,4 +492,4 @@ TYPED_TEST(LeafNodeFixture, InsertUpdateDelete_MultiThreads_WrittenValuesLineari
   TestFixture::VerifyConcurrentInsertUpdateDelete();
 }
 
-}  // namespace dbgroup::index::bztree::component::test
+}  // namespace dbgroup::index::bztree::leaf::test
