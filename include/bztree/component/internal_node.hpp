@@ -27,7 +27,7 @@ template <class Key, class Payload, class Compare = std::less<Key>>
 class InternalNode
 {
  private:
-  using BaseNode_t = BaseNode<Key, Payload, Compare>;
+  using Node_t = Node<Key, Payload, Compare>;
 
   /*################################################################################################
    * Internal utility functions
@@ -42,20 +42,20 @@ class InternalNode
     return offset;
   }
 
-  static constexpr BaseNode_t *
+  static constexpr Node_t *
   GetChildAddrProtected(  //
-      const BaseNode_t *node,
+      const Node_t *node,
       const Metadata meta)
   {
-    return ReadMwCASField<BaseNode_t *>(node->GetPayloadAddr(meta));
+    return ReadMwCASField<Node_t *>(node->GetPayloadAddr(meta));
   }
 
   static constexpr size_t
   SetChild(  //
-      BaseNode_t *node,
+      Node_t *node,
       const Key key,
       const size_t key_length,
-      const BaseNode_t *child_addr,
+      const Node_t *child_addr,
       size_t offset)
   {
     offset = node->SetPayload(AlignOffset(offset), child_addr, kWordLength);
@@ -67,8 +67,8 @@ class InternalNode
 
   static constexpr size_t
   InsertChild(  //
-      BaseNode_t *target_node,
-      const BaseNode_t *child_node,
+      Node_t *target_node,
+      const Node_t *child_node,
       const size_t target_index,
       size_t offset)
   {
@@ -85,11 +85,11 @@ class InternalNode
 
   static constexpr size_t
   InsertChild(  //
-      BaseNode_t *target_node,
-      const BaseNode_t *child_node,
+      Node_t *target_node,
+      const Node_t *child_node,
       const size_t target_index,
       size_t offset,
-      const BaseNode_t *orig_node,
+      const Node_t *orig_node,
       const size_t orig_index)
   {
     const auto meta = orig_node->GetMetadata(orig_index);
@@ -103,10 +103,10 @@ class InternalNode
 
   static constexpr size_t
   CopySortedRecords(  //
-      BaseNode_t *target_node,
+      Node_t *target_node,
       size_t record_count,
       size_t offset,
-      const BaseNode_t *orig_node,
+      const Node_t *orig_node,
       const size_t begin_index,
       const size_t end_index)
   {
@@ -146,9 +146,9 @@ class InternalNode
    * Public getters/setters
    *##############################################################################################*/
 
-  static constexpr BaseNode_t *
+  static constexpr Node_t *
   GetChildNode(  //
-      const BaseNode_t *node,
+      const Node_t *node,
       const size_t index)
   {
     const auto meta = node->GetMetadata(index);
@@ -159,11 +159,11 @@ class InternalNode
    * Public structure modification operations
    *##############################################################################################*/
 
-  static constexpr BaseNode_t *
+  static constexpr Node_t *
   CreateInitialRoot()
   {
-    auto root = BaseNode_t::CreateEmptyNode(kInternalFlag);
-    const auto leaf_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
+    auto root = Node_t::CreateEmptyNode(kInternalFlag);
+    const auto leaf_node = Node_t::CreateEmptyNode(kLeafFlag);
 
     // set an inital leaf node
     root->SetPayload(kPageSize, leaf_node, kWordLength);
@@ -176,23 +176,23 @@ class InternalNode
     return root;
   }
 
-  static constexpr std::pair<BaseNode_t *, BaseNode_t *>
+  static constexpr std::pair<Node_t *, Node_t *>
   Split(  //
-      const BaseNode_t *target_node,
+      const Node_t *target_node,
       const size_t left_rec_count)
   {
     const auto rec_count = target_node->GetSortedCount();
     const auto right_rec_count = rec_count - left_rec_count;
 
     // create a split left node
-    auto left_node = BaseNode_t::CreateEmptyNode(kInternalFlag);
+    auto left_node = Node_t::CreateEmptyNode(kInternalFlag);
     auto offset = CopySortedRecords(left_node, 0, kPageSize, target_node, 0, left_rec_count);
     left_node->SetSortedCount(left_rec_count);
     left_node->SetStatus(
         StatusWord{}.AddRecordInfo(left_rec_count, kPageSize - AlignOffset(offset), 0));
 
     // create a split right node
-    auto right_node = BaseNode_t::CreateEmptyNode(kInternalFlag);
+    auto right_node = Node_t::CreateEmptyNode(kInternalFlag);
     offset = CopySortedRecords(right_node, 0, kPageSize, target_node, left_rec_count, rec_count);
     right_node->SetSortedCount(right_rec_count);
     right_node->SetStatus(
@@ -201,17 +201,17 @@ class InternalNode
     return {left_node, right_node};
   }
 
-  static constexpr BaseNode_t *
+  static constexpr Node_t *
   Merge(  //
-      const BaseNode_t *left_node,
-      const BaseNode_t *right_node)
+      const Node_t *left_node,
+      const Node_t *right_node)
   {
     const auto left_rec_count = left_node->GetSortedCount();
     const auto right_rec_count = right_node->GetSortedCount();
     const auto rec_count = left_rec_count + right_rec_count;
 
     // create a merged node
-    auto merged_node = BaseNode_t::CreateEmptyNode(kInternalFlag);
+    auto merged_node = Node_t::CreateEmptyNode(kInternalFlag);
     auto offset = CopySortedRecords(merged_node, 0, kPageSize, left_node, 0, left_rec_count);
     offset = CopySortedRecords(merged_node, left_rec_count, offset, right_node, 0, right_rec_count);
     merged_node->SetSortedCount(rec_count);
@@ -221,13 +221,13 @@ class InternalNode
     return merged_node;
   }
 
-  static constexpr BaseNode_t *
+  static constexpr Node_t *
   CreateNewRoot(  //
-      const BaseNode_t *left_child,
-      const BaseNode_t *right_child)
+      const Node_t *left_child,
+      const Node_t *right_child)
   {
     auto offset = kPageSize;
-    auto new_root = BaseNode_t::CreateEmptyNode(kInternalFlag);
+    auto new_root = Node_t::CreateEmptyNode(kInternalFlag);
 
     // insert children
     offset = InsertChild(new_root, left_child, 0, offset);
@@ -240,15 +240,15 @@ class InternalNode
     return new_root;
   }
 
-  static constexpr BaseNode_t *
+  static constexpr Node_t *
   NewParentForSplit(  //
-      const BaseNode_t *old_parent,
-      const BaseNode_t *left_node,
-      const BaseNode_t *right_node,
+      const Node_t *old_parent,
+      const Node_t *left_node,
+      const Node_t *right_node,
       const size_t split_index)
   {
     const auto rec_count = old_parent->GetSortedCount();
-    auto new_parent = BaseNode_t::CreateEmptyNode(kInternalFlag);
+    auto new_parent = Node_t::CreateEmptyNode(kInternalFlag);
     size_t offset = kPageSize;
 
     if (split_index > 0) {
@@ -274,14 +274,14 @@ class InternalNode
     return new_parent;
   }
 
-  static constexpr BaseNode_t *
+  static constexpr Node_t *
   NewParentForMerge(  //
-      const BaseNode_t *old_parent,
-      const BaseNode_t *merged_node,
+      const Node_t *old_parent,
+      const Node_t *merged_node,
       const size_t del_index)
   {
     const auto rec_count = old_parent->GetSortedCount();
-    auto new_parent = BaseNode_t::CreateEmptyNode(kInternalFlag);
+    auto new_parent = Node_t::CreateEmptyNode(kInternalFlag);
     size_t offset = kPageSize;
 
     if (del_index > 0) {

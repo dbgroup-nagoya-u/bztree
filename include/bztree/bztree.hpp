@@ -36,13 +36,13 @@ class BzTree
 {
   using Metadata = component::Metadata;
   using StatusWord = component::StatusWord;
-  using BaseNode_t = component::BaseNode<Key, Payload, Compare>;
+  using Node_t = component::Node<Key, Payload, Compare>;
   using LeafNode_t = component::LeafNode<Key, Payload, Compare>;
   using InternalNode_t = component::InternalNode<Key, Payload, Compare>;
   using NodeReturnCode = component::NodeReturnCode;
   using RecordPage_t = component::RecordPage<Key, Payload>;
-  using EpochBasedGC_t = ::dbgroup::memory::EpochBasedGC<BaseNode_t>;
-  using NodeRef = std::pair<BaseNode_t *, size_t>;
+  using EpochBasedGC_t = ::dbgroup::memory::EpochBasedGC<Node_t>;
+  using NodeRef = std::pair<Node_t *, size_t>;
   using NodeStack = std::vector<NodeRef, ::dbgroup::memory::STLAlloc<NodeRef>>;
 
  private:
@@ -61,7 +61,7 @@ class BzTree
   const size_t index_epoch_;
 
   /// a root node of BzTree
-  BaseNode_t *root_;
+  Node_t *root_;
 
   /// garbage collector
   EpochBasedGC_t gc_;
@@ -70,13 +70,13 @@ class BzTree
    * Internal utility functions
    *##############################################################################################*/
 
-  constexpr BaseNode_t *
+  constexpr Node_t *
   GetRoot()
   {
-    return component::ReadMwCASField<BaseNode_t *>(&root_);
+    return component::ReadMwCASField<Node_t *>(&root_);
   }
 
-  constexpr BaseNode_t *
+  constexpr Node_t *
   SearchLeafNode(  //
       const Key key,
       const bool range_is_closed)
@@ -90,7 +90,7 @@ class BzTree
     return current_node;
   }
 
-  constexpr BaseNode_t *
+  constexpr Node_t *
   SearchLeftEdgeLeaf()
   {
     auto current_node = GetRoot();
@@ -104,7 +104,7 @@ class BzTree
   constexpr NodeStack
   TraceTargetNode(  //
       const Key key,
-      const BaseNode_t *target_node)
+      const Node_t *target_node)
   {
     // trace nodes to a target internal node
     NodeStack trace;
@@ -122,7 +122,7 @@ class BzTree
 
   static constexpr bool
   NeedSplit(  //
-      const BaseNode_t *internal_node,
+      const Node_t *internal_node,
       const size_t key_length)
   {
     return internal_node->GetStatusWordProtected().GetOccupiedSize() + key_length
@@ -130,14 +130,14 @@ class BzTree
   }
 
   static constexpr bool
-  NeedMerge(const BaseNode_t *internal_node)
+  NeedMerge(const Node_t *internal_node)
   {
     return internal_node->GetSortedCount() < kMinSortedRecNum;
   }
 
-  static constexpr std::pair<BaseNode_t *, bool>
+  static constexpr std::pair<Node_t *, bool>
   GetSiblingNode(  //
-      BaseNode_t *parent_node,
+      Node_t *parent_node,
       const size_t target_index,
       const size_t target_size)
   {
@@ -174,7 +174,7 @@ class BzTree
 
   constexpr void
   ConsolidateLeafNode(  //
-      BaseNode_t *target_node,
+      Node_t *target_node,
       const Key key,
       const size_t key_length)
   {
@@ -204,7 +204,7 @@ class BzTree
 
   constexpr void
   SplitLeafNode(  //
-      const BaseNode_t *target_node,
+      const Node_t *target_node,
       const Key target_key,
       const std::array<Metadata, kMaxRecordNum> &metadata,
       const size_t rec_count)
@@ -217,7 +217,7 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     NodeStack trace;
-    BaseNode_t *parent = nullptr;
+    Node_t *parent = nullptr;
     size_t target_index = 0;
     while (true) {
       // trace and get the embedded index of a target node
@@ -254,7 +254,7 @@ class BzTree
 
   constexpr void
   SplitInternalNode(  //
-      BaseNode_t *target_node,
+      Node_t *target_node,
       const Key target_key)
   {
     // get a split index and a corresponding key length
@@ -266,7 +266,7 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     NodeStack trace;
-    BaseNode_t *parent = nullptr;
+    Node_t *parent = nullptr;
     size_t target_index = 0;
     while (true) {
       // check a target node is live
@@ -306,7 +306,7 @@ class BzTree
 
     // create new nodes
     const auto [left_node, right_node] = InternalNode_t::Split(target_node, left_rec_count);
-    BaseNode_t *new_parent;
+    Node_t *new_parent;
     if (parent != nullptr) {
       // target is not a root node
       new_parent = InternalNode_t::NewParentForSplit(parent, left_node, right_node, target_index);
@@ -324,7 +324,7 @@ class BzTree
 
   constexpr bool
   MergeLeafNodes(  //
-      const BaseNode_t *target_node,
+      const Node_t *target_node,
       const Key target_key,
       const size_t target_key_length,
       const size_t target_size,
@@ -336,7 +336,7 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     NodeStack trace;
-    BaseNode_t *parent = nullptr, *sib_node = nullptr;
+    Node_t *parent = nullptr, *sib_node = nullptr;
     bool sib_is_left = true;
     size_t target_index = 0;
     while (true) {
@@ -372,7 +372,7 @@ class BzTree
 
     // create new nodes
     const auto [sib_meta, sib_rec_count] = LeafNode_t::GatherSortedLiveMetadata(sib_node);
-    BaseNode_t *merged_node;
+    Node_t *merged_node;
     size_t deleted_index;
     if (sib_is_left) {
       merged_node =
@@ -400,7 +400,7 @@ class BzTree
 
   constexpr void
   MergeInternalNodes(  //
-      BaseNode_t *target_node,
+      Node_t *target_node,
       const Key target_key,
       const size_t target_key_length)
   {
@@ -409,7 +409,7 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     NodeStack trace;
-    BaseNode_t *parent = nullptr, *sibling_node = nullptr;
+    Node_t *parent = nullptr, *sibling_node = nullptr;
     bool sibling_is_left;
     size_t target_index = 0;
     while (true) {
@@ -448,7 +448,7 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    BaseNode_t *merged_node;
+    Node_t *merged_node;
     size_t deleted_index;
     if (sibling_is_left) {
       merged_node = InternalNode_t::Merge(sibling_node, target_node);
@@ -474,9 +474,9 @@ class BzTree
   constexpr void
   InstallNewNode(  //
       NodeStack &trace,
-      BaseNode_t *new_node,
+      Node_t *new_node,
       const Key target_key,
-      const BaseNode_t *target_node)
+      const Node_t *target_node)
   {
     while (true) {
       component::MwCASDescriptor desc;
@@ -519,7 +519,7 @@ class BzTree
   }
 
   constexpr static void
-  DeleteChildren(BaseNode_t *node)
+  DeleteChildren(Node_t *node)
   {
     if (!node->IsLeaf()) {
       for (size_t i = 0; i < node->GetSortedCount(); ++i) {

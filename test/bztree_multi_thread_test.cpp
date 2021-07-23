@@ -48,7 +48,7 @@ class BzTreeFixture : public testing::Test
   using PayloadComp = typename KeyPayloadPair::PayloadComp;
 
   // define type aliases for simplicity
-  using BaseNode_t = component::BaseNode<Key, Payload, KeyComp>;
+  using Node_t = component::Node<Key, Payload, KeyComp>;
   using LeafNode_t = component::LeafNode<Key, Payload, KeyComp>;
   using InternalNode_t = component::InternalNode<Key, Payload, KeyComp>;
   using BzTree_t = BzTree<Key, Payload, KeyComp>;

@@ -29,7 +29,7 @@ namespace dbgroup::index::bztree::component
 template <class Key, class Payload, class Compare>
 class LeafNode
 {
-  using BaseNode_t = BaseNode<Key, Payload, Compare>;
+  using Node_t = Node<Key, Payload, Compare>;
   using RecordPage_t = RecordPage<Key, Payload>;
 
  private:
@@ -73,7 +73,7 @@ class LeafNode
 
   static constexpr std::pair<KeyExistence, size_t>
   SearchUnsortedMeta(  //
-      const BaseNode_t *node,
+      const Node_t *node,
       const Key key,
       const int64_t begin_index,
       const int64_t sorted_count,
@@ -100,7 +100,7 @@ class LeafNode
 
   static constexpr std::pair<KeyExistence, size_t>
   CheckUniqueness(  //
-      const BaseNode_t *node,
+      const Node_t *node,
       const Key key,
       const int64_t rec_count,
       const size_t epoch = 0)
@@ -158,10 +158,10 @@ class LeafNode
 
   static constexpr size_t
   CopyRecords(  //
-      BaseNode_t *target_node,
+      Node_t *target_node,
       size_t offset,
       size_t current_rec_count,
-      const BaseNode_t *original_node,
+      const Node_t *original_node,
       const std::array<Metadata, kMaxRecordNum> &metadata,
       const size_t begin_id,
       const size_t end_id)
@@ -179,9 +179,9 @@ class LeafNode
 
   static constexpr size_t
   CopyRecord(  //
-      BaseNode_t *target_node,
+      Node_t *target_node,
       size_t offset,
-      const BaseNode_t *original_node,
+      const Node_t *original_node,
       const Metadata meta)
   {
     const auto total_length = meta.GetTotalLength();
@@ -194,7 +194,7 @@ class LeafNode
 
   static constexpr bool
   HasSpace(  //
-      const BaseNode_t *node,
+      const Node_t *node,
       const StatusWord status,
       const size_t block_size)
   {
@@ -205,7 +205,7 @@ class LeafNode
 
   static constexpr void
   SortUnsortedRecords(  //
-      const BaseNode_t *node,
+      const Node_t *node,
       std::array<MetaRecord, kMaxUnsortedRecNum> &arr,
       size_t &count)
   {
@@ -243,7 +243,7 @@ class LeafNode
 
   static constexpr void
   SortUnsortedRecords(  //
-      const BaseNode_t *node,
+      const Node_t *node,
       const Key *begin_key,
       const bool begin_closed,
       const Key *end_key,
@@ -288,7 +288,7 @@ class LeafNode
 
   static constexpr void
   MergeSortedRecords(  //
-      const BaseNode_t *node,
+      const Node_t *node,
       const std::array<MetaRecord, kMaxUnsortedRecNum> &new_records,
       const size_t new_rec_num,
       std::array<Metadata, kMaxRecordNum> &arr,
@@ -331,7 +331,7 @@ class LeafNode
 
   static constexpr void
   MergeSortedRecords(  //
-      const BaseNode_t *node,
+      const Node_t *node,
       const std::array<MetaRecord, kMaxUnsortedRecNum> &new_records,
       const size_t new_rec_num,
       const Key *begin_k,
@@ -389,7 +389,7 @@ class LeafNode
 
   static constexpr NodeReturnCode
   Read(  //
-      const BaseNode_t *node,
+      const Node_t *node,
       const Key key,
       Payload &out_payload)
   {
@@ -406,7 +406,7 @@ class LeafNode
 
   static constexpr void
   Scan(  //
-      const BaseNode_t *node,
+      const Node_t *node,
       const Key *begin_k,
       const bool begin_closed,
       const Key *end_k,
@@ -464,7 +464,7 @@ class LeafNode
 
   static constexpr NodeReturnCode
   Write(  //
-      BaseNode_t *node,
+      Node_t *node,
       const Key key,
       const size_t key_length,
       const Payload payload,
@@ -544,7 +544,7 @@ class LeafNode
 
   static constexpr NodeReturnCode
   Insert(  //
-      BaseNode_t *node,
+      Node_t *node,
       const Key key,
       const size_t key_length,
       const Payload payload,
@@ -637,7 +637,7 @@ class LeafNode
 
   static constexpr NodeReturnCode
   Update(  //
-      BaseNode_t *node,
+      Node_t *node,
       const Key key,
       const size_t key_length,
       const Payload payload,
@@ -741,7 +741,7 @@ class LeafNode
 
   static constexpr NodeReturnCode
   Delete(  //
-      BaseNode_t *node,
+      Node_t *node,
       const Key key,
       const size_t key_length,
       const size_t index_epoch = 1)
@@ -848,14 +848,14 @@ class LeafNode
    * Public structure modification operations
    *##############################################################################################*/
 
-  static constexpr BaseNode_t *
+  static constexpr Node_t *
   Consolidate(  //
-      const BaseNode_t *orig_node,
+      const Node_t *orig_node,
       const std::array<Metadata, kMaxRecordNum> &metadata,
       const size_t rec_count)
   {
     // create a new node and copy records
-    auto new_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
+    auto new_node = Node_t::CreateEmptyNode(kLeafFlag);
     const auto offset = CopyRecords(new_node, kPageSize, 0, orig_node, metadata, 0, rec_count);
     new_node->SetSortedCount(rec_count);
     new_node->SetStatus(StatusWord{}.AddRecordInfo(rec_count, kPageSize - AlignOffset(offset), 0));
@@ -863,9 +863,9 @@ class LeafNode
     return new_node;
   }
 
-  static constexpr std::pair<BaseNode_t *, BaseNode_t *>
+  static constexpr std::pair<Node_t *, Node_t *>
   Split(  //
-      const BaseNode_t *orig_node,
+      const Node_t *orig_node,
       const std::array<Metadata, kMaxRecordNum> &metadata,
       const size_t rec_count,
       const size_t left_rec_count)
@@ -873,14 +873,14 @@ class LeafNode
     const auto right_rec_count = rec_count - left_rec_count;
 
     // create a split left node
-    auto left_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
+    auto left_node = Node_t::CreateEmptyNode(kLeafFlag);
     auto offset = CopyRecords(left_node, kPageSize, 0, orig_node, metadata, 0, left_rec_count);
     left_node->SetSortedCount(left_rec_count);
     left_node->SetStatus(
         StatusWord{}.AddRecordInfo(left_rec_count, kPageSize - AlignOffset(offset), 0));
 
     // create a split right node
-    auto right_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
+    auto right_node = Node_t::CreateEmptyNode(kLeafFlag);
     offset = CopyRecords(right_node, kPageSize, 0, orig_node, metadata, left_rec_count, rec_count);
     right_node->SetSortedCount(right_rec_count);
     right_node->SetStatus(
@@ -889,19 +889,19 @@ class LeafNode
     return {left_node, right_node};
   }
 
-  static constexpr BaseNode_t *
+  static constexpr Node_t *
   Merge(  //
-      const BaseNode_t *left_node,
+      const Node_t *left_node,
       const std::array<Metadata, kMaxRecordNum> &left_meta,
       const size_t l_rec_count,
-      const BaseNode_t *right_node,
+      const Node_t *right_node,
       const std::array<Metadata, kMaxRecordNum> &right_meta,
       const size_t r_rec_count)
   {
     const auto rec_count = l_rec_count + r_rec_count;
 
     // create a merged node
-    auto new_node = BaseNode_t::CreateEmptyNode(kLeafFlag);
+    auto new_node = Node_t::CreateEmptyNode(kLeafFlag);
     auto offset = CopyRecords(new_node, kPageSize, 0, left_node, left_meta, 0, l_rec_count);
     offset = CopyRecords(new_node, offset, l_rec_count, right_node, right_meta, 0, r_rec_count);
     new_node->SetSortedCount(rec_count);
@@ -915,7 +915,7 @@ class LeafNode
    *##############################################################################################*/
 
   static constexpr std::pair<std::array<Metadata, kMaxRecordNum>, size_t>
-  GatherSortedLiveMetadata(const BaseNode_t *node)
+  GatherSortedLiveMetadata(const Node_t *node)
   {
     // sort records in an unsorted region
     std::array<MetaRecord, kMaxUnsortedRecNum> new_records;

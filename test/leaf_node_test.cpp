@@ -44,7 +44,7 @@ class LeafNodeFixture : public testing::Test
   using PayloadComp = typename KeyPayloadPair::PayloadComp;
 
   // define type aliases for simplicity
-  using BaseNode_t = BaseNode<Key, Payload, KeyComp>;
+  using Node_t = Node<Key, Payload, KeyComp>;
   using LeafNode_t = LeafNode<Key, Payload, KeyComp>;
   using RecordPage_t = RecordPage<Key, Payload>;
 
@@ -74,7 +74,7 @@ class LeafNodeFixture : public testing::Test
   size_t max_record_num;
 
   // a leaf node and its statistics
-  std::unique_ptr<BaseNode_t> node;
+  std::unique_ptr<Node_t> node;
   size_t expected_record_count;
   size_t expected_block_size;
   size_t expected_deleted_block_size;
@@ -88,7 +88,7 @@ class LeafNodeFixture : public testing::Test
   SetUp()
   {
     // initialize a leaf node and expected statistics
-    node.reset(BaseNode_t::CreateEmptyNode(kLeafFlag));
+    node.reset(Node_t::CreateEmptyNode(kLeafFlag));
     expected_record_count = 0;
     expected_block_size = 0;
     expected_deleted_block_size = 0;
@@ -506,7 +506,7 @@ class LeafNodeFixture : public testing::Test
     WriteOrderedKeys(left_begin, left_end);
     auto [left_meta, left_rec_count] = LeafNode_t::GatherSortedLiveMetadata(node.get());
 
-    auto right_node = std::unique_ptr<BaseNode_t>(BaseNode_t::CreateEmptyNode(kLeafFlag));
+    auto right_node = std::unique_ptr<Node_t>(Node_t::CreateEmptyNode(kLeafFlag));
     for (size_t id = right_begin; id <= right_end; ++id) {
       LeafNode_t::Write(right_node.get(), keys[id], key_length, payloads[id], payload_length);
     }
