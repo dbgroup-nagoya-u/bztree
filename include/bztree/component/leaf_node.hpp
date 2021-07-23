@@ -33,25 +33,22 @@ using component::IsInRange;
 using component::KeyExistence;
 using component::Metadata;
 using component::MwCASDescriptor;
+using component::Node;
 using component::NodeReturnCode;
 using component::ReadMwCASField;
+using component::RecordPage;
 using component::StatusWord;
-using KeyIndex = ::std::pair<KeyExistence, size_t>;
 
-template <class Key, class Payload, class Compare>
-using Node = component::Node<Key, Payload, Compare>;
+using KeyIndex = std::pair<KeyExistence, size_t>;
 
 template <class Key, class Payload, class Compare>
 using MetaRecord = typename Node<Key, Payload, Compare>::MetaRecord;
 
 template <class Key, class Payload, class Compare>
-using MetaArray = ::std::array<Metadata, Node<Key, Payload, Compare>::kMaxRecordNum>;
+using MetaArray = std::array<Metadata, Node<Key, Payload, Compare>::kMaxRecordNum>;
 
 template <class Key, class Payload, class Compare>
-using UnsortedMeta = ::std::array<MetaRecord<Key, Payload, Compare>, kMaxUnsortedRecNum>;
-
-template <class Key, class Payload>
-using RecordPage = component::RecordPage<Key, Payload>;
+using UnsortedMeta = std::array<MetaRecord<Key, Payload, Compare>, kMaxUnsortedRecNum>;
 
 /*################################################################################################
  * Internal utility functions
