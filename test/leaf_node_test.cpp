@@ -46,7 +46,6 @@ class LeafNodeFixture : public testing::Test
   // define type aliases for simplicity
   using BaseNode_t = BaseNode<Key, Payload, KeyComp>;
   using LeafNode_t = LeafNode<Key, Payload, KeyComp>;
-  using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
   using RecordPage_t = RecordPage<Key, Payload>;
 
  protected:

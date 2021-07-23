@@ -30,8 +30,6 @@ using Key = uint64_t;
 using Payload = uint64_t;
 using BaseNode_t = BaseNode<Key, Payload>;
 using LeafNode_t = LeafNode<Key, Payload, std::less<Key>>;
-using NodeReturnCode = BaseNode<Key, Payload>::NodeReturnCode;
-using KeyExistence = BaseNode<Key, Payload>::KeyExistence;
 
 static constexpr size_t kNodeSize = 256;
 static constexpr size_t kIndexEpoch = 0;

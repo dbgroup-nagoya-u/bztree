@@ -30,8 +30,6 @@ template <class Key, class Payload, class Compare>
 class LeafNode
 {
   using BaseNode_t = BaseNode<Key, Payload, Compare>;
-  using KeyExistence = typename BaseNode_t::KeyExistence;
-  using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
   using RecordPage_t = RecordPage<Key, Payload>;
 
  private:

@@ -52,8 +52,6 @@ class BzTreeFixture : public testing::Test
   using LeafNode_t = component::LeafNode<Key, Payload, KeyComp>;
   using InternalNode_t = component::InternalNode<Key, Payload, KeyComp>;
   using BzTree_t = BzTree<Key, Payload, KeyComp>;
-  using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
-  using KeyExistence = typename BaseNode_t::KeyExistence;
 
   enum WriteType
   {

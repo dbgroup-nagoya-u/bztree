@@ -46,7 +46,6 @@ class InternalNodeFixture : public testing::Test
   using BaseNode_t = BaseNode<Key, Payload, KeyComp>;
   using LeafNode_t = LeafNode<Key, Payload, KeyComp>;
   using InternalNode_t = InternalNode<Key, Payload, KeyComp>;
-  using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
 
   // constant values for testing
   static constexpr size_t kKeyNumForTest = 1024;

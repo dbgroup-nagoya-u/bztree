@@ -49,32 +49,6 @@ class alignas(kCacheLineSize) BaseNode
 
  public:
   /*################################################################################################
-   * Public enum and constants
-   *##############################################################################################*/
-
-  /**
-   * @brief Return codes for functions in Base/Leaf/InternalNode.
-   *
-   */
-  enum NodeReturnCode
-  {
-    kSuccess = 0,
-    kKeyNotExist,
-    kKeyExist,
-    kScanInProgress,
-    kFrozen,
-    kNoSpace
-  };
-
-  enum KeyExistence
-  {
-    kExist = 0,
-    kNotExist,
-    kDeleted,
-    kUncertain
-  };
-
-  /*################################################################################################
    * Public constructors/destructors
    *##############################################################################################*/
 

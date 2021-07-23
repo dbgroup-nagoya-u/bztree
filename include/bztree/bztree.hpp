@@ -39,7 +39,7 @@ class BzTree
   using BaseNode_t = component::BaseNode<Key, Payload, Compare>;
   using LeafNode_t = component::LeafNode<Key, Payload, Compare>;
   using InternalNode_t = component::InternalNode<Key, Payload, Compare>;
-  using NodeReturnCode = typename BaseNode_t::NodeReturnCode;
+  using NodeReturnCode = component::NodeReturnCode;
   using RecordPage_t = component::RecordPage<Key, Payload>;
   using EpochBasedGC_t = ::dbgroup::memory::EpochBasedGC<BaseNode_t>;
   using NodeRef = std::pair<BaseNode_t *, size_t>;

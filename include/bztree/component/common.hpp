@@ -32,6 +32,28 @@ namespace dbgroup::index::bztree::component
 
 constexpr auto mo_relax = std::memory_order_relaxed;
 
+/**
+ * @brief Return codes for functions in Base/Leaf/InternalNode.
+ *
+ */
+enum NodeReturnCode
+{
+  kSuccess = 0,
+  kKeyNotExist,
+  kKeyExist,
+  kScanInProgress,
+  kFrozen,
+  kNoSpace
+};
+
+enum KeyExistence
+{
+  kExist = 0,
+  kNotExist,
+  kDeleted,
+  kUncertain
+};
+
 template <class T>
 constexpr T
 Cast(const void *addr)
