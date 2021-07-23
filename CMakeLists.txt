@@ -26,8 +26,8 @@ set(MEMORY_MANAGER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/memory-manag
 set(MWCAS_CAPACITY "3" CACHE STRING "Use MwCAS with three words" FORCE)
 add_subdirectory("${MWCAS_SOURCE_DIR}")
 
-# use GC
-option(BZTREE_USE_MIMALLOC "Build unit tests for BzTree" OFF)
+# configure GC
+option(BZTREE_USE_MIMALLOC "Use mimalloc as an allocator if ON" OFF)
 if(${BZTREE_USE_MIMALLOC})
   set(MEMORY_MANAGER_USE_MIMALLOC "on" CACHE STRING "Use mimalloc as an allocator" FORCE)
 endif()
