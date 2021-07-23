@@ -485,7 +485,7 @@ Write(  //
     }
 
     // prepare new status for MwCAS
-    const auto new_status = cur_status.AddRecordInfo(1, block_size, 0);
+    const auto new_status = cur_status.Add(1, block_size);
 
     // perform MwCAS to reserve space
     auto desc = MwCASDescriptor{};
@@ -561,7 +561,7 @@ Insert(  //
     }
 
     // prepare new status for MwCAS
-    const auto new_status = cur_status.AddRecordInfo(1, block_size, 0);
+    const auto new_status = cur_status.Add(1, block_size);
 
     // perform MwCAS to reserve space
     auto desc = MwCASDescriptor{};
@@ -670,7 +670,7 @@ Update(  //
     const auto target_meta = node->GetMetadataProtected(target_index);
     const auto deleted_size =
         kWordLength + _GetAlignedSize<Key, Payload>(target_meta.GetTotalLength());
-    const auto new_status = cur_status.AddRecordInfo(1, block_size, deleted_size);
+    const auto new_status = cur_status.Add(1, block_size).Delete(deleted_size);
 
     // perform MwCAS to reserve space
     auto desc = MwCASDescriptor{};
@@ -759,7 +759,7 @@ Delete(  //
           const auto deleted_meta = target_meta.Delete();
           const auto deleted_size =
               kWordLength + _GetAlignedSize<Key, Payload>(target_meta.GetTotalLength());
-          const auto new_status = cur_status.AddRecordInfo(0, 0, deleted_size);
+          const auto new_status = cur_status.Delete(deleted_size);
 
           // delete a record directly
           auto desc = MwCASDescriptor{};
@@ -776,7 +776,7 @@ Delete(  //
     const auto deleted_size = (2 * kWordLength)
                               + _GetAlignedSize<Key, Payload>(target_meta.GetTotalLength())
                               + key_length;
-    const auto new_status = cur_status.AddRecordInfo(1, key_length, deleted_size);
+    const auto new_status = cur_status.Add(1, key_length).Delete(deleted_size);
 
     // perform MwCAS to reserve space
     auto desc = MwCASDescriptor{};

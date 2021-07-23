@@ -133,14 +133,20 @@ class alignas(kWordLength) StatusWord
   }
 
   constexpr StatusWord
-  AddRecordInfo(  //
+  Add(  //
       const size_t record_count,
-      const size_t block_size,
-      const size_t deleted_size) const
+      const size_t block_size) const
   {
     auto new_status = *this;
     new_status.record_count_ += record_count;
     new_status.block_size_ += block_size;
+    return new_status;
+  }
+
+  constexpr StatusWord
+  Delete(const size_t deleted_size) const
+  {
+    auto new_status = *this;
     new_status.deleted_size_ += deleted_size;
     return new_status;
   }
