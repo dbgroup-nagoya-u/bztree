@@ -131,6 +131,21 @@ CanCASUpdate()
   return !std::is_same_v<Payload, char *> && sizeof(Payload) == kWordLength;
 }
 
+template <class Key>
+constexpr size_t
+AlignOffset(const size_t offset)
+{
+  if constexpr (std::is_same_v<Key, char *>) {
+    const auto align_size = offset & (kWordLength - 1);
+    if (align_size > 0) {
+      return offset - align_size;
+    }
+  } else if constexpr (sizeof(Key) % kWordLength != 0) {
+    return offset - (kWordLength - (sizeof(Key) % kWordLength));
+  }
+  return offset;
+}
+
 /**
  * @brief
  *

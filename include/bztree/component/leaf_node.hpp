@@ -26,6 +26,7 @@
 
 namespace dbgroup::index::bztree::leaf
 {
+using component::AlignOffset;
 using component::CanCASUpdate;
 using component::IsEqual;
 using component::IsInRange;
@@ -128,23 +129,6 @@ _GetAlignedSize(const size_t block_size)
   return block_size;
 }
 
-template <class Key, class Payload>
-constexpr size_t
-_AlignOffset(const size_t offset)
-{
-  if constexpr (CanCASUpdate<Payload>()) {
-    if constexpr (std::is_same_v<Key, char *>) {
-      const auto align_size = offset & (kWordLength - 1);
-      if (align_size > 0) {
-        return offset - align_size;
-      }
-    } else if constexpr (sizeof(Key) % kWordLength != 0) {
-      return offset - (kWordLength - (sizeof(Key) % kWordLength));
-    }
-  }
-  return offset;
-}
-
 template <class Key, class Payload, class Compare>
 size_t
 _CopyRecord(  //
@@ -154,8 +138,12 @@ _CopyRecord(  //
     const Metadata meta)
 {
   const auto total_length = meta.GetTotalLength();
+  if constexpr (CanCASUpdate<Payload>()) {
+    offset = AlignOffset<Key>(offset) - total_length;
+  } else {
+    offset -= total_length;
+  }
 
-  offset = _AlignOffset<Key, Payload>(offset) - total_length;
   memcpy(ShiftAddress(target_node, offset), original_node->GetKeyAddr(meta), total_length);
 
   return offset;
@@ -865,9 +853,12 @@ Consolidate(  //
   auto new_node = Node<Key, Payload, Compare>::CreateEmptyNode(true);
   const auto offset = _CopyRecords(new_node, kPageSize, 0, orig_node, metadata, 0, rec_count);
   new_node->SetSortedCount(rec_count);
-  new_node->SetStatus(
-      StatusWord{}.AddRecordInfo(rec_count, kPageSize - _AlignOffset<Key, Payload>(offset), 0));
-
+  if constexpr (CanCASUpdate<Payload>()) {
+    new_node->SetStatus(
+        StatusWord{}.AddRecordInfo(rec_count, kPageSize - AlignOffset<Key>(offset), 0));
+  } else {
+    new_node->SetStatus(StatusWord{}.AddRecordInfo(rec_count, kPageSize - offset, 0));
+  }
   return new_node;
 }
 
@@ -885,15 +876,23 @@ Split(  //
   auto left_node = Node<Key, Payload, Compare>::CreateEmptyNode(true);
   auto offset = _CopyRecords(left_node, kPageSize, 0, orig_node, metadata, 0, left_rec_count);
   left_node->SetSortedCount(left_rec_count);
-  left_node->SetStatus(StatusWord{}.AddRecordInfo(
-      left_rec_count, kPageSize - _AlignOffset<Key, Payload>(offset), 0));
+  if constexpr (CanCASUpdate<Payload>()) {
+    left_node->SetStatus(
+        StatusWord{}.AddRecordInfo(left_rec_count, kPageSize - AlignOffset<Key>(offset), 0));
+  } else {
+    left_node->SetStatus(StatusWord{}.AddRecordInfo(left_rec_count, kPageSize - offset, 0));
+  }
 
   // create a split right node
   auto right_node = Node<Key, Payload, Compare>::CreateEmptyNode(true);
   offset = _CopyRecords(right_node, kPageSize, 0, orig_node, metadata, left_rec_count, rec_count);
   right_node->SetSortedCount(right_rec_count);
-  right_node->SetStatus(StatusWord{}.AddRecordInfo(
-      right_rec_count, kPageSize - _AlignOffset<Key, Payload>(offset), 0));
+  if constexpr (CanCASUpdate<Payload>()) {
+    right_node->SetStatus(
+        StatusWord{}.AddRecordInfo(right_rec_count, kPageSize - AlignOffset<Key>(offset), 0));
+  } else {
+    right_node->SetStatus(StatusWord{}.AddRecordInfo(right_rec_count, kPageSize - offset, 0));
+  }
 
   return {left_node, right_node};
 }
@@ -915,8 +914,12 @@ Merge(  //
   auto offset = _CopyRecords(new_node, kPageSize, 0, left_node, left_meta, 0, l_rec_count);
   offset = _CopyRecords(new_node, offset, l_rec_count, right_node, right_meta, 0, r_rec_count);
   new_node->SetSortedCount(rec_count);
-  new_node->SetStatus(
-      StatusWord{}.AddRecordInfo(rec_count, kPageSize - _AlignOffset<Key, Payload>(offset), 0));
+  if constexpr (CanCASUpdate<Payload>()) {
+    new_node->SetStatus(
+        StatusWord{}.AddRecordInfo(rec_count, kPageSize - AlignOffset<Key>(offset), 0));
+  } else {
+    new_node->SetStatus(StatusWord{}.AddRecordInfo(rec_count, kPageSize - offset, 0));
+  }
 
   return new_node;
 }

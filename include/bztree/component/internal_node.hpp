@@ -33,15 +33,6 @@ class InternalNode
    * Internal utility functions
    *##############################################################################################*/
 
-  static constexpr size_t
-  AlignOffset(const size_t offset)
-  {
-    if constexpr (std::is_same_v<Key, char *> || sizeof(Key) % kWordLength != 0) {
-      return offset - (offset & (kWordLength - 1));
-    }
-    return offset;
-  }
-
   static constexpr Node_t *
   GetChildAddrProtected(  //
       const Node_t *node,
@@ -58,7 +49,7 @@ class InternalNode
       const Node_t *child_addr,
       size_t offset)
   {
-    offset = node->SetPayload(AlignOffset(offset), child_addr, kWordLength);
+    offset = node->SetPayload(AlignOffset<Key>(offset), child_addr, kWordLength);
     if (key_length > 0) {
       offset = node->SetKey(offset, key, key_length);
     }
@@ -113,7 +104,7 @@ class InternalNode
     assert(end_index > 0);
 
     const auto end_offset = orig_node->GetMetadata(end_index - 1).GetOffset();
-    const auto copy_end = AlignOffset(offset);
+    const auto copy_end = AlignOffset<Key>(offset);
 
     // copy metadata
     if (record_count == 0 && begin_index == 0) {
@@ -127,7 +118,7 @@ class InternalNode
       // insert metadata one by one
       for (size_t index = begin_index; index < end_index; ++index, ++record_count) {
         const auto meta = orig_node->GetMetadata(index);
-        offset = AlignOffset(offset) - meta.GetTotalLength();
+        offset = AlignOffset<Key>(offset) - meta.GetTotalLength();
         const auto new_meta = meta.UpdateOffset(offset);
         target_node->SetMetadata(record_count, new_meta);
       }
@@ -189,14 +180,14 @@ class InternalNode
     auto offset = CopySortedRecords(left_node, 0, kPageSize, target_node, 0, left_rec_count);
     left_node->SetSortedCount(left_rec_count);
     left_node->SetStatus(
-        StatusWord{}.AddRecordInfo(left_rec_count, kPageSize - AlignOffset(offset), 0));
+        StatusWord{}.AddRecordInfo(left_rec_count, kPageSize - AlignOffset<Key>(offset), 0));
 
     // create a split right node
     auto right_node = Node_t::CreateEmptyNode(kInternalFlag);
     offset = CopySortedRecords(right_node, 0, kPageSize, target_node, left_rec_count, rec_count);
     right_node->SetSortedCount(right_rec_count);
     right_node->SetStatus(
-        StatusWord{}.AddRecordInfo(right_rec_count, kPageSize - AlignOffset(offset), 0));
+        StatusWord{}.AddRecordInfo(right_rec_count, kPageSize - AlignOffset<Key>(offset), 0));
 
     return {left_node, right_node};
   }
@@ -216,7 +207,7 @@ class InternalNode
     offset = CopySortedRecords(merged_node, left_rec_count, offset, right_node, 0, right_rec_count);
     merged_node->SetSortedCount(rec_count);
     merged_node->SetStatus(
-        StatusWord{}.AddRecordInfo(rec_count, kPageSize - AlignOffset(offset), 0));
+        StatusWord{}.AddRecordInfo(rec_count, kPageSize - AlignOffset<Key>(offset), 0));
 
     return merged_node;
   }
@@ -235,7 +226,7 @@ class InternalNode
 
     // set a new header
     new_root->SetSortedCount(2);
-    new_root->SetStatus(StatusWord{}.AddRecordInfo(2, kPageSize - AlignOffset(offset), 0));
+    new_root->SetStatus(StatusWord{}.AddRecordInfo(2, kPageSize - AlignOffset<Key>(offset), 0));
 
     return new_root;
   }
@@ -269,7 +260,7 @@ class InternalNode
     // set an updated header
     new_parent->SetSortedCount(rec_count + 1);
     new_parent->SetStatus(
-        StatusWord{}.AddRecordInfo(rec_count + 1, kPageSize - AlignOffset(offset), 0));
+        StatusWord{}.AddRecordInfo(rec_count + 1, kPageSize - AlignOffset<Key>(offset), 0));
 
     return new_parent;
   }
@@ -300,7 +291,7 @@ class InternalNode
 
     new_parent->SetSortedCount(rec_count - 1);
     new_parent->SetStatus(
-        StatusWord{}.AddRecordInfo(rec_count - 1, kPageSize - AlignOffset(offset), 0));
+        StatusWord{}.AddRecordInfo(rec_count - 1, kPageSize - AlignOffset<Key>(offset), 0));
 
     return new_parent;
   }
