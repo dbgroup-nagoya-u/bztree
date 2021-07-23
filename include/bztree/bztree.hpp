@@ -38,7 +38,6 @@ class BzTree
   using StatusWord = component::StatusWord;
   using Node_t = component::Node<Key, Payload, Compare>;
   using SortedMetaArray = std::array<Metadata, Node_t::kMaxRecordNum>;
-  using InternalNode_t = component::InternalNode<Key, Payload, Compare>;
   using NodeReturnCode = component::NodeReturnCode;
   using RecordPage_t = component::RecordPage<Key, Payload>;
   using EpochBasedGC_t = ::dbgroup::memory::EpochBasedGC<Node_t>;
@@ -77,7 +76,7 @@ class BzTree
     auto current_node = GetRoot();
     do {
       const auto index = current_node->SearchSortedMetadata(key, range_is_closed).second;
-      current_node = InternalNode_t::GetChildNode(current_node, index);
+      current_node = internal::GetChildNode(current_node, index);
     } while (!current_node->IsLeaf());
 
     return current_node;
@@ -88,7 +87,7 @@ class BzTree
   {
     auto current_node = GetRoot();
     do {
-      current_node = InternalNode_t::GetChildNode(current_node, 0);
+      current_node = internal::GetChildNode(current_node, 0);
     } while (!current_node->IsLeaf());
 
     return current_node;
@@ -106,7 +105,7 @@ class BzTree
     while (current_node != target_node && !current_node->IsLeaf()) {
       trace.emplace_back(current_node, index);
       index = current_node->SearchSortedMetadata(key, true).second;
-      current_node = InternalNode_t::GetChildNode(current_node, index);
+      current_node = internal::GetChildNode(current_node, index);
     }
     trace.emplace_back(current_node, index);
 
@@ -135,12 +134,12 @@ class BzTree
       const size_t target_size)
   {
     if (target_index > 0) {
-      const auto sibling_node = InternalNode_t::GetChildNode(parent_node, target_index - 1);
+      const auto sibling_node = internal::GetChildNode(parent_node, target_index - 1);
       const auto sibling_size = sibling_node->GetStatusWordProtected().GetLiveDataSize();
       if ((target_size + sibling_size) < kPageSize / 2) return {sibling_node, true};
     }
     if (target_index < parent_node->GetSortedCount() - 1) {
-      const auto sibling_node = InternalNode_t::GetChildNode(parent_node, target_index + 1);
+      const auto sibling_node = internal::GetChildNode(parent_node, target_index + 1);
       const auto sibling_size = sibling_node->GetStatusWordProtected().GetLiveDataSize();
       if ((target_size + sibling_size) < kPageSize / 2) return {sibling_node, false};
     }
@@ -237,7 +236,7 @@ class BzTree
     const auto [left_node, right_node] =
         leaf::Split(target_node, metadata, rec_count, left_rec_count);
     const auto new_parent =
-        InternalNode_t::NewParentForSplit(parent, left_node, right_node, target_index);
+        internal::NewParentForSplit(parent, left_node, right_node, target_index);
 
     // install new nodes
     InstallNewNode(trace, new_parent, target_key, parent);
@@ -298,14 +297,14 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    const auto [left_node, right_node] = InternalNode_t::Split(target_node, left_rec_count);
+    const auto [left_node, right_node] = internal::Split(target_node, left_rec_count);
     Node_t *new_parent;
     if (parent != nullptr) {
       // target is not a root node
-      new_parent = InternalNode_t::NewParentForSplit(parent, left_node, right_node, target_index);
+      new_parent = internal::NewParentForSplit(parent, left_node, right_node, target_index);
     } else {
       // target is a root node
-      new_parent = InternalNode_t::CreateNewRoot(left_node, right_node);
+      new_parent = internal::CreateNewRoot(left_node, right_node);
       parent = target_node;  // set parent as a target node for installation
     }
 
@@ -376,7 +375,7 @@ class BzTree
           leaf::Merge(target_node, target_meta, rec_count, sib_node, sib_meta, sib_rec_count);
       deleted_index = target_index;
     }
-    const auto new_parent = InternalNode_t::NewParentForMerge(parent, merged_node, deleted_index);
+    const auto new_parent = internal::NewParentForMerge(parent, merged_node, deleted_index);
 
     // install new nodes
     InstallNewNode(trace, new_parent, target_key, parent);
@@ -444,13 +443,13 @@ class BzTree
     Node_t *merged_node;
     size_t deleted_index;
     if (sibling_is_left) {
-      merged_node = InternalNode_t::Merge(sibling_node, target_node);
+      merged_node = internal::Merge(sibling_node, target_node);
       deleted_index = target_index - 1;
     } else {
-      merged_node = InternalNode_t::Merge(target_node, sibling_node);
+      merged_node = internal::Merge(target_node, sibling_node);
       deleted_index = target_index;
     }
-    const auto new_parent = InternalNode_t::NewParentForMerge(parent, merged_node, deleted_index);
+    const auto new_parent = internal::NewParentForMerge(parent, merged_node, deleted_index);
 
     // install new nodes
     InstallNewNode(trace, new_parent, target_key, parent);
@@ -516,7 +515,7 @@ class BzTree
   {
     if (!node->IsLeaf()) {
       for (size_t i = 0; i < node->GetSortedCount(); ++i) {
-        auto child_node = InternalNode_t::GetChildNode(node, i);
+        auto child_node = internal::GetChildNode(node, i);
         DeleteChildren(child_node);
       }
     }
@@ -530,7 +529,9 @@ class BzTree
    *##############################################################################################*/
 
   explicit BzTree(const size_t gc_interval_microsec = 100000)
-      : index_epoch_{1}, root_{InternalNode_t::CreateInitialRoot()}, gc_{gc_interval_microsec}
+      : index_epoch_{1},
+        root_{internal::CreateInitialRoot<Key, Payload, Compare>()},
+        gc_{gc_interval_microsec}
   {
     gc_.StartGC();
   }

@@ -49,7 +49,6 @@ class BzTreeFixture : public testing::Test
 
   // define type aliases for simplicity
   using Node_t = component::Node<Key, Payload, KeyComp>;
-  using InternalNode_t = component::InternalNode<Key, Payload, KeyComp>;
   using BzTree_t = BzTree<Key, Payload, KeyComp>;
 
   enum WriteType
