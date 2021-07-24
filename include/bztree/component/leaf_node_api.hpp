@@ -40,7 +40,7 @@ using component::ReadMwCASField;
 using component::RecordPage;
 using component::StatusWord;
 
-using KeyIndex = std::pair<KeyExistence, size_t>;
+using KeyIndex = std::pair<KeyExistence, int64_t>;
 
 template <class Key, class Payload, class Compare>
 using MetaRecord = typename Node<Key, Payload, Compare>::MetaRecord;
@@ -56,6 +56,53 @@ constexpr bool kLeafFlag = true;
 /*################################################################################################
  * Internal utility functions
  *##############################################################################################*/
+
+/**
+ * @brief Get an index of the specified key by using binary search. If there is no
+ * specified key, this returns the minimum metadata index that is greater than the
+ * specified key
+ *
+ * @tparam Compare
+ * @param key
+ * @param comp
+ * @return std::pair<KeyExistence, size_t>
+ */
+template <class Key, class Payload, class Compare>
+KeyIndex
+_SearchSortedMetadata(  //
+    const Node<Key, Payload, Compare> *node,
+    const Key key)
+{
+  const int64_t sorted_count = node->GetSortedCount();
+
+  int64_t index;
+  int64_t begin_index = 0;
+  int64_t end_index = sorted_count - 1;
+
+  while (begin_index <= end_index) {
+    index = (begin_index + end_index) >> 1;
+
+    const auto meta = node->GetMetadataProtected(index);
+    const auto index_key = node->GetKey(meta);
+
+    if (Compare{}(key, index_key)) {
+      // a target key is in a left side
+      end_index = index - 1;
+    } else if (Compare{}(index_key, key)) {
+      // a target key is in a right side
+      begin_index = index + 1;
+    } else {
+      // find an equivalent key
+      if (meta.IsVisible()) {
+        return {KeyExistence::kExist, index};
+      } else {
+        return {KeyExistence::kDeleted, index};
+      }
+    }
+  }
+
+  return {KeyExistence::kNotExist, begin_index};
+}
 
 template <class Key, class Payload, class Compare>
 KeyIndex
@@ -94,7 +141,7 @@ _CheckUniqueness(  //
     const size_t epoch = 0)
 {
   if constexpr (CanCASUpdate<Payload>()) {
-    const auto [rc, index] = node->SearchSortedMetadata(key, true);
+    const auto [rc, index] = _SearchSortedMetadata(node, key);
     if (rc == KeyExistence::kNotExist || rc == KeyExistence::kDeleted) {
       // a new record may be inserted in an unsorted region
       return _SearchUnsortedMeta(node, key, rec_count - 1, node->GetSortedCount(), epoch);
@@ -105,7 +152,7 @@ _CheckUniqueness(  //
         _SearchUnsortedMeta(node, key, rec_count - 1, node->GetSortedCount(), epoch);
     if (rc == KeyExistence::kNotExist) {
       // a record may be in a sorted region
-      return node->SearchSortedMetadata(key, true);
+      return _SearchSortedMetadata(node, key);
     }
     return {rc, index};
   }
@@ -186,7 +233,7 @@ _SortUnsortedRecords(  //
     UnsortedMeta<Key, Payload, Compare> &arr,
     size_t &count)
 {
-  const auto rec_count = node->GetStatusWordProtected().GetRecordCount();
+  const int64_t rec_count = node->GetStatusWordProtected().GetRecordCount();
   const int64_t sorted_count = node->GetSortedCount();
 
   // sort unsorted records by insertion sort
@@ -230,11 +277,11 @@ _SortUnsortedRecords(  //
     UnsortedMeta<Key, Payload, Compare> &arr,
     size_t &count)
 {
-  const auto rec_count = node->GetStatusWordProtected().GetRecordCount();
+  const int64_t rec_count = node->GetStatusWordProtected().GetRecordCount();
   const int64_t sorted_count = node->GetSortedCount();
 
   // sort unsorted records by insertion sort
-  for (int64_t index = rec_count - 1; index >= sorted_count; --index) {
+  for (int64_t index = rec_count - 1L; index >= sorted_count; --index) {
     const auto meta = node->GetMetadataProtected(index);
     if (!meta.IsInProgress()) {
       auto key = node->GetKey(meta);
@@ -315,7 +362,7 @@ void
 _MergeSortedRecords(  //
     const Node<Key, Payload, Compare> *node,
     const UnsortedMeta<Key, Payload, Compare> &new_records,
-    const size_t new_rec_num,
+    const int64_t new_rec_num,
     const Key *begin_k,
     const bool begin_closed,
     const Key *end_k,
@@ -323,12 +370,20 @@ _MergeSortedRecords(  //
     MetaArray<Key, Payload, Compare> &arr,
     size_t &count)
 {
-  const auto sorted_count = node->GetSortedCount();
+  const int64_t sorted_count = node->GetSortedCount();
 
-  size_t j = 0;
-  const auto begin_index =
-      (begin_k == nullptr) ? 0 : node->SearchSortedMetadata(*begin_k, begin_closed).second;
-  for (size_t i = begin_index; i < sorted_count; ++i) {
+  // search a begin index for scan
+  int64_t begin_index = 0;
+  if (begin_k != nullptr) {
+    KeyExistence rc;
+    std::tie(rc, begin_index) = _SearchSortedMetadata(node, *begin_k);
+    if (rc == KeyExistence::kDeleted || (rc == KeyExistence::kExist && !begin_closed)) {
+      ++begin_index;
+    }
+  }
+
+  int64_t j = 0;
+  for (int64_t i = begin_index; i < sorted_count; ++i) {
     const auto meta = node->GetMetadataProtected(i);
     auto key = node->GetKey(meta);
     if (end_k != nullptr && (Compare{}(*end_k, key) || (end_closed && !Compare{}(key, *end_k)))) {
@@ -473,8 +528,8 @@ Write(  //
     rec_count = cur_status.GetRecordCount();
     if constexpr (CanCASUpdate<Payload>()) {
       // check whether a node includes a target key
-      const auto [uniqueness, target_index] = node->SearchSortedMetadata(key, true);
-      if (uniqueness == KeyExistence::kExist && target_index < node->GetSortedCount()) {
+      const auto [uniqueness, target_index] = _SearchSortedMetadata(node, key);
+      if (uniqueness == KeyExistence::kExist) {
         const auto target_meta = node->GetMetadataProtected(target_index);
 
         // update a record directly
