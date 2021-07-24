@@ -107,11 +107,14 @@ template <class Key>
 constexpr void
 AlignOffset(size_t &offset)
 {
-  if constexpr (std::is_same_v<Key, char *> || sizeof(Key) % kWordLength != 0) {
+  if constexpr (std::is_same_v<Key, char *>) {
     const auto align_size = offset & (kWordLength - 1);
     if (align_size > 0) {
       offset -= align_size;
     }
+  } else if constexpr (sizeof(Key) % kWordLength != 0) {
+    const auto align_size = kWordLength - (sizeof(Key) % kWordLength);
+    offset -= align_size;
   }
 }
 

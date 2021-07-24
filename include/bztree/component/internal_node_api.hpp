@@ -47,7 +47,6 @@ _SetChild(  //
     const Node<Key, Payload, Compare> *child_addr,
     size_t &offset)
 {
-  AlignOffset<Key>(offset);
   node->SetPayload(offset, child_addr, kWordLength);
   if (key_length > 0) {
     node->SetKey(offset, key, key_length);
@@ -67,6 +66,8 @@ _InsertChild(  //
   const auto key_length = meta.GetKeyLength();
   _SetChild(target_node, key, key_length, child_node, offset);
   target_node->SetMetadata(target_index, Metadata{offset, key_length, key_length + kWordLength});
+
+  AlignOffset<Key>(offset);
 }
 
 template <class Key, class Payload, class Compare>
@@ -84,6 +85,8 @@ _InsertChild(  //
   const auto key_length = meta.GetKeyLength();
   _SetChild(target_node, key, key_length, child_node, offset);
   target_node->SetMetadata(target_index, meta.UpdateOffset(offset));
+
+  AlignOffset<Key>(offset);
 }
 
 template <class Key, class Payload, class Compare>
@@ -98,8 +101,8 @@ _CopySortedRecords(  //
 {
   assert(end_index > 0);
 
-  AlignOffset<Key>(offset);
-  const auto end_offset = orig_node->GetMetadata(end_index - 1).GetOffset();
+  auto end_offset = orig_node->GetMetadata(end_index - 1).GetOffset();
+  AlignOffset<Key>(end_offset);
   const auto copy_end = offset;
 
   // copy metadata
@@ -114,10 +117,10 @@ _CopySortedRecords(  //
     // insert metadata one by one
     for (size_t index = begin_index; index < end_index; ++index, ++record_count) {
       const auto meta = orig_node->GetMetadata(index);
-      AlignOffset<Key>(offset);
       offset -= meta.GetTotalLength();
       const auto new_meta = meta.UpdateOffset(offset);
       target_node->SetMetadata(record_count, new_meta);
+      AlignOffset<Key>(offset);
     }
   }
 
@@ -223,7 +226,6 @@ Split(  //
   auto offset = kPageSize;
   _CopySortedRecords(left_node, 0, offset, target_node, 0, left_rec_count);
 
-  AlignOffset<Key>(offset);
   left_node->SetSortedCount(left_rec_count);
   left_node->SetStatus(StatusWord{left_rec_count, kPageSize - offset});
 
@@ -232,7 +234,6 @@ Split(  //
   offset = kPageSize;
   _CopySortedRecords(right_node, 0, offset, target_node, left_rec_count, rec_count);
 
-  AlignOffset<Key>(offset);
   right_node->SetSortedCount(right_rec_count);
   right_node->SetStatus(StatusWord{right_rec_count, kPageSize - offset});
 
@@ -255,7 +256,6 @@ Merge(  //
   _CopySortedRecords(merged_node, 0, offset, left_node, 0, left_rec_count);
   _CopySortedRecords(merged_node, left_rec_count, offset, right_node, 0, right_rec_count);
 
-  AlignOffset<Key>(offset);
   merged_node->SetSortedCount(rec_count);
   merged_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
 
@@ -276,7 +276,6 @@ CreateNewRoot(  //
   _InsertChild(new_root, right_child, 1, offset);
 
   // set a new header
-  AlignOffset<Key>(offset);
   new_root->SetSortedCount(2);
   new_root->SetStatus(StatusWord{2, kPageSize - offset});
 
@@ -311,7 +310,6 @@ NewParentForSplit(  //
   }
 
   // set an updated header
-  AlignOffset<Key>(offset);
   new_parent->SetSortedCount(rec_count + 1);
   new_parent->SetStatus(StatusWord{rec_count + 1, kPageSize - offset});
 
@@ -343,7 +341,6 @@ NewParentForMerge(  //
                        old_parent, del_index + 2, rec_count);
   }
 
-  AlignOffset<Key>(offset);
   new_parent->SetSortedCount(rec_count - 1);
   new_parent->SetStatus(StatusWord{rec_count - 1, kPageSize - offset});
 
