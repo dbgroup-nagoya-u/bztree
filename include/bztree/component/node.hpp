@@ -315,17 +315,14 @@ class alignas(kCacheLineSize) Node
   NodeReturnCode
   Freeze()
   {
-    bool mwcas_success;
-    do {
+    while (true) {
       const auto current_status = GetStatusWordProtected();
-      if (current_status.IsFrozen()) {
-        return NodeReturnCode::kFrozen;
-      }
+      if (current_status.IsFrozen()) return NodeReturnCode::kFrozen;
 
       MwCASDescriptor desc;
       SetStatusForMwCAS(desc, current_status, current_status.Freeze());
-      mwcas_success = desc.MwCAS();
-    } while (!mwcas_success);
+      if (desc.MwCAS()) break;
+    }
 
     return NodeReturnCode::kSuccess;
   }
