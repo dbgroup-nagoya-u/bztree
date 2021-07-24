@@ -75,7 +75,7 @@ class BzTree
   {
     auto current_node = GetRoot();
     do {
-      const auto index = current_node->SearchSortedMetadata(key, range_is_closed).second;
+      const auto index = internal::SearchChildNode(current_node, key, range_is_closed);
       current_node = internal::GetChildNode(current_node, index);
     } while (!current_node->IsLeaf());
 
@@ -104,7 +104,7 @@ class BzTree
     auto current_node = GetRoot();
     while (current_node != target_node && !current_node->IsLeaf()) {
       trace.emplace_back(current_node, index);
-      index = current_node->SearchSortedMetadata(key, true).second;
+      index = internal::SearchChildNode(current_node, key, true);
       current_node = internal::GetChildNode(current_node, index);
     }
     trace.emplace_back(current_node, index);

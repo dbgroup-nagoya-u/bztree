@@ -329,53 +329,6 @@ class alignas(kCacheLineSize) Node
 
     return NodeReturnCode::kSuccess;
   }
-
-  /**
-   * @brief Get an index of the specified key by using binary search. If there is no
-   * specified key, this returns the minimum metadata index that is greater than the
-   * specified key
-   *
-   * @tparam Compare
-   * @param key
-   * @param comp
-   * @return std::pair<KeyExistence, size_t>
-   */
-  std::pair<KeyExistence, size_t>
-  SearchSortedMetadata(  //
-      const Key key,
-      const bool range_is_closed) const
-  {
-    const int64_t sorted_count = GetSortedCount();
-
-    int64_t begin_index = 0;
-    int64_t end_index = sorted_count;
-    int64_t index = end_index / 2;
-
-    while (begin_index <= end_index && index < sorted_count) {
-      const auto meta = GetMetadataProtected(index);
-      const auto index_key = GetKey(meta);
-      const auto index_key_length = meta.GetKeyLength();
-
-      if (index_key_length == 0 || Compare{}(key, index_key)) {
-        // a target key is in a left side
-        end_index = index - 1;
-      } else if (Compare{}(index_key, key)) {
-        // a target key is in a right side
-        begin_index = index + 1;
-      } else {
-        // find an equivalent key
-        if (meta.IsVisible()) {
-          return {KeyExistence::kExist, (range_is_closed) ? index : index + 1};
-        } else {
-          // there is no inserting nor corrupted record in a sorted region
-          return {KeyExistence::kDeleted, index};
-        }
-      }
-      index = (begin_index + end_index) / 2;
-    }
-
-    return {KeyExistence::kNotExist, begin_index};
-  }
 };
 
 }  // namespace dbgroup::index::bztree::component

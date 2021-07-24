@@ -128,8 +128,53 @@ _CopySortedRecords(  //
 }
 
 /*################################################################################################
- * Public getters/setters
+ * Public utility functions
  *##############################################################################################*/
+
+/**
+ * @brief Get an index of the specified key by using binary search. If there is no
+ * specified key, this returns the minimum metadata index that is greater than the
+ * specified key
+ *
+ * @tparam Compare
+ * @param key
+ * @param comp
+ * @return std::pair<KeyExistence, size_t>
+ */
+template <class Key, class Payload, class Compare>
+size_t
+SearchChildNode(  //
+    const Node<Key, Payload, Compare> *node,
+    const Key key,
+    const bool range_is_closed)
+{
+  const size_t sorted_count = node->GetSortedCount();
+
+  int64_t begin_index = 0;
+  int64_t end_index = sorted_count - 1;
+  int64_t index = (begin_index + end_index) >> 1;
+
+  while (begin_index <= end_index) {
+    const auto meta = node->GetMetadataProtected(index);
+    const auto index_key = node->GetKey(meta);
+
+    if (meta.GetKeyLength() == 0 || Compare{}(key, index_key)) {
+      // a target key is in a left side
+      end_index = index - 1;
+    } else if (Compare{}(index_key, key)) {
+      // a target key is in a right side
+      begin_index = index + 1;
+    } else {
+      // find an equivalent key
+      if (!range_is_closed) ++index;
+      return index;
+    }
+
+    index = (begin_index + end_index) >> 1;
+  }
+
+  return begin_index;
+}
 
 template <class Key, class Payload, class Compare>
 Node<Key, Payload, Compare> *
