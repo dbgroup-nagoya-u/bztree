@@ -31,16 +31,19 @@
 
 namespace dbgroup::index::bztree
 {
+// declare alias to visible components
+using component::RecordPage;
+
 template <class Key, class Payload, class Compare = std::less<Key>>
 class BzTree
 {
   using Metadata = component::Metadata;
   using StatusWord = component::StatusWord;
   using Node_t = component::Node<Key, Payload, Compare>;
-  using SortedMetaArray = std::array<Metadata, Node_t::kMaxRecordNum>;
+  using MetaArray = std::array<Metadata, Node_t::kMaxRecordNum>;
   using NodeReturnCode = component::NodeReturnCode;
-  using RecordPage_t = component::RecordPage<Key, Payload>;
-  using EpochBasedGC_t = ::dbgroup::memory::EpochBasedGC<Node_t>;
+  using RecordPage_t = RecordPage<Key, Payload>;
+  using NodeGC_t = ::dbgroup::memory::EpochBasedGC<Node_t>;
   using NodeRef = std::pair<Node_t *, size_t>;
   using NodeStack = std::vector<NodeRef, ::dbgroup::memory::STLAlloc<NodeRef>>;
 
@@ -56,7 +59,7 @@ class BzTree
   Node_t *root_;
 
   /// garbage collector
-  EpochBasedGC_t gc_;
+  NodeGC_t gc_;
 
   /*################################################################################################
    * Internal utility functions
@@ -148,7 +151,7 @@ class BzTree
 
   static constexpr size_t
   ComputeOccupiedSize(  //
-      const SortedMetaArray &metadata,
+      const MetaArray &metadata,
       const size_t rec_count)
   {
     size_t block_size = 0;
@@ -198,7 +201,7 @@ class BzTree
   SplitLeafNode(  //
       const Node_t *target_node,
       const Key target_key,
-      const SortedMetaArray &metadata,
+      const MetaArray &metadata,
       const size_t rec_count)
   {
     const size_t left_rec_count = rec_count / 2;
@@ -320,7 +323,7 @@ class BzTree
       const Key target_key,
       const size_t target_key_length,
       const size_t target_size,
-      const SortedMetaArray &target_meta,
+      const MetaArray &target_meta,
       const size_t rec_count)
   {
     /*----------------------------------------------------------------------------------------------
