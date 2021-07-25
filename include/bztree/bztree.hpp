@@ -177,7 +177,7 @@ class BzTree
     if (target_size > kPageSize - kMinFreeSpaceSize) {
       SplitLeafNode(node, key, metadata, rec_count);
       return;
-    } else if (metadata.size() < kMinSortedRecNum) {
+    } else if (rec_count < kMinSortedRecNum) {
       if (MergeLeafNodes(node, key, key_length, target_size, metadata, rec_count)) return;
     }
 
@@ -675,6 +675,29 @@ class BzTree
       }
     }
     return ReturnCode::kSuccess;
+  }
+
+  /*################################################################################################
+   * Public utility functions
+   *##############################################################################################*/
+
+  std::pair<size_t, size_t>
+  CountNodes(  //
+      Node_t *node = nullptr,
+      size_t internal_count = 0,
+      size_t leaf_count = 0)
+  {
+    if (node == nullptr) node = GetRoot();
+
+    if (!node->IsLeaf()) {
+      // delete children nodes recursively
+      for (size_t i = 0; i < node->GetSortedCount(); ++i) {
+        auto child_node = internal::GetChildNode(node, i);
+        std::tie(internal_count, leaf_count) = CountNodes(child_node, internal_count, leaf_count);
+      }
+      return {internal_count + 1, leaf_count};
+    }
+    return {internal_count, leaf_count + 1};
   }
 };
 
