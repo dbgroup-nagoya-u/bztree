@@ -71,7 +71,7 @@ template <class Key, class Payload, class Compare>
 KeyIndex
 _SearchSortedMetadata(  //
     const Node<Key, Payload, Compare> *node,
-    const Key key)
+    const Key &key)
 {
   const int64_t sorted_count = node->GetSortedCount();
 
@@ -108,7 +108,7 @@ template <class Key, class Payload, class Compare>
 KeyIndex
 _SearchUnsortedMeta(  //
     const Node<Key, Payload, Compare> *node,
-    const Key key,
+    const Key &key,
     const int64_t begin_index,
     const int64_t sorted_count,
     const size_t index_epoch = 0)
@@ -136,7 +136,7 @@ template <class Key, class Payload, class Compare>
 KeyIndex
 _CheckUniqueness(  //
     const Node<Key, Payload, Compare> *node,
-    const Key key,
+    const Key &key,
     const int64_t rec_count,
     const size_t epoch = 0)
 {
@@ -427,7 +427,7 @@ template <class Key, class Payload, class Compare>
 NodeReturnCode
 Read(  //
     const Node<Key, Payload, Compare> *node,
-    const Key key,
+    const Key &key,
     Payload &out_payload)
 {
   const auto status = node->GetStatusWordProtected();
@@ -504,9 +504,9 @@ template <class Key, class Payload, class Compare>
 NodeReturnCode
 Write(  //
     Node<Key, Payload, Compare> *node,
-    const Key key,
+    const Key &key,
     const size_t key_length,
-    const Payload payload,
+    const Payload &payload,
     const size_t payload_length,
     const size_t index_epoch = 1)
 {
@@ -585,9 +585,9 @@ template <class Key, class Payload, class Compare>
 NodeReturnCode
 Insert(  //
     Node<Key, Payload, Compare> *node,
-    const Key key,
+    const Key &key,
     const size_t key_length,
-    const Payload payload,
+    const Payload &payload,
     const size_t payload_length,
     const size_t index_epoch = 1)
 {
@@ -679,9 +679,9 @@ template <class Key, class Payload, class Compare>
 NodeReturnCode
 Update(  //
     Node<Key, Payload, Compare> *node,
-    const Key key,
+    const Key &key,
     const size_t key_length,
-    const Payload payload,
+    const Payload &payload,
     const size_t payload_length,
     const size_t index_epoch = 1)
 {
@@ -785,7 +785,7 @@ template <class Key, class Payload, class Compare>
 NodeReturnCode
 Delete(  //
     Node<Key, Payload, Compare> *node,
-    const Key key,
+    const Key &key,
     const size_t key_length,
     const size_t index_epoch = 1)
 {

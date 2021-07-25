@@ -74,7 +74,7 @@ class BzTree
 
   Node_t *
   SearchLeafNode(  //
-      const Key key,
+      const Key &key,
       const bool range_is_closed)
   {
     auto current_node = GetRoot();
@@ -99,7 +99,7 @@ class BzTree
 
   NodeStack
   TraceTargetNode(  //
-      const Key key,
+      const Key &key,
       const Node_t *target_node)
   {
     // trace nodes to a target internal node
@@ -165,7 +165,7 @@ class BzTree
   void
   ConsolidateLeafNode(  //
       Node_t *node,
-      const Key key,
+      const Key &key,
       const size_t key_length)
   {
     // freeze a target node and perform consolidation
@@ -193,7 +193,7 @@ class BzTree
   void
   SplitLeafNode(  //
       const Node_t *node,
-      const Key key,
+      const Key &key,
       const MetaArray &metadata,
       const size_t rec_count)
   {
@@ -243,7 +243,7 @@ class BzTree
   void
   SplitInternalNode(  //
       Node_t *node,
-      const Key key)
+      const Key &key)
   {
     // get a split index and a corresponding key length
     const auto left_rec_count = (node->GetSortedCount() / 2);
@@ -314,7 +314,7 @@ class BzTree
   bool
   MergeLeafNodes(  //
       const Node_t *node,
-      const Key key,
+      const Key &key,
       const size_t key_length,
       const size_t target_size,
       const MetaArray &metadata,
@@ -390,7 +390,7 @@ class BzTree
   void
   MergeInternalNodes(  //
       Node_t *node,
-      const Key key,
+      const Key &key,
       const size_t key_length)
   {
     /*----------------------------------------------------------------------------------------------
@@ -465,7 +465,7 @@ class BzTree
   InstallNewNode(  //
       NodeStack &trace,
       Node_t *new_node,
-      const Key target_key,
+      const Key &key,
       const Node_t *target_node)
   {
     while (true) {
@@ -484,7 +484,7 @@ class BzTree
         // check wether related nodes are frozen
         const auto parent_status = parent->GetStatusWordProtected();
         if (parent_status.IsFrozen()) {
-          trace = TraceTargetNode(target_key, target_node);
+          trace = TraceTargetNode(key, target_node);
           continue;
         }
 
@@ -504,7 +504,7 @@ class BzTree
 
       if (desc.MwCAS()) return;
 
-      trace = TraceTargetNode(target_key, target_node);
+      trace = TraceTargetNode(key, target_node);
     }
   }
 
@@ -547,7 +547,7 @@ class BzTree
    *##############################################################################################*/
 
   auto
-  Read(const Key key)
+  Read(const Key &key)
   {
     const auto guard = gc_.CreateEpochGuard();
 
@@ -590,8 +590,8 @@ class BzTree
 
   ReturnCode
   Write(  //
-      const Key key,
-      const Payload payload,
+      const Key &key,
+      const Payload &payload,
       const size_t key_length = sizeof(Key),
       const size_t payload_length = sizeof(Payload))
   {
@@ -612,8 +612,8 @@ class BzTree
 
   ReturnCode
   Insert(  //
-      const Key key,
-      const Payload payload,
+      const Key &key,
+      const Payload &payload,
       const size_t key_length = sizeof(Key),
       const size_t payload_length = sizeof(Payload))
   {
@@ -635,8 +635,8 @@ class BzTree
 
   ReturnCode
   Update(  //
-      const Key key,
-      const Payload payload,
+      const Key &key,
+      const Payload &payload,
       const size_t key_length = sizeof(Key),
       const size_t payload_length = sizeof(Payload))
   {
@@ -658,7 +658,7 @@ class BzTree
 
   ReturnCode
   Delete(  //
-      const Key key,
+      const Key &key,
       const size_t key_length = sizeof(Key))
   {
     const auto guard = gc_.CreateEpochGuard();

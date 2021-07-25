@@ -227,7 +227,7 @@ class alignas(kCacheLineSize) Node
   void
   SetKey(  //
       size_t &offset,
-      const Key key,
+      const Key &key,
       const size_t key_length)
   {
     if constexpr (std::is_same_v<Key, char *>) {
@@ -243,7 +243,7 @@ class alignas(kCacheLineSize) Node
   void
   SetPayload(  //
       size_t &offset,
-      const T payload,
+      const T &payload,
       const size_t payload_length)
   {
     if constexpr (std::is_same_v<T, char *>) {
@@ -278,7 +278,7 @@ class alignas(kCacheLineSize) Node
   SetPayloadForMwCAS(  //
       MwCASDescriptor &desc,
       const Metadata meta,
-      const Payload new_payload)
+      const Payload &new_payload)
   {
     static_assert(!std::is_same_v<Payload, char *>);
 

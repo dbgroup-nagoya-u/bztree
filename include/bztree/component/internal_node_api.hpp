@@ -42,7 +42,7 @@ template <class Key, class Payload, class Compare>
 void
 _SetChild(  //
     Node<Key, Payload, Compare> *node,
-    const Key key,
+    const Key &key,
     const size_t key_length,
     const Node<Key, Payload, Compare> *child_addr,
     size_t &offset)
@@ -148,7 +148,7 @@ template <class Key, class Payload, class Compare>
 size_t
 SearchChildNode(  //
     const Node<Key, Payload, Compare> *node,
-    const Key key,
+    const Key &key,
     const bool range_is_closed)
 {
   const size_t sorted_count = node->GetSortedCount();

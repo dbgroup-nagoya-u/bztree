@@ -149,7 +149,7 @@ IsEqual(const Key &obj_1, const Key &obj_2)
 template <class Compare, class Key>
 constexpr bool
 IsInRange(  //
-    const Key key,
+    const Key &key,
     const Key *begin_key,
     const bool begin_is_closed,
     const Key *end_key,
