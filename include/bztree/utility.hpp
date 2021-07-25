@@ -16,6 +16,10 @@
 
 #pragma once
 
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+
 namespace dbgroup::index::bztree
 {
 /**
@@ -69,7 +73,7 @@ static_assert(kPageSize % kWordLength == 0);
 constexpr size_t kMaxUnsortedRecNum = BZTREE_MAX_UNSORTED_REC_NUM;
 #else
 /// Invoking consolidation if the number of unsorted records exceeds this threshold
-constexpr size_t kMaxUnsortedRecNum = 32;
+constexpr size_t kMaxUnsortedRecNum = 64;
 #endif
 
 #ifdef BZTREE_MAX_DELETED_SPACE_SIZE
@@ -77,7 +81,7 @@ constexpr size_t kMaxUnsortedRecNum = 32;
 constexpr size_t kMaxDeletedSpaceSize = BZTREE_MAX_DELETED_SPACE_SIZE;
 #else
 /// Invoking consolidation if the size of deleted records exceeds this threshold
-constexpr size_t kMaxDeletedSpaceSize = kPageSize / 4;
+constexpr size_t kMaxDeletedSpaceSize = kPageSize / 2;
 #endif
 
 #ifdef BZTREE_MIN_FREE_SPACE_SIZE
@@ -93,7 +97,7 @@ constexpr size_t kMinFreeSpaceSize = kMaxUnsortedRecNum * kWordLength * 3;
 constexpr size_t kMinSortedRecNum = BZTREE_MIN_SORTED_REC_NUM;
 #else
 /// Invoking merging if the number of sorted records falls below this threshold
-constexpr size_t kMinSortedRecNum = 16;
+constexpr size_t kMinSortedRecNum = 32;
 #endif
 
 #ifdef BZTREE_MAX_MERGED_SIZE

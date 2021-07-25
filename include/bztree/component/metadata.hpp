@@ -53,12 +53,16 @@ class alignas(kWordLength) Metadata
   {
   }
 
-  constexpr explicit Metadata(const bool is_in_progress)
-      : offset_{0},
-        visible_{0},
+  constexpr Metadata(  //
+      const size_t offset,
+      const size_t key_length,
+      const size_t total_length,
+      const bool is_in_progress = false)
+      : offset_{offset},
+        visible_{!is_in_progress},
         in_progress_{is_in_progress},
-        key_length_{0},
-        total_length_{0},
+        key_length_{key_length},
+        total_length_{total_length},
         control_region_{0}
   {
   }
@@ -126,14 +130,6 @@ class alignas(kWordLength) Metadata
    * Public utility functions
    *##############################################################################################*/
 
-  static constexpr Metadata
-  GetInsertingMeta(const size_t index_epoch)
-  {
-    auto inserting_meta = Metadata{true};
-    inserting_meta.offset_ = index_epoch;
-    return inserting_meta;
-  }
-
   constexpr Metadata
   UpdateOffset(const size_t offset) const
   {
@@ -143,31 +139,21 @@ class alignas(kWordLength) Metadata
   }
 
   constexpr Metadata
-  SetRecordInfo(  //
-      const size_t offset,
-      const size_t key_length,
-      const size_t total_length) const
+  MakeVisible(const size_t offset) const
   {
     auto new_meta = *this;
     new_meta.visible_ = 1;
     new_meta.in_progress_ = 0;
     new_meta.offset_ = offset;
-    new_meta.key_length_ = key_length;
-    new_meta.total_length_ = total_length;
     return new_meta;
   }
 
   constexpr Metadata
-  SetDeleteInfo(  //
-      const size_t offset,
-      const size_t key_length,
-      const size_t total_length) const
+  MakeInvisible(const size_t offset) const
   {
     auto new_meta = *this;
     new_meta.in_progress_ = 0;
     new_meta.offset_ = offset;
-    new_meta.key_length_ = key_length;
-    new_meta.total_length_ = total_length;
     return new_meta;
   }
 

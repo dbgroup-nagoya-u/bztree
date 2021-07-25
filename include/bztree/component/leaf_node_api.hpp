@@ -27,6 +27,7 @@
 namespace dbgroup::index::bztree::leaf
 {
 using component::AlignOffset;
+using component::CallocNew;
 using component::CanCASUpdate;
 using component::IsEqual;
 using component::IsInRange;
@@ -39,7 +40,7 @@ using component::ReadMwCASField;
 using component::RecordPage;
 using component::StatusWord;
 
-using KeyIndex = std::pair<KeyExistence, size_t>;
+using KeyIndex = std::pair<KeyExistence, int64_t>;
 
 template <class Key, class Payload, class Compare>
 using MetaRecord = typename Node<Key, Payload, Compare>::MetaRecord;
@@ -50,15 +51,64 @@ using MetaArray = std::array<Metadata, Node<Key, Payload, Compare>::kMaxRecordNu
 template <class Key, class Payload, class Compare>
 using UnsortedMeta = std::array<MetaRecord<Key, Payload, Compare>, kMaxUnsortedRecNum>;
 
+constexpr bool kLeafFlag = true;
+
 /*################################################################################################
  * Internal utility functions
  *##############################################################################################*/
+
+/**
+ * @brief Get an index of the specified key by using binary search. If there is no
+ * specified key, this returns the minimum metadata index that is greater than the
+ * specified key
+ *
+ * @tparam Compare
+ * @param key
+ * @param comp
+ * @return std::pair<KeyExistence, size_t>
+ */
+template <class Key, class Payload, class Compare>
+KeyIndex
+_SearchSortedMetadata(  //
+    const Node<Key, Payload, Compare> *node,
+    const Key &key)
+{
+  const int64_t sorted_count = node->GetSortedCount();
+
+  int64_t index;
+  int64_t begin_index = 0;
+  int64_t end_index = sorted_count - 1;
+
+  while (begin_index <= end_index) {
+    index = (begin_index + end_index) >> 1;
+
+    const auto meta = node->GetMetadataProtected(index);
+    const auto index_key = node->GetKey(meta);
+
+    if (Compare{}(key, index_key)) {
+      // a target key is in a left side
+      end_index = index - 1;
+    } else if (Compare{}(index_key, key)) {
+      // a target key is in a right side
+      begin_index = index + 1;
+    } else {
+      // find an equivalent key
+      if (meta.IsVisible()) {
+        return {KeyExistence::kExist, index};
+      } else {
+        return {KeyExistence::kDeleted, index};
+      }
+    }
+  }
+
+  return {KeyExistence::kNotExist, begin_index};
+}
 
 template <class Key, class Payload, class Compare>
 KeyIndex
 _SearchUnsortedMeta(  //
     const Node<Key, Payload, Compare> *node,
-    const Key key,
+    const Key &key,
     const int64_t begin_index,
     const int64_t sorted_count,
     const size_t index_epoch = 0)
@@ -86,12 +136,12 @@ template <class Key, class Payload, class Compare>
 KeyIndex
 _CheckUniqueness(  //
     const Node<Key, Payload, Compare> *node,
-    const Key key,
+    const Key &key,
     const int64_t rec_count,
     const size_t epoch = 0)
 {
   if constexpr (CanCASUpdate<Payload>()) {
-    const auto [rc, index] = node->SearchSortedMetadata(key, true);
+    const auto [rc, index] = _SearchSortedMetadata(node, key);
     if (rc == KeyExistence::kNotExist || rc == KeyExistence::kDeleted) {
       // a new record may be inserted in an unsorted region
       return _SearchUnsortedMeta(node, key, rec_count - 1, node->GetSortedCount(), epoch);
@@ -102,7 +152,7 @@ _CheckUniqueness(  //
         _SearchUnsortedMeta(node, key, rec_count - 1, node->GetSortedCount(), epoch);
     if (rc == KeyExistence::kNotExist) {
       // a record may be in a sorted region
-      return node->SearchSortedMetadata(key, true);
+      return _SearchSortedMetadata(node, key);
     }
     return {rc, index};
   }
@@ -127,31 +177,28 @@ _GetAlignedSize(const size_t block_size)
 }
 
 template <class Key, class Payload, class Compare>
-size_t
+void
 _CopyRecord(  //
     Node<Key, Payload, Compare> *target_node,
-    size_t offset,
+    size_t &offset,
     const Node<Key, Payload, Compare> *original_node,
     const Metadata meta)
 {
   const auto total_length = meta.GetTotalLength();
   if constexpr (CanCASUpdate<Payload>()) {
-    offset = AlignOffset<Key>(offset) - total_length;
-  } else {
-    offset -= total_length;
+    AlignOffset<Key>(offset);
   }
+  offset -= total_length;
 
   memcpy(ShiftAddress(target_node, offset), original_node->GetKeyAddr(meta), total_length);
-
-  return offset;
 }
 
 template <class Key, class Payload, class Compare>
-constexpr size_t
+void
 _CopyRecords(  //
     Node<Key, Payload, Compare> *target_node,
-    size_t offset,
     size_t current_rec_count,
+    size_t &offset,
     const Node<Key, Payload, Compare> *original_node,
     const MetaArray<Key, Payload, Compare> &metadata,
     const size_t begin_id,
@@ -160,12 +207,11 @@ _CopyRecords(  //
   for (size_t i = begin_id; i < end_id; ++i, ++current_rec_count) {
     // copy a record
     const auto meta = metadata[i];
-    offset = _CopyRecord(target_node, offset, original_node, meta);
+    _CopyRecord(target_node, offset, original_node, meta);
     // copy metadata
     const auto new_meta = meta.UpdateOffset(offset);
     target_node->SetMetadata(current_rec_count, new_meta);
   }
-  return offset;
 }
 
 template <class Key, class Payload, class Compare>
@@ -181,13 +227,13 @@ _HasSpace(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr void
+void
 _SortUnsortedRecords(  //
     const Node<Key, Payload, Compare> *node,
     UnsortedMeta<Key, Payload, Compare> &arr,
     size_t &count)
 {
-  const auto rec_count = node->GetStatusWordProtected().GetRecordCount();
+  const int64_t rec_count = node->GetStatusWordProtected().GetRecordCount();
   const int64_t sorted_count = node->GetSortedCount();
 
   // sort unsorted records by insertion sort
@@ -221,7 +267,7 @@ _SortUnsortedRecords(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr void
+void
 _SortUnsortedRecords(  //
     const Node<Key, Payload, Compare> *node,
     const Key *begin_key,
@@ -231,11 +277,11 @@ _SortUnsortedRecords(  //
     UnsortedMeta<Key, Payload, Compare> &arr,
     size_t &count)
 {
-  const auto rec_count = node->GetStatusWordProtected().GetRecordCount();
+  const int64_t rec_count = node->GetStatusWordProtected().GetRecordCount();
   const int64_t sorted_count = node->GetSortedCount();
 
   // sort unsorted records by insertion sort
-  for (int64_t index = rec_count - 1; index >= sorted_count; --index) {
+  for (int64_t index = rec_count - 1L; index >= sorted_count; --index) {
     const auto meta = node->GetMetadataProtected(index);
     if (!meta.IsInProgress()) {
       auto key = node->GetKey(meta);
@@ -268,7 +314,7 @@ _SortUnsortedRecords(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr void
+void
 _MergeSortedRecords(  //
     const Node<Key, Payload, Compare> *node,
     const UnsortedMeta<Key, Payload, Compare> &new_records,
@@ -312,11 +358,11 @@ _MergeSortedRecords(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr void
+void
 _MergeSortedRecords(  //
     const Node<Key, Payload, Compare> *node,
     const UnsortedMeta<Key, Payload, Compare> &new_records,
-    const size_t new_rec_num,
+    const int64_t new_rec_num,
     const Key *begin_k,
     const bool begin_closed,
     const Key *end_k,
@@ -324,12 +370,20 @@ _MergeSortedRecords(  //
     MetaArray<Key, Payload, Compare> &arr,
     size_t &count)
 {
-  const auto sorted_count = node->GetSortedCount();
+  const int64_t sorted_count = node->GetSortedCount();
 
-  size_t j = 0;
-  const auto begin_index =
-      (begin_k == nullptr) ? 0 : node->SearchSortedMetadata(*begin_k, begin_closed).second;
-  for (size_t i = begin_index; i < sorted_count; ++i) {
+  // search a begin index for scan
+  int64_t begin_index = 0;
+  if (begin_k != nullptr) {
+    KeyExistence rc;
+    std::tie(rc, begin_index) = _SearchSortedMetadata(node, *begin_k);
+    if (rc == KeyExistence::kDeleted || (rc == KeyExistence::kExist && !begin_closed)) {
+      ++begin_index;
+    }
+  }
+
+  int64_t j = 0;
+  for (int64_t i = begin_index; i < sorted_count; ++i) {
     const auto meta = node->GetMetadataProtected(i);
     auto key = node->GetKey(meta);
     if (end_k != nullptr && (Compare{}(*end_k, key) || (end_closed && !Compare{}(key, *end_k)))) {
@@ -370,10 +424,10 @@ _MergeSortedRecords(  //
  *##############################################################################################*/
 
 template <class Key, class Payload, class Compare>
-constexpr NodeReturnCode
+NodeReturnCode
 Read(  //
     const Node<Key, Payload, Compare> *node,
-    const Key key,
+    const Key &key,
     Payload &out_payload)
 {
   const auto status = node->GetStatusWordProtected();
@@ -388,7 +442,7 @@ Read(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr void
+void
 Scan(  //
     const Node<Key, Payload, Compare> *node,
     const Key *begin_k,
@@ -447,19 +501,19 @@ Scan(  //
  *##############################################################################################*/
 
 template <class Key, class Payload, class Compare>
-constexpr NodeReturnCode
+NodeReturnCode
 Write(  //
     Node<Key, Payload, Compare> *node,
-    const Key key,
+    const Key &key,
     const size_t key_length,
-    const Payload payload,
+    const Payload &payload,
     const size_t payload_length,
     const size_t index_epoch = 1)
 {
   // variables and constants shared in Phase 1 & 2
   const auto total_length = key_length + payload_length;
   const auto block_size = _GetAlignedSize<Key, Payload>(total_length);
-  const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
+  const auto in_progress_meta = Metadata{index_epoch, key_length, total_length, true};
   StatusWord cur_status;
   size_t rec_count;
 
@@ -474,8 +528,8 @@ Write(  //
     rec_count = cur_status.GetRecordCount();
     if constexpr (CanCASUpdate<Payload>()) {
       // check whether a node includes a target key
-      const auto [uniqueness, target_index] = node->SearchSortedMetadata(key, true);
-      if (uniqueness == KeyExistence::kExist && target_index < node->GetSortedCount()) {
+      const auto [uniqueness, target_index] = _SearchSortedMetadata(node, key);
+      if (uniqueness == KeyExistence::kExist) {
         const auto target_meta = node->GetMetadataProtected(target_index);
 
         // update a record directly
@@ -489,7 +543,7 @@ Write(  //
     }
 
     // prepare new status for MwCAS
-    const auto new_status = cur_status.AddRecordInfo(1, block_size, 0);
+    const auto new_status = cur_status.Add(1, block_size);
 
     // perform MwCAS to reserve space
     auto desc = MwCASDescriptor{};
@@ -504,11 +558,11 @@ Write(  //
 
   // insert a record
   auto offset = kPageSize - cur_status.GetBlockSize();
-  offset = node->SetPayload(offset, payload, payload_length);
-  offset = node->SetKey(offset, key, key_length);
+  node->SetPayload(offset, payload, payload_length);
+  node->SetKey(offset, key, key_length);
 
   // prepare record metadata for MwCAS
-  const auto inserted_meta = in_progress_meta.SetRecordInfo(offset, key_length, total_length);
+  const auto inserted_meta = in_progress_meta.MakeVisible(offset);
 
   // check conflicts (concurrent SMOs)
   while (true) {
@@ -528,19 +582,19 @@ Write(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr NodeReturnCode
+NodeReturnCode
 Insert(  //
     Node<Key, Payload, Compare> *node,
-    const Key key,
+    const Key &key,
     const size_t key_length,
-    const Payload payload,
+    const Payload &payload,
     const size_t payload_length,
     const size_t index_epoch = 1)
 {
   // variables and constants shared in Phase 1 & 2
   const auto total_length = key_length + payload_length;
   const auto block_size = _GetAlignedSize<Key, Payload>(total_length);
-  const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
+  const auto in_progress_meta = Metadata{index_epoch, key_length, total_length, true};
   StatusWord cur_status;
   size_t rec_count;
 
@@ -565,7 +619,7 @@ Insert(  //
     }
 
     // prepare new status for MwCAS
-    const auto new_status = cur_status.AddRecordInfo(1, block_size, 0);
+    const auto new_status = cur_status.Add(1, block_size);
 
     // perform MwCAS to reserve space
     auto desc = MwCASDescriptor{};
@@ -583,11 +637,11 @@ Insert(  //
 
   // insert a record
   auto offset = kPageSize - cur_status.GetBlockSize();
-  offset = node->SetPayload(offset, payload, payload_length);
-  offset = node->SetKey(offset, key, key_length);
+  node->SetPayload(offset, payload, payload_length);
+  node->SetKey(offset, key, key_length);
 
   // prepare record metadata for MwCAS
-  const auto inserted_meta = in_progress_meta.SetRecordInfo(offset, key_length, total_length);
+  const auto inserted_meta = in_progress_meta.MakeVisible(offset);
 
   while (true) {
     // check concurrent SMOs
@@ -622,19 +676,19 @@ Insert(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr NodeReturnCode
+NodeReturnCode
 Update(  //
     Node<Key, Payload, Compare> *node,
-    const Key key,
+    const Key &key,
     const size_t key_length,
-    const Payload payload,
+    const Payload &payload,
     const size_t payload_length,
     const size_t index_epoch = 1)
 {
   // variables and constants shared in Phase 1 & 2
   const auto total_length = key_length + payload_length;
   const auto block_size = _GetAlignedSize<Key, Payload>(total_length);
-  const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
+  const auto in_progress_meta = Metadata{index_epoch, key_length, total_length, true};
   StatusWord cur_status;
   size_t rec_count, target_index = 0;
   auto uniqueness = KeyExistence::kNotExist;
@@ -674,7 +728,7 @@ Update(  //
     const auto target_meta = node->GetMetadataProtected(target_index);
     const auto deleted_size =
         kWordLength + _GetAlignedSize<Key, Payload>(target_meta.GetTotalLength());
-    const auto new_status = cur_status.AddRecordInfo(1, block_size, deleted_size);
+    const auto new_status = cur_status.Add(1, block_size).Delete(deleted_size);
 
     // perform MwCAS to reserve space
     auto desc = MwCASDescriptor{};
@@ -692,11 +746,11 @@ Update(  //
 
   // insert a record
   auto offset = kPageSize - cur_status.GetBlockSize();
-  offset = node->SetPayload(offset, payload, payload_length);
-  offset = node->SetKey(offset, key, key_length);
+  node->SetPayload(offset, payload, payload_length);
+  node->SetKey(offset, key, key_length);
 
   // prepare record metadata for MwCAS
-  const auto inserted_meta = in_progress_meta.SetRecordInfo(offset, key_length, total_length);
+  const auto inserted_meta = in_progress_meta.MakeVisible(offset);
 
   while (true) {
     // check conflicts (concurrent SMOs)
@@ -728,15 +782,15 @@ Update(  //
 }
 
 template <class Key, class Payload, class Compare>
-constexpr NodeReturnCode
+NodeReturnCode
 Delete(  //
     Node<Key, Payload, Compare> *node,
-    const Key key,
+    const Key &key,
     const size_t key_length,
     const size_t index_epoch = 1)
 {
   // variables and constants
-  const auto in_progress_meta = Metadata::GetInsertingMeta(index_epoch);
+  const auto in_progress_meta = Metadata{index_epoch, key_length, key_length, true};
   StatusWord cur_status;
   size_t rec_count, target_index = 0;
   auto uniqueness = KeyExistence::kNotExist;
@@ -763,7 +817,7 @@ Delete(  //
           const auto deleted_meta = target_meta.Delete();
           const auto deleted_size =
               kWordLength + _GetAlignedSize<Key, Payload>(target_meta.GetTotalLength());
-          const auto new_status = cur_status.AddRecordInfo(0, 0, deleted_size);
+          const auto new_status = cur_status.Delete(deleted_size);
 
           // delete a record directly
           auto desc = MwCASDescriptor{};
@@ -780,7 +834,7 @@ Delete(  //
     const auto deleted_size = (2 * kWordLength)
                               + _GetAlignedSize<Key, Payload>(target_meta.GetTotalLength())
                               + key_length;
-    const auto new_status = cur_status.AddRecordInfo(1, key_length, deleted_size);
+    const auto new_status = cur_status.Add(1, key_length).Delete(deleted_size);
 
     // perform MwCAS to reserve space
     auto desc = MwCASDescriptor{};
@@ -798,10 +852,10 @@ Delete(  //
 
   // insert a null record
   auto offset = kPageSize - cur_status.GetBlockSize();
-  offset = node->SetKey(offset, key, key_length);
+  node->SetKey(offset, key, key_length);
 
   // prepare record metadata for MwCAS
-  const auto deleted_meta = in_progress_meta.SetDeleteInfo(offset, key_length, key_length);
+  const auto deleted_meta = in_progress_meta.MakeInvisible(offset);
 
   while (true) {
     // check concurrent SMOs
@@ -840,27 +894,27 @@ Delete(  //
  *##############################################################################################*/
 
 template <class Key, class Payload, class Compare>
-constexpr Node<Key, Payload, Compare> *
+Node<Key, Payload, Compare> *
 Consolidate(  //
     const Node<Key, Payload, Compare> *orig_node,
     const MetaArray<Key, Payload, Compare> &metadata,
     const size_t rec_count)
 {
   // create a new node and copy records
-  auto new_node = Node<Key, Payload, Compare>::CreateEmptyNode(true);
-  const auto offset = _CopyRecords(new_node, kPageSize, 0, orig_node, metadata, 0, rec_count);
+  auto new_node = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kLeafFlag);
+  auto offset = kPageSize;
+  _CopyRecords(new_node, 0, offset, orig_node, metadata, 0, rec_count);
   new_node->SetSortedCount(rec_count);
   if constexpr (CanCASUpdate<Payload>()) {
-    new_node->SetStatus(
-        StatusWord{}.AddRecordInfo(rec_count, kPageSize - AlignOffset<Key>(offset), 0));
-  } else {
-    new_node->SetStatus(StatusWord{}.AddRecordInfo(rec_count, kPageSize - offset, 0));
+    AlignOffset<Key>(offset);
   }
+  new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
+
   return new_node;
 }
 
 template <class Key, class Payload, class Compare>
-constexpr std::pair<Node<Key, Payload, Compare> *, Node<Key, Payload, Compare> *>
+std::pair<Node<Key, Payload, Compare> *, Node<Key, Payload, Compare> *>
 Split(  //
     const Node<Key, Payload, Compare> *orig_node,
     const MetaArray<Key, Payload, Compare> &metadata,
@@ -870,32 +924,30 @@ Split(  //
   const auto right_rec_count = rec_count - left_rec_count;
 
   // create a split left node
-  auto left_node = Node<Key, Payload, Compare>::CreateEmptyNode(true);
-  auto offset = _CopyRecords(left_node, kPageSize, 0, orig_node, metadata, 0, left_rec_count);
+  auto left_node = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kLeafFlag);
+  auto offset = kPageSize;
+  _CopyRecords(left_node, 0, offset, orig_node, metadata, 0, left_rec_count);
   left_node->SetSortedCount(left_rec_count);
   if constexpr (CanCASUpdate<Payload>()) {
-    left_node->SetStatus(
-        StatusWord{}.AddRecordInfo(left_rec_count, kPageSize - AlignOffset<Key>(offset), 0));
-  } else {
-    left_node->SetStatus(StatusWord{}.AddRecordInfo(left_rec_count, kPageSize - offset, 0));
+    AlignOffset<Key>(offset);
   }
+  left_node->SetStatus(StatusWord{left_rec_count, kPageSize - offset});
 
   // create a split right node
-  auto right_node = Node<Key, Payload, Compare>::CreateEmptyNode(true);
-  offset = _CopyRecords(right_node, kPageSize, 0, orig_node, metadata, left_rec_count, rec_count);
+  auto right_node = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kLeafFlag);
+  offset = kPageSize;
+  _CopyRecords(right_node, 0, offset, orig_node, metadata, left_rec_count, rec_count);
   right_node->SetSortedCount(right_rec_count);
   if constexpr (CanCASUpdate<Payload>()) {
-    right_node->SetStatus(
-        StatusWord{}.AddRecordInfo(right_rec_count, kPageSize - AlignOffset<Key>(offset), 0));
-  } else {
-    right_node->SetStatus(StatusWord{}.AddRecordInfo(right_rec_count, kPageSize - offset, 0));
+    AlignOffset<Key>(offset);
   }
+  right_node->SetStatus(StatusWord{right_rec_count, kPageSize - offset});
 
   return {left_node, right_node};
 }
 
 template <class Key, class Payload, class Compare>
-constexpr Node<Key, Payload, Compare> *
+Node<Key, Payload, Compare> *
 Merge(  //
     const Node<Key, Payload, Compare> *left_node,
     const MetaArray<Key, Payload, Compare> &left_meta,
@@ -907,16 +959,15 @@ Merge(  //
   const auto rec_count = l_rec_count + r_rec_count;
 
   // create a merged node
-  auto new_node = Node<Key, Payload, Compare>::CreateEmptyNode(true);
-  auto offset = _CopyRecords(new_node, kPageSize, 0, left_node, left_meta, 0, l_rec_count);
-  offset = _CopyRecords(new_node, offset, l_rec_count, right_node, right_meta, 0, r_rec_count);
+  auto new_node = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kLeafFlag);
+  auto offset = kPageSize;
+  _CopyRecords(new_node, 0, offset, left_node, left_meta, 0, l_rec_count);
+  _CopyRecords(new_node, l_rec_count, offset, right_node, right_meta, 0, r_rec_count);
   new_node->SetSortedCount(rec_count);
   if constexpr (CanCASUpdate<Payload>()) {
-    new_node->SetStatus(
-        StatusWord{}.AddRecordInfo(rec_count, kPageSize - AlignOffset<Key>(offset), 0));
-  } else {
-    new_node->SetStatus(StatusWord{}.AddRecordInfo(rec_count, kPageSize - offset, 0));
+    AlignOffset<Key>(offset);
   }
+  new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
 
   return new_node;
 }
@@ -926,7 +977,7 @@ Merge(  //
  *##############################################################################################*/
 
 template <class Key, class Payload, class Compare>
-constexpr std::pair<MetaArray<Key, Payload, Compare>, size_t>
+std::pair<MetaArray<Key, Payload, Compare>, size_t>
 GatherSortedLiveMetadata(const Node<Key, Payload, Compare> *node)
 {
   // sort records in an unsorted region

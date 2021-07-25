@@ -50,7 +50,7 @@ TEST_F(MetadataFixture, InitForInsert_InitMeta_InitWithoutSideEffect)
 {
   const Metadata meta;
   const auto epoch = 256, different_epoch = 512;
-  const auto test_meta = Metadata::GetInsertingMeta(epoch);
+  const auto test_meta = Metadata{epoch, 0, 0, true};
 
   EXPECT_EQ(kWordLength, sizeof(test_meta));
   EXPECT_FALSE(test_meta.IsVisible());
@@ -84,27 +84,7 @@ TEST_F(MetadataFixture, SetRecordInfo_InitMeta_SetWithoutSideEffect)
   const Metadata meta;
   const auto epoch = 0;
   const auto offset = 256, key_length = 16, total_length = 32;
-  const auto test_meta = meta.SetRecordInfo(offset, key_length, total_length);
-
-  EXPECT_EQ(kWordLength, sizeof(test_meta));
-  EXPECT_TRUE(test_meta.IsVisible());
-  EXPECT_FALSE(test_meta.IsInProgress());
-  EXPECT_EQ(offset, test_meta.GetOffset());
-  EXPECT_EQ(key_length, test_meta.GetKeyLength());
-  EXPECT_EQ(total_length, test_meta.GetTotalLength());
-
-  EXPECT_FALSE(test_meta.IsDeleted());
-  EXPECT_FALSE(test_meta.IsFailedRecord(epoch));
-  EXPECT_EQ(total_length - key_length, test_meta.GetPayloadLength());
-}
-
-TEST_F(MetadataFixture, SetRecordInfo_InsertedMeta_SetWithoutSideEffect)
-{
-  const Metadata meta;
-  const auto epoch = 0;
-  const auto offset = 256, key_length = 16, total_length = 32;
-  const auto test_meta =
-      Metadata::GetInsertingMeta(epoch).SetRecordInfo(offset, key_length, total_length);
+  const auto test_meta = Metadata{epoch, key_length, total_length, true}.MakeVisible(offset);
 
   EXPECT_EQ(kWordLength, sizeof(test_meta));
   EXPECT_TRUE(test_meta.IsVisible());
@@ -123,8 +103,7 @@ TEST_F(MetadataFixture, SetDeleteInfo_InitMeta_DeleteWithoutSideEffect)
   const Metadata meta;
   const auto epoch = 0;
   const auto offset = 256, key_length = 16, total_length = 32;
-  const auto test_meta =
-      Metadata::GetInsertingMeta(epoch).SetDeleteInfo(offset, key_length, total_length);
+  const auto test_meta = Metadata{epoch, key_length, total_length, true}.MakeInvisible(offset);
 
   EXPECT_EQ(kWordLength, sizeof(test_meta));
   EXPECT_FALSE(test_meta.IsVisible());

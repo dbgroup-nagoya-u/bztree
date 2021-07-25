@@ -23,29 +23,29 @@
 
 #include "gtest/gtest.h"
 
-namespace dbgroup::index::bztree::component::test
+namespace dbgroup::index::bztree::leaf::test
 {
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
-struct KeyPayloadPair {
+struct KeyPayload {
   using Key = KeyType;
   using Payload = PayloadType;
   using KeyComp = KeyComparator;
   using PayloadComp = PayloadComparator;
 };
 
-template <class KeyPayloadPair>
+template <class KeyPayload>
 class LeafNodeFixture : public testing::Test
 {
   // extract key-payload types
-  using Key = typename KeyPayloadPair::Key;
-  using Payload = typename KeyPayloadPair::Payload;
-  using KeyComp = typename KeyPayloadPair::KeyComp;
-  using PayloadComp = typename KeyPayloadPair::PayloadComp;
+  using Key = typename KeyPayload::Key;
+  using Payload = typename KeyPayload::Payload;
+  using KeyComp = typename KeyPayload::KeyComp;
+  using PayloadComp = typename KeyPayload::PayloadComp;
 
   // define type aliases for simplicity
-  using Node_t = Node<Key, Payload, KeyComp>;
-  using RecordPage_t = RecordPage<Key, Payload>;
+  using Node_t = component::Node<Key, Payload, KeyComp>;
+  using RecordPage_t = component::RecordPage<Key, Payload>;
 
  protected:
   /*################################################################################################
@@ -87,7 +87,7 @@ class LeafNodeFixture : public testing::Test
   SetUp()
   {
     // initialize a leaf node and expected statistics
-    node.reset(Node_t::CreateEmptyNode(kLeafFlag));
+    node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
     expected_record_count = 0;
     expected_block_size = 0;
     expected_deleted_block_size = 0;
@@ -119,6 +119,13 @@ class LeafNodeFixture : public testing::Test
         snprintf(payload, kPayloadLength, "%06lu", index);
         payloads[index] = payload;
       }
+    } else if constexpr (std::is_same_v<Payload, uint64_t *>) {
+      // pointer payloads
+      payload_length = sizeof(Payload);
+      for (size_t index = 0; index < kKeyNumForTest; ++index) {
+        auto payload = new uint64_t{index};
+        payloads[index] = payload;
+      }
     } else {
       // static-length payloads
       payload_length = sizeof(Payload);
@@ -144,7 +151,7 @@ class LeafNodeFixture : public testing::Test
         delete[] keys[index];
       }
     }
-    if constexpr (std::is_same_v<Payload, char *>) {
+    if constexpr (std::is_same_v<Payload, char *> || std::is_same_v<Payload, uint64_t *>) {
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
         delete[] payloads[index];
       }
@@ -270,7 +277,7 @@ class LeafNodeFixture : public testing::Test
   NodeIsFull()
   {
     const auto expected_occupied_size =
-        kHeaderLength + (expected_record_count * kWordLength) + expected_block_size;
+        component::kHeaderLength + (expected_record_count * kWordLength) + expected_block_size;
     return expected_record_count >= max_record_num
            || kPageSize - expected_occupied_size < kWordLength + key_length;
   }
@@ -501,7 +508,7 @@ class LeafNodeFixture : public testing::Test
     WriteOrderedKeys(left_begin, left_end);
     auto [left_meta, left_rec_count] = leaf::GatherSortedLiveMetadata(node.get());
 
-    auto right_node = std::unique_ptr<Node_t>(Node_t::CreateEmptyNode(kLeafFlag));
+    auto right_node = std::unique_ptr<Node_t>(CallocNew<Node_t>(kPageSize, kLeafFlag));
     for (size_t id = right_begin; id <= right_end; ++id) {
       leaf::Write(right_node.get(), keys[id], key_length, payloads[id], payload_length);
     }
@@ -521,17 +528,19 @@ class LeafNodeFixture : public testing::Test
  * Preparation for typed testing
  *################################################################################################*/
 
-using Int32Comp = std::less<int32_t>;
-using Int64Comp = std::less<int64_t>;
+using UInt32Comp = std::less<uint32_t>;
+using UInt64Comp = std::less<uint64_t>;
 using CStrComp = dbgroup::index::bztree::CompareAsCString;
+using PtrComp = std::less<uint64_t *>;
 
-using KeyPayloadPairs = ::testing::Types<KeyPayloadPair<int64_t, int64_t, Int64Comp, Int64Comp>,
-                                         KeyPayloadPair<char *, int64_t, CStrComp, Int64Comp>,
-                                         KeyPayloadPair<int64_t, char *, Int64Comp, CStrComp>,
-                                         KeyPayloadPair<int32_t, int32_t, Int32Comp, Int32Comp>,
-                                         KeyPayloadPair<char *, int32_t, CStrComp, Int32Comp>,
-                                         KeyPayloadPair<int32_t, char *, Int32Comp, CStrComp>,
-                                         KeyPayloadPair<char *, char *, CStrComp, CStrComp>>;
+using KeyPayloadPairs = ::testing::Types<KeyPayload<uint64_t, uint64_t, UInt64Comp, UInt64Comp>,
+                                         KeyPayload<char *, uint64_t, CStrComp, UInt64Comp>,
+                                         KeyPayload<uint64_t, char *, UInt64Comp, CStrComp>,
+                                         KeyPayload<uint32_t, uint32_t, UInt32Comp, UInt32Comp>,
+                                         KeyPayload<char *, uint32_t, CStrComp, UInt32Comp>,
+                                         KeyPayload<uint32_t, char *, UInt32Comp, CStrComp>,
+                                         KeyPayload<char *, char *, CStrComp, CStrComp>,
+                                         KeyPayload<uint64_t, uint64_t *, UInt64Comp, PtrComp>>;
 TYPED_TEST_CASE(LeafNodeFixture, KeyPayloadPairs);
 
 /*##################################################################################################
@@ -1006,4 +1015,4 @@ TYPED_TEST(LeafNodeFixture, Merge_LeftSiblingNode_NodesHaveCorrectKeyPayloads)
     TestFixture::VerifyRead(id, id);
   }
 }
-}  // namespace dbgroup::index::bztree::component::test
+}  // namespace dbgroup::index::bztree::leaf::test

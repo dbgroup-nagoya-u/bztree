@@ -57,11 +57,11 @@ TEST_F(StatusWordFixture, Freeze_InitialStatus_FreezeWithoutSideEffect)
   EXPECT_EQ(0, frozen_status.GetDeletedSize());
 }
 
-TEST_F(StatusWordFixture, AddRecordInfo_InitialStatus_AddInfoWithoutSideEffect)
+TEST_F(StatusWordFixture, AddDelete_InitialStatus_AddInfoWithoutSideEffect)
 {
   const StatusWord status;
   const size_t record_count = 16, block_size = 8, deleted_size = 4;
-  const auto updated_status = status.AddRecordInfo(record_count, block_size, deleted_size);
+  const auto updated_status = status.Add(record_count, block_size).Delete(deleted_size);
 
   EXPECT_EQ(kWordLength, sizeof(updated_status));
   EXPECT_FALSE(updated_status.IsFrozen());

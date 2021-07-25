@@ -21,7 +21,7 @@
 #include "bztree/component/leaf_node_api.hpp"
 #include "gtest/gtest.h"
 
-namespace dbgroup::index::bztree::component::test
+namespace dbgroup::index::bztree::internal::test
 {
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
@@ -43,7 +43,7 @@ class InternalNodeFixture : public testing::Test
   using PayloadComp = typename KeyPayloadPair::PayloadComp;
 
   // define type aliases for simplicity
-  using Node_t = Node<Key, Payload, KeyComp>;
+  using Node_t = component::Node<Key, Payload, KeyComp>;
 
   // constant values for testing
   static constexpr size_t kKeyNumForTest = 1024;
@@ -71,7 +71,7 @@ class InternalNodeFixture : public testing::Test
   SetUp()
   {
     // initialize a leaf node and expected statistics
-    node.reset(Node_t::CreateEmptyNode(kInternalFlag));
+    node.reset(CallocNew<Node_t>(kPageSize, kInternalFlag));
 
     // prepare keys
     if constexpr (std::is_same_v<Key, char*>) {
@@ -92,7 +92,7 @@ class InternalNodeFixture : public testing::Test
 
     // set a record length and its maximum number
     record_length = 2 * kWordLength;
-    max_record_num = (kPageSize - kHeaderLength) / (record_length + kWordLength);
+    max_record_num = (kPageSize - component::kHeaderLength) / (record_length + kWordLength);
   }
 
   void
@@ -114,23 +114,23 @@ class InternalNodeFixture : public testing::Test
       const size_t child_num,
       const size_t payload_begin = 0)
   {
-    auto dummy_node = Node_t::CreateEmptyNode(kInternalFlag);
+    auto dummy_node = CallocNew<Node_t>(kPageSize, kInternalFlag);
 
     // embeds dummy childrens
     auto offset = kPageSize;
     for (size_t i = 0; i < child_num; ++i) {
       // set a key and a dummy payload
-      offset = dummy_node->SetPayload(offset, payload_begin + i, kWordLength);
-      offset = dummy_node->SetKey(offset, keys[i], key_length);
+      dummy_node->SetPayload(offset, payload_begin + i, kWordLength);
+      dummy_node->SetKey(offset, keys[i], key_length);
 
       // set a corresponding metadata
-      const auto meta = Metadata{}.SetRecordInfo(offset, key_length, key_length + kWordLength);
+      const auto meta = Metadata{offset, key_length, key_length + kWordLength};
       dummy_node->SetMetadata(i, meta);
 
       offset -= offset & (kWordLength - 1);
     }
 
-    const auto status = StatusWord{}.AddRecordInfo(child_num, kPageSize - offset, 0);
+    const auto status = StatusWord{child_num, kPageSize - offset};
     dummy_node->SetStatus(status);
     dummy_node->SetSortedCount(kDummyNodeNum);
 
@@ -168,7 +168,7 @@ class InternalNodeFixture : public testing::Test
     for (size_t i = 0; i < child_num; ++i) {
       auto child = internal::GetChildNode(target_node, i);
       if (expected_children != nullptr) {
-        EXPECT_TRUE(HaveSameAddress(expected_children->at(i), child));
+        EXPECT_TRUE(expected_children->at(i) == child);
       }
     }
   }
@@ -359,4 +359,4 @@ TYPED_TEST(InternalNodeFixture, NewParentForMerge_DummyChildren_ParentHasCorrect
   TestFixture::VerifyNewParentForMerge();
 }
 
-}  // namespace dbgroup::index::bztree::component::test
+}  // namespace dbgroup::index::bztree::internal::test
