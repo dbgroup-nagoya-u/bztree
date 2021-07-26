@@ -81,7 +81,7 @@ constexpr size_t kMaxUnsortedRecNum = 64;
 constexpr size_t kMaxDeletedSpaceSize = BZTREE_MAX_DELETED_SPACE_SIZE;
 #else
 /// Invoking consolidation if the size of deleted records exceeds this threshold
-constexpr size_t kMaxDeletedSpaceSize = kPageSize / 2;
+constexpr size_t kMaxDeletedSpaceSize = 0.25 * kPageSize;
 #endif
 
 #ifdef BZTREE_MIN_FREE_SPACE_SIZE
@@ -89,7 +89,7 @@ constexpr size_t kMaxDeletedSpaceSize = kPageSize / 2;
 constexpr size_t kMinFreeSpaceSize = BZTREE_MIN_FREE_SPACE_SIZE;
 #else
 /// Invoking a split if the size of free space in a node exceeds this threshold
-constexpr size_t kMinFreeSpaceSize = kMaxUnsortedRecNum * kWordLength * 3;
+constexpr size_t kMinFreeSpaceSize = kMaxUnsortedRecNum * (3 * kWordLength);
 #endif
 
 #ifdef BZTREE_MIN_SORTED_REC_NUM
@@ -97,7 +97,7 @@ constexpr size_t kMinFreeSpaceSize = kMaxUnsortedRecNum * kWordLength * 3;
 constexpr size_t kMinSortedRecNum = BZTREE_MIN_SORTED_REC_NUM;
 #else
 /// Invoking merging if the number of sorted records falls below this threshold
-constexpr size_t kMinSortedRecNum = 32;
+constexpr size_t kMinSortedRecNum = 128;
 #endif
 
 #ifdef BZTREE_MAX_MERGED_SIZE
@@ -105,7 +105,7 @@ constexpr size_t kMinSortedRecNum = 32;
 constexpr size_t kMaxMergedSize = BZTREE_MAX_MERGED_SIZE;
 #else
 /// Canceling merging if the size of a merged node exceeds this threshold
-constexpr size_t kMaxMergedSize = kPageSize / 2;
+constexpr size_t kMaxMergedSize = kPageSize - (2 * kMinFreeSpaceSize);
 #endif
 
 }  // namespace dbgroup::index::bztree
