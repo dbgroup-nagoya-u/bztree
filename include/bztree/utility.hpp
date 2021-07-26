@@ -97,7 +97,7 @@ constexpr size_t kMinFreeSpaceSize = kMaxUnsortedRecNum * (3 * kWordLength);
 constexpr size_t kMinSortedRecNum = BZTREE_MIN_SORTED_REC_NUM;
 #else
 /// Invoking merging if the number of sorted records falls below this threshold
-constexpr size_t kMinSortedRecNum = 128;
+constexpr size_t kMinSortedRecNum = 2 * kMaxUnsortedRecNum;
 #endif
 
 #ifdef BZTREE_MAX_MERGED_SIZE
