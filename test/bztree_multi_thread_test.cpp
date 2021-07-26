@@ -67,15 +67,15 @@ class BzTreeFixture : public testing::Test
 
   // constant values for testing
   static constexpr size_t kIndexEpoch = 1;
-  static constexpr size_t kKeyNumForTest = 8192 * 10;
-  static constexpr size_t kKeyLength = kWordLength;
-  static constexpr size_t kPayloadLength = kWordLength;
-  static constexpr size_t kRandomSeed = 10;
 #ifdef BZTREE_TEST_THREAD_NUM
   static constexpr size_t kThreadNum = BZTREE_TEST_THREAD_NUM;
 #else
   static constexpr size_t kThreadNum = 8;
 #endif
+  static constexpr size_t kKeyNumForTest = 8192 * kThreadNum;
+  static constexpr size_t kKeyLength = kWordLength;
+  static constexpr size_t kPayloadLength = kWordLength;
+  static constexpr size_t kRandomSeed = 10;
 
   // actual keys and payloads
   size_t key_length;
