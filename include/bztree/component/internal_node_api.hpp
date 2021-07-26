@@ -101,33 +101,18 @@ _CopySortedRecords(  //
 {
   assert(end_index > 0);
 
-  auto end_offset = orig_node->GetMetadata(end_index - 1).GetOffset();
-  AlignOffset<Key>(end_offset);
-  const auto copy_end = offset;
+  // insert metadata and records one by one
+  for (size_t index = begin_index; index < end_index; ++index, ++record_count) {
+    const auto meta = orig_node->GetMetadata(index);
+    const auto key = orig_node->GetKey(meta);
+    const auto child_addr =
+        ReadMwCASField<Node<Key, Payload, Compare> *>(orig_node->GetPayloadAddr(meta));
+    _SetChild(target_node, key, meta.GetKeyLength(), child_addr, offset);
 
-  // copy metadata
-  if (record_count == 0 && begin_index == 0) {
-    // directly copy metadata
-    memcpy(ShiftAddress(target_node, component::kHeaderLength),  //
-           ShiftAddress(orig_node, component::kHeaderLength),    //
-           kWordLength * end_index);
-    record_count += end_index;
-    offset = end_offset;
-  } else {
-    // insert metadata one by one
-    for (size_t index = begin_index; index < end_index; ++index, ++record_count) {
-      const auto meta = orig_node->GetMetadata(index);
-      offset -= meta.GetTotalLength();
-      const auto new_meta = meta.UpdateOffset(offset);
-      target_node->SetMetadata(record_count, new_meta);
-      AlignOffset<Key>(offset);
-    }
+    const auto new_meta = meta.UpdateOffset(offset);
+    target_node->SetMetadata(record_count, new_meta);
+    AlignOffset<Key>(offset);
   }
-
-  // copy records
-  memcpy(ShiftAddress(target_node, offset),    //
-         ShiftAddress(orig_node, end_offset),  //
-         copy_end - offset);
 }
 
 /*################################################################################################
