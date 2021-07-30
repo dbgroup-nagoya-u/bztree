@@ -20,8 +20,14 @@
 #include <utility>
 
 #include "common.hpp"
+#include "record_page.hpp"
 
-namespace dbgroup::index::bztree::component
+namespace dbgroup::index::bztree
+{
+template <class Key, class Payload, class Compare>
+class BzTree;
+
+namespace component
 {
 /**
  * @brief A class to represent a iterator for scan results.
@@ -29,13 +35,22 @@ namespace dbgroup::index::bztree::component
  * @tparam Key a target key class
  * @tparam Payload a target payload class
  */
-template <class Key, class Payload>
+template <class Key, class Payload, class Compare>
 class RecordIterator
 {
+  using BzTree_t = BzTree<Key, Payload, Compare>;
+  using RecordPage_t = RecordPage<Key, Payload>;
+
  private:
   /*################################################################################################
    * Internal member variables
    *##############################################################################################*/
+
+  BzTree_t* bztree_;
+
+  const Key* end_key_;
+
+  bool end_is_closed_;
 
   /// an address of a current record
   std::byte* current_addr_;
@@ -49,6 +64,12 @@ class RecordIterator
   /// the length of a current payload
   uint32_t payload_length_;
 
+  ///
+  bool scan_finished_;
+
+  /// copied keys and payloads
+  std::unique_ptr<RecordPage_t> page_;
+
  public:
   /*################################################################################################
    * Public constructors/destructors
@@ -60,21 +81,27 @@ class RecordIterator
    * @param src_addr a source address to copy record data
    */
   constexpr RecordIterator(  //
-      const std::byte* src_addr,
-      const std::byte* end_addr,
-      const uint32_t key_length,
-      const uint32_t payload_length)
-      : current_addr_{const_cast<std::byte*>(src_addr)},
-        end_addr_{end_addr},
-        key_length_{key_length},
-        payload_length_{payload_length}
+      BzTree_t* bztree,
+      const Key* end_key,
+      const bool end_is_closed,
+      RecordPage_t* page,
+      const bool scan_finished)
+      : bztree_{bztree},
+        end_key_{end_key},
+        end_is_closed_{end_is_closed},
+        current_addr_{page->GetBeginAddr()},
+        end_addr_{page->GetEndAddr()},
+        key_length_{page->GetBeginKeyLength()},
+        payload_length_{page->GetBeginPayloadLength()},
+        scan_finished_{scan_finished},
+        page_{page}
   {
   }
 
   ~RecordIterator() = default;
 
-  constexpr RecordIterator(const RecordIterator&) = default;
-  constexpr RecordIterator& operator=(const RecordIterator&) = default;
+  constexpr RecordIterator(const RecordIterator&) = delete;
+  constexpr RecordIterator& operator=(const RecordIterator&) = delete;
   constexpr RecordIterator(RecordIterator&&) = default;
   constexpr RecordIterator& operator=(RecordIterator&&) = default;
 
@@ -121,6 +148,21 @@ class RecordIterator
   /*################################################################################################
    * Public getters/setters
    *##############################################################################################*/
+
+  bool
+  HasNext()
+  {
+    if (current_addr_ < end_addr_) return true;
+    if (scan_finished_ || page_->Empty()) return false;
+
+    const auto begin_key = page_->GetLastKey();
+    auto page = page_.get();
+    page_.release();
+
+    *this = bztree_->Scan(&begin_key, false, end_key_, end_is_closed_, page);
+
+    return HasNext();
+  }
 
   /**
    * @return a key of a current record
@@ -175,4 +217,5 @@ class RecordIterator
   }
 };
 
-}  // namespace dbgroup::index::bztree::component
+}  // namespace component
+}  // namespace dbgroup::index::bztree

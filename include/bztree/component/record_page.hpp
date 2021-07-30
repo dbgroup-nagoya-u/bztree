@@ -20,7 +20,6 @@
 #include <utility>
 
 #include "common.hpp"
-#include "record_iterator.hpp"
 
 namespace dbgroup::index::bztree::component
 {
@@ -33,8 +32,6 @@ namespace dbgroup::index::bztree::component
 template <class Key, class Payload>
 class RecordPage
 {
-  using RecordIterator_t = RecordIterator<Key, Payload>;
-
  private:
   /*################################################################################################
    * Internal member variables
@@ -89,46 +86,54 @@ class RecordPage
     last_key_addr_ = const_cast<std::byte*>(last_key_addr);
   }
 
+  constexpr bool
+  Empty() const
+  {
+    return end_addr_ == record_block_;
+  }
+
   /*################################################################################################
    * Public utility functions
    *##############################################################################################*/
 
-  RecordIterator_t
-  begin() const
+  constexpr std::byte*
+  GetBeginAddr()
   {
-    if (this->empty()) return this->end();
-
     if constexpr (std::is_same_v<Key, char*> && std::is_same_v<Payload, char*>) {
-      uint32_t key_length{}, payload_length{};
-      memcpy(&key_length, record_block_, sizeof(uint32_t));
-      memcpy(&payload_length, record_block_ + sizeof(uint32_t), sizeof(uint32_t));
-      return RecordIterator_t{record_block_ + sizeof(uint32_t) + sizeof(uint32_t), end_addr_,
-                              std::move(key_length), std::move(payload_length)};
-    } else if constexpr (std::is_same_v<Key, char*> && !std::is_same_v<Payload, char*>) {
-      uint32_t key_length{};
-      memcpy(&key_length, record_block_, sizeof(uint32_t));
-      return RecordIterator_t{record_block_ + sizeof(uint32_t), end_addr_,  //
-                              std::move(key_length), sizeof(Payload)};
-    } else if constexpr (!std::is_same_v<Key, char*> && std::is_same_v<Payload, char*>) {
-      uint32_t payload_length{};
-      memcpy(&payload_length, record_block_, sizeof(uint32_t));
-      return RecordIterator_t{record_block_ + sizeof(uint32_t), end_addr_,  //
-                              sizeof(Key), std::move(payload_length)};
+      return record_block_ + (sizeof(uint32_t) + sizeof(uint32_t));
+    } else if constexpr (std::is_same_v<Key, char*> || std::is_same_v<Payload, char*>) {
+      return record_block_ + sizeof(uint32_t);
     } else {
-      return RecordIterator_t{record_block_, end_addr_, sizeof(Key), sizeof(Payload)};
+      return record_block_;
     }
   }
 
-  constexpr RecordIterator_t
-  end() const
+  constexpr std::byte*
+  GetEndAddr() const
   {
-    return RecordIterator_t{end_addr_, end_addr_, sizeof(Key), sizeof(Payload)};
+    return end_addr_;
   }
 
-  constexpr bool
-  empty() const
+  constexpr uint32_t
+  GetBeginKeyLength() const
   {
-    return end_addr_ == record_block_;
+    if constexpr (std::is_same_v<Key, char*>) {
+      return *Cast<uint32_t*>(record_block_);
+    } else {
+      return sizeof(Key);
+    }
+  }
+
+  constexpr uint32_t
+  GetBeginPayloadLength() const
+  {
+    if constexpr (std::is_same_v<Key, char*> && std::is_same_v<Payload, char*>) {
+      return *Cast<uint32_t*>(record_block_ + sizeof(uint32_t));
+    } else if constexpr (std::is_same_v<Payload, char*>) {
+      return *Cast<uint32_t*>(record_block_);
+    } else {
+      return sizeof(Payload);
+    }
   }
 };
 
