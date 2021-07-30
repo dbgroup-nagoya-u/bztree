@@ -51,6 +51,10 @@ class RecordPage
    * Public constructors/destructors
    *##############################################################################################*/
 
+  /**
+   * @brief Construct a new instance.
+   *
+   */
   constexpr RecordPage() { static_assert(sizeof(RecordPage) == kPageSize); }
 
   ~RecordPage() = default;
@@ -64,6 +68,19 @@ class RecordPage
    * Public getters/setters
    *##############################################################################################*/
 
+  /**
+   * @retval true if this page does not have records.
+   * @retval false if this page has any records.
+   */
+  constexpr bool
+  Empty() const
+  {
+    return end_addr_ == record_block_;
+  }
+
+  /**
+   * @return Key: the last key of this copied node.
+   */
   constexpr Key
   GetLastKey() const
   {
@@ -74,28 +91,35 @@ class RecordPage
     }
   }
 
+  /**
+   * @brief Set the end address of copied records.
+   *
+   * @param end_addr the end address of copied records.
+   */
   constexpr void
   SetEndAddress(const std::byte* end_addr)
   {
     end_addr_ = const_cast<std::byte*>(end_addr);
   }
 
+  /**
+   * @brief Set the address of the last key of copied records.
+   *
+   * @param last_key_addr the address of the last key of copied records.
+   */
   constexpr void
   SetLastKeyAddress(const std::byte* last_key_addr)
   {
     last_key_addr_ = const_cast<std::byte*>(last_key_addr);
   }
 
-  constexpr bool
-  Empty() const
-  {
-    return end_addr_ == record_block_;
-  }
-
   /*################################################################################################
    * Public utility functions
    *##############################################################################################*/
 
+  /**
+   * @return std::byte*: the begin address of copied records.
+   */
   constexpr std::byte*
   GetBeginAddr()
   {
@@ -108,12 +132,18 @@ class RecordPage
     }
   }
 
+  /**
+   * @return std::byte*: the end address of copied records.
+   */
   constexpr std::byte*
   GetEndAddr() const
   {
     return end_addr_;
   }
 
+  /**
+   * @return uint32_t: the length of the begin key of copied records.
+   */
   constexpr uint32_t
   GetBeginKeyLength() const
   {
@@ -124,6 +154,9 @@ class RecordPage
     }
   }
 
+  /**
+   * @return uint32_t: the length of the begin payload of copied records.
+   */
   constexpr uint32_t
   GetBeginPayloadLength() const
   {
