@@ -135,7 +135,10 @@ class RecordPageFixture : public ::testing::Test
   void
   PreparePage(const size_t record_num)
   {
-    ::dbgroup::memory::Delete(page);
+    if (page != nullptr) {
+      ::dbgroup::memory::Delete(page);
+    }
+
     page = ::dbgroup::memory::New<RecordPage_t>();
 
     auto cur_addr = reinterpret_cast<std::byte *>(page) + kHeaderLength;

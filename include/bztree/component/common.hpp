@@ -74,6 +74,8 @@ using ::dbgroup::memory::CallocNew;
 
 using ::dbgroup::memory::STLAlloc;
 
+using ::dbgroup::memory::Deleter;
+
 /// Header length in bytes
 constexpr size_t kHeaderLength = 2 * kWordLength;
 
