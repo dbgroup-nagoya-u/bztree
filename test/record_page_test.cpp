@@ -19,15 +19,18 @@
 #include <memory>
 #include <utility>
 
+#include "bztree/bztree.hpp"
+#include "bztree/component/record_iterator.hpp"
 #include "gtest/gtest.h"
 
 namespace dbgroup::index::bztree::component::test
 {
 // use a supper template to define key-payload pair templates
-template <class KeyType, class PayloadType>
+template <class KeyType, class PayloadType, class CompareType>
 struct KeyPayloadPair {
   using Key = KeyType;
   using Payload = PayloadType;
+  using Compare = CompareType;
 };
 
 template <class KeyPayloadPair>
@@ -36,10 +39,11 @@ class RecordPageFixture : public ::testing::Test
   // extract key-payload types
   using Key = typename KeyPayloadPair::Key;
   using Payload = typename KeyPayloadPair::Payload;
+  using Compare = typename KeyPayloadPair::Compare;
 
   // define type aliases for simplicity
   using RecordPage_t = RecordPage<Key, Payload>;
-  using RecordIterator_t = RecordIterator<Key, Payload>;
+  using RecordIterator_t = RecordIterator<Key, Payload, Compare>;
 
  protected:
   /*################################################################################################
@@ -59,7 +63,7 @@ class RecordPageFixture : public ::testing::Test
   Payload payloads[kKeyNumForTest];
 
   /// a test target
-  RecordPage_t page;
+  RecordPage_t *page;
 
   /*################################################################################################
    * Setup/Teardown
@@ -103,6 +107,7 @@ class RecordPageFixture : public ::testing::Test
     }
 
     // initialize an empty page
+    page = nullptr;
     PreparePage(0);
   }
 
@@ -119,6 +124,8 @@ class RecordPageFixture : public ::testing::Test
         delete[] payloads[i];
       }
     }
+
+    ::dbgroup::memory::Delete(page);
   }
 
   /*################################################################################################
@@ -128,7 +135,13 @@ class RecordPageFixture : public ::testing::Test
   void
   PreparePage(const size_t record_num)
   {
-    auto cur_addr = reinterpret_cast<std::byte *>(&page) + kHeaderLength;
+    if (page != nullptr) {
+      ::dbgroup::memory::Delete(page);
+    }
+
+    page = ::dbgroup::memory::New<RecordPage_t>();
+
+    auto cur_addr = reinterpret_cast<std::byte *>(page) + kHeaderLength;
 
     for (size_t i = 0; i < record_num; ++i) {
       if constexpr (std::is_same_v<Key, char *>) {
@@ -154,8 +167,8 @@ class RecordPageFixture : public ::testing::Test
       cur_addr += payload_length;
     }
 
-    page.SetEndAddress(cur_addr);
-    page.SetLastKeyAddress(cur_addr - (key_length + payload_length));
+    page->SetEndAddress(cur_addr);
+    page->SetLastKeyAddress(cur_addr - (key_length + payload_length));
   }
 
   /*################################################################################################
@@ -187,34 +200,13 @@ class RecordPageFixture : public ::testing::Test
   }
 
   void
-  VerifyEmpty(const bool expect_true)
-  {
-    if (expect_true) {
-      EXPECT_TRUE(page.empty());
-    } else {
-      EXPECT_FALSE(page.empty());
-    }
-  }
-
-  void
-  VerifyBegin(const bool expect_end)
-  {
-    if (expect_end) {
-      EXPECT_TRUE(page.begin() == page.end());
-    } else {
-      EXPECT_TRUE(page.begin() != page.end());
-      VerifyPlusOperator(page.begin(), 0);
-    }
-  }
-
-  void
   VerifyGetLastKey(const size_t rec_num)
   {
-    VerifyKey(page.GetLastKey(), rec_num - 1);
+    VerifyKey(page->GetLastKey(), rec_num - 1);
   }
 
   void
-  VerifyPlusOperator(  //
+  VerifyStarOperator(  //
       const RecordIterator_t &iter,
       const size_t expected_id)
   {
@@ -226,29 +218,16 @@ class RecordPageFixture : public ::testing::Test
   void
   VerifyPlusPlusOperator(const size_t rec_num)
   {
-    auto iter = page.begin();
-    size_t count = 0;
+    auto iter = RecordIterator_t{nullptr, nullptr, false, page, true};
+    page = nullptr;
 
-    for (; iter != page.end(); ++iter, ++count) {
+    size_t count = 0;
+    for (; iter.HasNext(); ++iter, ++count) {
       ASSERT_LT(count, rec_num);
 
       const auto [key, payload] = *iter;
       VerifyKey(key, count);
       VerifyPayload(payload, count);
-    }
-
-    EXPECT_EQ(count, rec_num);
-    EXPECT_TRUE(iter == page.end());
-  }
-
-  void
-  VerifyRangeBasedForLoop(const size_t rec_num)
-  {
-    size_t count = 0;
-    for (auto &&[key, payload] : page) {
-      VerifyKey(key, count);
-      VerifyPayload(payload, count);
-      ++count;
     }
 
     EXPECT_EQ(count, rec_num);
@@ -259,37 +238,18 @@ class RecordPageFixture : public ::testing::Test
  * Preparation for typed testing
  *################################################################################################*/
 
-using KeyPayloadPairs = ::testing::Types<KeyPayloadPair<int64_t, int64_t>,
-                                         KeyPayloadPair<char *, int64_t>,
-                                         KeyPayloadPair<int64_t, char *>,
-                                         KeyPayloadPair<char *, char *>>;
+using UInt64Comp = std::less<uint64_t>;
+using CStrComp = dbgroup::index::bztree::CompareAsCString;
+
+using KeyPayloadPairs = ::testing::Types<KeyPayloadPair<uint64_t, uint64_t, UInt64Comp>,
+                                         KeyPayloadPair<char *, uint64_t, CStrComp>,
+                                         KeyPayloadPair<uint64_t, char *, UInt64Comp>,
+                                         KeyPayloadPair<char *, char *, CStrComp>>;
 TYPED_TEST_CASE(RecordPageFixture, KeyPayloadPairs);
 
 /*##################################################################################################
  * Unit test definitions
  *################################################################################################*/
-
-TYPED_TEST(RecordPageFixture, empty_EmptyPage_ReturnTrue)
-{  //
-  TestFixture::VerifyEmpty(true);
-}
-
-TYPED_TEST(RecordPageFixture, empty_NotEmptyPage_ReturnFalse)
-{  //
-  TestFixture::PreparePage(TestFixture::kKeyNumForTest);
-  TestFixture::VerifyEmpty(false);
-}
-
-TYPED_TEST(RecordPageFixture, begin_EmptyPage_ReturnEndIterator)
-{  //
-  TestFixture::VerifyBegin(true);
-}
-
-TYPED_TEST(RecordPageFixture, begin_NotEmptyPage_ReturnBeginIterator)
-{  //
-  TestFixture::PreparePage(TestFixture::kKeyNumForTest);
-  TestFixture::VerifyBegin(false);
-}
 
 TYPED_TEST(RecordPageFixture, GetLastKey_NotEmptyPage_ReturnExpectedKey)
 {  //
@@ -301,12 +261,6 @@ TYPED_TEST(RecordPageFixture, PlusPlusOperator_NotEmptyPage_ReadEveryRecord)
 {  //
   TestFixture::PreparePage(TestFixture::kKeyNumForTest);
   TestFixture::VerifyPlusPlusOperator(TestFixture::kKeyNumForTest);
-}
-
-TYPED_TEST(RecordPageFixture, RangeBasedForLoop_NotEmptyPage_ReadEveryRecord)
-{  //
-  TestFixture::PreparePage(TestFixture::kKeyNumForTest);
-  TestFixture::VerifyRangeBasedForLoop(TestFixture::kKeyNumForTest);
 }
 
 }  // namespace dbgroup::index::bztree::component::test

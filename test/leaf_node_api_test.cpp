@@ -21,6 +21,8 @@
 #include <utility>
 #include <vector>
 
+#include "bztree/bztree.hpp"
+#include "bztree/component/record_iterator.hpp"
 #include "gtest/gtest.h"
 
 namespace dbgroup::index::bztree::leaf::test
@@ -46,6 +48,7 @@ class LeafNodeFixture : public testing::Test
   // define type aliases for simplicity
   using Node_t = component::Node<Key, Payload, KeyComp>;
   using RecordPage_t = component::RecordPage<Key, Payload>;
+  using RecordIterator_t = component::RecordIterator<Key, Payload, KeyComp>;
 
  protected:
   /*################################################################################################
@@ -358,14 +361,15 @@ class LeafNodeFixture : public testing::Test
     if (!begin_null) begin_key = &keys[begin_key_id];
     if (!end_null) end_key = &keys[end_key_id];
 
-    RecordPage_t page;
+    auto page = ::dbgroup::memory::New<RecordPage_t>();
     leaf::Scan(node.get(), begin_key, begin_closed, end_key, end_closed, page);
+    RecordIterator_t iter{nullptr, nullptr, false, page, true};
 
     size_t count = 0;
-    for (auto &&[key, payload] : page) {
+    for (; iter.HasNext(); ++iter, ++count) {
+      auto [key, payload] = *iter;
       EXPECT_TRUE(IsEqual<KeyComp>(keys[expected_keys[count]], key));
       EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_payloads[count]], payload));
-      ++count;
     }
 
     EXPECT_EQ(expected_keys.size(), count);

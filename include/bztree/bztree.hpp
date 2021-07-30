@@ -25,15 +25,12 @@
 
 #include "component/internal_node_api.hpp"
 #include "component/leaf_node_api.hpp"
-#include "component/record_page.hpp"
+#include "component/record_iterator.hpp"
 #include "memory/epoch_based_gc.hpp"
 #include "utility.hpp"
 
 namespace dbgroup::index::bztree
 {
-// declare alias to visible components
-using component::RecordPage;
-
 template <class Key, class Payload, class Compare = std::less<Key>>
 class BzTree
 {
@@ -42,7 +39,8 @@ class BzTree
   using Node_t = component::Node<Key, Payload, Compare>;
   using MetaArray = std::array<Metadata, Node_t::kMaxRecordNum>;
   using NodeReturnCode = component::NodeReturnCode;
-  using RecordPage_t = RecordPage<Key, Payload>;
+  using RecordPage_t = component::RecordPage<Key, Payload>;
+  using RecordIterator_t = component::RecordIterator<Key, Payload, Compare>;
   using NodeGC_t = ::dbgroup::memory::EpochBasedGC<Node_t>;
   using NodeRef = std::pair<Node_t *, size_t>;
   using NodeStack = std::vector<NodeRef, ::dbgroup::memory::STLAlloc<NodeRef>>;
@@ -569,19 +567,25 @@ class BzTree
     }
   }
 
-  void
+  RecordIterator_t
   Scan(  //
-      RecordPage_t &page,
       const Key *begin_key = nullptr,
-      const bool begin_is_closed = false,
+      const bool begin_closed = false,
       const Key *end_key = nullptr,
-      const bool end_is_closed = false)
+      const bool end_closed = false,
+      RecordPage_t *page = nullptr)
   {
+    if (page == nullptr) {
+      page = ::dbgroup::memory::New<RecordPage_t>();
+    }
+
     const auto guard = gc_.CreateEpochGuard();
 
     const auto node =
-        (begin_key == nullptr) ? SearchLeftEdgeLeaf() : SearchLeafNode(*begin_key, begin_is_closed);
-    leaf::Scan(node, begin_key, begin_is_closed, end_key, end_is_closed, page);
+        (begin_key == nullptr) ? SearchLeftEdgeLeaf() : SearchLeafNode(*begin_key, begin_closed);
+    const auto scan_finished = leaf::Scan(node, begin_key, begin_closed, end_key, end_closed, page);
+
+    return RecordIterator_t{this, end_key, end_closed, page, scan_finished};
   }
 
   /*################################################################################################

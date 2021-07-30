@@ -181,19 +181,11 @@ class BzTreeFixture : public testing::Test
     if (!end_null) end_ptr = &keys[end_key_id];
 
     size_t count = 0;
-    RecordPage_t page;
-    bztree.Scan(page, begin_ptr, begin_closed, end_ptr, end_closed);
-    while (!page.empty()) {
-      for (auto &&[key, payload] : page) {
-        EXPECT_TRUE(component::IsEqual<KeyComp>(keys[expected_keys[count]], key));
-        EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads[expected_payloads[count]], payload));
-        ++count;
-      }
-      begin_key = page.GetLastKey();
-      begin_ptr = &begin_key;
-      begin_closed = false;
-
-      bztree.Scan(page, begin_ptr, begin_closed, end_ptr, end_closed);
+    auto iter = bztree.Scan(begin_ptr, begin_closed, end_ptr, end_closed);
+    for (; iter.HasNext(); ++iter, ++count) {
+      auto [key, payload] = *iter;
+      EXPECT_TRUE(component::IsEqual<KeyComp>(keys[expected_keys[count]], key));
+      EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads[expected_payloads[count]], payload));
     }
 
     EXPECT_EQ(expected_keys.size(), count);

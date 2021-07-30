@@ -20,7 +20,6 @@
 #include <utility>
 
 #include "common.hpp"
-#include "record_iterator.hpp"
 
 namespace dbgroup::index::bztree::component
 {
@@ -33,8 +32,6 @@ namespace dbgroup::index::bztree::component
 template <class Key, class Payload>
 class RecordPage
 {
-  using RecordIterator_t = RecordIterator<Key, Payload>;
-
  private:
   /*################################################################################################
    * Internal member variables
@@ -54,6 +51,10 @@ class RecordPage
    * Public constructors/destructors
    *##############################################################################################*/
 
+  /**
+   * @brief Construct a new instance.
+   *
+   */
   constexpr RecordPage() { static_assert(sizeof(RecordPage) == kPageSize); }
 
   ~RecordPage() = default;
@@ -67,6 +68,19 @@ class RecordPage
    * Public getters/setters
    *##############################################################################################*/
 
+  /**
+   * @retval true if this page does not have records.
+   * @retval false if this page has any records.
+   */
+  constexpr bool
+  Empty() const
+  {
+    return end_addr_ == record_block_;
+  }
+
+  /**
+   * @return Key: the last key of this copied node.
+   */
   constexpr Key
   GetLastKey() const
   {
@@ -77,12 +91,22 @@ class RecordPage
     }
   }
 
+  /**
+   * @brief Set the end address of copied records.
+   *
+   * @param end_addr the end address of copied records.
+   */
   constexpr void
   SetEndAddress(const std::byte* end_addr)
   {
     end_addr_ = const_cast<std::byte*>(end_addr);
   }
 
+  /**
+   * @brief Set the address of the last key of copied records.
+   *
+   * @param last_key_addr the address of the last key of copied records.
+   */
   constexpr void
   SetLastKeyAddress(const std::byte* last_key_addr)
   {
@@ -93,42 +117,56 @@ class RecordPage
    * Public utility functions
    *##############################################################################################*/
 
-  RecordIterator_t
-  begin() const
+  /**
+   * @return std::byte*: the begin address of copied records.
+   */
+  constexpr std::byte*
+  GetBeginAddr()
   {
-    if (this->empty()) return this->end();
-
     if constexpr (std::is_same_v<Key, char*> && std::is_same_v<Payload, char*>) {
-      uint32_t key_length{}, payload_length{};
-      memcpy(&key_length, record_block_, sizeof(uint32_t));
-      memcpy(&payload_length, record_block_ + sizeof(uint32_t), sizeof(uint32_t));
-      return RecordIterator_t{record_block_ + sizeof(uint32_t) + sizeof(uint32_t), end_addr_,
-                              std::move(key_length), std::move(payload_length)};
-    } else if constexpr (std::is_same_v<Key, char*> && !std::is_same_v<Payload, char*>) {
-      uint32_t key_length{};
-      memcpy(&key_length, record_block_, sizeof(uint32_t));
-      return RecordIterator_t{record_block_ + sizeof(uint32_t), end_addr_,  //
-                              std::move(key_length), sizeof(Payload)};
-    } else if constexpr (!std::is_same_v<Key, char*> && std::is_same_v<Payload, char*>) {
-      uint32_t payload_length{};
-      memcpy(&payload_length, record_block_, sizeof(uint32_t));
-      return RecordIterator_t{record_block_ + sizeof(uint32_t), end_addr_,  //
-                              sizeof(Key), std::move(payload_length)};
+      return record_block_ + (sizeof(uint32_t) + sizeof(uint32_t));
+    } else if constexpr (std::is_same_v<Key, char*> || std::is_same_v<Payload, char*>) {
+      return record_block_ + sizeof(uint32_t);
     } else {
-      return RecordIterator_t{record_block_, end_addr_, sizeof(Key), sizeof(Payload)};
+      return record_block_;
     }
   }
 
-  constexpr RecordIterator_t
-  end() const
+  /**
+   * @return std::byte*: the end address of copied records.
+   */
+  constexpr std::byte*
+  GetEndAddr() const
   {
-    return RecordIterator_t{end_addr_, end_addr_, sizeof(Key), sizeof(Payload)};
+    return end_addr_;
   }
 
-  constexpr bool
-  empty() const
+  /**
+   * @return uint32_t: the length of the begin key of copied records.
+   */
+  constexpr uint32_t
+  GetBeginKeyLength() const
   {
-    return end_addr_ == record_block_;
+    if constexpr (std::is_same_v<Key, char*>) {
+      return *Cast<uint32_t*>(record_block_);
+    } else {
+      return sizeof(Key);
+    }
+  }
+
+  /**
+   * @return uint32_t: the length of the begin payload of copied records.
+   */
+  constexpr uint32_t
+  GetBeginPayloadLength() const
+  {
+    if constexpr (std::is_same_v<Key, char*> && std::is_same_v<Payload, char*>) {
+      return *Cast<uint32_t*>(record_block_ + sizeof(uint32_t));
+    } else if constexpr (std::is_same_v<Payload, char*>) {
+      return *Cast<uint32_t*>(record_block_);
+    } else {
+      return sizeof(Payload);
+    }
   }
 };
 

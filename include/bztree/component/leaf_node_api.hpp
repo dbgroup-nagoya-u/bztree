@@ -358,7 +358,7 @@ _MergeSortedRecords(  //
 }
 
 template <class Key, class Payload, class Compare>
-void
+bool
 _MergeSortedRecords(  //
     const Node<Key, Payload, Compare> *node,
     const UnsortedMeta<Key, Payload, Compare> &new_records,
@@ -383,10 +383,12 @@ _MergeSortedRecords(  //
   }
 
   int64_t j = 0;
+  bool scan_finished = false;
   for (int64_t i = begin_index; i < sorted_count; ++i) {
     const auto meta = node->GetMetadataProtected(i);
     auto key = node->GetKey(meta);
     if (end_k != nullptr && (Compare{}(*end_k, key) || (end_closed && !Compare{}(key, *end_k)))) {
+      scan_finished = true;
       break;
     }
 
@@ -417,6 +419,8 @@ _MergeSortedRecords(  //
       arr[count++] = new_records[j].meta;
     }
   }
+
+  return scan_finished;
 }
 
 /*################################################################################################
@@ -442,14 +446,14 @@ Read(  //
 }
 
 template <class Key, class Payload, class Compare>
-void
+bool
 Scan(  //
     const Node<Key, Payload, Compare> *node,
     const Key *begin_k,
     const bool begin_closed,
     const Key *end_k,
     const bool end_closed,
-    RecordPage<Key, Payload> &page)
+    RecordPage<Key, Payload> *page)
 {
   // sort records in an unsorted region
   UnsortedMeta<Key, Payload, Compare> new_records;
@@ -459,11 +463,11 @@ Scan(  //
   // sort all records by merge sort
   MetaArray<Key, Payload, Compare> metadata;
   size_t count = 0;
-  _MergeSortedRecords(node, new_records, new_rec_num, begin_k, begin_closed, end_k, end_closed,
-                      metadata, count);
+  const auto scan_finished = _MergeSortedRecords(node, new_records, new_rec_num, begin_k,
+                                                 begin_closed, end_k, end_closed, metadata, count);
 
   // copy scan results to a page for returning
-  std::byte *cur_addr = reinterpret_cast<std::byte *>(&page) + component::kHeaderLength;
+  std::byte *cur_addr = reinterpret_cast<std::byte *>(page) + component::kHeaderLength;
   for (size_t i = 0; i < count; ++i) {
     const Metadata meta = metadata[i];
     if constexpr (std::is_same_v<Key, char *>) {
@@ -490,10 +494,12 @@ Scan(  //
       cur_addr += meta.GetTotalLength();
     }
   }
-  page.SetEndAddress(cur_addr);
+  page->SetEndAddress(cur_addr);
   if (count > 0) {
-    page.SetLastKeyAddress(cur_addr - metadata[count - 1].GetTotalLength());
+    page->SetLastKeyAddress(cur_addr - metadata[count - 1].GetTotalLength());
   }
+
+  return scan_finished;
 }
 
 /*################################################################################################
