@@ -24,6 +24,7 @@
 
 namespace dbgroup::index::bztree
 {
+// forward declaration to perform scanning from iterators
 template <class Key, class Payload, class Compare>
 class BzTree;
 
@@ -34,6 +35,7 @@ namespace component
  *
  * @tparam Key a target key class
  * @tparam Payload a target payload class
+ * @tparam Compare a key-comparator class
  */
 template <class Key, class Payload, class Compare>
 class RecordIterator
@@ -46,10 +48,13 @@ class RecordIterator
    * Internal member variables
    *##############################################################################################*/
 
+  /// a pointer to BzTree to perform continuous scan
   BzTree_t* bztree_;
 
+  /// the end of range scan
   const Key* end_key_;
 
+  /// a flag to specify whether the end of range is closed
   bool end_is_closed_;
 
   /// an address of a current record
@@ -64,7 +69,7 @@ class RecordIterator
   /// the length of a current payload
   uint32_t payload_length_;
 
-  ///
+  /// a flag to indicate the end of range scan
   bool scan_finished_;
 
   /// copied keys and payloads
@@ -76,9 +81,13 @@ class RecordIterator
    *##############################################################################################*/
 
   /**
-   * @brief Construct a new object.
+   * @brief Construct a new Record Iterator object
    *
-   * @param src_addr a source address to copy record data
+   * @param bztree a pointer to BzTree to perform continuous scan
+   * @param end_key the end of range scan
+   * @param end_is_closed a flag to specify whether the end of range is closed
+   * @param page a pointer to a page containing keys and payloads
+   * @param scan_finished a flag to indicate the end of range scan
    */
   constexpr RecordIterator(  //
       BzTree_t* bztree,
@@ -100,21 +109,28 @@ class RecordIterator
 
   ~RecordIterator() = default;
 
-  constexpr RecordIterator(const RecordIterator&) = delete;
-  constexpr RecordIterator& operator=(const RecordIterator&) = delete;
+  RecordIterator(const RecordIterator&) = delete;
+  RecordIterator& operator=(const RecordIterator&) = delete;
   constexpr RecordIterator(RecordIterator&&) = default;
   constexpr RecordIterator& operator=(RecordIterator&&) = default;
 
   /*################################################################################################
-   * Public operators for a iterator
+   * Public operators for iterators
    *##############################################################################################*/
 
+  /**
+   * @return std::pair<Key, Payload>: a current key and payload pair
+   */
   constexpr std::pair<Key, Payload>
   operator*() const
   {
     return {GetKey(), GetPayload()};
   }
 
+  /**
+   * @brief Forward an iterator.
+   *
+   */
   void
   operator++()
   {
@@ -133,31 +149,29 @@ class RecordIterator
     }
   }
 
-  constexpr bool
-  operator==(const RecordIterator& obj) const
-  {
-    return current_addr_ == obj.current_addr_;
-  }
-
-  constexpr bool
-  operator!=(const RecordIterator& obj) const
-  {
-    return current_addr_ != obj.current_addr_;
-  }
-
   /*################################################################################################
    * Public getters/setters
    *##############################################################################################*/
 
+  /**
+   * @brief Check if there are any records left.
+   *
+   * Note that a BzTree's scan function copies a target leaf node one by one, so this
+   * function may call a scan function internally to get a next leaf node.
+   *
+   * @retval true if there are any records left.
+   * @retval false if there are no records left.
+   */
   bool
   HasNext()
   {
     if (current_addr_ < end_addr_) return true;
     if (scan_finished_ || page_->Empty()) return false;
 
+    // search a next leaf node to continue scanning
     const auto begin_key = page_->GetLastKey();
     auto page = page_.get();
-    page_.release();
+    page_.release();  // reuse an allocated page instance
 
     *this = bztree_->Scan(&begin_key, false, end_key_, end_is_closed_, page);
 
@@ -165,7 +179,7 @@ class RecordIterator
   }
 
   /**
-   * @return a key of a current record
+   * @return Key: a key of a current record
    */
   constexpr Key
   GetKey() const
@@ -178,7 +192,7 @@ class RecordIterator
   }
 
   /**
-   * @return a payload of a current record
+   * @return Payload: a payload of a current record
    */
   constexpr Payload
   GetPayload() const
@@ -191,7 +205,7 @@ class RecordIterator
   }
 
   /**
-   * @return the length of a current kay
+   * @return size_t: the length of a current kay
    */
   constexpr size_t
   GetKeyLength() const
@@ -204,7 +218,7 @@ class RecordIterator
   }
 
   /**
-   * @return the length of a current payload
+   * @return size_t: the length of a current payload
    */
   constexpr size_t
   GetPayloadLength() const
