@@ -30,14 +30,28 @@ using component::Node;
 using component::ReadMwCASField;
 using component::StatusWord;
 
+/// a flag to indicate leaf nodes.
 constexpr bool kLeafFlag = true;
 
+/// a flag to indicate internal nodes.
 constexpr bool kInternalFlag = false;
 
 /*################################################################################################
  * Internal utility functions
  *##############################################################################################*/
 
+/**
+ * @brief Set a child node into a target internal node.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a target internal node.
+ * @param key a target key.
+ * @param key_length the length of a target key.
+ * @param child_addr a pointer of a node to be set.
+ * @param offset an offset for setting.
+ */
 template <class Key, class Payload, class Compare>
 void
 _SetChild(  //
@@ -53,42 +67,81 @@ _SetChild(  //
   }
 }
 
+/**
+ * @brief Insert a child node into a target internal node.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param target_node a target internal node.
+ * @param child_node a new child node to be inserted.
+ * @param target_pos the position of a new child node for inserting.
+ * @param offset an offest for inserting.
+ */
 template <class Key, class Payload, class Compare>
 void
 _InsertChild(  //
     Node<Key, Payload, Compare> *target_node,
     const Node<Key, Payload, Compare> *child_node,
-    const size_t target_index,
+    const size_t target_pos,
     size_t &offset)
 {
   const auto meta = child_node->GetMetadata(child_node->GetSortedCount() - 1);
   const auto key = child_node->GetKey(meta);
   const auto key_length = meta.GetKeyLength();
   _SetChild(target_node, key, key_length, child_node, offset);
-  target_node->SetMetadata(target_index, Metadata{offset, key_length, key_length + kWordLength});
+  target_node->SetMetadata(target_pos, Metadata{offset, key_length, key_length + kWordLength});
 
   AlignOffset<Key>(offset);
 }
 
+/**
+ * @brief Copy a child node into a target internal node from an original one.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param target_node a target internal node.
+ * @param child_node a new child node to be inserted.
+ * @param target_node a target internal node.
+ * @param offset an offest for inserting.
+ * @param orig_node an original node to be copied.
+ * @param orig_pos the position of a child node in an old internal node.
+ */
 template <class Key, class Payload, class Compare>
 void
-_InsertChild(  //
+_CopyChild(  //
     Node<Key, Payload, Compare> *target_node,
     const Node<Key, Payload, Compare> *child_node,
-    const size_t target_index,
+    const size_t target_pos,
     size_t &offset,
     const Node<Key, Payload, Compare> *orig_node,
-    const size_t orig_index)
+    const size_t orig_pos)
 {
-  const auto meta = orig_node->GetMetadata(orig_index);
+  const auto meta = orig_node->GetMetadata(orig_pos);
   const auto key = orig_node->GetKey(meta);
   const auto key_length = meta.GetKeyLength();
   _SetChild(target_node, key, key_length, child_node, offset);
-  target_node->SetMetadata(target_index, meta.UpdateOffset(offset));
+  target_node->SetMetadata(target_pos, meta.UpdateOffset(offset));
 
   AlignOffset<Key>(offset);
 }
 
+/**
+ * @brief Copy sorted records one by one.
+ *
+ * Note that this function cannot use memcpy because concurrent SMOs may modify payloads.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param target_node a target internal node.
+ * @param record_count the number of records in a target node.
+ * @param offset an offset of a target node.
+ * @param orig_node an original internal node.
+ * @param begin_id a begin id for copying.
+ * @param end_id an end id for copying.
+ */
 template <class Key, class Payload, class Compare>
 void
 _CopySortedRecords(  //
@@ -96,13 +149,13 @@ _CopySortedRecords(  //
     size_t record_count,
     size_t &offset,
     const Node<Key, Payload, Compare> *orig_node,
-    const size_t begin_index,
-    const size_t end_index)
+    const size_t begin_id,
+    const size_t end_id)
 {
-  assert(end_index > 0);
+  assert(end_id > 0);
 
   // insert metadata and records one by one
-  for (size_t index = begin_index; index < end_index; ++index, ++record_count) {
+  for (size_t index = begin_id; index < end_id; ++index, ++record_count) {
     const auto meta = orig_node->GetMetadata(index);
     const auto key = orig_node->GetKey(meta);
     const auto child_addr =
@@ -120,14 +173,17 @@ _CopySortedRecords(  //
  *##############################################################################################*/
 
 /**
- * @brief Get an index of the specified key by using binary search. If there is no
+ * @brief Get the position of a specified key by using binary search. If there is no
  * specified key, this returns the minimum metadata index that is greater than the
  * specified key
  *
- * @tparam Compare
- * @param key
- * @param comp
- * @return std::pair<KeyExistence, size_t>
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a target node.
+ * @param key a target key.
+ * @param range_is_closed a flag to indicate that a target key is included.
+ * @return size_t: the position of a specified key.
  */
 template <class Key, class Payload, class Compare>
 size_t
@@ -138,30 +194,30 @@ SearchChildNode(  //
 {
   const size_t sorted_count = node->GetSortedCount();
 
-  int64_t begin_index = 0;
-  int64_t end_index = sorted_count - 1;
-  int64_t index = (begin_index + end_index) >> 1;
+  int64_t begin_id = 0;
+  int64_t end_id = sorted_count - 1;
+  int64_t index = (begin_id + end_id) >> 1;
 
-  while (begin_index <= end_index) {
+  while (begin_id <= end_id) {
     const auto meta = node->GetMetadataProtected(index);
     const auto index_key = node->GetKey(meta);
 
     if (meta.GetKeyLength() == 0 || Compare{}(key, index_key)) {
       // a target key is in a left side
-      end_index = index - 1;
+      end_id = index - 1;
     } else if (Compare{}(index_key, key)) {
       // a target key is in a right side
-      begin_index = index + 1;
+      begin_id = index + 1;
     } else {
       // find an equivalent key
       if (!range_is_closed) ++index;
       return index;
     }
 
-    index = (begin_index + end_index) >> 1;
+    index = (begin_id + end_id) >> 1;
   }
 
-  return begin_index;
+  return begin_id;
 }
 
 template <class Key, class Payload, class Compare>
@@ -178,6 +234,12 @@ GetChildNode(  //
  * Public structure modification operations
  *##############################################################################################*/
 
+/**
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @return Node_t*: an initial root node for BzTree.
+ */
 template <class Key, class Payload, class Compare>
 Node<Key, Payload, Compare> *
 CreateInitialRoot()
@@ -197,19 +259,29 @@ CreateInitialRoot()
   return root;
 }
 
+/**
+ * @brief Split a target internal node.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param orig_node an original node.
+ * @param left_rec_count the number of records in a split left node.
+ * @return std::pair<Node_t*, Node_t*>: split left/right nodes.
+ */
 template <class Key, class Payload, class Compare>
 std::pair<Node<Key, Payload, Compare> *, Node<Key, Payload, Compare> *>
 Split(  //
-    const Node<Key, Payload, Compare> *target_node,
+    const Node<Key, Payload, Compare> *orig_node,
     const size_t left_rec_count)
 {
-  const auto rec_count = target_node->GetSortedCount();
+  const auto rec_count = orig_node->GetSortedCount();
   const auto right_rec_count = rec_count - left_rec_count;
 
   // create a split left node
   auto left_node = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kInternalFlag);
   auto offset = kPageSize;
-  _CopySortedRecords(left_node, 0, offset, target_node, 0, left_rec_count);
+  _CopySortedRecords(left_node, 0, offset, orig_node, 0, left_rec_count);
 
   left_node->SetSortedCount(left_rec_count);
   left_node->SetStatus(StatusWord{left_rec_count, kPageSize - offset});
@@ -217,7 +289,7 @@ Split(  //
   // create a split right node
   auto right_node = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kInternalFlag);
   offset = kPageSize;
-  _CopySortedRecords(right_node, 0, offset, target_node, left_rec_count, rec_count);
+  _CopySortedRecords(right_node, 0, offset, orig_node, left_rec_count, rec_count);
 
   right_node->SetSortedCount(right_rec_count);
   right_node->SetStatus(StatusWord{right_rec_count, kPageSize - offset});
@@ -225,6 +297,16 @@ Split(  //
   return {left_node, right_node};
 }
 
+/**
+ * @brief Merge internal nodes.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param left_node a merged left node.
+ * @param right_node a merged right node.
+ * @return Node_t*: a merged node.
+ */
 template <class Key, class Payload, class Compare>
 Node<Key, Payload, Compare> *
 Merge(  //
@@ -247,6 +329,14 @@ Merge(  //
   return merged_node;
 }
 
+/**
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param left_child a left child node.
+ * @param right_child a right child node.
+ * @return Node_t*: a new root node.
+ */
 template <class Key, class Payload, class Compare>
 Node<Key, Payload, Compare> *
 CreateNewRoot(  //
@@ -267,31 +357,41 @@ CreateNewRoot(  //
   return new_root;
 }
 
+/**
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param old_parent an old parent node.
+ * @param left_node a split left node.
+ * @param right_node a split right node.
+ * @param split_pos the position of a split node.
+ * @return Node_t*: a new parent node of a split node.
+ */
 template <class Key, class Payload, class Compare>
 Node<Key, Payload, Compare> *
 NewParentForSplit(  //
     const Node<Key, Payload, Compare> *old_parent,
     const Node<Key, Payload, Compare> *left_node,
     const Node<Key, Payload, Compare> *right_node,
-    const size_t split_index)
+    const size_t split_pos)
 {
   const auto rec_count = old_parent->GetSortedCount();
   auto new_parent = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kInternalFlag);
   auto offset = kPageSize;
 
-  if (split_index > 0) {
+  if (split_pos > 0) {
     // copy left sorted records
-    _CopySortedRecords(new_parent, 0, offset, old_parent, 0, split_index);
+    _CopySortedRecords(new_parent, 0, offset, old_parent, 0, split_pos);
   }
 
   // insert split nodes
-  _InsertChild(new_parent, left_node, split_index, offset);
-  _InsertChild(new_parent, right_node, split_index + 1, offset, old_parent, split_index);
+  _InsertChild(new_parent, left_node, split_pos, offset);
+  _CopyChild(new_parent, right_node, split_pos + 1, offset, old_parent, split_pos);
 
-  if (split_index < rec_count - 1) {
+  if (split_pos < rec_count - 1) {
     // copy right sorted records
-    _CopySortedRecords(new_parent, split_index + 2, offset,  //
-                       old_parent, split_index + 1, rec_count);
+    _CopySortedRecords(new_parent, split_pos + 2, offset,  //
+                       old_parent, split_pos + 1, rec_count);
   }
 
   // set an updated header
@@ -301,29 +401,38 @@ NewParentForSplit(  //
   return new_parent;
 }
 
+/**
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param old_parent an old parent node.
+ * @param merged_node a merged node.
+ * @param del_pos the position of a deleted node.
+ * @return Node_t*: a new parent node of a merged node.
+ */
 template <class Key, class Payload, class Compare>
 Node<Key, Payload, Compare> *
 NewParentForMerge(  //
     const Node<Key, Payload, Compare> *old_parent,
     const Node<Key, Payload, Compare> *merged_node,
-    const size_t del_index)
+    const size_t del_pos)
 {
   const auto rec_count = old_parent->GetSortedCount();
   auto new_parent = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kInternalFlag);
   auto offset = kPageSize;
 
-  if (del_index > 0) {
+  if (del_pos > 0) {
     // copy left sorted records
-    _CopySortedRecords(new_parent, 0, offset, old_parent, 0, del_index);
+    _CopySortedRecords(new_parent, 0, offset, old_parent, 0, del_pos);
   }
 
   // insert a merged node
-  _InsertChild(new_parent, merged_node, del_index, offset, old_parent, del_index + 1);
+  _CopyChild(new_parent, merged_node, del_pos, offset, old_parent, del_pos + 1);
 
-  if (del_index < rec_count - 2) {
+  if (del_pos < rec_count - 2) {
     // copy right sorted records
-    _CopySortedRecords(new_parent, del_index + 1, offset,  //
-                       old_parent, del_index + 2, rec_count);
+    _CopySortedRecords(new_parent, del_pos + 1, offset,  //
+                       old_parent, del_pos + 2, rec_count);
   }
 
   new_parent->SetSortedCount(rec_count - 1);
