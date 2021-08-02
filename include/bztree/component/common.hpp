@@ -25,14 +25,22 @@
 
 namespace dbgroup::index::bztree::component
 {
-/*--------------------------------------------------------------------------------------------------
- * public utility: divide `utility.h` when reconstruct directory structure
- *------------------------------------------------------------------------------------------------*/
+/*##################################################################################################
+ * Common aliases for simplicity
+ *################################################################################################*/
 
-constexpr auto mo_relax = std::memory_order_relaxed;
+using ::dbgroup::atomic::mwcas::MwCASDescriptor;
+using ::dbgroup::atomic::mwcas::ReadMwCASField;
+using ::dbgroup::memory::CallocNew;
+using ::dbgroup::memory::Deleter;
+using ::dbgroup::memory::STLAlloc;
+
+/*##################################################################################################
+ * Internal enum and classes
+ *################################################################################################*/
 
 /**
- * @brief Return codes for functions in Base/Leaf/InternalNode.
+ * @brief Internal return codes to represent results of node modification.
  *
  */
 enum NodeReturnCode
@@ -40,11 +48,14 @@ enum NodeReturnCode
   kSuccess = 0,
   kKeyNotExist,
   kKeyExist,
-  kScanInProgress,
   kFrozen,
   kNeedConsolidation
 };
 
+/**
+ * @brief Internal return codes to represent results of uniqueness check.
+ *
+ */
 enum KeyExistence
 {
   kExist = 0,
@@ -53,6 +64,27 @@ enum KeyExistence
   kUncertain
 };
 
+/*##################################################################################################
+ * Internal constants
+ *################################################################################################*/
+
+/// alias of memory order for simplicity.
+constexpr auto mo_relax = std::memory_order_relaxed;
+
+/// Header length in bytes.
+constexpr size_t kHeaderLength = 2 * kWordLength;
+
+/*##################################################################################################
+ * Internal utility functions
+ *################################################################################################*/
+
+/**
+ * @brief Cast a given pointer to a specified pointer type.
+ *
+ * @tparam T a target pointer type.
+ * @param addr a target pointer.
+ * @return T: a casted pointer.
+ */
 template <class T>
 constexpr T
 Cast(const void *addr)
@@ -62,23 +94,13 @@ Cast(const void *addr)
   return static_cast<T>(const_cast<void *>(addr));
 }
 
-/*--------------------------------------------------------------------------------------------------
- * Common constants and utility functions
- *------------------------------------------------------------------------------------------------*/
-
-using ::dbgroup::atomic::mwcas::MwCASDescriptor;
-
-using ::dbgroup::atomic::mwcas::ReadMwCASField;
-
-using ::dbgroup::memory::CallocNew;
-
-using ::dbgroup::memory::STLAlloc;
-
-using ::dbgroup::memory::Deleter;
-
-/// Header length in bytes
-constexpr size_t kHeaderLength = 2 * kWordLength;
-
+/**
+ * @brief Compute the maximum number of records in a node.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @return size_t the expected maximum number of records.
+ */
 template <class Key, class Payload>
 constexpr size_t
 GetMaxRecordNum()
@@ -97,6 +119,11 @@ GetMaxRecordNum()
   return (kPageSize - kHeaderLength) / record_min_length;
 }
 
+/**
+ * @tparam Payload a target payload class.
+ * @retval true if a target payload can be updated by MwCAS.
+ * @retval false if a target payload cannot be update by MwCAS.
+ */
 template <class Payload>
 constexpr bool
 CanCASUpdate()
@@ -104,6 +131,12 @@ CanCASUpdate()
   return !std::is_same_v<Payload, char *> && sizeof(Payload) == kWordLength;
 }
 
+/**
+ * @brief Align a given offset to perform CAS operations.
+ *
+ * @tparam Key a target key class.
+ * @param offset a target offset to be aligned.
+ */
 template <class Key>
 constexpr void
 AlignOffset(size_t &offset)
@@ -120,71 +153,72 @@ AlignOffset(size_t &offset)
 }
 
 /**
- * @brief
- *
- * @tparam Compare
- * @param obj_1
- * @param obj_2
- * @return true if a specified objects are equivalent according to `comp` comparator
- * @return false otherwise
+ * @tparam Compare a comparator class.
+ * @tparam T a target class.
+ * @param obj_1 an object to be compared.
+ * @param obj_2 another object to be compared.
+ * @retval true if given objects are equivalent.
+ * @retval false if given objects are different.
  */
-template <class Compare, class Key>
+template <class Compare, class T>
 constexpr bool
-IsEqual(const Key &obj_1, const Key &obj_2)
+IsEqual(  //
+    const T &obj_1,
+    const T &obj_2)
 {
   return !Compare{}(obj_1, obj_2) && !Compare{}(obj_2, obj_1);
 }
 
 /**
- * @brief
- *
- * @tparam Compare
- * @param key
- * @param begin_key
- * @param begin_is_closed
- * @param end_key
- * @param end_is_closed
- * @return true if a specfied key is in an input interval
- * @return false
+ * @tparam Compare a comparator class for target keys.
+ * @tparam Key a target key class.
+ * @param key a target key.
+ * @param begin_key a begin key of a range condition.
+ * @param begin_closed a flag to indicate whether the begin side of range is closed.
+ * @param end_key an end key of a range condition.
+ * @param end_closed a flag to indicate whether the end side of range is closed.
+ * @retval true if a target key is in a range.
+ * @retval false if a target key is outside of a range.
  */
 template <class Compare, class Key>
 constexpr bool
 IsInRange(  //
     const Key &key,
     const Key *begin_key,
-    const bool begin_is_closed,
+    const bool begin_closed,
     const Key *end_key,
-    const bool end_is_closed)
+    const bool end_closed)
 {
   if (begin_key == nullptr && end_key == nullptr) {
     // no range condition
     return true;
   } else if (begin_key == nullptr) {
     // less than or equal to
-    return Compare{}(key, *end_key) || (end_is_closed && !Compare{}(*end_key, key));
+    return Compare{}(key, *end_key) || (end_closed && !Compare{}(*end_key, key));
   } else if (end_key == nullptr) {
     // greater than or equal to
-    return Compare{}(*begin_key, key) || (begin_is_closed && !Compare{}(key, *begin_key));
+    return Compare{}(*begin_key, key) || (begin_closed && !Compare{}(key, *begin_key));
   } else {
     // between
     return (Compare{}(*begin_key, key) && Compare{}(key, *end_key))
-           || (begin_is_closed && IsEqual<Compare>(key, *begin_key))
-           || (end_is_closed && IsEqual<Compare>(key, *end_key));
+           || (begin_closed && IsEqual<Compare>(key, *begin_key))
+           || (end_closed && IsEqual<Compare>(key, *end_key));
   }
 }
 
 /**
  * @brief Shift a memory address by byte offsets.
  *
- * @tparam T
- * @param ptr original address
- * @param offset
- * @return byte* shifted address
+ * @param addr an original address.
+ * @param offset an offset to shift.
+ * @return void* a shifted address.
  */
 constexpr void *
-ShiftAddress(const void *ptr, const size_t offset)
+ShiftAddress(  //
+    const void *addr,
+    const size_t offset)
 {
-  return static_cast<std::byte *>(const_cast<void *>(ptr)) + offset;
+  return static_cast<std::byte *>(const_cast<void *>(addr)) + offset;
 }
 
 }  // namespace dbgroup::index::bztree::component
