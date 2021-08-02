@@ -31,6 +31,13 @@
 
 namespace dbgroup::index::bztree
 {
+/**
+ * @brief A class to represent BzTree.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ */
 template <class Key, class Payload, class Compare = std::less<Key>>
 class BzTree
 {
@@ -767,7 +774,7 @@ class BzTree
 
       if (rc == NodeReturnCode::kSuccess) {
         break;
-      } else if (rc == NodeReturnCode::kNoSpace) {
+      } else if (rc == NodeReturnCode::kNeedConsolidation) {
         ConsolidateLeafNode(node, key, key_length);
       }
     }
@@ -808,7 +815,7 @@ class BzTree
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyExist) {
         if (rc == NodeReturnCode::kKeyExist) return ReturnCode::kKeyExist;
         break;
-      } else if (rc == NodeReturnCode::kNoSpace) {
+      } else if (rc == NodeReturnCode::kNeedConsolidation) {
         ConsolidateLeafNode(node, key, key_length);
       }
     }
@@ -848,7 +855,7 @@ class BzTree
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
         if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
         break;
-      } else if (rc == NodeReturnCode::kNoSpace) {
+      } else if (rc == NodeReturnCode::kNeedConsolidation) {
         ConsolidateLeafNode(node, key, key_length);
       }
     }
@@ -884,7 +891,7 @@ class BzTree
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
         if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
         break;
-      } else if (rc == NodeReturnCode::kNoSpace) {
+      } else if (rc == NodeReturnCode::kNeedConsolidation) {
         ConsolidateLeafNode(node, key, key_length);
       }
     }

@@ -42,7 +42,7 @@ enum NodeReturnCode
   kKeyExist,
   kScanInProgress,
   kFrozen,
-  kNoSpace
+  kNeedConsolidation
 };
 
 enum KeyExistence
