@@ -27,6 +27,13 @@
 
 namespace dbgroup::index::bztree::component
 {
+/**
+ * @brief A class to represent nodes in BzTree.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ */
 template <class Key, class Payload, class Compare>
 class alignas(kCacheLineSize) Node
 {
@@ -35,16 +42,22 @@ class alignas(kCacheLineSize) Node
    * Internal variables
    *##############################################################################################*/
 
+  /// the byte length of a node page.
   uint64_t node_size_ : 32;
 
+  /// a flag to indicate whether this node is a leaf or internal node.
   uint64_t is_leaf_ : 1;
 
+  /// the number of sorted records.
   uint64_t sorted_count_ : 16;
 
+  /// a black block for alignment.
   uint64_t : 0;
 
+  /// a status word.
   StatusWord status_;
 
+  /// the head of a metadata array.
   Metadata meta_array_[0];
 
  public:
@@ -59,22 +72,41 @@ class alignas(kCacheLineSize) Node
    * Public structs to cpmare key & metadata pairs
    *##############################################################################################*/
 
+  /**
+   * @brief A class to sort metadata.
+   *
+   */
   struct MetaRecord {
+    /// a target metadata.
     Metadata meta = Metadata{};
+
+    /// a target key.
     Key key = Key{};
 
+    /**
+     * @brief An operator for less than comparison.
+     *
+     */
     constexpr bool
     operator<(const MetaRecord &obj) const
     {
       return Compare{}(this->key, obj.key);
     }
 
+    /**
+     * @brief An operator to check equality.
+     *
+     */
     constexpr bool
     operator==(const MetaRecord &obj) const
     {
       return !Compare{}(this->key, obj.key) && !Compare{}(obj.key, this->key);
     }
 
+    /**
+     * @brief An operator to check inequality.
+     *
+     */
     constexpr bool
     operator!=(const MetaRecord &obj) const
     {
@@ -86,11 +118,20 @@ class alignas(kCacheLineSize) Node
    * Public constructors/destructors
    *##############################################################################################*/
 
-  constexpr Node(const bool is_leaf)
+  /**
+   * @brief Construct a new node object.
+   *
+   * @param is_leaf a flag to indicate whether a leaf node is constructed.
+   */
+  explicit Node(const bool is_leaf)
       : node_size_{kPageSize}, is_leaf_{is_leaf}, sorted_count_{0}, status_{}
   {
   }
 
+  /**
+   * @brief Destroy the node object.
+   *
+   */
   ~Node() = default;
 
   Node(const Node &) = delete;
@@ -102,42 +143,85 @@ class alignas(kCacheLineSize) Node
    * Public getters/setters
    *##############################################################################################*/
 
+  /**
+   * @retval true if this is a leaf node.
+   * @retval false if this is an internal node.
+   */
   constexpr bool
   IsLeaf() const
   {
     return is_leaf_;
   }
 
+  /**
+   * @return size_t: the number of sorted records.
+   */
   constexpr size_t
   GetSortedCount() const
   {
     return sorted_count_;
   }
 
+  /**
+   * @brief Read a status word without MwCAS read protection.
+   *
+   * This function requires some method of protection (e.g., locks) to read a status
+   * word safely.
+   *
+   * @return StatusWord: a status word.
+   */
   constexpr StatusWord
   GetStatusWord() const
   {
     return status_;
   }
 
+  /**
+   * @brief Read a status word with MwCAS read protection.
+   *
+   * This function uses a MwCAS read operation internally, and so it is guaranteed that
+   * a read status word is valid.
+   *
+   * @return StatusWord: a status word.
+   */
   StatusWord
   GetStatusWordProtected() const
   {
     return ReadMwCASField<StatusWord>(&status_);
   }
 
+  /**
+   * @brief Read metadata without MwCAS read protection.
+   *
+   * This function requires some method of protection (e.g., locks) to read metadata
+   * safely.
+   *
+   * @return Metadata: metadata.
+   */
   constexpr Metadata
-  GetMetadata(const size_t index) const
+  GetMetadata(const size_t position) const
   {
-    return meta_array_[index];
+    return meta_array_[position];
   }
 
+  /**
+   * @brief Read metadata with MwCAS read protection.
+   *
+   * This function uses a MwCAS read operation internally, and so it is guaranteed that
+   * read metadata is valid.
+   *
+   * @return Metadata: metadata.
+   */
   Metadata
-  GetMetadataProtected(const size_t index) const
+  GetMetadataProtected(const size_t position) const
   {
-    return ReadMwCASField<Metadata>(&meta_array_[index]);
+    return ReadMwCASField<Metadata>(&meta_array_[position]);
   }
 
+  /**
+   * @param meta metadata of a corresponding record.
+   * @return auto: an address of a target key.
+   */
   constexpr auto
   GetKeyAddr(const Metadata meta) const
   {
@@ -148,6 +232,10 @@ class alignas(kCacheLineSize) Node
     }
   }
 
+  /**
+   * @param meta metadata of a corresponding record.
+   * @return Key: a target key.
+   */
   constexpr Key
   GetKey(const Metadata meta) const
   {
@@ -158,6 +246,12 @@ class alignas(kCacheLineSize) Node
     }
   }
 
+  /**
+   * @brief Copy a target key to a specified reference.
+   *
+   * @param meta metadata of a corresponding record.
+   * @param out_key a reference to be copied a target key.
+   */
   void
   CopyKey(  //
       const Metadata meta,
@@ -173,12 +267,22 @@ class alignas(kCacheLineSize) Node
     }
   }
 
+  /**
+   * @param meta metadata of a corresponding record.
+   * @return void*: an address of a target payload.
+   */
   constexpr void *
   GetPayloadAddr(const Metadata meta) const
   {
     return ShiftAddress(this, meta.GetOffset() + meta.GetKeyLength());
   }
 
+  /**
+   * @brief Copy a target payload to a specified reference.
+   *
+   * @param meta metadata of a corresponding record.
+   * @param out_payload a reference to be copied a target payload.
+   */
   void
   CopyPayload(  //
       const Metadata meta,
@@ -196,34 +300,66 @@ class alignas(kCacheLineSize) Node
     }
   }
 
+  /**
+   * @brief Set the number of sorted records.
+   *
+   * @param sorted_count the number of sorted records.
+   */
   constexpr void
   SetSortedCount(const size_t sorted_count)
   {
     sorted_count_ = sorted_count;
   }
 
+  /**
+   * @brief Set a status word.
+   *
+   * @param status a status word.
+   */
   constexpr void
   SetStatus(const StatusWord status)
   {
     status_ = status;
   }
 
+  /**
+   * @brief Set metadata directly.
+   *
+   * This function requires some method of protection (e.g., locks) to set metadata
+   * safely.
+   *
+   * @param position the position of metadata to be set.
+   * @param new_meta metadata to be set.
+   */
   constexpr void
   SetMetadata(  //
-      const size_t index,
+      const size_t position,
       const Metadata new_meta)
   {
-    meta_array_[index] = new_meta;
+    meta_array_[position] = new_meta;
   }
 
+  /**
+   * @brief Set metadata by using a CAS operation.
+   *
+   * @param position the position of metadata to be set.
+   * @param new_meta metadata to be set.
+   */
   void
   SetMetadataByCAS(  //
-      const size_t index,
+      const size_t position,
       const Metadata new_meta)
   {
-    reinterpret_cast<std::atomic<Metadata> *>(meta_array_ + index)->store(new_meta, mo_relax);
+    reinterpret_cast<std::atomic<Metadata> *>(meta_array_ + position)->store(new_meta, mo_relax);
   }
 
+  /**
+   * @brief Set a target key.
+   *
+   * @param offset an offset to set a target key.
+   * @param key a target key to be set.
+   * @param key_length the length of a target key.
+   */
   void
   SetKey(  //
       size_t &offset,
@@ -239,6 +375,14 @@ class alignas(kCacheLineSize) Node
     }
   }
 
+  /**
+   * @brief Set a target payload directly.
+   *
+   * @tparam T a class of a target payload.
+   * @param offset an offset to set a target payload.
+   * @param payload a target payload to be set.
+   * @param payload_length the length of a target payload.
+   */
   template <class T>
   void
   SetPayload(  //
@@ -255,6 +399,13 @@ class alignas(kCacheLineSize) Node
     }
   }
 
+  /**
+   * @brief Set an old/new status word pair to a MwCAS target.
+   *
+   * @param desc a target MwCAS descriptor.
+   * @param old_status an old status word for MwCAS.
+   * @param new_status a new status word for MwCAS.
+   */
   constexpr void
   SetStatusForMwCAS(  //
       MwCASDescriptor &desc,
@@ -264,16 +415,33 @@ class alignas(kCacheLineSize) Node
     desc.AddMwCASTarget(&status_, old_status, new_status);
   }
 
+  /**
+   * @brief Set an old/new metadata pair to a MwCAS target.
+   *
+   * @param desc a target MwCAS descriptor.
+   * @param position the position of target metadata.
+   * @param old_meta old metadata for MwCAS.
+   * @param new_meta new metadata for MwCAS.
+   */
   constexpr void
   SetMetadataForMwCAS(  //
       MwCASDescriptor &desc,
-      const size_t index,
+      const size_t position,
       const Metadata old_meta,
       const Metadata new_meta)
   {
-    desc.AddMwCASTarget(meta_array_ + index, old_meta, new_meta);
+    desc.AddMwCASTarget(meta_array_ + position, old_meta, new_meta);
   }
 
+  /**
+   * @brief Set an old/new payload pair to a MwCAS target.
+   *
+   * An old payload is copied from a node by using specified metadata.
+   *
+   * @param desc a target MwCAS descriptor.
+   * @param meta metadata of a target record.
+   * @param new_payload a new payload for MwCAS.
+   */
   void
   SetPayloadForMwCAS(  //
       MwCASDescriptor &desc,
@@ -288,6 +456,15 @@ class alignas(kCacheLineSize) Node
                         old_payload, new_payload);
   }
 
+  /**
+   * @brief Set an old/new payload pair to a MwCAS target.
+   *
+   * @tparam T a class of a target payload.
+   * @param desc a target MwCAS descriptor.
+   * @param meta metadata of a target record.
+   * @param old_payload an old payload for MwCAS.
+   * @param new_payload a new payload for MwCAS.
+   */
   template <class T>
   constexpr void
   SetPayloadForMwCAS(  //
@@ -305,12 +482,10 @@ class alignas(kCacheLineSize) Node
    *##############################################################################################*/
 
   /**
-   * @brief Freeze this node to prevent concurrent writes/SMOs.
+   * @brief Freeze this node for SMOs.
    *
-   * @param pmwcas_pool
-   * @return Node::NodeReturnCode
-   * 1) `kSuccess` if the function successfully freeze this node, or
-   * 2) `kFrozen` if this node is already frozen.
+   * @retval kSuccess if a node has become frozen.
+   * @retval kFrozen if a node is already frozen.
    */
   NodeReturnCode
   Freeze()
