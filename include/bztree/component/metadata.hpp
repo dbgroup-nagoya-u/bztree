@@ -21,21 +21,32 @@
 namespace dbgroup::index::bztree::component
 {
 /**
- * @brief Record metadata accessor:
+ * @brief A class to represent record metadata.
  *
  */
-class alignas(kWordLength) Metadata
+class Metadata
 {
  private:
   /*################################################################################################
    * Internal member variables
    *##############################################################################################*/
 
+  /// an offset to a corresponding record.
   uint64_t offset_ : 27;
+
+  /// a flag to indicate whether a record is visible.
   uint64_t visible_ : 1;
+
+  /// a flag to indicate whether a record is in progress.
   uint64_t in_progress_ : 1;
+
+  /// the length of a key in a corresponding record.
   uint64_t key_length_ : 16;
+
+  /// the total length of a corresponding record.
   uint64_t total_length_ : 16;
+
+  /// control bits for PMwCAS.
   uint64_t control_region_ : 3;
 
  public:
@@ -43,6 +54,10 @@ class alignas(kWordLength) Metadata
    * Public getters/setters
    *##############################################################################################*/
 
+  /**
+   * @brief Construct a new metadata object with zero padding.
+   *
+   */
   constexpr Metadata()
       : offset_{0},
         visible_{0},
@@ -53,6 +68,10 @@ class alignas(kWordLength) Metadata
   {
   }
 
+  /**
+   * @brief Construct a new metadata object with given arguments.
+   *
+   */
   constexpr Metadata(  //
       const size_t offset,
       const size_t key_length,
@@ -67,6 +86,10 @@ class alignas(kWordLength) Metadata
   {
   }
 
+  /**
+   * @brief Destroy the metadata object.
+   *
+   */
   ~Metadata() = default;
 
   constexpr Metadata(const Metadata &) = default;
@@ -78,48 +101,76 @@ class alignas(kWordLength) Metadata
    * Public getters/setters
    *##############################################################################################*/
 
+  /**
+   * @retval true if a corresponding record is visible.
+   * @retval false if a corresponding record is invisible.
+   */
   constexpr bool
   IsVisible() const
   {
     return visible_;
   }
 
+  /**
+   * @retval true if a corresponding record is in progress.
+   * @retval false if a corresponding record is a definite state.
+   */
   constexpr bool
   IsInProgress() const
   {
     return in_progress_;
   }
 
+  /**
+   * @retval true if a corresponding record is deleted.
+   * @retval false if a corresponding record is live.
+   */
   constexpr bool
   IsDeleted() const
   {
     return !IsVisible() && !IsInProgress();
   }
 
+  /**
+   * @retval true if a corresponding record is broken because of failure.
+   * @retval false if a corresponding record is valid.
+   */
   constexpr bool
   IsFailedRecord(const size_t index_epoch) const
   {
     return IsInProgress() && (GetOffset() != index_epoch);
   }
 
+  /**
+   * @return size_t: an offset to a corresponding record.
+   */
   constexpr size_t
   GetOffset() const
   {
     return offset_;
   }
 
+  /**
+   * @return size_t: the length of a key in a corresponding record.
+   */
   constexpr size_t
   GetKeyLength() const
   {
     return key_length_;
   }
 
+  /**
+   * @return size_t: the total length of a corresponding record.
+   */
   constexpr size_t
   GetTotalLength() const
   {
     return total_length_;
   }
 
+  /**
+   * @return size_t: the length of a payload in a corresponding record.
+   */
   constexpr size_t
   GetPayloadLength() const
   {
@@ -130,6 +181,10 @@ class alignas(kWordLength) Metadata
    * Public utility functions
    *##############################################################################################*/
 
+  /**
+   * @param offset a new offset to be set.
+   * @return Metadata: a new metadata object.
+   */
   constexpr Metadata
   UpdateOffset(const size_t offset) const
   {
@@ -138,6 +193,12 @@ class alignas(kWordLength) Metadata
     return updated_meta;
   }
 
+  /**
+   * @brief Make metadata visible with updating its offset.
+   *
+   * @param offset a new offset to be set.
+   * @return Metadata: a new metadata object.
+   */
   constexpr Metadata
   MakeVisible(const size_t offset) const
   {
@@ -148,6 +209,12 @@ class alignas(kWordLength) Metadata
     return new_meta;
   }
 
+  /**
+   * @brief Make metadata invisible with updating its offset.
+   *
+   * @param offset a new offset to be set.
+   * @return Metadata: a new metadata object.
+   */
   constexpr Metadata
   MakeInvisible(const size_t offset) const
   {
@@ -157,6 +224,11 @@ class alignas(kWordLength) Metadata
     return new_meta;
   }
 
+  /**
+   * @brief Make metadata invisible.
+   *
+   * @return Metadata: a new metadata object.
+   */
   constexpr Metadata
   Delete() const
   {
@@ -165,5 +237,11 @@ class alignas(kWordLength) Metadata
     return new_meta;
   }
 };
+
+// metadata must be represented by one word.
+static_assert(sizeof(Metadata) == kWordLength);
+
+// metadata must be trivially copyable.
+static_assert(std::is_trivially_copyable_v<Metadata>);
 
 }  // namespace dbgroup::index::bztree::component
