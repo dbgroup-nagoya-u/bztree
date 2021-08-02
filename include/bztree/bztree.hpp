@@ -64,12 +64,22 @@ class BzTree
    * Internal utility functions
    *##############################################################################################*/
 
+  /**
+   * @return Node_t*: a current root node.
+   */
   Node_t *
   GetRoot()
   {
     return component::ReadMwCASField<Node_t *>(&root_);
   }
 
+  /**
+   * @brief Search a leaf node with a specified key.
+   *
+   * @param key a target key.
+   * @param range_is_closed a flag to indicate whether a key is included.
+   * @return Node_t*: a leaf node that may contain a target key.
+   */
   Node_t *
   SearchLeafNode(  //
       const Key &key,
@@ -84,6 +94,9 @@ class BzTree
     return current_node;
   }
 
+  /**
+   * @return Node_t*: a leaf node on the far left.
+   */
   Node_t *
   SearchLeftEdgeLeaf()
   {
@@ -95,6 +108,15 @@ class BzTree
     return current_node;
   }
 
+  /**
+   * @brief Trace a target node and extract intermidiate nodes.
+   *
+   * Note that traced nodes may not have a target node because concurrent SMOs may remove it.
+   *
+   * @param key a target key.
+   * @param target_node a target node.
+   * @return NodeStack: a stack of nodes.
+   */
   NodeStack
   TraceTargetNode(  //
       const Key &key,
@@ -114,6 +136,14 @@ class BzTree
     return trace;
   }
 
+  /**
+   * @brief Check whether a target node should be split.
+   *
+   * @param internal_node a target node.
+   * @param key_length the length of a target key.
+   * @retval true if a target node should be split.
+   * @retval false if a target node do not need to be split.
+   */
   static constexpr bool
   NeedSplit(  //
       const Node_t *internal_node,
@@ -123,6 +153,15 @@ class BzTree
            > kPageSize - 2 * kWordLength;
   }
 
+  /**
+   * @brief Get a sibling node for merging.
+   *
+   * @param parent a parent node of a target node.
+   * @param target_pos the position of a target node in its parent.
+   * @param target_size the size of target node.
+   * @return std::pair<Node_t *, bool>: a sibling node if it can be merged. Note that a
+   * boolean value indicates that a sibing node is left (true) or right (false) side.
+   */
   static std::pair<Node_t *, bool>
   GetSiblingNode(  //
       Node_t *parent,
@@ -142,6 +181,13 @@ class BzTree
     return {nullptr, false};
   }
 
+  /**
+   * @brief Compute the size of a data block of a consolidated node.
+   *
+   * @param metadata an array of metadata of a consolidated node.
+   * @param rec_count the number of metadata.
+   * @return constexpr size_t: the size of a data block.
+   */
   static constexpr size_t
   ComputeOccupiedSize(  //
       const MetaArray &metadata,
@@ -160,6 +206,15 @@ class BzTree
    * Internal structure modification functoins
    *##############################################################################################*/
 
+  /**
+   * @brief Consolidate a target leaf node.
+   *
+   * Note that this function may call split/merge functions if needed.
+   *
+   * @param node a target leaf node.
+   * @param key a target key.
+   * @param key_length the length of a target key.
+   */
   void
   ConsolidateLeafNode(  //
       Node_t *node,
@@ -188,6 +243,16 @@ class BzTree
     gc_.AddGarbage(node);
   }
 
+  /**
+   * @brief Split a target leaf node.
+   *
+   * Note that this function may call a split function for internal nodes if needed.
+   *
+   * @param node a target leaf node.
+   * @param key a target key.
+   * @param metadata an array of consolidated metadata.
+   * @param rec_count the number of metadata.
+   */
   void
   SplitLeafNode(  //
       const Node_t *node,
@@ -238,6 +303,14 @@ class BzTree
     gc_.AddGarbage(parent);
   }
 
+  /**
+   * @brief Split a target internal node.
+   *
+   * Note that this function may call itself recursively if needed.
+   *
+   * @param node a target internal node.
+   * @param key a target key.
+   */
   void
   SplitInternalNode(  //
       Node_t *node,
@@ -309,6 +382,20 @@ class BzTree
     if (parent != node) gc_.AddGarbage(parent);
   }
 
+  /**
+   * @brief Merge a target leaf node.
+   *
+   * Note that this function may call a merge function for internal nodes if needed.
+   *
+   * @param node a target leaf node.
+   * @param key a target key.
+   * @param key_length the length of a target key.
+   * @param target_size the size of a target leaf node.
+   * @param metadata an array of consolidated metadata.
+   * @param rec_count the number of metadata.
+   * @retval true if a target leaf node is merged.
+   * @retval false if a target leaf node is not merged.
+   */
   bool
   MergeLeafNodes(  //
       const Node_t *node,
@@ -385,6 +472,15 @@ class BzTree
     return true;
   }
 
+  /**
+   * @brief Merge a target internal node.
+   *
+   * Note that this function may call itself recursively if needed.
+   *
+   * @param node a target internal node.
+   * @param key a target key.
+   * @param key_length the length of a target key.
+   */
   void
   MergeInternalNodes(  //
       Node_t *node,
@@ -459,6 +555,16 @@ class BzTree
     }
   }
 
+  /**
+   * @brief Install a new node by using MwCAS.
+   *
+   * Note that this function may do nothing if a target node has been already modified.
+   *
+   * @param trace the stack of nodes up to a target node.
+   * @param new_node a new node to be installed.
+   * @param key a target key.
+   * @param target_node an old node to be swapped.
+   */
   void
   InstallNewNode(  //
       NodeStack &trace,
@@ -506,6 +612,13 @@ class BzTree
     }
   }
 
+  /**
+   * @brief Delete children nodes recursively.
+   *
+   * Note that this function assumes that there are no other threads in operation.
+   *
+   * @param node a target node.
+   */
   static void
   DeleteChildren(Node_t *node)
   {
@@ -525,6 +638,11 @@ class BzTree
    * Public constructor/destructor
    *##############################################################################################*/
 
+  /**
+   * @brief Construct a new BzTree object.
+   *
+   * @param gc_interval_microsec GC internal [us]
+   */
   explicit BzTree(const size_t gc_interval_microsec = 100000)
       : index_epoch_{1},
         root_{internal::CreateInitialRoot<Key, Payload, Compare>()},
@@ -533,6 +651,10 @@ class BzTree
     gc_.StartGC();
   }
 
+  /**
+   * @brief Destroy the BzTree object.
+   *
+   */
   ~BzTree() { DeleteChildren(GetRoot()); }
 
   BzTree(const BzTree &) = delete;
@@ -544,6 +666,16 @@ class BzTree
    * Public read APIs
    *##############################################################################################*/
 
+  /**
+   * @brief Read a payload of a specified key if it exists.
+   *
+   * This function returns two return codes: kSuccess and kKeyNotExist. If a return code
+   * is kSuccess, a returned pair contains a target payload. If a return code is
+   * kKeyNotExist, the value of a returned payload is undefined.
+   *
+   * @param key a target key.
+   * @return std::pair<ReturnCode, Payload>: a return code and payload pair.
+   */
   auto
   Read(const Key &key)
   {
@@ -567,6 +699,18 @@ class BzTree
     }
   }
 
+  /**
+   * @brief Perform a range scan with specified keys.
+   *
+   * If a begin/end key is nullptr, it is treated as negative or positive infinite.
+   *
+   * @param begin_key the pointer of a begin key of a range scan.
+   * @param begin_closed a flag to indicate whether the begin side of a range is closed.
+   * @param end_key the pointer of an end key of a range scan.
+   * @param end_closed a flag to indicate whether the end side of a range is closed.
+   * @param page a page to copy target keys/payloads. This argument is used internally.
+   * @return RecordIterator_t: an iterator to access target records.
+   */
   RecordIterator_t
   Scan(  //
       const Key *begin_key = nullptr,
@@ -592,6 +736,22 @@ class BzTree
    * Public write APIs
    *##############################################################################################*/
 
+  /**
+   * @brief Write (i.e., upsert) a specified kay/payload pair.
+   *
+   * If a specified key does not exist in the index, this function performs an insert
+   * operation. If a specified key has been already inserted, this function perfroms an
+   * update operation. Thus, this function always returns kSuccess as a return code.
+   *
+   * Note that if a target key/payload is binary data, it is required to specify its
+   * length in bytes.
+   *
+   * @param key a target key to be written.
+   * @param payload a target payload to be written.
+   * @param key_length the length of a target key.
+   * @param payload_length the length of a target payload.
+   * @return ReturnCode: kSuccess.
+   */
   ReturnCode
   Write(  //
       const Key &key,
@@ -614,6 +774,24 @@ class BzTree
     return ReturnCode::kSuccess;
   }
 
+  /**
+   * @brief Insert a specified kay/payload pair.
+   *
+   * This function performs a uniqueness check in its processing. If a specified key
+   * does not exist, this function insert a target payload into the index. If a
+   * specified key exists in the index, this function does nothing and returns kKeyExist
+   * as a return code.
+   *
+   * Note that if a target key/payload is binary data, it is required to specify its
+   * length in bytes.
+   *
+   * @param key a target key to be written.
+   * @param payload a target payload to be written.
+   * @param key_length the length of a target key.
+   * @param payload_length the length of a target payload.
+   * @retval.kSuccess if inserted.
+   * @retval kKeyExist if a specified key exists.
+   */
   ReturnCode
   Insert(  //
       const Key &key,
@@ -637,6 +815,23 @@ class BzTree
     return ReturnCode::kSuccess;
   }
 
+  /**
+   * @brief Update a target kay with a specified payload.
+   *
+   * This function performs a uniqueness check in its processing. If a specified key
+   * exist, this function update a target payload. If a specified key does not exist in
+   * the index, this function does nothing and returns kKeyNotExist as a return code.
+   *
+   * Note that if a target key/payload is binary data, it is required to specify its
+   * length in bytes.
+   *
+   * @param key a target key to be written.
+   * @param payload a target payload to be written.
+   * @param key_length the length of a target key.
+   * @param payload_length the length of a target payload.
+   * @retval kSuccess if updated.
+   * @retval kKeyNotExist if a specified key does not exist.
+   */
   ReturnCode
   Update(  //
       const Key &key,
@@ -660,6 +855,21 @@ class BzTree
     return ReturnCode::kSuccess;
   }
 
+  /**
+   * @brief Delete a target kay from the index.
+   *
+   * This function performs a uniqueness check in its processing. If a specified key
+   * exist, this function deletes it. If a specified key does not exist in the index,
+   * this function does nothing and returns kKeyNotExist as a return code.
+   *
+   * Note that if a target key is binary data, it is required to specify its length in
+   * bytes.
+   *
+   * @param key a target key to be written.
+   * @param key_length the length of a target key.
+   * @retval kSuccess if deleted.
+   * @retval kKeyNotExist if a specified key does not exist.
+   */
   ReturnCode
   Delete(  //
       const Key &key,
@@ -685,6 +895,16 @@ class BzTree
    * Public utility functions
    *##############################################################################################*/
 
+  /**
+   * @brief Count the total number of nodes in the index.
+   *
+   * Note that this function assumes that there are no other threads in operation.
+   *
+   * @param node a node to begin counting. If nullptr is set, a root node is used.
+   * @param internal_count the number of internal nodes.
+   * @param leaf_count the number of leaf nodes.
+   * @return std::pair<size_t, size_t>: the number of internal/leaf nodes.
+   */
   std::pair<size_t, size_t>
   CountNodes(  //
       Node_t *node = nullptr,
