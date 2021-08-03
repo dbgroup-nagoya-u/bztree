@@ -64,9 +64,7 @@ ctest -C Release
     )
     ```
 
-### Example Codes
-
-#### Read/Write APIs
+### Read/Write APIs
 
 If you use fixed length types as keys/values, you can use our BzTree by simply declaring it.
 
@@ -129,7 +127,9 @@ Return code: 0
 Read value : 2
 ```
 
-#### Range Scanning
+### Range Scanning
+
+A `Scan` function returns an iterator for scan results. We prepare a `HasNext` function and `*`/`++` operators to access scan results. If you give `nullptr` as a begin/end key, the index treats it as a negative/positive infinity value.
 
 ```cpp
 #include <iostream>
@@ -201,7 +201,7 @@ Sum: 28
 Sum: 18
 ```
 
-#### Variable Length Keys/Values
+### Variable Length Keys/Values
 
 If you use variable length keys/values (i.e., binary data), you need to specify theier lengths for each API except for the read API. Note that we use `char*` to represent binary data, and so you may need to cast your keys/values to write a BzTree instance, such as `reinterpret_cast<char*>(&<key_instance>)`.
 
