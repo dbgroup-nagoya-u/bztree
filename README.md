@@ -1,6 +1,6 @@
 # BzTree
 
-![example workflow name](https://github.com/dbgroup-nagoya-u/bztree/workflows/Unit%20Tests/badge.svg?branch=main)
+![example workflow name](https://github.com/dbgroup-nagoya-u/bztree/workflows/Ubuntu-20.04/badge.svg?branch=main)
 
 ## Build
 
@@ -203,7 +203,7 @@ Sum: 18
 
 ### Multi-Threading
 
-This library is a thread-safe implementation. You can call all the APIs (i.e., `Read`, `Scan`, `Write`, `Insert`, `Update`, and `Delete`) from multi-threads concurrently. Note that concurrent writes follow the last write win protocol, and so you need to some concurrency control methods (e.g., snapshot isolation) to guarantee the order of read/write operations.
+This library is a thread-safe implementation. You can call all the APIs (i.e., `Read`, `Scan`, `Write`, `Insert`, `Update`, and `Delete`) from multi-threads concurrently. Note that concurrent writes follow the last write win protocol, and so you need to some concurrency control methods (e.g., snapshot isolation) externally to guarantee the order of read/write operations.
 
 ```cpp
 #include <iostream>
