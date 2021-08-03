@@ -129,6 +129,80 @@ Return code: 0
 Read value : 2
 ```
 
+#### Range Scanning
+
+```cpp
+#include <iostream>
+
+#include "bztree/bztree.hpp"
+
+using Key = uint64_t;
+using Value = uint64_t;
+
+using BzTree_t = ::dbgroup::index::bztree::BzTree<Key, Value>;
+using ::dbgroup::index::bztree::ReturnCode;
+
+int
+main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
+{
+  // create a BzTree instance
+  BzTree_t bztree{};
+
+  // write key/value pairs
+  for (uint64_t i = 0; i < 10; ++i) {
+    bztree.Write(i, i);
+  }
+
+  // full scan
+  uint64_t sum = 0;
+  for (auto iter = bztree.Scan(); iter.HasNext(); ++iter) {
+    auto [key, value] = *iter;
+    // auto value = iter.GetPayload();  // you can get a value by itself
+    sum += value;
+  }
+  std::cout << "Sum: " << sum << std::endl;
+
+  // scan greater than: (3, infinity)
+  sum = 0;
+  uint64_t begin_key = 3;
+  for (auto iter = bztree.Scan(&begin_key, false); iter.HasNext(); ++iter) {
+    auto [key, value] = *iter;
+    sum += value;
+  }
+  std::cout << "Sum: " << sum << std::endl;
+
+  // scan less than or equal to: (-infinity, 7]
+  sum = 0;
+  uint64_t end_key = 7;
+  for (auto iter = bztree.Scan(nullptr, false, &end_key, true); iter.HasNext(); ++iter) {
+    auto [key, value] = *iter;
+    sum += value;
+  }
+  std::cout << "Sum: " << sum << std::endl;
+
+  // scan between: [3, 7)
+  sum = 0;
+  for (auto iter = bztree.Scan(&begin_key, true, &end_key, false); iter.HasNext(); ++iter) {
+    auto [key, value] = *iter;
+    sum += value;
+  }
+  std::cout << "Sum: " << sum << std::endl;
+
+  return 0;
+}
+```
+
+This code will output the following results.
+
+```txt
+Sum: 45
+Sum: 39
+Sum: 28
+Sum: 18
+```
+
+#### Variable Length Keys/Values
+
 If you use variable length keys/values (i.e., binary data), you need to specify theier lengths for each API except for the read API. Note that we use `char*` to represent binary data, and so you may need to cast your keys/values to write a BzTree instance, such as `reinterpret_cast<char*>(&<key_instance>)`.
 
 ```cpp
