@@ -16,12 +16,18 @@
 
 #pragma once
 
+#include <string.h>
+
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 
 namespace dbgroup::index::bztree
 {
+/*##################################################################################################
+ * Utility enum and classes
+ *################################################################################################*/
+
 /**
  * @brief Return codes for BzTree.
  *
@@ -29,7 +35,6 @@ namespace dbgroup::index::bztree
 enum ReturnCode
 {
   kSuccess = 0,
-  kScanInProgress,
   kKeyNotExist,
   kKeyExist
 };
@@ -51,6 +56,10 @@ struct CompareAsCString {
     }
   }
 };
+
+/*##################################################################################################
+ * Tuning parameters for BzTree
+ *################################################################################################*/
 
 /// Assumes that one word is represented by 8 bytes
 constexpr size_t kWordLength = 8;

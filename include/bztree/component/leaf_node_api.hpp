@@ -49,8 +49,9 @@ template <class Key, class Payload, class Compare>
 using MetaArray = std::array<Metadata, Node<Key, Payload, Compare>::kMaxRecordNum>;
 
 template <class Key, class Payload, class Compare>
-using UnsortedMeta = std::array<MetaRecord<Key, Payload, Compare>, kMaxUnsortedRecNum>;
+using NewSortedMeta = std::array<MetaRecord<Key, Payload, Compare>, kMaxUnsortedRecNum>;
 
+/// a flag to indicate leaf nodes.
 constexpr bool kLeafFlag = true;
 
 /*################################################################################################
@@ -58,14 +59,16 @@ constexpr bool kLeafFlag = true;
  *##############################################################################################*/
 
 /**
- * @brief Get an index of the specified key by using binary search. If there is no
+ * @brief Get the position of a specified key by using binary search. If there is no
  * specified key, this returns the minimum metadata index that is greater than the
  * specified key
  *
- * @tparam Compare
- * @param key
- * @param comp
- * @return std::pair<KeyExistence, size_t>
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a target node.
+ * @param key a target key.
+ * @return std::pair<KeyExistence, int64_t>: a pair of key existence and a key position.
  */
 template <class Key, class Payload, class Compare>
 KeyIndex
@@ -104,20 +107,33 @@ _SearchSortedMetadata(  //
   return {KeyExistence::kNotExist, begin_index};
 }
 
+/**
+ * @brief Get a position of a specified key by using a reverse linear search.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a target node.
+ * @param key a target key.
+ * @param begin_index a begin index of a reverse linear search.
+ * @param sorted_count an end index of a reverse linear search.
+ * @param epoch an epoch of the BzTree instance.
+ * @return std::pair<KeyExistence, int64_t>: a pair of key existence and a key position.
+ */
 template <class Key, class Payload, class Compare>
 KeyIndex
 _SearchUnsortedMeta(  //
     const Node<Key, Payload, Compare> *node,
     const Key &key,
-    const int64_t begin_index,
+    const int64_t begin_id,
     const int64_t sorted_count,
-    const size_t index_epoch = 0)
+    const size_t epoch = 0)
 {
   // perform a linear search in revese order
-  for (int64_t index = begin_index; index >= sorted_count; --index) {
+  for (int64_t index = begin_id; index >= sorted_count; --index) {
     const auto meta = node->GetMetadataProtected(index);
     if (meta.IsInProgress()) {
-      if (index_epoch > 0 && meta.GetOffset() == index_epoch) {
+      if (epoch > 0 && meta.GetOffset() == epoch) {
         return {KeyExistence::kUncertain, index};
       }
       continue;
@@ -132,6 +148,18 @@ _SearchUnsortedMeta(  //
   return {KeyExistence::kNotExist, 0};
 }
 
+/**
+ * @brief Check uniqueness of a target key in a specifeid node.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a target node.
+ * @param key a target key.
+ * @param rec_count the total number of records in a node.
+ * @param epoch an epoch of the BzTree instance.
+ * @return std::pair<KeyExistence, int64_t>: a pair of key existence and a key position.
+ */
 template <class Key, class Payload, class Compare>
 KeyIndex
 _CheckUniqueness(  //
@@ -158,6 +186,14 @@ _CheckUniqueness(  //
   }
 }
 
+/**
+ * @brief Align a specified block size if needed.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @param block_size a target block size.
+ * @return size_t: an aligned block size.
+ */
 template <class Key, class Payload>
 constexpr size_t
 _GetAlignedSize(const size_t block_size)
@@ -176,6 +212,17 @@ _GetAlignedSize(const size_t block_size)
   return block_size;
 }
 
+/**
+ * @brief Copy a record from an original node.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param target_node a leaf node to be copied.
+ * @param offset an offset of a target record.
+ * @param original_node an original leaf node.
+ * @param meta target metadata.
+ */
 template <class Key, class Payload, class Compare>
 void
 _CopyRecord(  //
@@ -193,6 +240,20 @@ _CopyRecord(  //
   memcpy(ShiftAddress(target_node, offset), original_node->GetKeyAddr(meta), total_length);
 }
 
+/**
+ * @brief Copy records from an original node.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param target_node a leaf node to be copied.
+ * @param current_rec_count the number of records in a target node.
+ * @param offset a current offset of a target node.
+ * @param original_node an original leaf node.
+ * @param metadata an array of consolidated metadata.
+ * @param begin_id a begin index of metadata.
+ * @param end_id an end index of metadata.
+ */
 template <class Key, class Payload, class Compare>
 void
 _CopyRecords(  //
@@ -214,6 +275,18 @@ _CopyRecords(  //
   }
 }
 
+/**
+ * @brief Check a target node requires consolidation.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a target leaf node.
+ * @param status a current status word of a target node.
+ * @param block_size a current block size of a target node.
+ * @retval true if a target node has sufficient space for inserting a new record.
+ * @retval false if a target node requires consolidation.
+ */
 template <class Key, class Payload, class Compare>
 constexpr bool
 _HasSpace(  //
@@ -226,11 +299,21 @@ _HasSpace(  //
          && status.GetDeletedSize() < kMaxDeletedSpaceSize;
 }
 
+/**
+ * @brief Sort unsorted metadata by using inserting sort for SMOs.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a target leaf node.
+ * @param arr a result array of sorted metadata.
+ * @param count the number of metadata.
+ */
 template <class Key, class Payload, class Compare>
 void
 _SortUnsortedRecords(  //
     const Node<Key, Payload, Compare> *node,
-    UnsortedMeta<Key, Payload, Compare> &arr,
+    NewSortedMeta<Key, Payload, Compare> &arr,
     size_t &count)
 {
   const int64_t rec_count = node->GetStatusWordProtected().GetRecordCount();
@@ -266,6 +349,20 @@ _SortUnsortedRecords(  //
   }
 }
 
+/**
+ * @brief Sort unsorted metadata by using inserting sort for scanning.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a target leaf node.
+ * @param begin_key the pointer of a begin key of a range scan.
+ * @param begin_closed a flag to indicate whether the begin side of a range is closed.
+ * @param end_key the pointer of an end key of a range scan.
+ * @param end_closed a flag to indicate whether the end side of a range is closed.
+ * @param arr a result array of sorted metadata.
+ * @param count the number of metadata.
+ */
 template <class Key, class Payload, class Compare>
 void
 _SortUnsortedRecords(  //
@@ -274,7 +371,7 @@ _SortUnsortedRecords(  //
     const bool begin_closed,
     const Key *end_key,
     const bool end_closed,
-    UnsortedMeta<Key, Payload, Compare> &arr,
+    NewSortedMeta<Key, Payload, Compare> &arr,
     size_t &count)
 {
   const int64_t rec_count = node->GetStatusWordProtected().GetRecordCount();
@@ -313,11 +410,23 @@ _SortUnsortedRecords(  //
   }
 }
 
+/**
+ * @brief Sort all metadata by using merge sort for SMOs.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a target leaf node.
+ * @param new_records an array of metadata of new records.
+ * @param new_rec_num the number of new records.
+ * @param arr a result array of sorted metadata.
+ * @param count the total number of metadata.
+ */
 template <class Key, class Payload, class Compare>
 void
 _MergeSortedRecords(  //
     const Node<Key, Payload, Compare> *node,
-    const UnsortedMeta<Key, Payload, Compare> &new_records,
+    const NewSortedMeta<Key, Payload, Compare> &new_records,
     const size_t new_rec_num,
     MetaArray<Key, Payload, Compare> &arr,
     size_t &count)
@@ -357,11 +466,29 @@ _MergeSortedRecords(  //
   }
 }
 
+/**
+ * @brief Sort all metadata by using merge sort for scanning.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a target leaf node.
+ * @param new_records an array of metadata of new records.
+ * @param new_rec_num the number of new records.
+ * @param begin_key the pointer of a begin key of a range scan.
+ * @param begin_closed a flag to indicate whether the begin side of a range is closed.
+ * @param end_key the pointer of an end key of a range scan.
+ * @param end_closed a flag to indicate whether the end side of a range is closed.
+ * @param arr a result array of sorted metadata.
+ * @param count the total number of metadata.
+ * @retval true if scanning finishes.
+ * @retval false if scanning is in progress.
+ */
 template <class Key, class Payload, class Compare>
 bool
 _MergeSortedRecords(  //
     const Node<Key, Payload, Compare> *node,
-    const UnsortedMeta<Key, Payload, Compare> &new_records,
+    const NewSortedMeta<Key, Payload, Compare> &new_records,
     const int64_t new_rec_num,
     const Key *begin_k,
     const bool begin_closed,
@@ -427,6 +554,18 @@ _MergeSortedRecords(  //
  * Read operations
  *##############################################################################################*/
 
+/**
+ * @brief Read a payload of a specified key if it exists.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a target node.
+ * @param key a target key.
+ * @param out_payload a reference to be stored a target payload.
+ * @retval kSuccess if a key exists.
+ * @retval kKeyNotExist if a key does not exist.
+ */
 template <class Key, class Payload, class Compare>
 NodeReturnCode
 Read(  //
@@ -445,6 +584,23 @@ Read(  //
   return NodeReturnCode::kSuccess;
 }
 
+/**
+ * @brief Perform a range scan with specified keys.
+ *
+ * If a begin/end key is nullptr, it is treated as negative or positive infinite.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a target node.
+ * @param begin_k the pointer of a begin key of a range scan.
+ * @param begin_closed a flag to indicate whether the begin side of a range is closed.
+ * @param end_k the pointer of an end key of a range scan.
+ * @param end_closed a flag to indicate whether the end side of a range is closed.
+ * @param page a page to copy target keys/payloads. This argument is used internally.
+ * @retval true if scanning finishes.
+ * @retval false if scanning is in progress.
+ */
 template <class Key, class Payload, class Compare>
 bool
 Scan(  //
@@ -456,7 +612,7 @@ Scan(  //
     RecordPage<Key, Payload> *page)
 {
   // sort records in an unsorted region
-  UnsortedMeta<Key, Payload, Compare> new_records;
+  NewSortedMeta<Key, Payload, Compare> new_records;
   size_t new_rec_num = 0;
   _SortUnsortedRecords(node, begin_k, begin_closed, end_k, end_closed, new_records, new_rec_num);
 
@@ -506,6 +662,29 @@ Scan(  //
  * Write operations
  *##############################################################################################*/
 
+/**
+ * @brief Write (i.e., upsert) a specified kay/payload pair.
+ *
+ * If a specified key does not exist in a leaf node, this function performs an insert
+ * operation. If a specified key has been already inserted, this function perfroms an
+ * update operation.
+ *
+ * Note that if a target key/payload is binary data, it is required to specify its
+ * length in bytes.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a target node.
+ * @param key a target key to be written.
+ * @param payload a target payload to be written.
+ * @param key_length the length of a target key.
+ * @param payload_length the length of a target payload.
+ * @param epoch an epoch of the BzTree instance.
+ * @retval kSuccess if a key/payload pair is written.
+ * @retval kFrozen if a target node is frozen.
+ * @retval kNeedConsolidation if a target node requires consolidation.
+ */
 template <class Key, class Payload, class Compare>
 NodeReturnCode
 Write(  //
@@ -514,12 +693,12 @@ Write(  //
     const size_t key_length,
     const Payload &payload,
     const size_t payload_length,
-    const size_t index_epoch = 1)
+    const size_t epoch = 1)
 {
   // variables and constants shared in Phase 1 & 2
   const auto total_length = key_length + payload_length;
   const auto block_size = _GetAlignedSize<Key, Payload>(total_length);
-  const auto in_progress_meta = Metadata{index_epoch, key_length, total_length, true};
+  const auto in_progress_meta = Metadata{epoch, key_length, total_length, true};
   StatusWord cur_status;
   size_t rec_count;
 
@@ -529,7 +708,7 @@ Write(  //
   while (true) {
     cur_status = node->GetStatusWordProtected();
     if (cur_status.IsFrozen()) return NodeReturnCode::kFrozen;
-    if (!_HasSpace(node, cur_status, block_size)) return NodeReturnCode::kNoSpace;
+    if (!_HasSpace(node, cur_status, block_size)) return NodeReturnCode::kNeedConsolidation;
 
     rec_count = cur_status.GetRecordCount();
     if constexpr (CanCASUpdate<Payload>()) {
@@ -587,6 +766,31 @@ Write(  //
   return NodeReturnCode::kSuccess;
 }
 
+/**
+ * @brief Insert a specified kay/payload pair.
+ *
+ * This function performs a uniqueness check in its processing. If a specified key does
+ * not exist, this function insert a target payload into a target leaf node. If a
+ * specified key exists in a target leaf node, this function does nothing and returns
+ * kKeyExist as a return code.
+ *
+ * Note that if a target key/payload is binary data, it is required to specify its
+ * length in bytes.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a target node.
+ * @param key a target key to be written.
+ * @param payload a target payload to be written.
+ * @param key_length the length of a target key.
+ * @param payload_length the length of a target payload.
+ * @param epoch an epoch of the BzTree instance.
+ * @retval kSuccess if a key/payload pair is written.
+ * @retval kKeyExist if a specified key exists.
+ * @retval kFrozen if a target node is frozen.
+ * @retval kNeedConsolidation if a target node requires consolidation.
+ */
 template <class Key, class Payload, class Compare>
 NodeReturnCode
 Insert(  //
@@ -595,12 +799,12 @@ Insert(  //
     const size_t key_length,
     const Payload &payload,
     const size_t payload_length,
-    const size_t index_epoch = 1)
+    const size_t epoch = 1)
 {
   // variables and constants shared in Phase 1 & 2
   const auto total_length = key_length + payload_length;
   const auto block_size = _GetAlignedSize<Key, Payload>(total_length);
-  const auto in_progress_meta = Metadata{index_epoch, key_length, total_length, true};
+  const auto in_progress_meta = Metadata{epoch, key_length, total_length, true};
   StatusWord cur_status;
   size_t rec_count;
 
@@ -613,12 +817,12 @@ Insert(  //
   while (true) {
     cur_status = node->GetStatusWordProtected();
     if (cur_status.IsFrozen()) return NodeReturnCode::kFrozen;
-    if (!_HasSpace(node, cur_status, block_size)) return NodeReturnCode::kNoSpace;
+    if (!_HasSpace(node, cur_status, block_size)) return NodeReturnCode::kNeedConsolidation;
 
     // check uniqueness
     rec_count = cur_status.GetRecordCount();
     if (uniqueness != KeyExistence::kUncertain) {
-      uniqueness = _CheckUniqueness(node, key, rec_count, index_epoch).first;
+      uniqueness = _CheckUniqueness(node, key, rec_count, epoch).first;
       if (uniqueness == KeyExistence::kExist) {
         return NodeReturnCode::kKeyExist;
       }
@@ -660,7 +864,7 @@ Insert(  //
 
     // recheck uniqueness if required
     if (uniqueness == KeyExistence::kUncertain) {
-      uniqueness = _CheckUniqueness(node, key, rec_count, index_epoch).first;
+      uniqueness = _CheckUniqueness(node, key, rec_count, epoch).first;
       if (uniqueness == KeyExistence::kExist) {
         // delete an inserted record
         node->SetMetadataByCAS(rec_count, in_progress_meta.UpdateOffset(0));
@@ -681,6 +885,31 @@ Insert(  //
   return NodeReturnCode::kSuccess;
 }
 
+/**
+ * @brief Update a target kay with a specified payload.
+ *
+ * This function performs a uniqueness check in its processing. If a specified key
+ * exist, this function update a target payload. If a specified key does not exist in
+ * a target leaf node, this function does nothing and returns kKeyNotExist as a return
+ * code.
+ *
+ * Note that if a target key/payload is binary data, it is required to specify its
+ * length in bytes.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a target node.
+ * @param key a target key to be written.
+ * @param payload a target payload to be written.
+ * @param key_length the length of a target key.
+ * @param payload_length the length of a target payload.
+ * @param epoch an epoch of the BzTree instance.
+ * @retval kSuccess if a key/payload pair is written.
+ * @retval kKeyNotExist if a specified key does not exist.
+ * @retval kFrozen if a target node is frozen.
+ * @retval kNeedConsolidation if a target node requires consolidation.
+ */
 template <class Key, class Payload, class Compare>
 NodeReturnCode
 Update(  //
@@ -689,12 +918,12 @@ Update(  //
     const size_t key_length,
     const Payload &payload,
     const size_t payload_length,
-    const size_t index_epoch = 1)
+    const size_t epoch = 1)
 {
   // variables and constants shared in Phase 1 & 2
   const auto total_length = key_length + payload_length;
   const auto block_size = _GetAlignedSize<Key, Payload>(total_length);
-  const auto in_progress_meta = Metadata{index_epoch, key_length, total_length, true};
+  const auto in_progress_meta = Metadata{epoch, key_length, total_length, true};
   StatusWord cur_status;
   size_t rec_count, target_index = 0;
   auto uniqueness = KeyExistence::kNotExist;
@@ -705,12 +934,12 @@ Update(  //
   while (true) {
     cur_status = node->GetStatusWordProtected();
     if (cur_status.IsFrozen()) return NodeReturnCode::kFrozen;
-    if (!_HasSpace(node, cur_status, block_size)) return NodeReturnCode::kNoSpace;
+    if (!_HasSpace(node, cur_status, block_size)) return NodeReturnCode::kNeedConsolidation;
 
     // check whether a node includes a target key
     rec_count = cur_status.GetRecordCount();
     if (uniqueness != KeyExistence::kUncertain) {
-      std::tie(uniqueness, target_index) = _CheckUniqueness(node, key, rec_count, index_epoch);
+      std::tie(uniqueness, target_index) = _CheckUniqueness(node, key, rec_count, epoch);
       if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
         return NodeReturnCode::kKeyNotExist;
       }
@@ -767,7 +996,7 @@ Update(  //
 
     // recheck uniqueness if required
     if (uniqueness == KeyExistence::kUncertain) {
-      uniqueness = _CheckUniqueness(node, key, rec_count, index_epoch).first;
+      uniqueness = _CheckUniqueness(node, key, rec_count, epoch).first;
       if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
         // delete an inserted record
         node->SetMetadataByCAS(rec_count, in_progress_meta.UpdateOffset(0));
@@ -787,16 +1016,38 @@ Update(  //
   return NodeReturnCode::kSuccess;
 }
 
+/**
+ * @brief Delete a target kay from the index.
+ *
+ * This function performs a uniqueness check in its processing. If a specified key
+ * exist, this function deletes it. If a specified key does not exist in a leaf node,
+ * this function does nothing and returns kKeyNotExist as a return code.
+ *
+ * Note that if a target key is binary data, it is required to specify its length in
+ * bytes.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a target node.
+ * @param key a target key to be written.
+ * @param key_length the length of a target key.
+ * @param epoch an epoch of the BzTree instance.
+ * @retval kSuccess if a key/payload pair is written.
+ * @retval kKeyNotExist if a specified key does not exist.
+ * @retval kFrozen if a target node is frozen.
+ * @retval kNeedConsolidation if a target node requires consolidation.
+ */
 template <class Key, class Payload, class Compare>
 NodeReturnCode
 Delete(  //
     Node<Key, Payload, Compare> *node,
     const Key &key,
     const size_t key_length,
-    const size_t index_epoch = 1)
+    const size_t epoch = 1)
 {
   // variables and constants
-  const auto in_progress_meta = Metadata{index_epoch, key_length, key_length, true};
+  const auto in_progress_meta = Metadata{epoch, key_length, key_length, true};
   StatusWord cur_status;
   size_t rec_count, target_index = 0;
   auto uniqueness = KeyExistence::kNotExist;
@@ -807,12 +1058,12 @@ Delete(  //
   while (true) {
     cur_status = node->GetStatusWordProtected();
     if (cur_status.IsFrozen()) return NodeReturnCode::kFrozen;
-    if (!_HasSpace(node, cur_status, key_length)) return NodeReturnCode::kNoSpace;
+    if (!_HasSpace(node, cur_status, key_length)) return NodeReturnCode::kNeedConsolidation;
 
     // check whether a node includes a target key
     rec_count = cur_status.GetRecordCount();
     if (uniqueness != KeyExistence::kUncertain) {
-      std::tie(uniqueness, target_index) = _CheckUniqueness(node, key, rec_count, index_epoch);
+      std::tie(uniqueness, target_index) = _CheckUniqueness(node, key, rec_count, epoch);
       if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
         return NodeReturnCode::kKeyNotExist;
       }
@@ -874,7 +1125,7 @@ Delete(  //
 
     // recheck uniqueness if required
     if (uniqueness == KeyExistence::kUncertain) {
-      uniqueness = _CheckUniqueness(node, key, rec_count, index_epoch).first;
+      uniqueness = _CheckUniqueness(node, key, rec_count, epoch).first;
       if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
         // delete an inserted record
         node->SetMetadataByCAS(rec_count, in_progress_meta.UpdateOffset(0));
@@ -899,6 +1150,17 @@ Delete(  //
  * Public structure modification operations
  *##############################################################################################*/
 
+/**
+ * @brief Consolidate a target leaf node.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param orig_node an original node.
+ * @param metadata an array of consolidated metadata.
+ * @param rec_count the number of metadata.
+ * @return Node_t*: a consolidated node.
+ */
 template <class Key, class Payload, class Compare>
 Node<Key, Payload, Compare> *
 Consolidate(  //
@@ -919,6 +1181,18 @@ Consolidate(  //
   return new_node;
 }
 
+/**
+ * @brief Split a target leaf node.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param orig_node an original node.
+ * @param metadata an array of consolidated metadata.
+ * @param rec_count the number of metadata.
+ * @param left_rec_count the number of records in a split left node.
+ * @return std::pair<Node_t*, Node_t*>: split left/right nodes.
+ */
 template <class Key, class Payload, class Compare>
 std::pair<Node<Key, Payload, Compare> *, Node<Key, Payload, Compare> *>
 Split(  //
@@ -952,6 +1226,20 @@ Split(  //
   return {left_node, right_node};
 }
 
+/**
+ * @brief Merge leaf nodes.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param left_node a merged left node.
+ * @param left_meta an array of metadata in a merged left node.
+ * @param l_rec_count the number of metadata in a merged left node.
+ * @param right_node a merged right node.
+ * @param right_meta an array of metadata in a merged right node.
+ * @param r_rec_count the number of metadata in a merged right node.
+ * @return Node_t*: a merged node.
+ */
 template <class Key, class Payload, class Compare>
 Node<Key, Payload, Compare> *
 Merge(  //
@@ -982,12 +1270,21 @@ Merge(  //
  * Public utility functions
  *##############################################################################################*/
 
+/**
+ * @brief Gather sorted live metadata as preparation of SMOs.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a target leaf node.
+ * @return std::pair<MetaArray_t, size_t>: a pair of an array of metadata and its size.
+ */
 template <class Key, class Payload, class Compare>
 std::pair<MetaArray<Key, Payload, Compare>, size_t>
 GatherSortedLiveMetadata(const Node<Key, Payload, Compare> *node)
 {
   // sort records in an unsorted region
-  UnsortedMeta<Key, Payload, Compare> new_records;
+  NewSortedMeta<Key, Payload, Compare> new_records;
   size_t new_rec_num = 0;
   _SortUnsortedRecords(node, new_records, new_rec_num);
 
