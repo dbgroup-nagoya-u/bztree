@@ -201,6 +201,80 @@ Sum: 28
 Sum: 18
 ```
 
+### Multi-Threading
+
+This library is a thread-safe implementation. You can call all the APIs (i.e., `Read`, `Scan`, `Write`, `Insert`, `Update`, and `Delete`) from multi-threads concurrently. Note that concurrent writes follow the last write win protocol, and so you need to some concurrency control methods (e.g., snapshot isolation) to guarantee the order of read/write operations.
+
+```cpp
+#include <iostream>
+#include <memory>
+#include <thread>
+#include <vector>
+
+#include "bztree/bztree.hpp"
+
+using Key = uint64_t;
+using Value = uint64_t;
+
+using BzTree_t = ::dbgroup::index::bztree::BzTree<Key, Value>;
+using ::dbgroup::index::bztree::ReturnCode;
+
+uint64_t
+Sum(const std::unique_ptr<BzTree_t>& bztree)
+{
+  uint64_t sum = 0;
+  for (auto iter = bztree->Scan(); iter.HasNext(); ++iter) {
+    sum += iter.GetPayload();
+  }
+  return sum;
+}
+
+int
+main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
+{
+  // create a BzTree instance
+  auto bztree = std::make_unique<BzTree_t>();
+
+  // a lambda function for a multi-threading example
+  auto f = [&](const uint64_t begin_id, const uint64_t end_id) {
+    for (uint64_t i = begin_id; i < end_id; ++i) {
+      bztree->Write(i, i);
+    }
+  };
+
+  // write values by single threads
+  std::vector<std::thread> threads;
+  threads.emplace_back(f, 0, 4e6);
+  for (auto&& t : threads) t.join();
+
+  // compute the sum of all the values for validation
+  std::cout << "Sum: " << Sum(bztree) << std::endl;
+
+  // reset a BzTree instance
+  bztree = std::make_unique<BzTree_t>();
+
+  // write values by four threads
+  threads.clear();
+  threads.emplace_back(f, 0, 1e6);
+  threads.emplace_back(f, 1e6, 2e6);
+  threads.emplace_back(f, 2e6, 3e6);
+  threads.emplace_back(f, 3e6, 4e6);
+  for (auto&& t : threads) t.join();
+
+  // check all the values are written
+  std::cout << "Sum: " << Sum(bztree) << std::endl;
+
+  return 0;
+}
+```
+
+This code will output the following results.
+
+```txt
+Sum: 7999998000000
+Sum: 7999998000000
+```
+
 ### Variable Length Keys/Values
 
 If you use variable length keys/values (i.e., binary data), you need to specify theier lengths for each API except for the read API. Note that we use `char*` to represent binary data, and so you may need to cast your keys/values to write a BzTree instance, such as `reinterpret_cast<char*>(&<key_instance>)`.
