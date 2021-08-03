@@ -200,9 +200,9 @@ IsInRange(  //
     return Compare{}(*begin_key, key) || (begin_closed && !Compare{}(key, *begin_key));
   } else {
     // between
-    return (Compare{}(*begin_key, key) && Compare{}(key, *end_key))
-           || (begin_closed && IsEqual<Compare>(key, *begin_key))
-           || (end_closed && IsEqual<Compare>(key, *end_key));
+    return !((Compare{}(key, *begin_key) || Compare{}(*end_key, key))
+             || (!begin_closed && IsEqual<Compare>(key, *begin_key))
+             || (!end_closed && IsEqual<Compare>(key, *end_key)));
   }
 }
 
