@@ -76,7 +76,7 @@ class LeafNodeFixture : public testing::Test
   size_t max_record_num;
 
   // a leaf node and its statistics
-  std::unique_ptr<Node_t> node;
+  std::unique_ptr<Node_t, component::Deleter<Node_t>> node;
   size_t expected_record_count;
   size_t expected_block_size;
   size_t expected_deleted_block_size;
@@ -101,7 +101,7 @@ class LeafNodeFixture : public testing::Test
       // variable-length keys
       key_length = 7;
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto key = new char[kKeyLength];
+        auto key = reinterpret_cast<char *>(malloc(kKeyLength));
         snprintf(key, kKeyLength, "%06lu", index);
         keys[index] = key;
       }
@@ -118,7 +118,7 @@ class LeafNodeFixture : public testing::Test
       // variable-length payloads
       payload_length = 7;
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto payload = new char[kPayloadLength];
+        auto payload = reinterpret_cast<char *>(malloc(kPayloadLength));
         snprintf(payload, kPayloadLength, "%06lu", index);
         payloads[index] = payload;
       }
@@ -126,7 +126,8 @@ class LeafNodeFixture : public testing::Test
       // pointer payloads
       payload_length = sizeof(Payload);
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto payload = new uint64_t{index};
+        auto payload = reinterpret_cast<uint64_t *>(malloc(kPayloadLength));
+        *payload = index;
         payloads[index] = payload;
       }
     } else {
@@ -151,12 +152,12 @@ class LeafNodeFixture : public testing::Test
   {
     if constexpr (std::is_same_v<Key, char *>) {
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        delete[] keys[index];
+        free(keys[index]);
       }
     }
     if constexpr (std::is_same_v<Payload, char *> || std::is_same_v<Payload, uint64_t *>) {
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        delete[] payloads[index];
+        free(payloads[index]);
       }
     }
   }
@@ -341,7 +342,7 @@ class LeafNodeFixture : public testing::Test
       EXPECT_EQ(NodeReturnCode::kSuccess, rc);
       EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], payload));
       if constexpr (std::is_same_v<Payload, char *>) {
-        free(payload);
+        ::dbgroup::memory::Delete(payload);
       }
     }
   }
@@ -490,10 +491,10 @@ class LeafNodeFixture : public testing::Test
 
     if (target_is_left) {
       node.reset(left_node);
-      delete right_node;
+      ::dbgroup::memory::Delete(right_node);
     } else {
       node.reset(right_node);
-      delete left_node;
+      ::dbgroup::memory::Delete(left_node);
     }
 
     expected_record_count = left_rec_count;
@@ -512,7 +513,8 @@ class LeafNodeFixture : public testing::Test
     WriteOrderedKeys(left_begin, left_end);
     auto [left_meta, left_rec_count] = leaf::GatherSortedLiveMetadata(node.get());
 
-    auto right_node = std::unique_ptr<Node_t>(CallocNew<Node_t>(kPageSize, kLeafFlag));
+    auto right_node = std::unique_ptr<Node_t, component::Deleter<Node_t>>(
+        CallocNew<Node_t>(kPageSize, kLeafFlag));
     for (size_t id = right_begin; id <= right_end; ++id) {
       leaf::Write(right_node.get(), keys[id], key_length, payloads[id], payload_length);
     }
