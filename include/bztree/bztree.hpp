@@ -696,13 +696,15 @@ class BzTree
     const auto rc = leaf::Read(node, key, payload);
     if (rc == NodeReturnCode::kSuccess) {
       if constexpr (std::is_same_v<Payload, char *>) {
-        return std::make_pair(ReturnCode::kSuccess, std::unique_ptr<char>{payload});
+        return std::make_pair(ReturnCode::kSuccess,
+                              std::unique_ptr<char, component::Deleter<char>>{payload});
       } else {
         return std::make_pair(ReturnCode::kSuccess, std::move(payload));
       }
     }
     if constexpr (std::is_same_v<Payload, char *>) {
-      return std::make_pair(ReturnCode::kKeyNotExist, std::unique_ptr<char>{});
+      return std::make_pair(ReturnCode::kKeyNotExist,
+                            std::unique_ptr<char, component::Deleter<char>>{});
     } else {
       return std::make_pair(ReturnCode::kKeyNotExist, Payload{});
     }
