@@ -275,12 +275,13 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     NodeStack trace;
-    Node_t *parent = nullptr;
+    Node_t *parent = nullptr, *tmp_node;
     size_t target_pos = 0;
     while (true) {
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(key, node);
-      target_pos = trace.back().second;
+      std::tie(tmp_node, target_pos) = trace.back();
+      if (tmp_node != node) return;  // a target node was modified by concurrent merging
       trace.pop_back();
 
       // check whether it is required to split a parent node
@@ -417,13 +418,14 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     NodeStack trace;
-    Node_t *parent = nullptr, *sib_node = nullptr;
+    Node_t *parent = nullptr, *sib_node = nullptr, *tmp_node;
     bool sib_is_left = true;
     size_t target_pos = 0;
     while (true) {
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(key, node);
-      target_pos = trace.back().second;
+      std::tie(tmp_node, target_pos) = trace.back();
+      if (tmp_node != node) return true;  // a target node was modified by concurrent merging
       trace.pop_back();
 
       // check a parent node is live
