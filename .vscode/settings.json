@@ -60,6 +60,7 @@
     "gtest",
     "hykin",
     "iostream",
+    "jemalloc",
     "libnuma",
     "matepek",
     "mwcas",
