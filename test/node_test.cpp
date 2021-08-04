@@ -45,7 +45,7 @@ class BaseNodeFixture : public testing::Test
   Key key_null = 0;          // null key must have 8 bytes to fill a node
   Payload payload_null = 0;  // null payload must have 8 bytes to fill a node
 
-  std::unique_ptr<Node_t> node;
+  std::unique_ptr<Node_t, Deleter<Node_t>> node;
 
  protected:
   void

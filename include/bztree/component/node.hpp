@@ -290,7 +290,7 @@ class alignas(kCacheLineSize) Node
   {
     if constexpr (std::is_same_v<Payload, char *>) {
       const auto payload_length = meta.GetPayloadLength();
-      auto tmp = malloc(payload_length);
+      auto tmp = ::dbgroup::memory::MallocNew<char>(payload_length);
       memcpy(tmp, this->GetPayloadAddr(meta), payload_length);
       out_payload = reinterpret_cast<char *>(tmp);
     } else if constexpr (sizeof(Payload) == kWordLength) {

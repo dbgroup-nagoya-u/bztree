@@ -61,7 +61,7 @@ class InternalNodeFixture : public testing::Test
   size_t max_record_num;
 
   // a leaf node
-  std::unique_ptr<Node_t> node;
+  std::unique_ptr<Node_t, component::Deleter<Node_t>> node;
 
   /*################################################################################################
    * Setup/Teardown
@@ -78,7 +78,7 @@ class InternalNodeFixture : public testing::Test
       // variable-length keys
       key_length = 7;
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto key = new char[kKeyLength];
+        auto key = reinterpret_cast<char*>(malloc(kKeyLength));
         snprintf(key, kKeyLength, "%06lu", index);
         keys[index] = key;
       }
@@ -100,7 +100,7 @@ class InternalNodeFixture : public testing::Test
   {
     if constexpr (std::is_same_v<Key, char*>) {
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        delete[] keys[index];
+        free(keys[index]);
       }
     }
   }
@@ -141,7 +141,7 @@ class InternalNodeFixture : public testing::Test
   ReleaseChildren()
   {
     for (size_t i = 0; i < node->GetSortedCount(); ++i) {
-      delete internal::GetChildNode(node.get(), i);
+      ::dbgroup::memory::Delete(internal::GetChildNode(node.get(), i));
     }
   }
 
@@ -217,8 +217,8 @@ class InternalNodeFixture : public testing::Test
     VerifyInternalNode(right_node, kDummyNodeNum - left_rec_count);
     VerifyDummyChildren(right_node, kDummyNodeNum - left_rec_count, left_rec_count);
 
-    delete left_node;
-    delete right_node;
+    ::dbgroup::memory::Delete(left_node);
+    ::dbgroup::memory::Delete(right_node);
   }
 
   void
@@ -233,8 +233,8 @@ class InternalNodeFixture : public testing::Test
     VerifyInternalNode(merged_node, kDummyNodeNum * 2);
     VerifyDummyChildren(merged_node, kDummyNodeNum * 2, 0);
 
-    delete sibling_node;
-    delete merged_node;
+    ::dbgroup::memory::Delete(sibling_node);
+    ::dbgroup::memory::Delete(merged_node);
   }
 
   void
@@ -273,8 +273,8 @@ class InternalNodeFixture : public testing::Test
 
     ReleaseChildren();
 
-    delete init_left;
-    delete init_right;
+    ::dbgroup::memory::Delete(init_left);
+    ::dbgroup::memory::Delete(init_right);
   }
 
   void
@@ -300,10 +300,10 @@ class InternalNodeFixture : public testing::Test
 
     ReleaseChildren();
 
-    delete left_left;
-    delete left_right;
-    delete right_left;
-    delete right_right;
+    ::dbgroup::memory::Delete(left_left);
+    ::dbgroup::memory::Delete(left_right);
+    ::dbgroup::memory::Delete(right_left);
+    ::dbgroup::memory::Delete(right_right);
   }
 };
 
