@@ -7,25 +7,25 @@ buildType:
       long: Include debugging information without optimizations
       buildType: Debug
       settings:
-        BZTREE_USE_MIMALLOC: off
-        BZTREE_USE_JEMALLOC: off
-        BZTREE_BUILD_TESTS: on
+        BZTREE_USE_MIMALLOC: OFF
+        BZTREE_USE_JEMALLOC: OFF
+        BZTREE_BUILD_TESTS: ON
         BZTREE_TEST_THREAD_NUM: 8
     relWithDebInfo:
       short: RelWithDebInfo
       long: Perform optimizations and include debugging informatin
       buildType: RelWithDebInfo
       settings:
-        BZTREE_USE_MIMALLOC: off
-        BZTREE_USE_JEMALLOC: off
-        BZTREE_BUILD_TESTS: on
+        BZTREE_USE_MIMALLOC: OFF
+        BZTREE_USE_JEMALLOC: OFF
+        BZTREE_BUILD_TESTS: ON
         BZTREE_TEST_THREAD_NUM: 8
     release:
       short: Release
       long: Perform optimizations and omit debugging informatin
       buildType: Release
       settings:
-        BZTREE_USE_MIMALLOC: off
-        BZTREE_USE_JEMALLOC: off
-        BZTREE_BUILD_TESTS: on
+        BZTREE_USE_MIMALLOC: OFF
+        BZTREE_USE_JEMALLOC: OFF
+        BZTREE_BUILD_TESTS: ON
         BZTREE_TEST_THREAD_NUM: 8

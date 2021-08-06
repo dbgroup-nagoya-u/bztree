@@ -31,7 +31,7 @@ jobs:
     - name: Configure CMake for 4K Pages
       shell: bash
       working-directory: ${{github.workspace}}/build_4k
-      run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBZTREE_PAGE_SIZE=4096 -DBZTREE_MAX_UNSORTED_REC_NUM=32 -DBZTREE_BUILD_TESTS=on -DBZTREE_TEST_THREAD_NUM=2
+      run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBZTREE_PAGE_SIZE=4096 -DBZTREE_MAX_UNSORTED_REC_NUM=32 -DBZTREE_BUILD_TESTS=ON -DBZTREE_TEST_THREAD_NUM=2
 
     - name: Build for 4K Pages
       shell: bash
@@ -46,7 +46,7 @@ jobs:
     - name: Configure CMake for 8K Pages
       shell: bash
       working-directory: ${{github.workspace}}/build_8k
-      run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBZTREE_PAGE_SIZE=8192 -DBZTREE_MAX_UNSORTED_REC_NUM=64 -DBZTREE_BUILD_TESTS=on -DBZTREE_TEST_THREAD_NUM=2
+      run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBZTREE_PAGE_SIZE=8192 -DBZTREE_MAX_UNSORTED_REC_NUM=64 -DBZTREE_BUILD_TESTS=ON -DBZTREE_TEST_THREAD_NUM=2
 
     - name: Build for 8K Pages
       shell: bash
