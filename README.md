@@ -28,7 +28,7 @@ sudo apt update && sudo apt install -y build-essential cmake
 - `BZTREE_USE_MIMALLOC`: use [mimalloc](https://github.com/microsoft/mimalloc) as a memory allocator/deleter if `ON` (default `OFF`).
     - If you use this option, you need to install mimalloc beforehand and enable `cmake` find it by using the [find_package](https://cmake.org/cmake/help/latest/command/find_package.html) command.
 - `BZTREE_USE_JEMALLOC`: use [jemalloc](https://github.com/jemalloc/jemalloc) as a memory allocator/deleter if `ON` (default `OFF`).
-    - If you use this option, you need to install mimalloc beforehand. We assume that jemalloc is configured with the following command.
+    - If you use this option, you need to install jemalloc beforehand. We assume that jemalloc is configured with the following command.
 
     ```bash
     ./configure --prefix=/usr/local --with-version=VERSION --with-jemalloc-prefix=je_ --with-install-suffix=_without_override --disable-cxx
