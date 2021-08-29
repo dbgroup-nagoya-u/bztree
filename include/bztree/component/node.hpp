@@ -247,27 +247,6 @@ class alignas(kCacheLineSize) Node
   }
 
   /**
-   * @brief Copy a target key to a specified reference.
-   *
-   * @param meta metadata of a corresponding record.
-   * @param out_key a reference to be copied a target key.
-   */
-  void
-  CopyKey(  //
-      const Metadata meta,
-      Key &out_key) const
-  {
-    if constexpr (std::is_same_v<Key, std::byte *>) {
-      const auto key_length = meta.GetKeyLength();
-      auto tmp = malloc(key_length);
-      memcpy(tmp, this->GetKeyAddr(meta), key_length);
-      out_key = reinterpret_cast<std::byte *>(tmp);
-    } else {
-      memcpy(&out_key, this->GetKeyAddr(meta), sizeof(Key));
-    }
-  }
-
-  /**
    * @param meta metadata of a corresponding record.
    * @return void*: an address of a target payload.
    */
@@ -290,10 +269,9 @@ class alignas(kCacheLineSize) Node
   {
     if constexpr (std::is_same_v<Payload, std::byte *>) {
       const auto payload_length = meta.GetPayloadLength();
-      auto tmp = ::dbgroup::memory::MallocNew<std::byte>(payload_length);
-      memcpy(tmp, this->GetPayloadAddr(meta), payload_length);
-      out_payload = reinterpret_cast<std::byte *>(tmp);
-    } else if constexpr (sizeof(Payload) == kWordLength) {
+      out_payload = ::dbgroup::memory::MallocNew<std::byte>(payload_length);
+      memcpy(out_payload, this->GetPayloadAddr(meta), payload_length);
+    } else if constexpr (CanCASUpdate<Payload>()) {
       out_payload = ReadMwCASField<Payload>(this->GetPayloadAddr(meta));
     } else {
       memcpy(&out_payload, this->GetPayloadAddr(meta), sizeof(Payload));

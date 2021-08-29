@@ -23,6 +23,7 @@
 
 #include "bztree/bztree.hpp"
 #include "bztree/component/record_iterator.hpp"
+#include "common.hpp"
 #include "gtest/gtest.h"
 
 namespace dbgroup::index::bztree::leaf::test
@@ -141,7 +142,7 @@ class LeafNodeFixture : public testing::Test
     }
 
     // set a record length and its maximum number
-    if constexpr (!std::is_same_v<Payload, std::byte *> && sizeof(Payload) == kWordLength) {
+    if constexpr (CanCASUpdate<Payload>()) {
       record_length = 2 * kWordLength;
     } else {
       record_length = key_length + payload_length;
@@ -538,17 +539,18 @@ class LeafNodeFixture : public testing::Test
 
 using UInt32Comp = std::less<uint32_t>;
 using UInt64Comp = std::less<uint64_t>;
+using Int64Comp = std::less<int64_t>;
 using CStrComp = dbgroup::index::bztree::CompareAsCString;
 using PtrComp = std::less<uint64_t *>;
 
 using KeyPayloadPairs = ::testing::Types<KeyPayload<uint64_t, uint64_t, UInt64Comp, UInt64Comp>,
                                          KeyPayload<std::byte *, uint64_t, CStrComp, UInt64Comp>,
                                          KeyPayload<uint64_t, std::byte *, UInt64Comp, CStrComp>,
-                                         KeyPayload<uint32_t, uint32_t, UInt32Comp, UInt32Comp>,
-                                         KeyPayload<std::byte *, uint32_t, CStrComp, UInt32Comp>,
-                                         KeyPayload<uint32_t, std::byte *, UInt32Comp, CStrComp>,
                                          KeyPayload<std::byte *, std::byte *, CStrComp, CStrComp>,
-                                         KeyPayload<uint64_t, uint64_t *, UInt64Comp, PtrComp>>;
+                                         KeyPayload<uint32_t, uint64_t, UInt32Comp, UInt64Comp>,
+                                         KeyPayload<uint64_t, uint64_t *, UInt64Comp, PtrComp>,
+                                         KeyPayload<uint64_t, MyClass, UInt64Comp, MyClassComp>,
+                                         KeyPayload<uint64_t, int64_t, UInt64Comp, Int64Comp>>;
 TYPED_TEST_CASE(LeafNodeFixture, KeyPayloadPairs);
 
 /*##################################################################################################

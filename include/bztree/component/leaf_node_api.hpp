@@ -213,34 +213,6 @@ _GetAlignedSize(const size_t block_size)
 }
 
 /**
- * @brief Copy a record from an original node.
- *
- * @tparam Key a target key class.
- * @tparam Payload a target payload class.
- * @tparam Compare a comparetor class for keys.
- * @param target_node a leaf node to be copied.
- * @param offset an offset of a target record.
- * @param original_node an original leaf node.
- * @param meta target metadata.
- */
-template <class Key, class Payload, class Compare>
-void
-_CopyRecord(  //
-    Node<Key, Payload, Compare> *target_node,
-    size_t &offset,
-    const Node<Key, Payload, Compare> *original_node,
-    const Metadata meta)
-{
-  const auto total_length = meta.GetTotalLength();
-  if constexpr (CanCASUpdate<Payload>()) {
-    AlignOffset<Key>(offset);
-  }
-  offset -= total_length;
-
-  memcpy(ShiftAddress(target_node, offset), original_node->GetKeyAddr(meta), total_length);
-}
-
-/**
  * @brief Copy records from an original node.
  *
  * @tparam Key a target key class.
@@ -268,10 +240,16 @@ _CopyRecords(  //
   for (size_t i = begin_id; i < end_id; ++i, ++current_rec_count) {
     // copy a record
     const auto meta = metadata[i];
-    _CopyRecord(target_node, offset, original_node, meta);
+    const auto total_length = meta.GetTotalLength();
+    offset -= total_length;
+    memcpy(ShiftAddress(target_node, offset), original_node->GetKeyAddr(meta), total_length);
     // copy metadata
     const auto new_meta = meta.UpdateOffset(offset);
     target_node->SetMetadata(current_rec_count, new_meta);
+
+    if constexpr (CanCASUpdate<Payload>()) {
+      AlignOffset<Key>(offset);
+    }
   }
 }
 
@@ -1173,9 +1151,6 @@ Consolidate(  //
   auto offset = kPageSize;
   _CopyRecords(new_node, 0, offset, orig_node, metadata, 0, rec_count);
   new_node->SetSortedCount(rec_count);
-  if constexpr (CanCASUpdate<Payload>()) {
-    AlignOffset<Key>(offset);
-  }
   new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
 
   return new_node;
@@ -1208,9 +1183,6 @@ Split(  //
   auto offset = kPageSize;
   _CopyRecords(left_node, 0, offset, orig_node, metadata, 0, left_rec_count);
   left_node->SetSortedCount(left_rec_count);
-  if constexpr (CanCASUpdate<Payload>()) {
-    AlignOffset<Key>(offset);
-  }
   left_node->SetStatus(StatusWord{left_rec_count, kPageSize - offset});
 
   // create a split right node
@@ -1218,9 +1190,6 @@ Split(  //
   offset = kPageSize;
   _CopyRecords(right_node, 0, offset, orig_node, metadata, left_rec_count, rec_count);
   right_node->SetSortedCount(right_rec_count);
-  if constexpr (CanCASUpdate<Payload>()) {
-    AlignOffset<Key>(offset);
-  }
   right_node->SetStatus(StatusWord{right_rec_count, kPageSize - offset});
 
   return {left_node, right_node};
@@ -1258,9 +1227,6 @@ Merge(  //
   _CopyRecords(new_node, 0, offset, left_node, left_meta, 0, l_rec_count);
   _CopyRecords(new_node, l_rec_count, offset, right_node, right_meta, 0, r_rec_count);
   new_node->SetSortedCount(rec_count);
-  if constexpr (CanCASUpdate<Payload>()) {
-    AlignOffset<Key>(offset);
-  }
   new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
 
   return new_node;
