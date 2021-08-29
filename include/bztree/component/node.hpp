@@ -257,11 +257,11 @@ class alignas(kCacheLineSize) Node
       const Metadata meta,
       Key &out_key) const
   {
-    if constexpr (std::is_same_v<Key, char *>) {
+    if constexpr (std::is_same_v<Key, std::byte *>) {
       const auto key_length = meta.GetKeyLength();
       auto tmp = malloc(key_length);
       memcpy(tmp, this->GetKeyAddr(meta), key_length);
-      out_key = reinterpret_cast<char *>(tmp);
+      out_key = reinterpret_cast<std::byte *>(tmp);
     } else {
       memcpy(&out_key, this->GetKeyAddr(meta), sizeof(Key));
     }
@@ -288,11 +288,11 @@ class alignas(kCacheLineSize) Node
       const Metadata meta,
       Payload &out_payload) const
   {
-    if constexpr (std::is_same_v<Payload, char *>) {
+    if constexpr (std::is_same_v<Payload, std::byte *>) {
       const auto payload_length = meta.GetPayloadLength();
-      auto tmp = ::dbgroup::memory::MallocNew<char>(payload_length);
+      auto tmp = ::dbgroup::memory::MallocNew<std::byte>(payload_length);
       memcpy(tmp, this->GetPayloadAddr(meta), payload_length);
-      out_payload = reinterpret_cast<char *>(tmp);
+      out_payload = reinterpret_cast<std::byte *>(tmp);
     } else if constexpr (sizeof(Payload) == kWordLength) {
       out_payload = ReadMwCASField<Payload>(this->GetPayloadAddr(meta));
     } else {
@@ -366,7 +366,7 @@ class alignas(kCacheLineSize) Node
       const Key &key,
       const size_t key_length)
   {
-    if constexpr (std::is_same_v<Key, char *>) {
+    if constexpr (std::is_same_v<Key, std::byte *>) {
       offset -= key_length;
       memcpy(ShiftAddress(this, offset), key, key_length);
     } else {
@@ -390,7 +390,7 @@ class alignas(kCacheLineSize) Node
       const T &payload,
       const size_t payload_length)
   {
-    if constexpr (std::is_same_v<T, char *>) {
+    if constexpr (std::is_same_v<T, std::byte *>) {
       offset -= payload_length;
       memcpy(ShiftAddress(this, offset), payload, payload_length);
     } else {
@@ -448,7 +448,7 @@ class alignas(kCacheLineSize) Node
       const Metadata meta,
       const Payload &new_payload)
   {
-    static_assert(!std::is_same_v<Payload, char *>);
+    static_assert(CanCASUpdate<Payload>());
 
     Payload old_payload{};
     this->CopyPayload(meta, old_payload);

@@ -107,12 +107,12 @@ class LeafNodeFixture : public testing::Test
     node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
 
     // prepare keys
-    if constexpr (std::is_same_v<Key, char*>) {
+    if constexpr (std::is_same_v<Key, std::byte *>) {
       // variable-length keys
       key_length = 7;
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto key = reinterpret_cast<char*>(malloc(kKeyLength));
-        snprintf(key, kKeyLength, "%06lu", index);
+        auto key = reinterpret_cast<std::byte *>(malloc(kKeyLength));
+        snprintf(reinterpret_cast<char *>(key), kKeyLength, "%06lu", index);
         keys[index] = key;
       }
     } else {
@@ -124,19 +124,19 @@ class LeafNodeFixture : public testing::Test
     }
 
     // prepare payloads
-    if constexpr (std::is_same_v<Payload, char*>) {
+    if constexpr (std::is_same_v<Payload, std::byte *>) {
       // variable-length payloads
       payload_length = 7;
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto payload = reinterpret_cast<char*>(malloc(kPayloadLength));
-        snprintf(payload, kPayloadLength, "%06lu", index);
+        auto payload = reinterpret_cast<std::byte *>(malloc(kPayloadLength));
+        snprintf(reinterpret_cast<char *>(payload), kPayloadLength, "%06lu", index);
         payloads[index] = payload;
       }
-    } else if constexpr (std::is_same_v<Payload, uint64_t*>) {
+    } else if constexpr (std::is_same_v<Payload, uint64_t *>) {
       // pointer payloads
       payload_length = sizeof(Payload);
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto payload = reinterpret_cast<uint64_t*>(malloc(kPayloadLength));
+        auto payload = reinterpret_cast<uint64_t *>(malloc(kPayloadLength));
         *payload = index;
         payloads[index] = payload;
       }
@@ -149,7 +149,7 @@ class LeafNodeFixture : public testing::Test
     }
 
     // set a record length and its maximum number
-    if constexpr (!std::is_same_v<Payload, char*> && sizeof(Payload) == kWordLength) {
+    if constexpr (!std::is_same_v<Payload, std::byte *> && sizeof(Payload) == kWordLength) {
       record_length = 2 * kWordLength;
     } else {
       record_length = key_length + payload_length;
@@ -160,12 +160,12 @@ class LeafNodeFixture : public testing::Test
   void
   TearDown()
   {
-    if constexpr (std::is_same_v<Key, char*>) {
+    if constexpr (std::is_same_v<Key, std::byte *>) {
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
         free(keys[index]);
       }
     }
-    if constexpr (std::is_same_v<Payload, char*> || std::is_same_v<Payload, uint64_t*>) {
+    if constexpr (std::is_same_v<Payload, std::byte *> || std::is_same_v<Payload, uint64_t *>) {
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
         free(payloads[index]);
       }
@@ -177,7 +177,7 @@ class LeafNodeFixture : public testing::Test
    *##############################################################################################*/
 
   NodeReturnCode
-  PerformWriteOperation(const Operation& ops)
+  PerformWriteOperation(const Operation &ops)
   {
     const auto key = keys[ops.key_id];
     const auto payload = payloads[ops.payload_id];
@@ -199,7 +199,7 @@ class LeafNodeFixture : public testing::Test
   Operation
   PrepareOperation(  //
       const WriteType w_type,
-      std::mt19937_64& rand_engine)
+      std::mt19937_64 &rand_engine)
   {
     const auto id = id_dist(rand_engine);
 
@@ -250,7 +250,7 @@ class LeafNodeFixture : public testing::Test
       const std::shared_lock<std::shared_mutex> lock{worker_lock};
 
       // perform and gather results
-      for (auto&& ops : operations) {
+      for (auto &&ops : operations) {
         if (PerformWriteOperation(ops) == NodeReturnCode::kSuccess) {
           written_ids.emplace_back(ops.key_id);
         }
@@ -290,7 +290,7 @@ class LeafNodeFixture : public testing::Test
     // gather results via promise-future
     std::vector<size_t> written_ids;
     written_ids.reserve(write_num * thread_num);
-    for (auto&& future : futures) {
+    for (auto &&future : futures) {
       auto tmp_written = future.get();
       written_ids.insert(written_ids.end(), tmp_written.begin(), tmp_written.end());
     }
@@ -301,8 +301,8 @@ class LeafNodeFixture : public testing::Test
   auto
   GetPayload(const Metadata meta)
   {
-    if constexpr (std::is_same_v<Payload, char*>) {
-      return static_cast<char*>(node->GetPayloadAddr(meta));
+    if constexpr (std::is_same_v<Payload, std::byte *>) {
+      return static_cast<std::byte *>(node->GetPayloadAddr(meta));
     } else {
       Payload payload;
       memcpy(&payload, node->GetPayloadAddr(meta), sizeof(Payload));
@@ -329,7 +329,7 @@ class LeafNodeFixture : public testing::Test
     } else {
       EXPECT_EQ(NodeReturnCode::kSuccess, rc);
       EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], payload));
-      if constexpr (std::is_same_v<Payload, char*>) {
+      if constexpr (std::is_same_v<Payload, std::byte *>) {
         ::dbgroup::memory::Delete(payload);
       }
     }
@@ -345,7 +345,7 @@ class LeafNodeFixture : public testing::Test
       node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
 
       auto written_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kWrite);
-      for (auto&& id : written_ids) {
+      for (auto &&id : written_ids) {
         VerifyRead(id, id);
       }
     }
@@ -361,7 +361,7 @@ class LeafNodeFixture : public testing::Test
       node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
 
       auto inserted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
-      for (auto&& id : inserted_ids) {
+      for (auto &&id : inserted_ids) {
         VerifyRead(id, id);
       }
     }
@@ -384,7 +384,7 @@ class LeafNodeFixture : public testing::Test
       updated_ids.erase(std::unique(updated_ids.begin(), updated_ids.end()), updated_ids.end());
 
       EXPECT_EQ(inserted_ids.size(), updated_ids.size());
-      for (auto&& id : updated_ids) {
+      for (auto &&id : updated_ids) {
         VerifyRead(id, id + 1);
       }
     }
@@ -401,7 +401,7 @@ class LeafNodeFixture : public testing::Test
 
       auto inserted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
       auto deleted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kDelete);
-      for (auto&& id : deleted_ids) {
+      for (auto &&id : deleted_ids) {
         VerifyRead(id, id, true);
       }
     }
@@ -461,16 +461,16 @@ class LeafNodeFixture : public testing::Test
 using UInt32Comp = std::less<uint32_t>;
 using UInt64Comp = std::less<uint64_t>;
 using CStrComp = dbgroup::index::bztree::CompareAsCString;
-using PtrComp = std::less<uint64_t*>;
+using PtrComp = std::less<uint64_t *>;
 
 using KeyPayloadPairs = ::testing::Types<KeyPayload<uint64_t, uint64_t, UInt64Comp, UInt64Comp>,
-                                         KeyPayload<char*, uint64_t, CStrComp, UInt64Comp>,
-                                         KeyPayload<uint64_t, char*, UInt64Comp, CStrComp>,
+                                         KeyPayload<std::byte *, uint64_t, CStrComp, UInt64Comp>,
+                                         KeyPayload<uint64_t, std::byte *, UInt64Comp, CStrComp>,
                                          KeyPayload<uint32_t, uint32_t, UInt32Comp, UInt32Comp>,
-                                         KeyPayload<char*, uint32_t, CStrComp, UInt32Comp>,
-                                         KeyPayload<uint32_t, char*, UInt32Comp, CStrComp>,
-                                         KeyPayload<char*, char*, CStrComp, CStrComp>,
-                                         KeyPayload<uint64_t, uint64_t*, UInt64Comp, PtrComp>>;
+                                         KeyPayload<std::byte *, uint32_t, CStrComp, UInt32Comp>,
+                                         KeyPayload<uint32_t, std::byte *, UInt32Comp, CStrComp>,
+                                         KeyPayload<std::byte *, std::byte *, CStrComp, CStrComp>,
+                                         KeyPayload<uint64_t, uint64_t *, UInt64Comp, PtrComp>>;
 TYPED_TEST_CASE(LeafNodeFixture, KeyPayloadPairs);
 
 /*##################################################################################################

@@ -100,12 +100,12 @@ class BzTreeFixture : public testing::Test
   SetUp()
   {
     // prepare keys
-    if constexpr (std::is_same_v<Key, char *>) {
+    if constexpr (std::is_same_v<Key, std::byte *>) {
       // variable-length keys
       key_length = 7;
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto key = new char[kKeyLength];
-        snprintf(key, kKeyLength, "%06lu", index);
+        auto key = new std::byte[kKeyLength];
+        snprintf(reinterpret_cast<char *>(key), kKeyLength, "%06lu", index);
         keys[index] = key;
       }
     } else {
@@ -117,12 +117,12 @@ class BzTreeFixture : public testing::Test
     }
 
     // prepare payloads
-    if constexpr (std::is_same_v<Payload, char *>) {
+    if constexpr (std::is_same_v<Payload, std::byte *>) {
       // variable-length payloads
       payload_length = 7;
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto payload = new char[kPayloadLength];
-        snprintf(payload, kPayloadLength, "%06lu", index);
+        auto payload = new std::byte[kPayloadLength];
+        snprintf(reinterpret_cast<char *>(payload), kPayloadLength, "%06lu", index);
         payloads[index] = payload;
       }
     } else if constexpr (std::is_same_v<Payload, uint64_t *>) {
@@ -144,12 +144,12 @@ class BzTreeFixture : public testing::Test
   void
   TearDown()
   {
-    if constexpr (std::is_same_v<Key, char *>) {
+    if constexpr (std::is_same_v<Key, std::byte *>) {
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
         delete[] keys[index];
       }
     }
-    if constexpr (std::is_same_v<Payload, char *> || std::is_same_v<Payload, uint64_t *>) {
+    if constexpr (std::is_same_v<Payload, std::byte *> || std::is_same_v<Payload, uint64_t *>) {
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
         delete[] payloads[index];
       }
@@ -287,7 +287,7 @@ class BzTreeFixture : public testing::Test
       EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
     } else {
       EXPECT_EQ(ReturnCode::kSuccess, rc);
-      if constexpr (std::is_same_v<Payload, char *>) {
+      if constexpr (std::is_same_v<Payload, std::byte *>) {
         EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads[expected_id], actual.get()));
       } else {
         EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads[expected_id], actual));
@@ -368,12 +368,12 @@ using CStrComp = dbgroup::index::bztree::CompareAsCString;
 using PtrComp = std::less<uint64_t *>;
 
 using KeyPayloadPairs = ::testing::Types<KeyPayload<uint64_t, uint64_t, UInt64Comp, UInt64Comp>,
-                                         KeyPayload<char *, uint64_t, CStrComp, UInt64Comp>,
-                                         KeyPayload<uint64_t, char *, UInt64Comp, CStrComp>,
+                                         KeyPayload<std::byte *, uint64_t, CStrComp, UInt64Comp>,
+                                         KeyPayload<uint64_t, std::byte *, UInt64Comp, CStrComp>,
                                          KeyPayload<uint32_t, uint32_t, UInt32Comp, UInt32Comp>,
-                                         KeyPayload<char *, uint32_t, CStrComp, UInt32Comp>,
-                                         KeyPayload<uint32_t, char *, UInt32Comp, CStrComp>,
-                                         KeyPayload<char *, char *, CStrComp, CStrComp>,
+                                         KeyPayload<std::byte *, uint32_t, CStrComp, UInt32Comp>,
+                                         KeyPayload<uint32_t, std::byte *, UInt32Comp, CStrComp>,
+                                         KeyPayload<std::byte *, std::byte *, CStrComp, CStrComp>,
                                          KeyPayload<uint64_t, uint64_t *, UInt64Comp, PtrComp>>;
 TYPED_TEST_CASE(BzTreeFixture, KeyPayloadPairs);
 

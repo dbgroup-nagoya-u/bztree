@@ -97,12 +97,12 @@ class LeafNodeFixture : public testing::Test
     expected_deleted_rec_count = 0;
 
     // prepare keys
-    if constexpr (std::is_same_v<Key, char *>) {
+    if constexpr (std::is_same_v<Key, std::byte *>) {
       // variable-length keys
       key_length = 7;
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto key = reinterpret_cast<char *>(malloc(kKeyLength));
-        snprintf(key, kKeyLength, "%06lu", index);
+        auto key = reinterpret_cast<std::byte *>(malloc(kKeyLength));
+        snprintf(reinterpret_cast<char *>(key), kKeyLength, "%06lu", index);
         keys[index] = key;
       }
     } else {
@@ -114,12 +114,12 @@ class LeafNodeFixture : public testing::Test
     }
 
     // prepare payloads
-    if constexpr (std::is_same_v<Payload, char *>) {
+    if constexpr (std::is_same_v<Payload, std::byte *>) {
       // variable-length payloads
       payload_length = 7;
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto payload = reinterpret_cast<char *>(malloc(kPayloadLength));
-        snprintf(payload, kPayloadLength, "%06lu", index);
+        auto payload = reinterpret_cast<std::byte *>(malloc(kPayloadLength));
+        snprintf(reinterpret_cast<char *>(payload), kPayloadLength, "%06lu", index);
         payloads[index] = payload;
       }
     } else if constexpr (std::is_same_v<Payload, uint64_t *>) {
@@ -139,7 +139,7 @@ class LeafNodeFixture : public testing::Test
     }
 
     // set a record length and its maximum number
-    if constexpr (!std::is_same_v<Payload, char *> && sizeof(Payload) == kWordLength) {
+    if constexpr (!std::is_same_v<Payload, std::byte *> && sizeof(Payload) == kWordLength) {
       record_length = 2 * kWordLength;
     } else {
       record_length = key_length + payload_length;
@@ -150,12 +150,12 @@ class LeafNodeFixture : public testing::Test
   void
   TearDown()
   {
-    if constexpr (std::is_same_v<Key, char *>) {
+    if constexpr (std::is_same_v<Key, std::byte *>) {
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
         free(keys[index]);
       }
     }
-    if constexpr (std::is_same_v<Payload, char *> || std::is_same_v<Payload, uint64_t *>) {
+    if constexpr (std::is_same_v<Payload, std::byte *> || std::is_same_v<Payload, uint64_t *>) {
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
         free(payloads[index]);
       }
@@ -341,7 +341,7 @@ class LeafNodeFixture : public testing::Test
     } else {
       EXPECT_EQ(NodeReturnCode::kSuccess, rc);
       EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], payload));
-      if constexpr (std::is_same_v<Payload, char *>) {
+      if constexpr (std::is_same_v<Payload, std::byte *>) {
         ::dbgroup::memory::Delete(payload);
       }
     }
@@ -540,12 +540,12 @@ using CStrComp = dbgroup::index::bztree::CompareAsCString;
 using PtrComp = std::less<uint64_t *>;
 
 using KeyPayloadPairs = ::testing::Types<KeyPayload<uint64_t, uint64_t, UInt64Comp, UInt64Comp>,
-                                         KeyPayload<char *, uint64_t, CStrComp, UInt64Comp>,
-                                         KeyPayload<uint64_t, char *, UInt64Comp, CStrComp>,
+                                         KeyPayload<std::byte *, uint64_t, CStrComp, UInt64Comp>,
+                                         KeyPayload<uint64_t, std::byte *, UInt64Comp, CStrComp>,
                                          KeyPayload<uint32_t, uint32_t, UInt32Comp, UInt32Comp>,
-                                         KeyPayload<char *, uint32_t, CStrComp, UInt32Comp>,
-                                         KeyPayload<uint32_t, char *, UInt32Comp, CStrComp>,
-                                         KeyPayload<char *, char *, CStrComp, CStrComp>,
+                                         KeyPayload<std::byte *, uint32_t, CStrComp, UInt32Comp>,
+                                         KeyPayload<uint32_t, std::byte *, UInt32Comp, CStrComp>,
+                                         KeyPayload<std::byte *, std::byte *, CStrComp, CStrComp>,
                                          KeyPayload<uint64_t, uint64_t *, UInt64Comp, PtrComp>>;
 TYPED_TEST_CASE(LeafNodeFixture, KeyPayloadPairs);
 

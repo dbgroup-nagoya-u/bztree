@@ -38,10 +38,10 @@ class RecordPage
    *##############################################################################################*/
 
   /// an address of the end of this page
-  std::byte* end_addr_;
+  std::byte *end_addr_;
 
   /// an address of the last record's key
-  std::byte* last_key_addr_;
+  std::byte *last_key_addr_;
 
   /// scan result records
   std::byte record_block_[kPageSize - kHeaderLength];
@@ -59,10 +59,10 @@ class RecordPage
 
   ~RecordPage() = default;
 
-  RecordPage(const RecordPage&) = delete;
-  RecordPage& operator=(const RecordPage&) = delete;
-  RecordPage(RecordPage&&) = delete;
-  RecordPage& operator=(RecordPage&&) = delete;
+  RecordPage(const RecordPage &) = delete;
+  RecordPage &operator=(const RecordPage &) = delete;
+  RecordPage(RecordPage &&) = delete;
+  RecordPage &operator=(RecordPage &&) = delete;
 
   /*################################################################################################
    * Public getters/setters
@@ -84,10 +84,10 @@ class RecordPage
   constexpr Key
   GetLastKey() const
   {
-    if constexpr (std::is_same_v<Key, char*>) {
+    if constexpr (std::is_same_v<Key, std::byte *>) {
       return Cast<Key>(last_key_addr_);
     } else {
-      return *Cast<Key*>(last_key_addr_);
+      return *Cast<Key *>(last_key_addr_);
     }
   }
 
@@ -97,9 +97,9 @@ class RecordPage
    * @param end_addr the end address of copied records.
    */
   constexpr void
-  SetEndAddress(const std::byte* end_addr)
+  SetEndAddress(const std::byte *end_addr)
   {
-    end_addr_ = const_cast<std::byte*>(end_addr);
+    end_addr_ = const_cast<std::byte *>(end_addr);
   }
 
   /**
@@ -108,9 +108,9 @@ class RecordPage
    * @param last_key_addr the address of the last key of copied records.
    */
   constexpr void
-  SetLastKeyAddress(const std::byte* last_key_addr)
+  SetLastKeyAddress(const std::byte *last_key_addr)
   {
-    last_key_addr_ = const_cast<std::byte*>(last_key_addr);
+    last_key_addr_ = const_cast<std::byte *>(last_key_addr);
   }
 
   /*################################################################################################
@@ -120,12 +120,12 @@ class RecordPage
   /**
    * @return std::byte*: the begin address of copied records.
    */
-  constexpr std::byte*
+  constexpr std::byte *
   GetBeginAddr()
   {
-    if constexpr (std::is_same_v<Key, char*> && std::is_same_v<Payload, char*>) {
+    if constexpr (std::is_same_v<Key, std::byte *> && std::is_same_v<Payload, std::byte *>) {
       return record_block_ + (sizeof(uint32_t) + sizeof(uint32_t));
-    } else if constexpr (std::is_same_v<Key, char*> || std::is_same_v<Payload, char*>) {
+    } else if constexpr (std::is_same_v<Key, std::byte *> || std::is_same_v<Payload, std::byte *>) {
       return record_block_ + sizeof(uint32_t);
     } else {
       return record_block_;
@@ -135,7 +135,7 @@ class RecordPage
   /**
    * @return std::byte*: the end address of copied records.
    */
-  constexpr std::byte*
+  constexpr std::byte *
   GetEndAddr() const
   {
     return end_addr_;
@@ -147,8 +147,8 @@ class RecordPage
   constexpr uint32_t
   GetBeginKeyLength() const
   {
-    if constexpr (std::is_same_v<Key, char*>) {
-      return *Cast<uint32_t*>(record_block_);
+    if constexpr (std::is_same_v<Key, std::byte *>) {
+      return *Cast<uint32_t *>(record_block_);
     } else {
       return sizeof(Key);
     }
@@ -160,10 +160,10 @@ class RecordPage
   constexpr uint32_t
   GetBeginPayloadLength() const
   {
-    if constexpr (std::is_same_v<Key, char*> && std::is_same_v<Payload, char*>) {
-      return *Cast<uint32_t*>(record_block_ + sizeof(uint32_t));
-    } else if constexpr (std::is_same_v<Payload, char*>) {
-      return *Cast<uint32_t*>(record_block_);
+    if constexpr (std::is_same_v<Key, std::byte *> && std::is_same_v<Payload, std::byte *>) {
+      return *Cast<uint32_t *>(record_block_ + sizeof(uint32_t));
+    } else if constexpr (std::is_same_v<Payload, std::byte *>) {
+      return *Cast<uint32_t *>(record_block_);
     } else {
       return sizeof(Payload);
     }

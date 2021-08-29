@@ -25,22 +25,22 @@ namespace dbgroup::index::bztree::internal::test
 {
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
-struct KeyPayloadPair {
+struct KeyPayload {
   using Key = KeyType;
   using Payload = PayloadType;
   using KeyComp = KeyComparator;
   using PayloadComp = PayloadComparator;
 };
 
-template <class KeyPayloadPair>
+template <class KeyPayload>
 class InternalNodeFixture : public testing::Test
 {
  protected:
   // extract key-payload types
-  using Key = typename KeyPayloadPair::Key;
-  using Payload = typename KeyPayloadPair::Payload;
-  using KeyComp = typename KeyPayloadPair::KeyComp;
-  using PayloadComp = typename KeyPayloadPair::PayloadComp;
+  using Key = typename KeyPayload::Key;
+  using Payload = typename KeyPayload::Payload;
+  using KeyComp = typename KeyPayload::KeyComp;
+  using PayloadComp = typename KeyPayload::PayloadComp;
 
   // define type aliases for simplicity
   using Node_t = component::Node<Key, Payload, KeyComp>;
@@ -74,12 +74,12 @@ class InternalNodeFixture : public testing::Test
     node.reset(CallocNew<Node_t>(kPageSize, kInternalFlag));
 
     // prepare keys
-    if constexpr (std::is_same_v<Key, char*>) {
+    if constexpr (std::is_same_v<Key, std::byte*>) {
       // variable-length keys
       key_length = 7;
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto key = reinterpret_cast<char*>(malloc(kKeyLength));
-        snprintf(key, kKeyLength, "%06lu", index);
+        auto key = reinterpret_cast<std::byte*>(malloc(kKeyLength));
+        snprintf(reinterpret_cast<char*>(key), kKeyLength, "%06lu", index);
         keys[index] = key;
       }
     } else {
@@ -98,7 +98,7 @@ class InternalNodeFixture : public testing::Test
   void
   TearDown()
   {
-    if constexpr (std::is_same_v<Key, char*>) {
+    if constexpr (std::is_same_v<Key, std::byte*>) {
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
         free(keys[index]);
       }
@@ -315,9 +315,9 @@ using Int32Comp = std::less<int32_t>;
 using Int64Comp = std::less<int64_t>;
 using CStrComp = dbgroup::index::bztree::CompareAsCString;
 
-using KeyPayloadPairs = ::testing::Types<KeyPayloadPair<int64_t, int64_t, Int64Comp, Int64Comp>,
-                                         KeyPayloadPair<int32_t, int64_t, Int32Comp, Int64Comp>,
-                                         KeyPayloadPair<char*, int64_t, CStrComp, Int64Comp>>;
+using KeyPayloadPairs = ::testing::Types<KeyPayload<int64_t, int64_t, Int64Comp, Int64Comp>,
+                                         KeyPayload<int32_t, int64_t, Int32Comp, Int64Comp>,
+                                         KeyPayload<std::byte*, int64_t, CStrComp, Int64Comp>>;
 TYPED_TEST_CASE(InternalNodeFixture, KeyPayloadPairs);
 
 /*##################################################################################################
