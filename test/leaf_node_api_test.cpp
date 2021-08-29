@@ -624,6 +624,58 @@ TYPED_TEST(LeafNodeFixture, Scan_DeletedKeys_ScanEmptyPage)
   TestFixture::VerifyScan(0, true, true, 0, true, true, expected_ids, expected_ids);
 }
 
+TYPED_TEST(LeafNodeFixture, Scan_LeftOpened_ScanInRangeRecords)
+{  //
+  const size_t half_key_num = TestFixture::max_record_num / 2;
+
+  std::vector<size_t> expected_ids;
+  for (size_t i = 1; i <= TestFixture::max_record_num; ++i) {
+    TestFixture::Insert(i, i);
+    if (i > half_key_num) expected_ids.emplace_back(i);
+  }
+
+  TestFixture::VerifyScan(half_key_num, false, false, 0, true, true, expected_ids, expected_ids);
+}
+
+TYPED_TEST(LeafNodeFixture, Scan_LeftClosed_ScanInRangeRecords)
+{  //
+  const size_t half_key_num = TestFixture::max_record_num / 2;
+
+  std::vector<size_t> expected_ids;
+  for (size_t i = 1; i <= TestFixture::max_record_num; ++i) {
+    TestFixture::Insert(i, i);
+    if (i >= half_key_num) expected_ids.emplace_back(i);
+  }
+
+  TestFixture::VerifyScan(half_key_num, false, true, 0, true, true, expected_ids, expected_ids);
+}
+
+TYPED_TEST(LeafNodeFixture, Scan_RightOpened_ScanInRangeRecords)
+{  //
+  const size_t half_key_num = TestFixture::max_record_num / 2;
+
+  std::vector<size_t> expected_ids;
+  for (size_t i = 1; i <= TestFixture::max_record_num; ++i) {
+    TestFixture::Insert(i, i);
+    if (i < half_key_num) expected_ids.emplace_back(i);
+  }
+
+  TestFixture::VerifyScan(0, true, true, half_key_num, false, false, expected_ids, expected_ids);
+}
+
+TYPED_TEST(LeafNodeFixture, Scan_RightClosed_ScanInRangeRecords)
+{  //
+  const size_t half_key_num = TestFixture::max_record_num / 2;
+
+  std::vector<size_t> expected_ids;
+  for (size_t i = 1; i <= TestFixture::max_record_num; ++i) {
+    TestFixture::Insert(i, i);
+    if (i <= half_key_num) expected_ids.emplace_back(i);
+  }
+
+  TestFixture::VerifyScan(0, true, true, half_key_num, false, true, expected_ids, expected_ids);
+}
+
 TYPED_TEST(LeafNodeFixture, Scan_UniqueKeysWithSMOs_ScanInsertedRecords)
 {  //
   std::vector<size_t> expected_ids;
@@ -676,7 +728,7 @@ TYPED_TEST(LeafNodeFixture, Scan_DeletedKeysWithSMOs_ScanEmptyPage)
   TestFixture::VerifyScan(0, true, true, 0, true, true, expected_ids, expected_ids);
 }
 
-TYPED_TEST(LeafNodeFixture, Scan_LeftOpened_ScanInRangeRecords)
+TYPED_TEST(LeafNodeFixture, Scan_LeftOpenedWithSMOs_ScanInRangeRecords)
 {  //
   const size_t half_key_num = TestFixture::max_record_num / 2;
 
@@ -685,11 +737,12 @@ TYPED_TEST(LeafNodeFixture, Scan_LeftOpened_ScanInRangeRecords)
     TestFixture::Insert(i, i);
     if (i > half_key_num) expected_ids.emplace_back(i);
   }
+  TestFixture::Consolidation();
 
   TestFixture::VerifyScan(half_key_num, false, false, 0, true, true, expected_ids, expected_ids);
 }
 
-TYPED_TEST(LeafNodeFixture, Scan_LeftClosed_ScanInRangeRecords)
+TYPED_TEST(LeafNodeFixture, Scan_LeftClosedWithSMOs_ScanInRangeRecords)
 {  //
   const size_t half_key_num = TestFixture::max_record_num / 2;
 
@@ -698,11 +751,12 @@ TYPED_TEST(LeafNodeFixture, Scan_LeftClosed_ScanInRangeRecords)
     TestFixture::Insert(i, i);
     if (i >= half_key_num) expected_ids.emplace_back(i);
   }
+  TestFixture::Consolidation();
 
   TestFixture::VerifyScan(half_key_num, false, true, 0, true, true, expected_ids, expected_ids);
 }
 
-TYPED_TEST(LeafNodeFixture, Scan_RightOpened_ScanInRangeRecords)
+TYPED_TEST(LeafNodeFixture, Scan_RightOpenedWithSMOs_ScanInRangeRecords)
 {  //
   const size_t half_key_num = TestFixture::max_record_num / 2;
 
@@ -711,11 +765,12 @@ TYPED_TEST(LeafNodeFixture, Scan_RightOpened_ScanInRangeRecords)
     TestFixture::Insert(i, i);
     if (i < half_key_num) expected_ids.emplace_back(i);
   }
+  TestFixture::Consolidation();
 
   TestFixture::VerifyScan(0, true, true, half_key_num, false, false, expected_ids, expected_ids);
 }
 
-TYPED_TEST(LeafNodeFixture, Scan_RightClosed_ScanInRangeRecords)
+TYPED_TEST(LeafNodeFixture, Scan_RightClosedWithSMOs_ScanInRangeRecords)
 {  //
   const size_t half_key_num = TestFixture::max_record_num / 2;
 
@@ -724,6 +779,7 @@ TYPED_TEST(LeafNodeFixture, Scan_RightClosed_ScanInRangeRecords)
     TestFixture::Insert(i, i);
     if (i <= half_key_num) expected_ids.emplace_back(i);
   }
+  TestFixture::Consolidation();
 
   TestFixture::VerifyScan(0, true, true, half_key_num, false, true, expected_ids, expected_ids);
 }
