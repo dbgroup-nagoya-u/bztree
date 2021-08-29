@@ -25,6 +25,8 @@
 
 namespace dbgroup::index::bztree::component::test
 {
+using ::dbgroup::memory::MallocNew;
+
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
 struct KeyPayload {
@@ -53,6 +55,8 @@ class RecordPageFixture : public ::testing::Test
    *##############################################################################################*/
 
   static constexpr size_t kKeyNumForTest = 128;
+  static constexpr size_t kKeyLength = kWordLength;
+  static constexpr size_t kPayloadLength = kWordLength;
 
   /*################################################################################################
    * Internal member variables
@@ -79,9 +83,9 @@ class RecordPageFixture : public ::testing::Test
       // variable-length keys
       key_length = 7;
       for (size_t i = 0; i < kKeyNumForTest; ++i) {
-        auto key = new std::byte[kWordLength];
-        snprintf(reinterpret_cast<char *>(key), kWordLength, "%06lu", i);
-        keys[i] = key;
+        auto key = MallocNew<char>(kKeyLength);
+        snprintf(key, kKeyLength, "%06lu", i);
+        keys[i] = reinterpret_cast<std::byte *>(key);
       }
     } else {
       // static-length keys
@@ -96,9 +100,9 @@ class RecordPageFixture : public ::testing::Test
       // variable-length payloads
       payload_length = 7;
       for (size_t i = 0; i < kKeyNumForTest; ++i) {
-        auto payload = new std::byte[kWordLength];
-        snprintf(reinterpret_cast<char *>(payload), kWordLength, "%06lu", i);
-        payloads[i] = payload;
+        auto payload = MallocNew<char>(kPayloadLength);
+        snprintf(payload, kPayloadLength, "%06lu", i);
+        payloads[i] = reinterpret_cast<std::byte *>(payload);
       }
     } else {
       // static-length payloads
@@ -118,12 +122,12 @@ class RecordPageFixture : public ::testing::Test
   {
     if constexpr (std::is_same_v<Key, std::byte *>) {
       for (size_t i = 0; i < kKeyNumForTest; ++i) {
-        delete[] keys[i];
+        ::dbgroup::memory::Delete(keys[i]);
       }
     }
     if constexpr (std::is_same_v<Payload, std::byte *>) {
       for (size_t i = 0; i < kKeyNumForTest; ++i) {
-        delete[] payloads[i];
+        ::dbgroup::memory::Delete(payloads[i]);
       }
     }
 

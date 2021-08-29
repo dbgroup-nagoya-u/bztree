@@ -23,6 +23,8 @@
 
 namespace dbgroup::index::bztree::internal::test
 {
+using ::dbgroup::memory::MallocNew;
+
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
 struct KeyPayload {
@@ -78,9 +80,9 @@ class InternalNodeFixture : public testing::Test
       // variable-length keys
       key_length = 7;
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto key = reinterpret_cast<std::byte*>(malloc(kKeyLength));
-        snprintf(reinterpret_cast<char*>(key), kKeyLength, "%06lu", index);
-        keys[index] = key;
+        auto key = MallocNew<char>(kKeyLength);
+        snprintf(key, kKeyLength, "%06lu", index);
+        keys[index] = reinterpret_cast<std::byte*>(key);
       }
     } else {
       // static-length keys
@@ -100,7 +102,7 @@ class InternalNodeFixture : public testing::Test
   {
     if constexpr (std::is_same_v<Key, std::byte*>) {
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        free(keys[index]);
+        ::dbgroup::memory::Delete(keys[index]);
       }
     }
   }
