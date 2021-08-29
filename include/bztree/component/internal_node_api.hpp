@@ -211,7 +211,8 @@ SearchChildNode(  //
     } else {
       // find an equivalent key
       if (!range_is_closed) ++index;
-      return index;
+      begin_id = index;
+      break;
     }
 
     index = (begin_id + end_id) >> 1;
