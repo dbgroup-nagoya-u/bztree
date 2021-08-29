@@ -514,7 +514,7 @@ _MergeSortedRecords(  //
   for (int64_t i = begin_index; i < sorted_count; ++i) {
     const auto meta = node->GetMetadataProtected(i);
     auto key = node->GetKey(meta);
-    if (end_k != nullptr && (Compare{}(*end_k, key) || (end_closed && !Compare{}(key, *end_k)))) {
+    if (end_k != nullptr && (Compare{}(*end_k, key) || (!end_closed && !Compare{}(key, *end_k)))) {
       scan_finished = true;
       break;
     }
