@@ -2,7 +2,9 @@
 
 ![example workflow name](https://github.com/dbgroup-nagoya-u/bztree/workflows/Ubuntu-20.04/badge.svg?branch=main)
 
-This repository is an open source implementation of a [BzTree](http://www.vldb.org/pvldb/vol11/p553-arulraj.pdf)[1] for research use.
+This repository is an open source implementation of a [BzTree](http://www.vldb.org/pvldb/vol11/p553-arulraj.pdf)[1] for research use. The purpose of this implementation is to reproduce a BzTree and measure its performance. However, the concurrency controls proposed in the paper are insufficient, so we have modified them to guarantee consistent read/write operations. Moreover, some tuning parameters have been changed for convenience.
+
+Note that although the original BzTree is proposed as an index for persistent memory (e.g., Intel Optane), we implemented our BzTree for volatile memory. Thus, there is no persistency support in this implementation.
 
 > [1] J. Arulraj, J. Levandoski, U. F. Minhas, P.-A. Larson, "BzTree: A High-Performance Latch-free Range Index for Non-Volatile Memory,” PVLDB, Vol. 11, No. 5, pp. 553-565, 2018.
 
