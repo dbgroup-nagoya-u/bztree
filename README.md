@@ -288,17 +288,18 @@ Sum: 7999998000000
 
 ### Variable Length Keys/Values
 
-If you use variable length keys/values (i.e., binary data), you need to specify theier lengths for each API except for the read API. Note that we use `char*` to represent binary data, and so you may need to cast your keys/values to write a BzTree instance, such as `reinterpret_cast<char*>(&<key_instance>)`.
+If you use variable length keys/values (i.e., binary data), you need to specify theier lengths for each API except for the read API. Note that we use `std::byte*` to represent binary data, and so you may need to cast your keys/values to write a BzTree instance, such as `reinterpret_cast<std::byte*>(&<key_instance>)`.
 
 ```cpp
+#include <stdio.h>
+
 #include <iostream>
-#include <string>
 
 #include "bztree/bztree.hpp"
 
-// we use char* to represent binary data
-using Key = char*;
-using Value = char*;
+// we use std::byte* to represent binary data
+using Key = std::byte*;
+using Value = std::byte*;
 
 // we prepare a comparator for CString as an example
 using ::dbgroup::index::bztree::CompareAsCString;
@@ -309,16 +310,23 @@ using ::dbgroup::index::bztree::ReturnCode;
 int
 main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 {
+  constexpr size_t kWordLength = 8;
+
   // create a BzTree instance
   BzTree_t bztree{};
 
-  // the length of CString includes '\0'
-  bztree.Write("key", "value", 4, 6);
+  // prepare a variable-length key/value
+  char key[kWordLength], value[kWordLength];
+  snprintf(key, kWordLength, "key");
+  snprintf(value, kWordLength, "value");
 
-  // in the case of variable values, the type of the return value is std::unique_ptr<char>
-  auto [rc, value] = bztree.Read("key");
+  // the length of CString includes '\0'
+  bztree.Write(reinterpret_cast<std::byte*>(key), reinterpret_cast<std::byte*>(value), 4, 6);
+
+  // in the case of variable values, the type of the return value is std::unique_ptr<std::byte>
+  auto [rc, read_value] = bztree.Read(reinterpret_cast<std::byte*>(key));
   std::cout << "Return code: " << rc << std::endl;
-  std::cout << "Read value : " << value.get() << std::endl;
+  std::cout << "Read value : " << reinterpret_cast<char*>(read_value.get()) << std::endl;
 
   return 0;
 }

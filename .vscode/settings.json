@@ -67,6 +67,7 @@
     "nullptr",
     "pmwcas",
     "pthread",
+    "snprintf",
     "twxs"
   ],
   "files.associations": {
