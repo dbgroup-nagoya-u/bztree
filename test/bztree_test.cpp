@@ -20,10 +20,13 @@
 #include <memory>
 #include <thread>
 
+#include "common.hpp"
 #include "gtest/gtest.h"
 
 namespace dbgroup::index::bztree::test
 {
+using ::dbgroup::memory::MallocNew;
+
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
 struct KeyPayload {
@@ -81,13 +84,13 @@ class BzTreeFixture : public testing::Test
   SetUp()
   {
     // prepare keys
-    if constexpr (std::is_same_v<Key, char *>) {
+    if constexpr (std::is_same_v<Key, std::byte *>) {
       // variable-length keys
       key_length = 7;
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto key = reinterpret_cast<char *>(malloc(kKeyLength));
+        auto key = MallocNew<char>(kKeyLength);
         snprintf(key, kKeyLength, "%06lu", index);
-        keys[index] = key;
+        keys[index] = reinterpret_cast<std::byte *>(key);
       }
     } else {
       // static-length keys
@@ -98,19 +101,19 @@ class BzTreeFixture : public testing::Test
     }
 
     // prepare payloads
-    if constexpr (std::is_same_v<Payload, char *>) {
+    if constexpr (std::is_same_v<Payload, std::byte *>) {
       // variable-length payloads
       payload_length = 7;
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto payload = reinterpret_cast<char *>(malloc(kPayloadLength));
+        auto payload = MallocNew<char>(kPayloadLength);
         snprintf(payload, kPayloadLength, "%06lu", index);
-        payloads[index] = payload;
+        payloads[index] = reinterpret_cast<std::byte *>(payload);
       }
     } else if constexpr (std::is_same_v<Payload, uint64_t *>) {
       // pointer payloads
       payload_length = sizeof(Payload);
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto payload = reinterpret_cast<uint64_t *>(malloc(kPayloadLength));
+        auto payload = MallocNew<uint64_t>(kPayloadLength);
         *payload = index;
         payloads[index] = payload;
       }
@@ -126,14 +129,14 @@ class BzTreeFixture : public testing::Test
   void
   TearDown()
   {
-    if constexpr (std::is_same_v<Key, char *>) {
+    if constexpr (std::is_same_v<Key, std::byte *>) {
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        free(keys[index]);
+        ::dbgroup::memory::Delete(keys[index]);
       }
     }
-    if constexpr (std::is_same_v<Payload, char *> || std::is_same_v<Payload, uint64_t *>) {
+    if constexpr (std::is_same_v<Payload, std::byte *> || std::is_same_v<Payload, uint64_t *>) {
       for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        free(payloads[index]);
+        ::dbgroup::memory::Delete(payloads[index]);
       }
     }
   }
@@ -154,7 +157,7 @@ class BzTreeFixture : public testing::Test
       EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
     } else {
       EXPECT_EQ(ReturnCode::kSuccess, rc);
-      if constexpr (std::is_same_v<Payload, char *>) {
+      if constexpr (std::is_same_v<Payload, std::byte *>) {
         EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads[expected_id], actual.get()));
       } else {
         EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads[expected_id], actual));
@@ -253,17 +256,18 @@ class BzTreeFixture : public testing::Test
 
 using UInt32Comp = std::less<uint32_t>;
 using UInt64Comp = std::less<uint64_t>;
+using Int64Comp = std::less<int64_t>;
 using CStrComp = dbgroup::index::bztree::CompareAsCString;
 using PtrComp = std::less<uint64_t *>;
 
 using KeyPayloadPairs = ::testing::Types<KeyPayload<uint64_t, uint64_t, UInt64Comp, UInt64Comp>,
-                                         KeyPayload<char *, uint64_t, CStrComp, UInt64Comp>,
-                                         KeyPayload<uint64_t, char *, UInt64Comp, CStrComp>,
-                                         KeyPayload<uint32_t, uint32_t, UInt32Comp, UInt32Comp>,
-                                         KeyPayload<char *, uint32_t, CStrComp, UInt32Comp>,
-                                         KeyPayload<uint32_t, char *, UInt32Comp, CStrComp>,
-                                         KeyPayload<char *, char *, CStrComp, CStrComp>,
-                                         KeyPayload<uint64_t, uint64_t *, UInt64Comp, PtrComp>>;
+                                         KeyPayload<std::byte *, uint64_t, CStrComp, UInt64Comp>,
+                                         KeyPayload<uint64_t, std::byte *, UInt64Comp, CStrComp>,
+                                         KeyPayload<std::byte *, std::byte *, CStrComp, CStrComp>,
+                                         KeyPayload<uint32_t, uint64_t, UInt32Comp, UInt64Comp>,
+                                         KeyPayload<uint64_t, uint64_t *, UInt64Comp, PtrComp>,
+                                         KeyPayload<uint64_t, MyClass, UInt64Comp, MyClassComp>,
+                                         KeyPayload<uint64_t, int64_t, UInt64Comp, Int64Comp>>;
 TYPED_TEST_CASE(BzTreeFixture, KeyPayloadPairs);
 
 /*##################################################################################################

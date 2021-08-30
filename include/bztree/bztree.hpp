@@ -52,7 +52,7 @@ class BzTree
   using NodeRef = std::pair<Node_t *, size_t>;
   using NodeStack = std::vector<NodeRef, ::dbgroup::memory::STLAlloc<NodeRef>>;
   using MwCASDescriptor = component::MwCASDescriptor;
-  using Binary_p = std::unique_ptr<char, component::Deleter<char>>;
+  using Binary_p = std::unique_ptr<std::byte, component::Deleter<std::byte>>;
 
  private:
   /*################################################################################################
@@ -696,13 +696,13 @@ class BzTree
     Payload payload{};
     const auto rc = leaf::Read(node, key, payload);
     if (rc == NodeReturnCode::kSuccess) {
-      if constexpr (std::is_same_v<Payload, char *>) {
+      if constexpr (std::is_same_v<Payload, std::byte *>) {
         return std::make_pair(ReturnCode::kSuccess, Binary_p{payload});
       } else {
         return std::make_pair(ReturnCode::kSuccess, std::move(payload));
       }
     }
-    if constexpr (std::is_same_v<Payload, char *>) {
+    if constexpr (std::is_same_v<Payload, std::byte *>) {
       return std::make_pair(ReturnCode::kKeyNotExist, Binary_p{});
     } else {
       return std::make_pair(ReturnCode::kKeyNotExist, Payload{});

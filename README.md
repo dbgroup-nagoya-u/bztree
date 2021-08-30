@@ -2,6 +2,12 @@
 
 ![example workflow name](https://github.com/dbgroup-nagoya-u/bztree/workflows/Ubuntu-20.04/badge.svg?branch=main)
 
+This repository is an open source implementation of a [BzTree](http://www.vldb.org/pvldb/vol11/p553-arulraj.pdf)[1] for research use. The purpose of this implementation is to reproduce a BzTree and measure its performance. However, the concurrency controls proposed in the paper are insufficient, so we have modified them to guarantee consistent read/write operations. Moreover, some tuning parameters have been changed for convenience.
+
+Note that although the original BzTree is proposed as an index for persistent memory (e.g., Intel Optane), we implemented our BzTree for volatile memory. Thus, there is no persistency support in this implementation.
+
+> [1] J. Arulraj, J. Levandoski, U. F. Minhas, P.-A. Larson, "BzTree: A High-Performance Latch-free Range Index for Non-Volatile Memory,” PVLDB, Vol. 11, No. 5, pp. 553-565, 2018.
+
 ## Build
 
 **Note**: this is a header only library. You can use this without pre-build.
@@ -288,17 +294,18 @@ Sum: 7999998000000
 
 ### Variable Length Keys/Values
 
-If you use variable length keys/values (i.e., binary data), you need to specify theier lengths for each API except for the read API. Note that we use `char*` to represent binary data, and so you may need to cast your keys/values to write a BzTree instance, such as `reinterpret_cast<char*>(&<key_instance>)`.
+If you use variable length keys/values (i.e., binary data), you need to specify theier lengths for each API except for the read API. Note that we use `std::byte*` to represent binary data, and so you may need to cast your keys/values to write a BzTree instance, such as `reinterpret_cast<std::byte*>(&<key_instance>)`.
 
 ```cpp
+#include <stdio.h>
+
 #include <iostream>
-#include <string>
 
 #include "bztree/bztree.hpp"
 
-// we use char* to represent binary data
-using Key = char*;
-using Value = char*;
+// we use std::byte* to represent binary data
+using Key = std::byte*;
+using Value = std::byte*;
 
 // we prepare a comparator for CString as an example
 using ::dbgroup::index::bztree::CompareAsCString;
@@ -309,16 +316,23 @@ using ::dbgroup::index::bztree::ReturnCode;
 int
 main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 {
+  constexpr size_t kWordLength = 8;
+
   // create a BzTree instance
   BzTree_t bztree{};
 
-  // the length of CString includes '\0'
-  bztree.Write("key", "value", 4, 6);
+  // prepare a variable-length key/value
+  char key[kWordLength], value[kWordLength];
+  snprintf(key, kWordLength, "key");
+  snprintf(value, kWordLength, "value");
 
-  // in the case of variable values, the type of the return value is std::unique_ptr<char>
-  auto [rc, value] = bztree.Read("key");
+  // the length of CString includes '\0'
+  bztree.Write(reinterpret_cast<std::byte*>(key), reinterpret_cast<std::byte*>(value), 4, 6);
+
+  // in the case of variable values, the type of the return value is std::unique_ptr<std::byte>
+  auto [rc, read_value] = bztree.Read(reinterpret_cast<std::byte*>(key));
   std::cout << "Return code: " << rc << std::endl;
-  std::cout << "Read value : " << value.get() << std::endl;
+  std::cout << "Read value : " << reinterpret_cast<char*>(read_value.get()) << std::endl;
 
   return 0;
 }
@@ -329,4 +343,48 @@ This code will output the following results.
 ```txt
 Return code: 0
 Read value : value
+```
+
+### Updating Payloads by Using MwCAS
+
+Although our BzTree can update payloads directly by using MwCAS operations (for details, please refer to Section 4.2 in [1]), it is restricted to unsigned integers and pointer types except `std::byte*` (i.e., variable-length payloads). To enable this feature for your own type, it must satisfy the following conditions:
+
+1. the length of payloads is `8` (i.e., `static_assert(sizeof(<payload_class>) == 8)`),
+2. the last three bits are reserved as MwCAS control bits and initialized by zeros, and
+3. a specialized `CASUpdatable` class is implemented in `dbgroup::index::bztree` namespace.
+
+The following codes are an example implementation of an original payload class to enable MwCAS-based update.
+
+```cpp
+/**
+ * @brief An example class to represent CAS-updatable data.
+ *
+ */
+struct MyClass {
+  /// an actual payload
+  uint64_t data : 61;
+
+  /// reserve three bits for MwCAS operations
+  uint64_t control_bits : 3;
+
+  // control bits must be initialzed by zeros
+  constexpr MyClass() : data{}, control_bits{0} {}
+};
+
+namespace dbgroup::index::bztree
+{
+/**
+ * @brief An example specialization to enable CAS-based update.
+ *
+ */
+template <>
+struct CASUpdatable<MyClass> {
+  // if this function returns true, our BzTree use MwCAS operations to update payloads
+  constexpr bool
+  CanUseCAS() const noexcept
+  {
+    return true;
+  }
+};
+}  // namespace dbgroup::index::bztree
 ```

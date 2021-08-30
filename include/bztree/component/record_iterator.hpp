@@ -136,13 +136,13 @@ class RecordIterator
   operator++()
   {
     current_addr_ += GetKeyLength() + GetPayloadLength();
-    if constexpr (std::is_same_v<Key, char*>) {
+    if constexpr (std::is_same_v<Key, std::byte*>) {
       if (current_addr_ != end_addr_) {
         memcpy(&key_length_, current_addr_, sizeof(uint32_t));
         current_addr_ += sizeof(uint32_t);
       }
     }
-    if constexpr (std::is_same_v<Payload, char*>) {
+    if constexpr (std::is_same_v<Payload, std::byte*>) {
       if (current_addr_ != end_addr_) {
         memcpy(&payload_length_, current_addr_, sizeof(uint32_t));
         current_addr_ += sizeof(uint32_t);
@@ -185,7 +185,7 @@ class RecordIterator
   constexpr Key
   GetKey() const
   {
-    if constexpr (std::is_same_v<Key, char*>) {
+    if constexpr (std::is_same_v<Key, std::byte*>) {
       return Cast<Key>(current_addr_);
     } else {
       return *Cast<Key*>(current_addr_);
@@ -198,7 +198,7 @@ class RecordIterator
   constexpr Payload
   GetPayload() const
   {
-    if constexpr (std::is_same_v<Payload, char*>) {
+    if constexpr (std::is_same_v<Payload, std::byte*>) {
       return Cast<Payload>(current_addr_ + GetKeyLength());
     } else {
       return *Cast<Payload*>(current_addr_ + GetKeyLength());
@@ -211,7 +211,7 @@ class RecordIterator
   constexpr size_t
   GetKeyLength() const
   {
-    if constexpr (std::is_same_v<Key, char*>) {
+    if constexpr (std::is_same_v<Key, std::byte*>) {
       return key_length_;
     } else {
       return sizeof(Key);
@@ -224,7 +224,7 @@ class RecordIterator
   constexpr size_t
   GetPayloadLength() const
   {
-    if constexpr (std::is_same_v<Payload, char*>) {
+    if constexpr (std::is_same_v<Payload, std::byte*>) {
       return payload_length_;
     } else {
       return sizeof(Payload);

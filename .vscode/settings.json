@@ -39,9 +39,11 @@
     "-runtime/references"
   ],
   "cSpell.words": [
+    "Arulraj",
     "DBZTREE",
     "DCMAKE",
     "Kento",
+    "Levandoski",
     "MIMALLOC",
     "Manabu",
     "Nishimura",
@@ -64,9 +66,12 @@
     "libnuma",
     "matepek",
     "mwcas",
+    "noexcept",
     "nullptr",
     "pmwcas",
     "pthread",
+    "snprintf",
+    "struct",
     "twxs"
   ],
   "files.associations": {

@@ -57,6 +57,24 @@ struct CompareAsCString {
   }
 };
 
+template <class Payload>
+struct CASUpdatable {
+  constexpr bool
+  CanUseCAS() const noexcept
+  {
+    return false;
+  }
+};
+
+template <>
+struct CASUpdatable<uint64_t> {
+  constexpr bool
+  CanUseCAS() const noexcept
+  {
+    return true;
+  }
+};
+
 /*##################################################################################################
  * Tuning parameters for BzTree
  *################################################################################################*/

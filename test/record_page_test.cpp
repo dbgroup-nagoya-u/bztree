@@ -25,25 +25,29 @@
 
 namespace dbgroup::index::bztree::component::test
 {
+using ::dbgroup::memory::MallocNew;
+
 // use a supper template to define key-payload pair templates
-template <class KeyType, class PayloadType, class CompareType>
-struct KeyPayloadPair {
+template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
+struct KeyPayload {
   using Key = KeyType;
   using Payload = PayloadType;
-  using Compare = CompareType;
+  using KeyComp = KeyComparator;
+  using PayloadComp = PayloadComparator;
 };
 
-template <class KeyPayloadPair>
+template <class KeyPayload>
 class RecordPageFixture : public ::testing::Test
 {
   // extract key-payload types
-  using Key = typename KeyPayloadPair::Key;
-  using Payload = typename KeyPayloadPair::Payload;
-  using Compare = typename KeyPayloadPair::Compare;
+  using Key = typename KeyPayload::Key;
+  using Payload = typename KeyPayload::Payload;
+  using KeyComp = typename KeyPayload::KeyComp;
+  using PayloadComp = typename KeyPayload::PayloadComp;
 
   // define type aliases for simplicity
   using RecordPage_t = RecordPage<Key, Payload>;
-  using RecordIterator_t = RecordIterator<Key, Payload, Compare>;
+  using RecordIterator_t = RecordIterator<Key, Payload, KeyComp>;
 
  protected:
   /*################################################################################################
@@ -51,6 +55,8 @@ class RecordPageFixture : public ::testing::Test
    *##############################################################################################*/
 
   static constexpr size_t kKeyNumForTest = 128;
+  static constexpr size_t kKeyLength = kWordLength;
+  static constexpr size_t kPayloadLength = kWordLength;
 
   /*################################################################################################
    * Internal member variables
@@ -73,13 +79,13 @@ class RecordPageFixture : public ::testing::Test
   SetUp() override
   {
     // prepare keys
-    if constexpr (std::is_same_v<Key, char *>) {
+    if constexpr (std::is_same_v<Key, std::byte *>) {
       // variable-length keys
       key_length = 7;
       for (size_t i = 0; i < kKeyNumForTest; ++i) {
-        auto key = new char[kWordLength];
-        snprintf(key, kWordLength, "%06lu", i);
-        keys[i] = key;
+        auto key = MallocNew<char>(kKeyLength);
+        snprintf(key, kKeyLength, "%06lu", i);
+        keys[i] = reinterpret_cast<std::byte *>(key);
       }
     } else {
       // static-length keys
@@ -90,13 +96,13 @@ class RecordPageFixture : public ::testing::Test
     }
 
     // prepare payloads
-    if constexpr (std::is_same_v<Payload, char *>) {
+    if constexpr (std::is_same_v<Payload, std::byte *>) {
       // variable-length payloads
       payload_length = 7;
       for (size_t i = 0; i < kKeyNumForTest; ++i) {
-        auto payload = new char[kWordLength];
-        snprintf(payload, kWordLength, "%06lu", i);
-        payloads[i] = payload;
+        auto payload = MallocNew<char>(kPayloadLength);
+        snprintf(payload, kPayloadLength, "%06lu", i);
+        payloads[i] = reinterpret_cast<std::byte *>(payload);
       }
     } else {
       // static-length payloads
@@ -114,14 +120,14 @@ class RecordPageFixture : public ::testing::Test
   void
   TearDown() override
   {
-    if constexpr (std::is_same_v<Key, char *>) {
+    if constexpr (std::is_same_v<Key, std::byte *>) {
       for (size_t i = 0; i < kKeyNumForTest; ++i) {
-        delete[] keys[i];
+        ::dbgroup::memory::Delete(keys[i]);
       }
     }
-    if constexpr (std::is_same_v<Payload, char *>) {
+    if constexpr (std::is_same_v<Payload, std::byte *>) {
       for (size_t i = 0; i < kKeyNumForTest; ++i) {
-        delete[] payloads[i];
+        ::dbgroup::memory::Delete(payloads[i]);
       }
     }
 
@@ -144,22 +150,22 @@ class RecordPageFixture : public ::testing::Test
     auto cur_addr = reinterpret_cast<std::byte *>(page) + kHeaderLength;
 
     for (size_t i = 0; i < record_num; ++i) {
-      if constexpr (std::is_same_v<Key, char *>) {
+      if constexpr (std::is_same_v<Key, std::byte *>) {
         *(reinterpret_cast<uint32_t *>(cur_addr)) = key_length;
         cur_addr += sizeof(uint32_t);
       }
-      if constexpr (std::is_same_v<Payload, char *>) {
+      if constexpr (std::is_same_v<Payload, std::byte *>) {
         *(reinterpret_cast<uint32_t *>(cur_addr)) = payload_length;
         cur_addr += sizeof(uint32_t);
       }
 
-      if constexpr (std::is_same_v<Key, char *>) {
+      if constexpr (std::is_same_v<Key, std::byte *>) {
         memcpy(cur_addr, keys[i], key_length);
       } else {
         memcpy(cur_addr, &keys[i], key_length);
       }
       cur_addr += key_length;
-      if constexpr (std::is_same_v<Payload, char *>) {
+      if constexpr (std::is_same_v<Payload, std::byte *>) {
         memcpy(cur_addr, payloads[i], payload_length);
       } else {
         memcpy(cur_addr, &payloads[i], payload_length);
@@ -180,11 +186,7 @@ class RecordPageFixture : public ::testing::Test
       const Key key,
       const size_t expected_id)
   {
-    if constexpr (std::is_same_v<Key, char *>) {
-      EXPECT_STREQ(keys[expected_id], key);
-    } else {
-      EXPECT_EQ(keys[expected_id], key);
-    }
+    EXPECT_TRUE(IsEqual<KeyComp>(keys[expected_id], key));
   }
 
   void
@@ -192,11 +194,7 @@ class RecordPageFixture : public ::testing::Test
       const Payload payload,
       const size_t expected_id)
   {
-    if constexpr (std::is_same_v<Payload, char *>) {
-      EXPECT_STREQ(payloads[expected_id], payload);
-    } else {
-      EXPECT_EQ(payloads[expected_id], payload);
-    }
+    EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], payload));
   }
 
   void
@@ -241,10 +239,10 @@ class RecordPageFixture : public ::testing::Test
 using UInt64Comp = std::less<uint64_t>;
 using CStrComp = dbgroup::index::bztree::CompareAsCString;
 
-using KeyPayloadPairs = ::testing::Types<KeyPayloadPair<uint64_t, uint64_t, UInt64Comp>,
-                                         KeyPayloadPair<char *, uint64_t, CStrComp>,
-                                         KeyPayloadPair<uint64_t, char *, UInt64Comp>,
-                                         KeyPayloadPair<char *, char *, CStrComp>>;
+using KeyPayloadPairs = ::testing::Types<KeyPayload<uint64_t, uint64_t, UInt64Comp, UInt64Comp>,
+                                         KeyPayload<std::byte *, uint64_t, CStrComp, UInt64Comp>,
+                                         KeyPayload<uint64_t, std::byte *, UInt64Comp, CStrComp>,
+                                         KeyPayload<std::byte *, std::byte *, CStrComp, CStrComp>>;
 TYPED_TEST_CASE(RecordPageFixture, KeyPayloadPairs);
 
 /*##################################################################################################
