@@ -2,6 +2,10 @@
 
 ![example workflow name](https://github.com/dbgroup-nagoya-u/bztree/workflows/Ubuntu-20.04/badge.svg?branch=main)
 
+This repository is an open source implementation of a [BzTree](http://www.vldb.org/pvldb/vol11/p553-arulraj.pdf)[1] for research use.
+
+> [1] J. Arulraj, J. Levandoski, U. F. Minhas, P.-A. Larson, "BzTree: A High-Performance Latch-free Range Index for Non-Volatile Memory,” PVLDB, Vol. 11, No. 5, pp. 553-565, 2018.
+
 ## Build
 
 **Note**: this is a header only library. You can use this without pre-build.
@@ -337,4 +341,48 @@ This code will output the following results.
 ```txt
 Return code: 0
 Read value : value
+```
+
+### Updating Payloads by Using MwCAS
+
+Although our BzTree can update payloads directly by using MwCAS operations (for details, please refer to Section 4.2 in [1]), it is restricted to unsigned integers and pointer types except `std::byte*` (i.e., variable-length payloads). To enable this feature for your own type, it must satisfy the following conditions:
+
+1. the length of payloads is `8` (i.e., `static_assert(sizeof(<payload_class>) == 8)`),
+2. the last three bits are reserved as MwCAS control bits and initialized by zeros, and
+3. a specialized `CASUpdatable` class is implemented in `dbgroup::index::bztree` namespace.
+
+The following codes are an example implementation of an original payload class to enable MwCAS-based update.
+
+```cpp
+/**
+ * @brief An example class to represent CAS-updatable data.
+ *
+ */
+struct MyClass {
+  /// an actual payload
+  uint64_t data : 61;
+
+  /// reserve three bits for MwCAS operations
+  uint64_t control_bits : 3;
+
+  // control bits must be initialzed by zeros
+  constexpr MyClass() : data{}, control_bits{0} {}
+};
+
+namespace dbgroup::index::bztree
+{
+/**
+ * @brief An example specialization to enable CAS-based update.
+ *
+ */
+template <>
+struct CASUpdatable<MyClass> {
+  // if this function returns true, our BzTree use MwCAS operations to update payloads
+  constexpr bool
+  CanUseCAS() const noexcept
+  {
+    return true;
+  }
+};
+}  // namespace dbgroup::index::bztree
 ```
