@@ -23,6 +23,19 @@ namespace dbgroup::index::bztree::component::test
 class StatusWordFixture : public testing::Test
 {
  protected:
+  /*################################################################################################
+   * Internal constants
+   *##############################################################################################*/
+
+  static constexpr uint64_t kControlBitsMask = 7UL << 61;
+  static constexpr size_t kExpectedRecordCount = 1;
+  static constexpr size_t kExpectedBlockSize = 16;
+  static constexpr size_t kExpectedDeletedSize = 8;
+
+  /*################################################################################################
+   * Setup/Teardown
+   *##############################################################################################*/
+
   void
   SetUp() override
   {
@@ -32,44 +45,154 @@ class StatusWordFixture : public testing::Test
   TearDown() override
   {
   }
+
+  /*################################################################################################
+   * Utility functions
+   *##############################################################################################*/
+
+  StatusWord
+  CreateStatusWord()
+  {
+    return StatusWord{kExpectedRecordCount, kExpectedBlockSize};
+  }
 };
 
-TEST_F(StatusWordFixture, New_DefaultConstructor_CorrectlyInitialized)
-{
-  const StatusWord status;
+/*--------------------------------------------------------------------------------------------------
+ * Constructor tests
+ *------------------------------------------------------------------------------------------------*/
 
-  EXPECT_EQ(kWordLength, sizeof(status));
+TEST_F(StatusWordFixture, Construct_NoArguments_CorrectlyInitialized)
+{
+  StatusWord status{};
+
   EXPECT_FALSE(status.IsFrozen());
   EXPECT_EQ(0, status.GetRecordCount());
   EXPECT_EQ(0, status.GetBlockSize());
   EXPECT_EQ(0, status.GetDeletedSize());
+
+  // check control bits
+  uint64_t status_uint;
+  memcpy(&status_uint, &status, sizeof(StatusWord));
+  EXPECT_EQ(0, status_uint & kControlBitsMask);
 }
 
-TEST_F(StatusWordFixture, Freeze_InitialStatus_FreezeWithoutSideEffect)
+TEST_F(StatusWordFixture, Construct_WithArguments_CorrectlyInitialized)
 {
-  const StatusWord status;
-  const auto frozen_status = status.Freeze();
+  auto status = CreateStatusWord();
 
-  EXPECT_EQ(kWordLength, sizeof(frozen_status));
-  EXPECT_TRUE(frozen_status.IsFrozen());
-  EXPECT_EQ(0, frozen_status.GetRecordCount());
-  EXPECT_EQ(0, frozen_status.GetBlockSize());
-  EXPECT_EQ(0, frozen_status.GetDeletedSize());
+  EXPECT_FALSE(status.IsFrozen());
+  EXPECT_EQ(kExpectedRecordCount, status.GetRecordCount());
+  EXPECT_EQ(kExpectedBlockSize, status.GetBlockSize());
+  EXPECT_EQ(0, status.GetDeletedSize());
+
+  // check control bits
+  uint64_t status_uint;
+  memcpy(&status_uint, &status, sizeof(StatusWord));
+  EXPECT_EQ(0, status_uint & kControlBitsMask);
 }
 
-TEST_F(StatusWordFixture, AddDelete_InitialStatus_AddInfoWithoutSideEffect)
-{
-  const StatusWord status;
-  const size_t record_count = 16, block_size = 8, deleted_size = 4;
-  const auto updated_status = status.Add(record_count, block_size).Delete(deleted_size);
+/*--------------------------------------------------------------------------------------------------
+ * Operator tests
+ *------------------------------------------------------------------------------------------------*/
 
-  EXPECT_EQ(kWordLength, sizeof(updated_status));
-  EXPECT_FALSE(updated_status.IsFrozen());
-  EXPECT_EQ(record_count, updated_status.GetRecordCount());
-  EXPECT_EQ(block_size, updated_status.GetBlockSize());
-  EXPECT_EQ(deleted_size, updated_status.GetDeletedSize());
-  EXPECT_EQ(kHeaderLength + (kWordLength * 16) + block_size, updated_status.GetOccupiedSize());
-  EXPECT_EQ((kWordLength * 16) + block_size - deleted_size, updated_status.GetLiveDataSize());
+TEST_F(StatusWordFixture, EQ_SameStatusWords_ReturnTrue)
+{
+  auto status_a = CreateStatusWord(), status_b = CreateStatusWord();
+
+  EXPECT_TRUE(status_a == status_b);
+}
+
+TEST_F(StatusWordFixture, EQ_DifferentStatusWords_ReturnFalse)
+{
+  auto status_a = CreateStatusWord(), status_b = StatusWord{};
+
+  EXPECT_FALSE(status_a == status_b);
+}
+
+TEST_F(StatusWordFixture, NEQ_SameStatusWords_ReturnFalse)
+{
+  auto status_a = CreateStatusWord(), status_b = CreateStatusWord();
+
+  EXPECT_FALSE(status_a != status_b);
+}
+
+TEST_F(StatusWordFixture, NEQ_DifferentStatusWords_ReturnTrue)
+{
+  auto status_a = CreateStatusWord(), status_b = StatusWord{};
+
+  EXPECT_TRUE(status_a != status_b);
+}
+
+/*--------------------------------------------------------------------------------------------------
+ * Getter tests
+ *------------------------------------------------------------------------------------------------*/
+
+TEST_F(StatusWordFixture, GetOccupiedSize_EmptyStatusWord_GetCorrectSize)
+{
+  StatusWord status{};
+
+  EXPECT_EQ(kHeaderLength, status.GetOccupiedSize());
+}
+
+TEST_F(StatusWordFixture, GetOccupiedSize_ActiveStatusWord_GetCorrectSize)
+{
+  auto status = CreateStatusWord();
+
+  auto expected_occupied_size =
+      kHeaderLength + (kWordLength * kExpectedRecordCount) + kExpectedBlockSize;
+
+  EXPECT_EQ(expected_occupied_size, status.GetOccupiedSize());
+}
+
+TEST_F(StatusWordFixture, GetLiveDataSize_EmptyStatusWord_GetCorrectSize)
+{
+  StatusWord status{};
+
+  EXPECT_EQ(0, status.GetLiveDataSize());
+}
+
+TEST_F(StatusWordFixture, GetLiveDataSize_ActiveStatusWord_GetCorrectSize)
+{
+  auto status = CreateStatusWord().Delete(kExpectedDeletedSize);
+
+  auto expected_live_data_size =
+      (kWordLength * kExpectedRecordCount) + kExpectedBlockSize - kExpectedDeletedSize;
+
+  EXPECT_EQ(expected_live_data_size, status.GetLiveDataSize());
+}
+
+/*--------------------------------------------------------------------------------------------------
+ * Utility tests
+ *------------------------------------------------------------------------------------------------*/
+
+TEST_F(StatusWordFixture, Freeze_EmptyStatus_StatusFrozen)
+{
+  auto status = StatusWord{}.Freeze();
+
+  EXPECT_TRUE(status.IsFrozen());
+}
+
+TEST_F(StatusWordFixture, Add_EmptyStatus_StatusInfoCorrectlyUpdated)
+{
+  auto status = StatusWord{};
+
+  for (size_t i = 1; i <= 10; ++i) {
+    status = status.Add(kExpectedRecordCount, kExpectedBlockSize);
+
+    EXPECT_EQ(i * kExpectedRecordCount, status.GetRecordCount());
+    EXPECT_EQ(i * kExpectedBlockSize, status.GetBlockSize());
+  }
+}
+
+TEST_F(StatusWordFixture, Delete_EmptyStatus_StatusInfoCorrectlyUpdated)
+{
+  auto status = StatusWord{};
+
+  for (size_t i = 1; i <= 10; ++i) {
+    status = status.Delete(kExpectedDeletedSize);
+
+    EXPECT_EQ(i * kExpectedDeletedSize, status.GetDeletedSize());
+  }
 }
 
 }  // namespace dbgroup::index::bztree::component::test
