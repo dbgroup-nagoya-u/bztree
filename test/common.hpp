@@ -63,4 +63,47 @@ struct CASUpdatable<MyClass> {
     return true;
   }
 };
+
+template <class T>
+void
+PrepareTestData(  //
+    T *data_array,
+    const size_t data_num,
+    [[maybe_unused]] const size_t data_length)
+{
+  if constexpr (std::is_same_v<T, std::byte *>) {
+    // variable-length data
+    for (size_t i = 0; i < data_num; ++i) {
+      auto data = ::dbgroup::memory::MallocNew<char>(data_length);
+      snprintf(data, data_length, "%06lu", i);
+      data_array[i] = reinterpret_cast<T>(data);
+    }
+  } else if constexpr (std::is_same_v<T, uint64_t *>) {
+    // pointer data
+    for (size_t i = 0; i < data_num; ++i) {
+      auto data = ::dbgroup::memory::MallocNew<uint64_t>(data_length);
+      *data = i;
+      data_array[i] = data;
+    }
+  } else {
+    // static-length data
+    for (size_t i = 0; i < data_num; ++i) {
+      data_array[i] = i;
+    }
+  }
+}
+
+template <class T>
+void
+ReleaseTestData(  //
+    [[maybe_unused]] T *data_array,
+    const size_t data_num)
+{
+  if constexpr (std::is_pointer_v<T>) {
+    for (size_t i = 0; i < data_num; ++i) {
+      ::dbgroup::memory::Delete(data_array[i]);
+    }
+  }
+}
+
 }  // namespace dbgroup::index::bztree

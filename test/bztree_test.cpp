@@ -84,61 +84,19 @@ class BzTreeFixture : public testing::Test
   SetUp()
   {
     // prepare keys
-    if constexpr (std::is_same_v<Key, std::byte *>) {
-      // variable-length keys
-      key_length = 7;
-      for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto key = MallocNew<char>(kKeyLength);
-        snprintf(key, kKeyLength, "%06lu", index);
-        keys[index] = reinterpret_cast<std::byte *>(key);
-      }
-    } else {
-      // static-length keys
-      key_length = sizeof(Key);
-      for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        keys[index] = index;
-      }
-    }
+    key_length = (std::is_same_v<Key, std::byte *>) ? 7 : sizeof(Key);
+    PrepareTestData(keys, kKeyNumForTest, key_length);
 
     // prepare payloads
-    if constexpr (std::is_same_v<Payload, std::byte *>) {
-      // variable-length payloads
-      payload_length = 7;
-      for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto payload = MallocNew<char>(kPayloadLength);
-        snprintf(payload, kPayloadLength, "%06lu", index);
-        payloads[index] = reinterpret_cast<std::byte *>(payload);
-      }
-    } else if constexpr (std::is_same_v<Payload, uint64_t *>) {
-      // pointer payloads
-      payload_length = sizeof(Payload);
-      for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto payload = MallocNew<uint64_t>(kPayloadLength);
-        *payload = index;
-        payloads[index] = payload;
-      }
-    } else {
-      // static-length payloads
-      payload_length = sizeof(Payload);
-      for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        payloads[index] = index;
-      }
-    }
+    payload_length = (std::is_same_v<Payload, std::byte *>) ? 7 : sizeof(Payload);
+    PrepareTestData(payloads, kKeyNumForTest, payload_length);
   }
 
   void
   TearDown()
   {
-    if constexpr (std::is_same_v<Key, std::byte *>) {
-      for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        ::dbgroup::memory::Delete(keys[index]);
-      }
-    }
-    if constexpr (std::is_same_v<Payload, std::byte *> || std::is_same_v<Payload, uint64_t *>) {
-      for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        ::dbgroup::memory::Delete(payloads[index]);
-      }
-    }
+    ReleaseTestData(keys, kKeyNumForTest);
+    ReleaseTestData(payloads, kKeyNumForTest);
   }
 
   /*################################################################################################
