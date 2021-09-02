@@ -19,6 +19,7 @@
 #include <memory>
 
 #include "bztree/component/leaf_node_api.hpp"
+#include "common.hpp"
 #include "gtest/gtest.h"
 
 namespace dbgroup::index::bztree::internal::test
@@ -76,21 +77,8 @@ class InternalNodeFixture : public testing::Test
     node.reset(CallocNew<Node_t>(kPageSize, kInternalFlag));
 
     // prepare keys
-    if constexpr (std::is_same_v<Key, std::byte*>) {
-      // variable-length keys
-      key_length = 7;
-      for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        auto key = MallocNew<char>(kKeyLength);
-        snprintf(key, kKeyLength, "%06lu", index);
-        keys[index] = reinterpret_cast<std::byte*>(key);
-      }
-    } else {
-      // static-length keys
-      key_length = sizeof(Key);
-      for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        keys[index] = index;
-      }
-    }
+    key_length = (std::is_same_v<Key, std::byte*>) ? 7 : sizeof(Key);
+    PrepareTestData(keys, kKeyNumForTest, key_length);
 
     // set a record length and its maximum number
     record_length = 2 * kWordLength;
@@ -100,11 +88,7 @@ class InternalNodeFixture : public testing::Test
   void
   TearDown()
   {
-    if constexpr (std::is_same_v<Key, std::byte*>) {
-      for (size_t index = 0; index < kKeyNumForTest; ++index) {
-        ::dbgroup::memory::Delete(keys[index]);
-      }
-    }
+    ReleaseTestData(keys, kKeyNumForTest);
   }
 
   /*################################################################################################
