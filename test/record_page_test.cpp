@@ -21,6 +21,7 @@
 
 #include "bztree/bztree.hpp"
 #include "bztree/component/record_iterator.hpp"
+#include "common.hpp"
 #include "gtest/gtest.h"
 
 namespace dbgroup::index::bztree::component::test
@@ -79,38 +80,12 @@ class RecordPageFixture : public ::testing::Test
   SetUp() override
   {
     // prepare keys
-    if constexpr (std::is_same_v<Key, std::byte *>) {
-      // variable-length keys
-      key_length = 7;
-      for (size_t i = 0; i < kKeyNumForTest; ++i) {
-        auto key = MallocNew<char>(kKeyLength);
-        snprintf(key, kKeyLength, "%06lu", i);
-        keys[i] = reinterpret_cast<std::byte *>(key);
-      }
-    } else {
-      // static-length keys
-      key_length = sizeof(Key);
-      for (size_t i = 0; i < kKeyNumForTest; ++i) {
-        keys[i] = i;
-      }
-    }
+    key_length = (IsVariableLengthData<Key>()) ? 7 : sizeof(Key);
+    PrepareTestData(keys, kKeyNumForTest, key_length);
 
     // prepare payloads
-    if constexpr (std::is_same_v<Payload, std::byte *>) {
-      // variable-length payloads
-      payload_length = 7;
-      for (size_t i = 0; i < kKeyNumForTest; ++i) {
-        auto payload = MallocNew<char>(kPayloadLength);
-        snprintf(payload, kPayloadLength, "%06lu", i);
-        payloads[i] = reinterpret_cast<std::byte *>(payload);
-      }
-    } else {
-      // static-length payloads
-      payload_length = sizeof(Payload);
-      for (size_t i = 0; i < kKeyNumForTest; ++i) {
-        payloads[i] = i;
-      }
-    }
+    payload_length = (IsVariableLengthData<Payload>()) ? 7 : sizeof(Payload);
+    PrepareTestData(payloads, kKeyNumForTest, payload_length);
 
     // initialize an empty page
     page = nullptr;
@@ -120,16 +95,8 @@ class RecordPageFixture : public ::testing::Test
   void
   TearDown() override
   {
-    if constexpr (std::is_same_v<Key, std::byte *>) {
-      for (size_t i = 0; i < kKeyNumForTest; ++i) {
-        ::dbgroup::memory::Delete(keys[i]);
-      }
-    }
-    if constexpr (std::is_same_v<Payload, std::byte *>) {
-      for (size_t i = 0; i < kKeyNumForTest; ++i) {
-        ::dbgroup::memory::Delete(payloads[i]);
-      }
-    }
+    ReleaseTestData(keys, kKeyNumForTest);
+    ReleaseTestData(payloads, kKeyNumForTest);
 
     ::dbgroup::memory::Delete(page);
   }
@@ -150,22 +117,22 @@ class RecordPageFixture : public ::testing::Test
     auto cur_addr = reinterpret_cast<std::byte *>(page) + kHeaderLength;
 
     for (size_t i = 0; i < record_num; ++i) {
-      if constexpr (std::is_same_v<Key, std::byte *>) {
+      if constexpr (IsVariableLengthData<Key>()) {
         *(reinterpret_cast<uint32_t *>(cur_addr)) = key_length;
         cur_addr += sizeof(uint32_t);
       }
-      if constexpr (std::is_same_v<Payload, std::byte *>) {
+      if constexpr (IsVariableLengthData<Payload>()) {
         *(reinterpret_cast<uint32_t *>(cur_addr)) = payload_length;
         cur_addr += sizeof(uint32_t);
       }
 
-      if constexpr (std::is_same_v<Key, std::byte *>) {
+      if constexpr (IsVariableLengthData<Key>()) {
         memcpy(cur_addr, keys[i], key_length);
       } else {
         memcpy(cur_addr, &keys[i], key_length);
       }
       cur_addr += key_length;
-      if constexpr (std::is_same_v<Payload, std::byte *>) {
+      if constexpr (IsVariableLengthData<Payload>()) {
         memcpy(cur_addr, payloads[i], payload_length);
       } else {
         memcpy(cur_addr, &payloads[i], payload_length);
@@ -240,9 +207,9 @@ using UInt64Comp = std::less<uint64_t>;
 using CStrComp = dbgroup::index::bztree::CompareAsCString;
 
 using KeyPayloadPairs = ::testing::Types<KeyPayload<uint64_t, uint64_t, UInt64Comp, UInt64Comp>,
-                                         KeyPayload<std::byte *, uint64_t, CStrComp, UInt64Comp>,
-                                         KeyPayload<uint64_t, std::byte *, UInt64Comp, CStrComp>,
-                                         KeyPayload<std::byte *, std::byte *, CStrComp, CStrComp>>;
+                                         KeyPayload<char *, uint64_t, CStrComp, UInt64Comp>,
+                                         KeyPayload<uint64_t, char *, UInt64Comp, CStrComp>,
+                                         KeyPayload<char *, char *, CStrComp, CStrComp>>;
 TYPED_TEST_CASE(RecordPageFixture, KeyPayloadPairs);
 
 /*##################################################################################################

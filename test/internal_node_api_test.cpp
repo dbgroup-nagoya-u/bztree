@@ -77,7 +77,7 @@ class InternalNodeFixture : public testing::Test
     node.reset(CallocNew<Node_t>(kPageSize, kInternalFlag));
 
     // prepare keys
-    key_length = (std::is_same_v<Key, std::byte*>) ? 7 : sizeof(Key);
+    key_length = (IsVariableLengthData<Key>()) ? 7 : sizeof(Key);
     PrepareTestData(keys, kKeyNumForTest, key_length);
 
     // set a record length and its maximum number
@@ -297,13 +297,9 @@ class InternalNodeFixture : public testing::Test
  * Preparation for typed testing
  *################################################################################################*/
 
-using Int32Comp = std::less<int32_t>;
-using Int64Comp = std::less<int64_t>;
-using CStrComp = dbgroup::index::bztree::CompareAsCString;
-
-using KeyPayloadPairs = ::testing::Types<KeyPayload<int64_t, int64_t, Int64Comp, Int64Comp>,
-                                         KeyPayload<int32_t, int64_t, Int32Comp, Int64Comp>,
-                                         KeyPayload<std::byte*, int64_t, CStrComp, Int64Comp>>;
+using KeyPayloadPairs = ::testing::Types<KeyPayload<uint64_t, uint64_t, UInt64Comp, UInt64Comp>,
+                                         KeyPayload<uint32_t, uint64_t, UInt32Comp, UInt64Comp>,
+                                         KeyPayload<char*, uint64_t, CStrComp, UInt64Comp>>;
 TYPED_TEST_CASE(InternalNodeFixture, KeyPayloadPairs);
 
 /*##################################################################################################
