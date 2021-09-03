@@ -28,7 +28,6 @@ namespace dbgroup::index::bztree::leaf
 {
 using component::AlignOffset;
 using component::CallocNew;
-using component::CanCASUpdate;
 using component::IsEqual;
 using component::IsInRange;
 using component::KeyExistence;
@@ -199,7 +198,7 @@ constexpr size_t
 _GetAlignedSize(const size_t block_size)
 {
   if constexpr (CanCASUpdate<Payload>()) {
-    if constexpr (std::is_same_v<Key, std::byte *>) {
+    if constexpr (IsVariableLengthData<Key>()) {
       const auto align_size = block_size & (kWordLength - 1);
       if (align_size > 0) {
         return block_size + (kWordLength - align_size);
@@ -604,16 +603,16 @@ Scan(  //
   std::byte *cur_addr = reinterpret_cast<std::byte *>(page) + component::kHeaderLength;
   for (size_t i = 0; i < count; ++i) {
     const Metadata meta = metadata[i];
-    if constexpr (std::is_same_v<Key, std::byte *>) {
+    if constexpr (IsVariableLengthData<Key>()) {
       *(reinterpret_cast<uint32_t *>(cur_addr)) = meta.GetKeyLength();
       cur_addr += sizeof(uint32_t);
     }
-    if constexpr (std::is_same_v<Payload, std::byte *>) {
+    if constexpr (IsVariableLengthData<Payload>()) {
       *(reinterpret_cast<uint32_t *>(cur_addr)) = meta.GetPayloadLength();
       cur_addr += sizeof(uint32_t);
     }
     if constexpr (CanCASUpdate<Payload>()) {
-      if constexpr (std::is_same_v<Key, std::byte *>) {
+      if constexpr (IsVariableLengthData<Key>()) {
         memcpy(cur_addr, node->GetKeyAddr(meta), meta.GetKeyLength());
         cur_addr += meta.GetKeyLength();
       } else {

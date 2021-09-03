@@ -106,34 +106,17 @@ constexpr size_t
 GetMaxRecordNum()
 {
   auto record_min_length = kWordLength;
-  if constexpr (std::is_same_v<Key, std::byte *>) {
+  if constexpr (IsVariableLengthData<Key>()) {
     record_min_length += 1;
   } else {
     record_min_length += sizeof(Key);
   }
-  if constexpr (std::is_same_v<Payload, std::byte *>) {
+  if constexpr (IsVariableLengthData<Payload>()) {
     record_min_length += 1;
   } else {
     record_min_length += sizeof(Payload);
   }
   return (kPageSize - kHeaderLength) / record_min_length;
-}
-
-/**
- * @tparam Payload a target payload class.
- * @retval true if a target payload can be updated by MwCAS.
- * @retval false if a target payload cannot be update by MwCAS.
- */
-template <class Payload>
-constexpr bool
-CanCASUpdate()
-{
-  if constexpr (std::is_same_v<Payload, std::byte *>)
-    return false;
-  else if constexpr (std::is_pointer_v<Payload>)
-    return true;
-  else
-    return CASUpdatable<Payload>{}.CanUseCAS();
 }
 
 /**
@@ -146,7 +129,7 @@ template <class Key>
 constexpr void
 AlignOffset(size_t &offset)
 {
-  if constexpr (std::is_same_v<Key, std::byte *>) {
+  if constexpr (IsVariableLengthData<Key>()) {
     const auto align_size = offset & (kWordLength - 1);
     if (align_size > 0) {
       offset -= align_size;
