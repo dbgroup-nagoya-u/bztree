@@ -57,23 +57,37 @@ struct CompareAsCString {
   }
 };
 
-template <class Payload>
-struct CASUpdatable {
-  constexpr bool
-  CanUseCAS() const noexcept
-  {
-    return false;
-  }
-};
+/**
+ * @tparam T a target class.
+ * @retval true if a target class is variable-length data.
+ * @retval false if a target class is static-length data.
+ */
+template <class T>
+constexpr bool
+IsVariableLengthData()
+{
+  static_assert(std::is_trivially_copyable_v<T>);
+  return false;
+}
 
-template <>
-struct CASUpdatable<uint64_t> {
-  constexpr bool
-  CanUseCAS() const noexcept
-  {
+/**
+ * @tparam Payload a target payload class.
+ * @retval true if a target payload can be updated by MwCAS.
+ * @retval false if a target payload cannot be update by MwCAS.
+ */
+template <class Payload>
+constexpr bool
+CanCASUpdate()
+{
+  if constexpr (IsVariableLengthData<Payload>())
+    return false;
+  else if constexpr (std::is_pointer_v<Payload>)
     return true;
-  }
-};
+  else if constexpr (std::is_same_v<Payload, uint64_t>)
+    return true;
+  else
+    return false;
+}
 
 /*##################################################################################################
  * Tuning parameters for BzTree

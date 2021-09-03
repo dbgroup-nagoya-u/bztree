@@ -267,9 +267,9 @@ class alignas(kCacheLineSize) Node
       const Metadata meta,
       Payload &out_payload) const
   {
-    if constexpr (std::is_same_v<Payload, std::byte *>) {
+    if constexpr (IsVariableLengthData<Payload>()) {
       const auto payload_length = meta.GetPayloadLength();
-      out_payload = ::dbgroup::memory::MallocNew<std::byte>(payload_length);
+      out_payload = ::dbgroup::memory::MallocNew<std::remove_pointer_t<Payload>>(payload_length);
       memcpy(out_payload, this->GetPayloadAddr(meta), payload_length);
     } else if constexpr (CanCASUpdate<Payload>()) {
       out_payload = ReadMwCASField<Payload>(this->GetPayloadAddr(meta));
@@ -344,7 +344,7 @@ class alignas(kCacheLineSize) Node
       const Key &key,
       const size_t key_length)
   {
-    if constexpr (std::is_same_v<Key, std::byte *>) {
+    if constexpr (IsVariableLengthData<Key>()) {
       offset -= key_length;
       memcpy(ShiftAddress(this, offset), key, key_length);
     } else {
@@ -368,7 +368,7 @@ class alignas(kCacheLineSize) Node
       const T &payload,
       const size_t payload_length)
   {
-    if constexpr (std::is_same_v<T, std::byte *>) {
+    if constexpr (IsVariableLengthData<T>()) {
       offset -= payload_length;
       memcpy(ShiftAddress(this, offset), payload, payload_length);
     } else {

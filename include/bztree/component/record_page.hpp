@@ -84,7 +84,7 @@ class RecordPage
   constexpr Key
   GetLastKey() const
   {
-    if constexpr (std::is_same_v<Key, std::byte *>) {
+    if constexpr (IsVariableLengthData<Key>()) {
       return Cast<Key>(last_key_addr_);
     } else {
       return *Cast<Key *>(last_key_addr_);
@@ -123,9 +123,9 @@ class RecordPage
   constexpr std::byte *
   GetBeginAddr()
   {
-    if constexpr (std::is_same_v<Key, std::byte *> && std::is_same_v<Payload, std::byte *>) {
+    if constexpr (IsVariableLengthData<Key>() && IsVariableLengthData<Payload>()) {
       return record_block_ + (sizeof(uint32_t) + sizeof(uint32_t));
-    } else if constexpr (std::is_same_v<Key, std::byte *> || std::is_same_v<Payload, std::byte *>) {
+    } else if constexpr (IsVariableLengthData<Key>() || IsVariableLengthData<Payload>()) {
       return record_block_ + sizeof(uint32_t);
     } else {
       return record_block_;
@@ -147,7 +147,7 @@ class RecordPage
   constexpr uint32_t
   GetBeginKeyLength() const
   {
-    if constexpr (std::is_same_v<Key, std::byte *>) {
+    if constexpr (IsVariableLengthData<Key>()) {
       return *Cast<uint32_t *>(record_block_);
     } else {
       return sizeof(Key);
@@ -160,9 +160,9 @@ class RecordPage
   constexpr uint32_t
   GetBeginPayloadLength() const
   {
-    if constexpr (std::is_same_v<Key, std::byte *> && std::is_same_v<Payload, std::byte *>) {
+    if constexpr (IsVariableLengthData<Key>() && IsVariableLengthData<Payload>()) {
       return *Cast<uint32_t *>(record_block_ + sizeof(uint32_t));
-    } else if constexpr (std::is_same_v<Payload, std::byte *>) {
+    } else if constexpr (IsVariableLengthData<Payload>()) {
       return *Cast<uint32_t *>(record_block_);
     } else {
       return sizeof(Payload);

@@ -22,8 +22,6 @@
 #include "bztree/component/leaf_node_api.hpp"
 #include "gtest/gtest.h"
 
-using std::byte;
-
 namespace dbgroup::index::bztree::component::test
 {
 using Key = uint64_t;

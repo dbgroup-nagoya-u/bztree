@@ -84,11 +84,11 @@ class BzTreeFixture : public testing::Test
   SetUp()
   {
     // prepare keys
-    key_length = (std::is_same_v<Key, std::byte *>) ? 7 : sizeof(Key);
+    key_length = (IsVariableLengthData<Key>()) ? 7 : sizeof(Key);
     PrepareTestData(keys, kKeyNumForTest, key_length);
 
     // prepare payloads
-    payload_length = (std::is_same_v<Payload, std::byte *>) ? 7 : sizeof(Payload);
+    payload_length = (IsVariableLengthData<Payload>()) ? 7 : sizeof(Payload);
     PrepareTestData(payloads, kKeyNumForTest, payload_length);
   }
 
@@ -115,7 +115,7 @@ class BzTreeFixture : public testing::Test
       EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
     } else {
       EXPECT_EQ(ReturnCode::kSuccess, rc);
-      if constexpr (std::is_same_v<Payload, std::byte *>) {
+      if constexpr (IsVariableLengthData<Payload>()) {
         EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads[expected_id], actual.get()));
       } else {
         EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads[expected_id], actual));
@@ -212,16 +212,10 @@ class BzTreeFixture : public testing::Test
  * Preparation for typed testing
  *################################################################################################*/
 
-using UInt32Comp = std::less<uint32_t>;
-using UInt64Comp = std::less<uint64_t>;
-using Int64Comp = std::less<int64_t>;
-using CStrComp = dbgroup::index::bztree::CompareAsCString;
-using PtrComp = std::less<uint64_t *>;
-
 using KeyPayloadPairs = ::testing::Types<KeyPayload<uint64_t, uint64_t, UInt64Comp, UInt64Comp>,
-                                         KeyPayload<std::byte *, uint64_t, CStrComp, UInt64Comp>,
-                                         KeyPayload<uint64_t, std::byte *, UInt64Comp, CStrComp>,
-                                         KeyPayload<std::byte *, std::byte *, CStrComp, CStrComp>,
+                                         KeyPayload<char *, uint64_t, CStrComp, UInt64Comp>,
+                                         KeyPayload<uint64_t, char *, UInt64Comp, CStrComp>,
+                                         KeyPayload<char *, char *, CStrComp, CStrComp>,
                                          KeyPayload<uint32_t, uint64_t, UInt32Comp, UInt64Comp>,
                                          KeyPayload<uint64_t, uint64_t *, UInt64Comp, PtrComp>,
                                          KeyPayload<uint64_t, MyClass, UInt64Comp, MyClassComp>,
