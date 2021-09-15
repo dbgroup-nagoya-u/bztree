@@ -31,9 +31,6 @@ namespace dbgroup::index::bztree::component
 
 using ::dbgroup::atomic::mwcas::MwCASDescriptor;
 using ::dbgroup::atomic::mwcas::ReadMwCASField;
-using ::dbgroup::memory::CallocNew;
-using ::dbgroup::memory::Deleter;
-using ::dbgroup::memory::STLAlloc;
 
 /*##################################################################################################
  * Internal enum and classes
@@ -208,5 +205,29 @@ ShiftAddress(  //
 {
   return static_cast<std::byte *>(const_cast<void *>(addr)) + offset;
 }
+
+/**
+ * @brief A wrapper of a deleter class for unique_ptr/shared_ptr.
+ *
+ * @tparam Payload a class to be deleted by this deleter.
+ */
+template <class Payload>
+struct PayloadDeleter {
+  constexpr PayloadDeleter() noexcept = default;
+
+  template <class Up, typename = typename std::enable_if_t<std::is_convertible_v<Up *, Payload *>>>
+  PayloadDeleter(const PayloadDeleter<Up> &) noexcept
+  {
+  }
+
+  void
+  operator()(Payload *ptr) const
+  {
+    static_assert(!std::is_void_v<Payload>, "can't delete pointer to incomplete type");
+    static_assert(sizeof(Payload) > 0, "can't delete pointer to incomplete type");
+
+    ::operator delete(ptr);
+  }
+};
 
 }  // namespace dbgroup::index::bztree::component

@@ -28,8 +28,6 @@
 
 namespace dbgroup::index::bztree::leaf::test
 {
-using ::dbgroup::memory::MallocNew;
-
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
 struct KeyPayload {
@@ -79,7 +77,7 @@ class LeafNodeFixture : public testing::Test
   size_t max_record_num;
 
   // a leaf node and its statistics
-  std::unique_ptr<Node_t, component::Deleter<Node_t>> node;
+  std::unique_ptr<Node_t> node;
   size_t expected_record_count;
   size_t expected_block_size;
   size_t expected_deleted_block_size;
@@ -93,7 +91,7 @@ class LeafNodeFixture : public testing::Test
   SetUp()
   {
     // initialize a leaf node and expected statistics
-    node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
+    node.reset(new Node_t{kLeafFlag});
     expected_record_count = 0;
     expected_block_size = 0;
     expected_deleted_block_size = 0;
@@ -299,7 +297,7 @@ class LeafNodeFixture : public testing::Test
       EXPECT_EQ(NodeReturnCode::kSuccess, rc);
       EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], payload));
       if constexpr (IsVariableLengthData<Payload>()) {
-        ::dbgroup::memory::Delete(payload);
+        ::operator delete(payload);
       }
     }
   }
@@ -319,7 +317,7 @@ class LeafNodeFixture : public testing::Test
     if (!begin_null) begin_key = &keys[begin_key_id];
     if (!end_null) end_key = &keys[end_key_id];
 
-    auto page = ::dbgroup::memory::New<RecordPage_t>();
+    auto page = new RecordPage_t{};
     leaf::Scan(node.get(), begin_key, begin_closed, end_key, end_closed, page);
     RecordIterator_t iter{nullptr, nullptr, false, page, true};
 
@@ -448,10 +446,10 @@ class LeafNodeFixture : public testing::Test
 
     if (target_is_left) {
       node.reset(left_node);
-      ::dbgroup::memory::Delete(right_node);
+      delete right_node;
     } else {
       node.reset(right_node);
-      ::dbgroup::memory::Delete(left_node);
+      delete left_node;
     }
 
     expected_record_count = left_rec_count;
@@ -470,8 +468,7 @@ class LeafNodeFixture : public testing::Test
     WriteOrderedKeys(left_begin, left_end);
     auto [left_meta, left_rec_count] = leaf::GatherSortedLiveMetadata(node.get());
 
-    auto right_node = std::unique_ptr<Node_t, component::Deleter<Node_t>>(
-        CallocNew<Node_t>(kPageSize, kLeafFlag));
+    auto right_node = std::unique_ptr<Node_t>(new Node_t{kLeafFlag});
     for (size_t id = right_begin; id <= right_end; ++id) {
       leaf::Write(right_node.get(), keys[id], key_length, payloads[id], payload_length);
     }

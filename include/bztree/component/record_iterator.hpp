@@ -42,7 +42,6 @@ class RecordIterator
 {
   using BzTree_t = BzTree<Key, Payload, Compare>;
   using RecordPage_t = RecordPage<Key, Payload>;
-  using RecordPage_p = std::unique_ptr<RecordPage_t, Deleter<RecordPage_t>>;
 
  private:
   /*################################################################################################
@@ -74,7 +73,7 @@ class RecordIterator
   bool scan_finished_;
 
   /// copied keys and payloads
-  RecordPage_p page_;
+  std::unique_ptr<RecordPage_t> page_;
 
  public:
   /*################################################################################################
@@ -104,7 +103,7 @@ class RecordIterator
         key_length_{page->GetBeginKeyLength()},
         payload_length_{page->GetBeginPayloadLength()},
         scan_finished_{scan_finished},
-        page_{page, Deleter<RecordPage_t>{}}
+        page_{page}
   {
   }
 

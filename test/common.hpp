@@ -84,14 +84,14 @@ PrepareTestData(  //
   if constexpr (IsVariableLengthData<T>()) {
     // variable-length data
     for (size_t i = 0; i < data_num; ++i) {
-      auto data = ::dbgroup::memory::MallocNew<char>(data_length);
+      auto data = reinterpret_cast<char *>(::operator new(data_length));
       snprintf(data, data_length, "%06lu", i);
       data_array[i] = reinterpret_cast<T>(data);
     }
   } else if constexpr (std::is_same_v<T, uint64_t *>) {
     // pointer data
     for (size_t i = 0; i < data_num; ++i) {
-      auto data = ::dbgroup::memory::MallocNew<uint64_t>(data_length);
+      auto data = reinterpret_cast<uint64_t *>(::operator new(data_length));
       *data = i;
       data_array[i] = data;
     }
@@ -111,7 +111,7 @@ ReleaseTestData(  //
 {
   if constexpr (std::is_pointer_v<T>) {
     for (size_t i = 0; i < data_num; ++i) {
-      ::dbgroup::memory::Delete(data_array[i]);
+      ::operator delete(data_array[i]);
     }
   }
 }

@@ -24,8 +24,6 @@
 
 namespace dbgroup::index::bztree::internal::test
 {
-using ::dbgroup::memory::MallocNew;
-
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
 struct KeyPayload {
@@ -64,7 +62,7 @@ class InternalNodeFixture : public testing::Test
   size_t max_record_num;
 
   // a leaf node
-  std::unique_ptr<Node_t, component::Deleter<Node_t>> node;
+  std::unique_ptr<Node_t> node;
 
   /*################################################################################################
    * Setup/Teardown
@@ -74,7 +72,7 @@ class InternalNodeFixture : public testing::Test
   SetUp()
   {
     // initialize a leaf node and expected statistics
-    node.reset(CallocNew<Node_t>(kPageSize, kInternalFlag));
+    node.reset(new Node_t{kInternalFlag});
 
     // prepare keys
     key_length = (IsVariableLengthData<Key>()) ? 7 : sizeof(Key);
@@ -100,7 +98,7 @@ class InternalNodeFixture : public testing::Test
       const size_t child_num,
       const size_t payload_begin = 0)
   {
-    auto dummy_node = CallocNew<Node_t>(kPageSize, kInternalFlag);
+    auto dummy_node = new Node_t{kInternalFlag};
 
     // embeds dummy childrens
     auto offset = kPageSize;
@@ -127,7 +125,7 @@ class InternalNodeFixture : public testing::Test
   ReleaseChildren()
   {
     for (size_t i = 0; i < node->GetSortedCount(); ++i) {
-      ::dbgroup::memory::Delete(internal::GetChildNode(node.get(), i));
+      delete internal::GetChildNode(node.get(), i);
     }
   }
 
@@ -203,8 +201,8 @@ class InternalNodeFixture : public testing::Test
     VerifyInternalNode(right_node, kDummyNodeNum - left_rec_count);
     VerifyDummyChildren(right_node, kDummyNodeNum - left_rec_count, left_rec_count);
 
-    ::dbgroup::memory::Delete(left_node);
-    ::dbgroup::memory::Delete(right_node);
+    delete left_node;
+    delete right_node;
   }
 
   void
@@ -219,8 +217,8 @@ class InternalNodeFixture : public testing::Test
     VerifyInternalNode(merged_node, kDummyNodeNum * 2);
     VerifyDummyChildren(merged_node, kDummyNodeNum * 2, 0);
 
-    ::dbgroup::memory::Delete(sibling_node);
-    ::dbgroup::memory::Delete(merged_node);
+    delete sibling_node;
+    delete merged_node;
   }
 
   void
@@ -259,8 +257,8 @@ class InternalNodeFixture : public testing::Test
 
     ReleaseChildren();
 
-    ::dbgroup::memory::Delete(init_left);
-    ::dbgroup::memory::Delete(init_right);
+    delete init_left;
+    delete init_right;
   }
 
   void
@@ -286,10 +284,10 @@ class InternalNodeFixture : public testing::Test
 
     ReleaseChildren();
 
-    ::dbgroup::memory::Delete(left_left);
-    ::dbgroup::memory::Delete(left_right);
-    ::dbgroup::memory::Delete(right_left);
-    ::dbgroup::memory::Delete(right_right);
+    delete left_left;
+    delete left_right;
+    delete right_left;
+    delete right_right;
   }
 };
 

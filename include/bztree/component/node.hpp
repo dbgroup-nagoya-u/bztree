@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <stdlib.h>
+
 #include <algorithm>
 #include <atomic>
 #include <functional>
@@ -78,10 +80,10 @@ class alignas(kCacheLineSize) Node
    */
   struct MetaRecord {
     /// a target metadata.
-    Metadata meta = Metadata{};
+    Metadata meta{};
 
     /// a target key.
-    Key key = Key{};
+    Key key{};
 
     /**
      * @brief An operator for less than comparison.
@@ -138,6 +140,18 @@ class alignas(kCacheLineSize) Node
   Node &operator=(const Node &) = delete;
   Node(Node &&) = delete;
   Node &operator=(Node &&) = delete;
+
+  /*################################################################################################
+   * new/delete definitions
+   *##############################################################################################*/
+
+  static void *operator new(std::size_t) { return calloc(1UL, kPageSize); }
+
+  static void
+  operator delete(void *p) noexcept
+  {
+    free(p);
+  }
 
   /*################################################################################################
    * Public getters/setters
@@ -269,7 +283,7 @@ class alignas(kCacheLineSize) Node
   {
     if constexpr (IsVariableLengthData<Payload>()) {
       const auto payload_length = meta.GetPayloadLength();
-      out_payload = ::dbgroup::memory::MallocNew<std::remove_pointer_t<Payload>>(payload_length);
+      out_payload = reinterpret_cast<Payload>(::operator new(payload_length));
       memcpy(out_payload, this->GetPayloadAddr(meta), payload_length);
     } else if constexpr (CanCASUpdate<Payload>()) {
       out_payload = ReadMwCASField<Payload>(this->GetPayloadAddr(meta));

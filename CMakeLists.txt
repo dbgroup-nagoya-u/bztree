@@ -27,22 +27,6 @@ set(MWCAS_CAPACITY "3" CACHE STRING "Use MwCAS with three words" FORCE)
 add_subdirectory("${MWCAS_SOURCE_DIR}")
 
 # configure GC
-option(BZTREE_USE_MIMALLOC "Use mimalloc as an allocator if ON" OFF)
-option(BZTREE_USE_JEMALLOC "Use jemalloc as an allocator if ON" OFF)
-
-if(${BZTREE_USE_MIMALLOC} AND ${BZTREE_USE_JEMALLOC})
-  message(FATAL_ERROR "Only one memory allocator can be specified.")
-endif()
-
-if(${BZTREE_USE_MIMALLOC})
-  set(MEMORY_MANAGER_USE_MIMALLOC "ON" CACHE STRING "Use mimalloc as an allocator" FORCE)
-  set(MEMORY_MANAGER_USE_JEMALLOC "OFF" CACHE STRING "" FORCE)
-endif()
-if(${BZTREE_USE_JEMALLOC})
-  set(MEMORY_MANAGER_USE_MIMALLOC "OFF" CACHE STRING "" FORCE)
-  set(MEMORY_MANAGER_USE_JEMALLOC "ON" CACHE STRING "Use jemalloc as an allocator" FORCE)
-endif()
-
 add_subdirectory("${MEMORY_MANAGER_SOURCE_DIR}")
 
 #--------------------------------------------------------------------------------------#

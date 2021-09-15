@@ -27,7 +27,6 @@
 namespace dbgroup::index::bztree::leaf
 {
 using component::AlignOffset;
-using component::CallocNew;
 using component::IsEqual;
 using component::IsInRange;
 using component::KeyExistence;
@@ -1146,7 +1145,7 @@ Consolidate(  //
     const size_t rec_count)
 {
   // create a new node and copy records
-  auto new_node = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kLeafFlag);
+  auto new_node = new Node<Key, Payload, Compare>{kLeafFlag};
   auto offset = kPageSize;
   _CopyRecords(new_node, 0, offset, orig_node, metadata, 0, rec_count);
   new_node->SetSortedCount(rec_count);
@@ -1178,14 +1177,14 @@ Split(  //
   const auto right_rec_count = rec_count - left_rec_count;
 
   // create a split left node
-  auto left_node = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kLeafFlag);
+  auto left_node = new Node<Key, Payload, Compare>{kLeafFlag};
   auto offset = kPageSize;
   _CopyRecords(left_node, 0, offset, orig_node, metadata, 0, left_rec_count);
   left_node->SetSortedCount(left_rec_count);
   left_node->SetStatus(StatusWord{left_rec_count, kPageSize - offset});
 
   // create a split right node
-  auto right_node = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kLeafFlag);
+  auto right_node = new Node<Key, Payload, Compare>{kLeafFlag};
   offset = kPageSize;
   _CopyRecords(right_node, 0, offset, orig_node, metadata, left_rec_count, rec_count);
   right_node->SetSortedCount(right_rec_count);
@@ -1221,7 +1220,7 @@ Merge(  //
   const auto rec_count = l_rec_count + r_rec_count;
 
   // create a merged node
-  auto new_node = CallocNew<Node<Key, Payload, Compare>>(kPageSize, kLeafFlag);
+  auto new_node = new Node<Key, Payload, Compare>{kLeafFlag};
   auto offset = kPageSize;
   _CopyRecords(new_node, 0, offset, left_node, left_meta, 0, l_rec_count);
   _CopyRecords(new_node, l_rec_count, offset, right_node, right_meta, 0, r_rec_count);

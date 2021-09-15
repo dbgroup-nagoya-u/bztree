@@ -49,11 +49,10 @@ class BzTree
   using RecordPage_t = component::RecordPage<Key, Payload>;
   using RecordIterator_t = component::RecordIterator<Key, Payload, Compare>;
   using NodeGC_t = ::dbgroup::memory::EpochBasedGC<Node_t>;
-  using NodeRef = std::pair<Node_t *, size_t>;
-  using NodeStack = std::vector<NodeRef, ::dbgroup::memory::STLAlloc<NodeRef>>;
+  using NodeStack = std::vector<std::pair<Node_t *, size_t>>;
   using MwCASDescriptor = component::MwCASDescriptor;
-  using Binary_p = std::unique_ptr<std::remove_pointer_t<Payload>,
-                                   component::Deleter<std::remove_pointer_t<Payload>>>;
+  using Binary_t = std::remove_pointer_t<Payload>;
+  using Binary_p = std::unique_ptr<Binary_t, component::PayloadDeleter<Binary_t>>;
 
  private:
   /*################################################################################################
@@ -641,7 +640,7 @@ class BzTree
       }
     }
 
-    ::dbgroup::memory::Delete(node);
+    delete node;
   }
 
  public:
@@ -731,7 +730,7 @@ class BzTree
       RecordPage_t *page = nullptr)
   {
     if (page == nullptr) {
-      page = ::dbgroup::memory::New<RecordPage_t>();
+      page = new RecordPage_t{};
     }
 
     const auto guard = gc_.CreateEpochGuard();

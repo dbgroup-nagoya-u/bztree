@@ -26,8 +26,6 @@
 
 namespace dbgroup::index::bztree::component::test
 {
-using ::dbgroup::memory::MallocNew;
-
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
 struct KeyPayload {
@@ -98,7 +96,7 @@ class RecordPageFixture : public ::testing::Test
     ReleaseTestData(keys, kKeyNumForTest);
     ReleaseTestData(payloads, kKeyNumForTest);
 
-    ::dbgroup::memory::Delete(page);
+    delete page;
   }
 
   /*################################################################################################
@@ -109,10 +107,10 @@ class RecordPageFixture : public ::testing::Test
   PreparePage(const size_t record_num)
   {
     if (page != nullptr) {
-      ::dbgroup::memory::Delete(page);
+      delete page;
     }
 
-    page = ::dbgroup::memory::New<RecordPage_t>();
+    page = new RecordPage_t{};
 
     auto cur_addr = reinterpret_cast<std::byte *>(page) + kHeaderLength;
 
