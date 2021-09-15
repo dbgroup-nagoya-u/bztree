@@ -29,19 +29,6 @@ sudo apt update && sudo apt install -y build-essential cmake
 - `BZTREE_MIN_SORTED_REC_NUM`: Invoking merging if the number of sorted records falls below this threshold (default `2 * BZTREE_MAX_UNSORTED_REC_NUM`).
 - `BZTREE_MAX_MERGED_SIZE`: Canceling merging if the size of a merged node exceeds this threshold (default `BZTREE_PAGE_SIZE - (2 * BZTREE_MIN_FREE_SPACE_SIZE)`).
 
-#### Memory Allocation
-
-If the memory allocation of entire your program is to be overwritten by an efficient memory allocator (e.g., jemalloc), the following options should not be used.
-
-- `BZTREE_USE_MIMALLOC`: use [mimalloc](https://github.com/microsoft/mimalloc) as a memory allocator/deleter if `ON` (default `OFF`).
-    - If you use this option, you need to install mimalloc beforehand and enable `cmake` find it by using the [find_package](https://cmake.org/cmake/help/latest/command/find_package.html) command.
-- `BZTREE_USE_JEMALLOC`: use [jemalloc](https://github.com/jemalloc/jemalloc) as a memory allocator/deleter if `ON` (default `OFF`).
-    - If you use this option, you need to install jemalloc beforehand. We assume that jemalloc is configured with the following command.
-
-    ```bash
-    ./configure --prefix=/usr/local --with-version=VERSION --with-jemalloc-prefix=je_ --with-install-suffix=_without_override --disable-cxx
-    ```
-
 ### Build Options for Unit Testing
 
 - `BZTREE_BUILD_TESTS`: Building unit tests for this library if `ON` (default `OFF`).
