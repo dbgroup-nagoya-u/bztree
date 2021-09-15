@@ -25,8 +25,6 @@
 
 namespace dbgroup::index::bztree::test
 {
-using ::dbgroup::memory::MallocNew;
-
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
 struct KeyPayload {

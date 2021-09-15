@@ -28,8 +28,6 @@
 
 namespace dbgroup::index::bztree::leaf::test
 {
-using ::dbgroup::memory::MallocNew;
-
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
 struct KeyPayload {
@@ -91,7 +89,7 @@ class LeafNodeFixture : public testing::Test
   size_t max_record_num;
 
   // a leaf node
-  std::unique_ptr<Node_t, component::Deleter<Node_t>> node;
+  std::unique_ptr<Node_t> node;
 
   std::uniform_int_distribution<size_t> id_dist{0, kKeyNumForTest - 2};
 
@@ -107,7 +105,7 @@ class LeafNodeFixture : public testing::Test
   SetUp()
   {
     // initialize a leaf node and expected statistics
-    node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
+    node.reset(new Node_t{kLeafFlag});
 
     // prepare keys
     key_length = (IsVariableLengthData<Key>()) ? 7 : sizeof(Key);
@@ -287,7 +285,7 @@ class LeafNodeFixture : public testing::Test
       EXPECT_EQ(NodeReturnCode::kSuccess, rc);
       EXPECT_TRUE(IsEqual<PayloadComp>(payloads[expected_id], payload));
       if constexpr (IsVariableLengthData<Payload>()) {
-        ::dbgroup::memory::Delete(payload);
+        ::operator delete(payload);
       }
     }
   }
@@ -299,7 +297,7 @@ class LeafNodeFixture : public testing::Test
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
       // initialize a leaf node and expected statistics
-      node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
+      node.reset(new Node_t{kLeafFlag});
 
       auto written_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kWrite);
       for (auto &&id : written_ids) {
@@ -315,7 +313,7 @@ class LeafNodeFixture : public testing::Test
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
       // initialize a leaf node and expected statistics
-      node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
+      node.reset(new Node_t{kLeafFlag});
 
       auto inserted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
       for (auto &&id : inserted_ids) {
@@ -331,7 +329,7 @@ class LeafNodeFixture : public testing::Test
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
       // initialize a leaf node and expected statistics
-      node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
+      node.reset(new Node_t{kLeafFlag});
 
       auto inserted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
       auto updated_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kUpdate);
@@ -354,7 +352,7 @@ class LeafNodeFixture : public testing::Test
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
       // initialize a leaf node and expected statistics
-      node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
+      node.reset(new Node_t{kLeafFlag});
 
       auto inserted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kInsert);
       auto deleted_ids = RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kDelete);
@@ -371,7 +369,7 @@ class LeafNodeFixture : public testing::Test
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
       // initialize a leaf node and expected statistics
-      node.reset(CallocNew<Node_t>(kPageSize, kLeafFlag));
+      node.reset(new Node_t{kLeafFlag});
 
       // insert/update/delete the same key by multi-threads
       RunOverMultiThread(write_num_per_thread, kThreadNum, WriteType::kMixed);

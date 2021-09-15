@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <stdlib.h>
+
 #include <algorithm>
 #include <atomic>
 #include <functional>
@@ -281,7 +283,7 @@ class alignas(kCacheLineSize) Node
   {
     if constexpr (IsVariableLengthData<Payload>()) {
       const auto payload_length = meta.GetPayloadLength();
-      out_payload = ::dbgroup::memory::MallocNew<std::remove_pointer_t<Payload>>(payload_length);
+      out_payload = reinterpret_cast<Payload>(::operator new(payload_length));
       memcpy(out_payload, this->GetPayloadAddr(meta), payload_length);
     } else if constexpr (CanCASUpdate<Payload>()) {
       out_payload = ReadMwCASField<Payload>(this->GetPayloadAddr(meta));

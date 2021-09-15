@@ -43,13 +43,13 @@ class BaseNodeFixture : public testing::Test
   Key key_null = 0;          // null key must have 8 bytes to fill a node
   Payload payload_null = 0;  // null payload must have 8 bytes to fill a node
 
-  std::unique_ptr<Node_t, Deleter<Node_t>> node;
+  std::unique_ptr<Node_t> node;
 
  protected:
   void
   SetUp() override
   {
-    node.reset(CallocNew<Node_t>(kPageSize, leaf::kLeafFlag));
+    node.reset(new Node_t{leaf::kLeafFlag});
 
     for (size_t index = 0; index < kKeyNumForTest; index++) {
       keys[index] = index + 1;
@@ -90,7 +90,7 @@ class BaseNodeFixture : public testing::Test
       const size_t begin_index,
       const size_t end_index)
   {
-    auto tmp_leaf_node = CallocNew<Node_t>(kPageSize, leaf::kLeafFlag);
+    auto tmp_leaf_node = new Node_t{leaf::kLeafFlag};
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
     auto [tmp_meta, rec_count] = leaf::GatherSortedLiveMetadata(tmp_leaf_node);
     return leaf::Consolidate(tmp_leaf_node, tmp_meta, rec_count);

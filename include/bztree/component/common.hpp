@@ -31,9 +31,6 @@ namespace dbgroup::index::bztree::component
 
 using ::dbgroup::atomic::mwcas::MwCASDescriptor;
 using ::dbgroup::atomic::mwcas::ReadMwCASField;
-using ::dbgroup::memory::CallocNew;
-using ::dbgroup::memory::Deleter;
-using ::dbgroup::memory::STLAlloc;
 
 /*##################################################################################################
  * Internal enum and classes
