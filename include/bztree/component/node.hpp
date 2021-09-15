@@ -80,10 +80,10 @@ class alignas(kCacheLineSize) Node
    */
   struct MetaRecord {
     /// a target metadata.
-    Metadata meta = Metadata{};
+    Metadata meta{};
 
     /// a target key.
-    Key key = Key{};
+    Key key{};
 
     /**
      * @brief An operator for less than comparison.
