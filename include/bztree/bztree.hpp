@@ -51,7 +51,8 @@ class BzTree
   using NodeGC_t = ::dbgroup::memory::EpochBasedGC<Node_t>;
   using NodeStack = std::vector<std::pair<Node_t *, size_t>>;
   using MwCASDescriptor = component::MwCASDescriptor;
-  using Binary_p = std::unique_ptr<std::remove_pointer_t<Payload>>;
+  using Binary_t = std::remove_pointer_t<Payload>;
+  using Binary_p = std::unique_ptr<Binary_t, component::PayloadDeleter<Binary_t>>;
 
  private:
   /*################################################################################################
