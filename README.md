@@ -207,6 +207,59 @@ Sum: 28
 Sum: 18
 ```
 
+### Bulk-Load for Single Thread
+
+If you use bulk-load api, please prepare an EntryArray, which is a vector of tuples of key, payload, key length, and payload length.
+
+```cpp
+#include <iostream>
+
+#include "bztree/bztree.hpp"
+
+using Key = uint64_t;
+using Value = uint64_t;
+
+using BzTree_t = ::dbgroup::index::bztree::BzTree<Key, Value>;
+using ::dbgroup::index::bztree::ReturnCode;
+
+using Entry = std::tuple<Key, Value, size_t, size_t>;
+using EntryArray = std::vector<Entry>;
+
+int
+main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
+{
+  // create a BzTree instance
+  BzTree_t bztree{};
+
+  // create entries
+  EntryArray entries;
+  for (Key i = 0; i <= 4096; ++i) {
+    entries.push_back(std::make_tuple(i, i, sizeof(i), sizeof(i)));
+  }
+
+  // bulk-load entries
+  bztree.BulkLoadForSingleThread(entries);
+
+  // read bulk-loaded key and one key that has not been inserted
+  for (Key i = 0; i <= 4096 + 1; ++i) {
+    auto [rc, value] = bztree.Read(i);
+
+    if (rc != ReturnCode::kSuccess) {
+      std::cout << "Search key: " << i << std::endl;
+      std::cout << "Return code: " << rc << std::endl;
+    }
+  }
+
+  return 0;
+}
+```
+
+This code will output the following results.
+
+```txt
+Search key: 4097
+Return code: 1
+```
 ### Multi-Threading
 
 This library is a thread-safe implementation. You can call all the APIs (i.e., `Read`, `Scan`, `Write`, `Insert`, `Update`, and `Delete`) from multi-threads concurrently. Note that concurrent writes follow the last write win protocol, and so you need to some concurrency control methods (e.g., snapshot isolation) externally to guarantee the order of read/write operations.

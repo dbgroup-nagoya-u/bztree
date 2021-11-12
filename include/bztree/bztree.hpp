@@ -21,7 +21,6 @@
 #include <functional>
 #include <memory>
 #include <utility>
-#include <vector>
 
 #include "component/internal_node_api.hpp"
 #include "component/leaf_node_api.hpp"
@@ -53,6 +52,9 @@ class BzTree
   using MwCASDescriptor = component::MwCASDescriptor;
   using Binary_t = std::remove_pointer_t<Payload>;
   using Binary_p = std::unique_ptr<Binary_t, component::PayloadDeleter<Binary_t>>;
+  using Entry = std::tuple<Key, Payload, size_t, size_t>;
+  using EntryArray = std::vector<Entry>;
+  using RightmostNodeStack = std::vector<Node_t *>;
 
  private:
   /*################################################################################################
@@ -158,6 +160,23 @@ class BzTree
       const size_t key_length)
   {
     return internal_node->GetStatusWordProtected().GetOccupiedSize() + key_length
+           > kPageSize - 2 * kWordLength;
+  }
+
+  /**
+   * @brief NeedSplit for single thread
+   *
+   * @param internal_node a target node.
+   * @param key_length the length of a target key.
+   * @retval true if a target node should be split.
+   * @retval false if a target node do not need to be split.
+   */
+  static constexpr bool
+  NeedSplitForSingleThread(  //
+      const Node_t *internal_node,
+      const size_t key_length)
+  {
+    return internal_node->GetStatusWord().GetOccupiedSize() + key_length
            > kPageSize - 2 * kWordLength;
   }
 
@@ -392,6 +411,66 @@ class BzTree
   }
 
   /**
+   * @brief SplitInternalNode for single thread.
+   *
+   * Note that this function may call itself recursively if needed.
+   *
+   * @param node a target internal node.
+   * @param key a target key.
+   * @param rightmost_trace the stack of nodes up to a target node. (the stack of rightmost nodes)
+   */
+  void
+  SplitInternalNodeForSingleThread(  //
+      Node_t *node,
+      const Key &key,
+      RightmostNodeStack &rightmost_trace)
+  {
+    // get a split index and a corresponding key length
+    const auto left_rec_count = (node->GetSortedCount() / 2);
+    const auto split_key_length = node->GetMetadata(left_rec_count - 1).GetKeyLength();
+
+    /*----------------------------------------------------------------------------------------------
+     * Phase 1: preparation
+     *--------------------------------------------------------------------------------------------*/
+
+    Node_t *parent = nullptr;
+    if (rightmost_trace.size() > 1) {  // target is not a root node (i.e., there is a parent node)
+      rightmost_trace.pop_back();
+      parent = rightmost_trace.back();
+
+      // check whether it is required to split a parent node
+      if (NeedSplitForSingleThread(parent, split_key_length)) {
+        SplitInternalNodeForSingleThread(parent, key, rightmost_trace);
+
+        // update the target parent node
+        parent = rightmost_trace.back();
+      }
+    }
+
+    /*----------------------------------------------------------------------------------------------
+     * Phase 2: installation
+     *--------------------------------------------------------------------------------------------*/
+
+    // create new nodes
+    const auto [left_node, right_node] = internal::Split(node, left_rec_count);
+    Node_t *new_parent;
+    if (parent != nullptr) {  // target is not a root node
+      // get the embedded index of a target node
+      size_t target_pos = parent->GetSortedCount() - 1;
+      new_parent = internal::NewParentForSplit(parent, left_node, right_node, target_pos);
+    } else {  // target is a root node
+      new_parent = internal::CreateNewRoot(left_node, right_node);
+    }
+
+    // install new nodes
+    InstallNewNodeForSingleThread(rightmost_trace, new_parent);
+
+    // update rightmost node stack
+    rightmost_trace.push_back(new_parent);
+    rightmost_trace.push_back(right_node);
+  }
+
+  /**
    * @brief Merge a target leaf node.
    *
    * Note that this function may call a merge function for internal nodes if needed.
@@ -619,6 +698,40 @@ class BzTree
       if (desc.MwCAS()) return;
 
       trace = TraceTargetNode(key, target_node);
+    }
+  }
+
+  /**
+   * @brief InstallNewNode for single thread
+   *
+   * @param rightmost_trace the stack of nodes up to a target node. (the stack of rightmost nodes)
+   * @param new_node a new node to be installed.
+   */
+  void
+  InstallNewNodeForSingleThread(  //
+      RightmostNodeStack &rightmost_trace,
+      Node_t *new_node)
+  {
+    if (rightmost_trace.size() > 1) {
+      /*------------------------------------------------------------------------------------------
+       * Swapping a new internal node
+       *----------------------------------------------------------------------------------------*/
+
+      // prepare installing nodes
+      rightmost_trace.pop_back();
+      auto parent = rightmost_trace.back();
+      const auto target_meta = parent->GetMetadata(parent->GetSortedCount() - 1);
+      auto offset = target_meta.GetOffset() + target_meta.GetTotalLength();
+
+      // install a new internal node
+      parent->SetPayload(offset, new_node, kWordLength);
+    } else {
+      /*------------------------------------------------------------------------------------------
+       * Swapping a new root node
+       *----------------------------------------------------------------------------------------*/
+
+      rightmost_trace.pop_back();
+      root_ = new_node;
     }
   }
 
@@ -898,6 +1011,58 @@ class BzTree
         ConsolidateLeafNode(node, key, key_length);
       }
     }
+    return ReturnCode::kSuccess;
+  }
+
+  /*################################################################################################
+   * Public bulkload functions
+   *##############################################################################################*/
+
+  /**
+   * @brief bulkload specified kay/payload pairs.
+   *
+   * This function bulk-loads the given entries into the bztree. The entries are assumed to be given
+   * as a vector of tuples of key, payload, length of key, length of payload. The keys are assumed
+   * to be unique.
+   *
+   * @param entries vector of entries to be bulkloaded
+   * @return ReturnCode: kSuccess.
+   */
+  ReturnCode
+  BulkLoadForSingleThread(  //
+      EntryArray &entries)
+  {
+    if (entries.empty()) {
+      return ReturnCode::kSuccess;
+    }
+
+    std::sort(entries.begin(), entries.end(), [](Entry e1, Entry e2) -> bool {
+      return Compare()(std::get<0>(e1), std::get<0>(e2));
+    });
+
+    RightmostNodeStack rightmost_trace;
+    rightmost_trace.push_back(root_);
+
+    typename EntryArray::const_iterator itr = entries.cbegin();
+
+    while (itr < entries.cend()) {
+      const Node_t *leaf_node = leaf::CreateFullLeafNode<Compare>(entries, itr);
+
+      Node_t *parent = rightmost_trace.back();
+
+      internal::InsertFullLeafNode(parent, leaf_node);
+
+      // Check whether a parent node should be split.
+      if (itr < entries.cend()) {  // if there are still unloaded entries
+        const Key next_key = std::get<KEY_POS>(*itr);
+        const size_t next_key_length = std::get<kEY_LEN_POS>(*itr);
+
+        if (NeedSplitForSingleThread(parent, next_key_length)) {
+          SplitInternalNodeForSingleThread(parent, next_key, rightmost_trace);
+        }
+      }
+    }
+
     return ReturnCode::kSuccess;
   }
 
