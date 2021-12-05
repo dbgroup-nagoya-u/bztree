@@ -213,10 +213,18 @@ class StatusWord
   }
 };
 
-// a status word must be represented by one word.
-static_assert(sizeof(StatusWord) == kWordLength);
-
-// a status word must be trivially copyable.
-static_assert(std::is_trivially_copyable_v<StatusWord>);
-
 }  // namespace dbgroup::index::bztree::component
+
+namespace dbgroup::atomic::mwcas
+{
+/**
+ * @brief Specialization for enabling MwCAS.
+ *
+ */
+template <>
+constexpr bool
+CanMwCAS<::dbgroup::index::bztree::component::StatusWord>()
+{
+  return true;
+}
+}  // namespace dbgroup::atomic::mwcas
