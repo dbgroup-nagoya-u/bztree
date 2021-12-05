@@ -19,7 +19,7 @@
 #include <cstring>
 #include <memory>
 
-#include "../utility.hpp"
+#include "bztree/utility.hpp"
 #include "memory/utility.hpp"
 #include "mwcas/mwcas_descriptor.hpp"
 
@@ -30,7 +30,6 @@ namespace dbgroup::index::bztree::component
  *################################################################################################*/
 
 using ::dbgroup::atomic::mwcas::MwCASDescriptor;
-using ::dbgroup::atomic::mwcas::ReadMwCASField;
 
 /*##################################################################################################
  * Internal enum and classes
@@ -74,6 +73,23 @@ constexpr size_t kHeaderLength = 2 * kWordLength;
 /*##################################################################################################
  * Internal utility functions
  *################################################################################################*/
+
+/**
+ * @tparam Payload a target payload class.
+ * @retval true if a target payload can be updated by MwCAS.
+ * @retval false if a target payload cannot be update by MwCAS.
+ */
+template <class Payload>
+constexpr bool
+CanCASUpdate()
+{
+  if constexpr (IsVariableLengthData<Payload>())
+    return false;
+  else if constexpr (::dbgroup::atomic::mwcas::CanMwCAS<Payload>())
+    return true;
+  else
+    return false;
+}
 
 /**
  * @brief Cast a given pointer to a specified pointer type.

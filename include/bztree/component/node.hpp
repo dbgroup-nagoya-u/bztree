@@ -145,7 +145,11 @@ class alignas(kCacheLineSize) Node
    * new/delete definitions
    *##############################################################################################*/
 
-  static void *operator new(std::size_t) { return calloc(1UL, kPageSize); }
+  static void *
+  operator new(std::size_t)
+  {
+    return calloc(1UL, kPageSize);
+  }
 
   static void
   operator delete(void *p) noexcept
@@ -201,7 +205,7 @@ class alignas(kCacheLineSize) Node
   StatusWord
   GetStatusWordProtected() const
   {
-    return ReadMwCASField<StatusWord>(&status_);
+    return MwCASDescriptor::Read<StatusWord>(&status_);
   }
 
   /**
@@ -229,7 +233,7 @@ class alignas(kCacheLineSize) Node
   Metadata
   GetMetadataProtected(const size_t position) const
   {
-    return ReadMwCASField<Metadata>(&meta_array_[position]);
+    return MwCASDescriptor::Read<Metadata>(&meta_array_[position]);
   }
 
   /**
@@ -286,7 +290,7 @@ class alignas(kCacheLineSize) Node
       out_payload = reinterpret_cast<Payload>(::operator new(payload_length));
       memcpy(out_payload, this->GetPayloadAddr(meta), payload_length);
     } else if constexpr (CanCASUpdate<Payload>()) {
-      out_payload = ReadMwCASField<Payload>(this->GetPayloadAddr(meta));
+      out_payload = MwCASDescriptor::Read<Payload>(this->GetPayloadAddr(meta));
     } else {
       memcpy(&out_payload, this->GetPayloadAddr(meta), sizeof(Payload));
     }

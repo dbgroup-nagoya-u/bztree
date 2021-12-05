@@ -64,7 +64,7 @@ class BaseNodeFixture : public testing::Test
 
   void
   WriteNullKey(  //
-      Node_t* target_node,
+      Node_t *target_node,
       const size_t write_num)
   {
     for (size_t index = 0; index < write_num; ++index) {
@@ -74,7 +74,7 @@ class BaseNodeFixture : public testing::Test
 
   void
   WriteOrderedKeys(  //
-      Node_t* target_node,
+      Node_t *target_node,
       const size_t begin_index,
       const size_t end_index)
   {
@@ -85,7 +85,7 @@ class BaseNodeFixture : public testing::Test
     }
   }
 
-  Node_t*
+  Node_t *
   CreateSortedLeafNodeWithOrderedKeys(  //
       const size_t begin_index,
       const size_t end_index)
@@ -99,7 +99,7 @@ class BaseNodeFixture : public testing::Test
 
 TEST_F(BaseNodeFixture, New_EmptyNode_CorrectlyInitialized)
 {
-  auto status = *reinterpret_cast<StatusWord*>(ShiftAddress(node.get(), kWordLength));
+  auto status = *reinterpret_cast<StatusWord *>(ShiftAddress(node.get(), kWordLength));
 
   EXPECT_EQ(0, node->GetSortedCount());
   EXPECT_EQ(status, node->GetStatusWord());

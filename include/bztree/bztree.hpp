@@ -78,7 +78,7 @@ class BzTree
   Node_t *
   GetRoot()
   {
-    return component::ReadMwCASField<Node_t *>(&root_);
+    return MwCASDescriptor::Read<Node_t *>(&root_);
   }
 
   /**

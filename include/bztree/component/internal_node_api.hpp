@@ -24,9 +24,10 @@
 namespace dbgroup::index::bztree::internal
 {
 using component::AlignOffset;
+using component::CanCASUpdate;
 using component::Metadata;
+using component::MwCASDescriptor;
 using component::Node;
-using component::ReadMwCASField;
 using component::StatusWord;
 
 /// a flag to indicate leaf nodes.
@@ -158,7 +159,7 @@ _CopySortedRecords(  //
     const auto meta = orig_node->GetMetadata(index);
     const auto key = orig_node->GetKey(meta);
     const auto child_addr =
-        ReadMwCASField<Node<Key, Payload, Compare> *>(orig_node->GetPayloadAddr(meta));
+        MwCASDescriptor::Read<Node<Key, Payload, Compare> *>(orig_node->GetPayloadAddr(meta));
     _SetChild(target_node, key, meta.GetKeyLength(), child_addr, offset);
 
     const auto new_meta = meta.UpdateOffset(offset);
@@ -227,7 +228,7 @@ GetChildNode(  //
     const size_t index)
 {
   const auto meta = node->GetMetadata(index);
-  return ReadMwCASField<Node<Key, Payload, Compare> *>(node->GetPayloadAddr(meta));
+  return MwCASDescriptor::Read<Node<Key, Payload, Compare> *>(node->GetPayloadAddr(meta));
 }
 
 /*################################################################################################

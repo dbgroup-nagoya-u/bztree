@@ -27,6 +27,7 @@
 namespace dbgroup::index::bztree::leaf
 {
 using component::AlignOffset;
+using component::CanCASUpdate;
 using component::IsEqual;
 using component::IsInRange;
 using component::KeyExistence;
@@ -34,7 +35,6 @@ using component::Metadata;
 using component::MwCASDescriptor;
 using component::Node;
 using component::NodeReturnCode;
-using component::ReadMwCASField;
 using component::RecordPage;
 using component::StatusWord;
 
@@ -619,7 +619,7 @@ Scan(  //
         cur_addr += sizeof(Key);
       }
       *(reinterpret_cast<Payload *>(cur_addr)) =
-          ReadMwCASField<Payload>(node->GetPayloadAddr(meta));
+          MwCASDescriptor::Read<Payload>(node->GetPayloadAddr(meta));
       cur_addr += kWordLength;
     } else {
       memcpy(cur_addr, node->GetKeyAddr(meta), meta.GetTotalLength());
