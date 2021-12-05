@@ -20,7 +20,6 @@
 #include <memory>
 
 #include "bztree/utility.hpp"
-#include "memory/utility.hpp"
 #include "mwcas/mwcas_descriptor.hpp"
 
 namespace dbgroup::index::bztree::component
