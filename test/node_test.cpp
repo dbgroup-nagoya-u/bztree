@@ -34,6 +34,7 @@ static constexpr size_t kKeyNumForTest = 10000;
 static constexpr size_t kKeyLength = sizeof(Key);
 static constexpr size_t kPayloadLength = sizeof(Payload);
 static constexpr size_t kRecordLength = kKeyLength + kPayloadLength;
+static constexpr bool kLeafFlag = true;
 
 class BaseNodeFixture : public testing::Test
 {
@@ -93,7 +94,9 @@ class BaseNodeFixture : public testing::Test
     auto tmp_leaf_node = new Node_t{leaf::kLeafFlag};
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
     auto [tmp_meta, rec_count] = leaf::GatherSortedLiveMetadata(tmp_leaf_node);
-    return leaf::Consolidate(tmp_leaf_node, tmp_meta, rec_count);
+    auto new_node = new Node_t{kLeafFlag};
+    leaf::Consolidate(new_node, tmp_leaf_node, tmp_meta, rec_count);
+    return new_node;
   }
 };
 

@@ -1138,20 +1138,18 @@ Delete(  //
  * @return Node_t*: a consolidated node.
  */
 template <class Key, class Payload, class Compare>
-Node<Key, Payload, Compare> *
+void
 Consolidate(  //
+    Node<Key, Payload, Compare> *new_node,
     const Node<Key, Payload, Compare> *orig_node,
     const MetaArray<Key, Payload, Compare> &metadata,
     const size_t rec_count)
 {
-  // create a new node and copy records
-  auto new_node = new Node<Key, Payload, Compare>{kLeafFlag};
+  // copy records
   auto offset = kPageSize;
   _CopyRecords(new_node, 0, offset, orig_node, metadata, 0, rec_count);
   new_node->SetSortedCount(rec_count);
   new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
-
-  return new_node;
 }
 
 /**

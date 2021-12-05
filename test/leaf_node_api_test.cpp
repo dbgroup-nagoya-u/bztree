@@ -195,7 +195,9 @@ class LeafNodeFixture : public testing::Test
   Consolidation()
   {
     auto [metadata, rec_count] = leaf::GatherSortedLiveMetadata(node.get());
-    node.reset(leaf::Consolidate(node.get(), metadata, rec_count));
+    auto new_node = new Node_t{kLeafFlag};
+    leaf::Consolidate(new_node, node.get(), metadata, rec_count);
+    node.reset(new_node);
   }
 
   /*################################################################################################

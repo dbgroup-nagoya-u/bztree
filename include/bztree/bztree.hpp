@@ -56,6 +56,14 @@ class BzTree
 
  private:
   /*################################################################################################
+   * Internal constants
+   *##############################################################################################*/
+
+  static constexpr bool kLeafFlag = true;
+
+  static constexpr bool kInternalFlag = false;
+
+  /*################################################################################################
    * Internal member variables
    *##############################################################################################*/
 
@@ -242,8 +250,12 @@ class BzTree
       if (MergeLeafNodes(node, key, key_length, target_size, metadata, rec_count)) return;
     }
 
+    // create a consolidated node
+    auto *page = gc_.template GetPageIfPossible<Node_t>();
+    auto *new_node = (page == nullptr) ? new Node_t{kLeafFlag} : new (page) Node_t{kLeafFlag};
+    leaf::Consolidate(new_node, node, metadata, rec_count);
+
     // install a new node
-    const auto new_node = leaf::Consolidate(node, metadata, rec_count);
     auto trace = TraceTargetNode(key, node);
     InstallNewNode(trace, new_node, key, node);
 
