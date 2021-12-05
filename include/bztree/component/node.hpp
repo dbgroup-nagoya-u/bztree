@@ -145,7 +145,11 @@ class alignas(kCacheLineSize) Node
    * new/delete definitions
    *##############################################################################################*/
 
-  static void *operator new(std::size_t) { return calloc(1UL, kPageSize); }
+  static void *
+  operator new(std::size_t)
+  {
+    return calloc(1UL, kPageSize);
+  }
 
   static void
   operator delete(void *p) noexcept

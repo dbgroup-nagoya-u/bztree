@@ -93,7 +93,7 @@ class InternalNodeFixture : public testing::Test
    * Utility functions
    *##############################################################################################*/
 
-  Node_t*
+  Node_t *
   PrepareDummyNode(  //
       const size_t child_num,
       const size_t payload_begin = 0)
@@ -135,7 +135,7 @@ class InternalNodeFixture : public testing::Test
 
   void
   VerifyInternalNode(  //
-      const Node_t* target_node,
+      const Node_t *target_node,
       const size_t child_num)
   {
     EXPECT_FALSE(target_node->IsLeaf());
@@ -145,9 +145,9 @@ class InternalNodeFixture : public testing::Test
 
   void
   VerifyChildren(  //
-      const Node_t* target_node,
+      const Node_t *target_node,
       const size_t child_num,
-      const std::vector<Node_t*>* expected_children)
+      const std::vector<Node_t *> *expected_children)
   {
     for (size_t i = 0; i < child_num; ++i) {
       auto child = internal::GetChildNode(target_node, i);
@@ -159,7 +159,7 @@ class InternalNodeFixture : public testing::Test
 
   void
   VerifyDummyChildren(  //
-      const Node_t* target_node,
+      const Node_t *target_node,
       const size_t child_num,
       const size_t begin_payload)
   {
@@ -226,7 +226,7 @@ class InternalNodeFixture : public testing::Test
   {
     auto left_node = PrepareDummyNode(kDummyNodeNum);
     auto right_node = PrepareDummyNode(kDummyNodeNum);
-    std::vector<Node_t*> expected_children = {left_node, right_node};
+    std::vector<Node_t *> expected_children = {left_node, right_node};
 
     node.reset(internal::CreateNewRoot(left_node, right_node));
 
@@ -250,7 +250,7 @@ class InternalNodeFixture : public testing::Test
     node.reset(internal::NewParentForSplit(node.get(), left_left, left_right, 0));
     node.reset(internal::NewParentForSplit(node.get(), right_left, right_right, 2));
 
-    std::vector<Node_t*> expected_children = {left_left, left_right, right_left, right_right};
+    std::vector<Node_t *> expected_children = {left_left, left_right, right_left, right_right};
 
     VerifyInternalNode(node.get(), 4);
     VerifyChildren(node.get(), 4, &expected_children);
@@ -277,7 +277,7 @@ class InternalNodeFixture : public testing::Test
     node.reset(internal::NewParentForMerge(node.get(), init_left, 0));
     node.reset(internal::NewParentForMerge(node.get(), init_right, 1));
 
-    std::vector<Node_t*> expected_children = {init_left, init_right};
+    std::vector<Node_t *> expected_children = {init_left, init_right};
 
     VerifyInternalNode(node.get(), 2);
     VerifyChildren(node.get(), 2, &expected_children);
@@ -297,7 +297,7 @@ class InternalNodeFixture : public testing::Test
 
 using KeyPayloadPairs = ::testing::Types<KeyPayload<uint64_t, uint64_t, UInt64Comp, UInt64Comp>,
                                          KeyPayload<uint32_t, uint64_t, UInt32Comp, UInt64Comp>,
-                                         KeyPayload<char*, uint64_t, CStrComp, UInt64Comp>>;
+                                         KeyPayload<char *, uint64_t, CStrComp, UInt64Comp>>;
 TYPED_TEST_CASE(InternalNodeFixture, KeyPayloadPairs);
 
 /*##################################################################################################
