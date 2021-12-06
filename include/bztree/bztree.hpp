@@ -735,38 +735,39 @@ class BzTree
     }
   }
 
-  /**
-   * @brief Perform a range scan with specified keys.
-   *
-   * If a begin/end key is nullptr, it is treated as negative or positive infinite.
-   *
-   * @param begin_key the pointer of a begin key of a range scan.
-   * @param begin_closed a flag to indicate whether the begin side of a range is closed.
-   * @param end_key the pointer of an end key of a range scan.
-   * @param end_closed a flag to indicate whether the end side of a range is closed.
-   * @param page a page to copy target keys/payloads. This argument is used internally.
-   * @return RecordIterator_t: an iterator to access target records.
-   */
-  RecordIterator_t
-  Scan(  //
-      const Key *begin_key = nullptr,
-      const bool begin_closed = false,
-      const Key *end_key = nullptr,
-      const bool end_closed = false,
-      RecordPage_t *page = nullptr)
-  {
-    if (page == nullptr) {
-      page = new RecordPage_t{};
-    }
+  // /**
+  //  * @brief Perform a range scan with specified keys.
+  //  *
+  //  * If a begin/end key is nullptr, it is treated as negative or positive infinite.
+  //  *
+  //  * @param begin_key the pointer of a begin key of a range scan.
+  //  * @param begin_closed a flag to indicate whether the begin side of a range is closed.
+  //  * @param end_key the pointer of an end key of a range scan.
+  //  * @param end_closed a flag to indicate whether the end side of a range is closed.
+  //  * @param page a page to copy target keys/payloads. This argument is used internally.
+  //  * @return RecordIterator_t: an iterator to access target records.
+  //  */
+  // RecordIterator_t
+  // Scan(  //
+  //     const Key *begin_key = nullptr,
+  //     const bool begin_closed = false,
+  //     const Key *end_key = nullptr,
+  //     const bool end_closed = false,
+  //     RecordPage_t *page = nullptr)
+  // {
+  //   if (page == nullptr) {
+  //     page = new RecordPage_t{};
+  //   }
 
-    const auto guard = gc_.CreateEpochGuard();
+  //   const auto guard = gc_.CreateEpochGuard();
 
-    const auto node =
-        (begin_key == nullptr) ? SearchLeftEdgeLeaf() : SearchLeafNode(*begin_key, begin_closed);
-    const auto scan_finished = leaf::Scan(node, begin_key, begin_closed, end_key, end_closed, page);
+  //   const auto node =
+  //       (begin_key == nullptr) ? SearchLeftEdgeLeaf() : SearchLeafNode(*begin_key, begin_closed);
+  //   const auto scan_finished = leaf::Scan(node, begin_key, begin_closed, end_key, end_closed,
+  //   page);
 
-    return RecordIterator_t{this, end_key, end_closed, page, scan_finished};
-  }
+  //   return RecordIterator_t{this, end_key, end_closed, page, scan_finished};
+  // }
 
   /*################################################################################################
    * Public write APIs

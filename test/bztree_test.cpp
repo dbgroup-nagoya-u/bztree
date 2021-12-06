@@ -121,35 +121,35 @@ class BzTreeFixture : public testing::Test
     }
   }
 
-  void
-  VerifyScan(  //
-      const size_t begin_key_id,
-      const bool begin_null,
-      bool begin_closed,
-      const size_t end_key_id,
-      const bool end_null,
-      const bool end_closed,
-      const std::vector<size_t> &expected_keys,
-      const std::vector<size_t> &expected_payloads)
-  {
-    Key begin_key{};
-    Key *begin_ptr = nullptr, *end_ptr = nullptr;
-    if (!begin_null) {
-      begin_key = keys[begin_key_id];
-      begin_ptr = &begin_key;
-    }
-    if (!end_null) end_ptr = &keys[end_key_id];
+  // void
+  // VerifyScan(  //
+  //     const size_t begin_key_id,
+  //     const bool begin_null,
+  //     bool begin_closed,
+  //     const size_t end_key_id,
+  //     const bool end_null,
+  //     const bool end_closed,
+  //     const std::vector<size_t> &expected_keys,
+  //     const std::vector<size_t> &expected_payloads)
+  // {
+  //   Key begin_key{};
+  //   Key *begin_ptr = nullptr, *end_ptr = nullptr;
+  //   if (!begin_null) {
+  //     begin_key = keys[begin_key_id];
+  //     begin_ptr = &begin_key;
+  //   }
+  //   if (!end_null) end_ptr = &keys[end_key_id];
 
-    size_t count = 0;
-    auto iter = bztree.Scan(begin_ptr, begin_closed, end_ptr, end_closed);
-    for (; iter.HasNext(); ++iter, ++count) {
-      auto [key, payload] = *iter;
-      EXPECT_TRUE(component::IsEqual<KeyComp>(keys[expected_keys[count]], key));
-      EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads[expected_payloads[count]], payload));
-    }
+  //   size_t count = 0;
+  //   auto iter = bztree.Scan(begin_ptr, begin_closed, end_ptr, end_closed);
+  //   for (; iter.HasNext(); ++iter, ++count) {
+  //     auto [key, payload] = *iter;
+  //     EXPECT_TRUE(component::IsEqual<KeyComp>(keys[expected_keys[count]], key));
+  //     EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads[expected_payloads[count]], payload));
+  //   }
 
-    EXPECT_EQ(expected_keys.size(), count);
-  }
+  //   EXPECT_EQ(expected_keys.size(), count);
+  // }
 
   void
   VerifyWrite(  //
@@ -233,55 +233,55 @@ TYPED_TEST(BzTreeFixture, Read_NotPresentKey_ReadFail)
   TestFixture::VerifyRead(0, 0, true);
 }
 
-/*--------------------------------------------------------------------------------------------------
- * Scan operation
- *------------------------------------------------------------------------------------------------*/
+// /*--------------------------------------------------------------------------------------------------
+//  * Scan operation
+//  *------------------------------------------------------------------------------------------------*/
 
-TYPED_TEST(BzTreeFixture, Scan_EmptyNode_ScanEmptyPage)
-{  //
-  std::vector<size_t> expected_ids;
-  TestFixture::VerifyScan(0, true, true, 0, true, true, expected_ids, expected_ids);
-}
+// TYPED_TEST(BzTreeFixture, Scan_EmptyNode_ScanEmptyPage)
+// {  //
+//   std::vector<size_t> expected_ids;
+//   TestFixture::VerifyScan(0, true, true, 0, true, true, expected_ids, expected_ids);
+// }
 
-TYPED_TEST(BzTreeFixture, Scan_UniqueKeys_ScanInsertedRecords)
-{  //
-  std::vector<size_t> expected_ids;
-  for (size_t i = 0; i < TestFixture::kKeyNumForTest; ++i) {
-    TestFixture::VerifyInsert(i, i);
-    expected_ids.emplace_back(i);
-  }
+// TYPED_TEST(BzTreeFixture, Scan_UniqueKeys_ScanInsertedRecords)
+// {  //
+//   std::vector<size_t> expected_ids;
+//   for (size_t i = 0; i < TestFixture::kKeyNumForTest; ++i) {
+//     TestFixture::VerifyInsert(i, i);
+//     expected_ids.emplace_back(i);
+//   }
 
-  TestFixture::VerifyScan(0, true, true, 0, true, true, expected_ids, expected_ids);
-}
+//   TestFixture::VerifyScan(0, true, true, 0, true, true, expected_ids, expected_ids);
+// }
 
-TYPED_TEST(BzTreeFixture, Scan_DuplicateKeys_ScanUpdatedRecords)
-{  //
-  std::vector<size_t> expected_keys;
-  std::vector<size_t> expected_payloads;
-  for (size_t i = 0; i < TestFixture::kKeyNumForTest - 1; ++i) {
-    TestFixture::VerifyInsert(i, i);
-  }
-  for (size_t i = 0; i < TestFixture::kKeyNumForTest - 1; ++i) {
-    TestFixture::VerifyUpdate(i, i + 1);
-    expected_keys.emplace_back(i);
-    expected_payloads.emplace_back(i + 1);
-  }
+// TYPED_TEST(BzTreeFixture, Scan_DuplicateKeys_ScanUpdatedRecords)
+// {  //
+//   std::vector<size_t> expected_keys;
+//   std::vector<size_t> expected_payloads;
+//   for (size_t i = 0; i < TestFixture::kKeyNumForTest - 1; ++i) {
+//     TestFixture::VerifyInsert(i, i);
+//   }
+//   for (size_t i = 0; i < TestFixture::kKeyNumForTest - 1; ++i) {
+//     TestFixture::VerifyUpdate(i, i + 1);
+//     expected_keys.emplace_back(i);
+//     expected_payloads.emplace_back(i + 1);
+//   }
 
-  TestFixture::VerifyScan(0, true, true, 0, true, true, expected_keys, expected_payloads);
-}
+//   TestFixture::VerifyScan(0, true, true, 0, true, true, expected_keys, expected_payloads);
+// }
 
-TYPED_TEST(BzTreeFixture, Scan_DeletedKeys_ScanEmptyPage)
-{  //
-  std::vector<size_t> expected_ids;
-  for (size_t i = 0; i < TestFixture::kKeyNumForTest; ++i) {
-    TestFixture::VerifyInsert(i, i);
-  }
-  for (size_t i = 0; i < TestFixture::kKeyNumForTest; ++i) {
-    TestFixture::VerifyDelete(i);
-  }
+// TYPED_TEST(BzTreeFixture, Scan_DeletedKeys_ScanEmptyPage)
+// {  //
+//   std::vector<size_t> expected_ids;
+//   for (size_t i = 0; i < TestFixture::kKeyNumForTest; ++i) {
+//     TestFixture::VerifyInsert(i, i);
+//   }
+//   for (size_t i = 0; i < TestFixture::kKeyNumForTest; ++i) {
+//     TestFixture::VerifyDelete(i);
+//   }
 
-  TestFixture::VerifyScan(0, true, true, 0, true, true, expected_ids, expected_ids);
-}
+//   TestFixture::VerifyScan(0, true, true, 0, true, true, expected_ids, expected_ids);
+// }
 
 /*--------------------------------------------------------------------------------------------------
  * Write operation

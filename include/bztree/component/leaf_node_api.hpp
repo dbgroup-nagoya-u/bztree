@@ -557,79 +557,80 @@ Read(  //
   return NodeReturnCode::kSuccess;
 }
 
-/**
- * @brief Perform a range scan with specified keys.
- *
- * If a begin/end key is nullptr, it is treated as negative or positive infinite.
- *
- * @tparam Key a target key class.
- * @tparam Payload a target payload class.
- * @tparam Compare a comparetor class for keys.
- * @param node a target node.
- * @param begin_k the pointer of a begin key of a range scan.
- * @param begin_closed a flag to indicate whether the begin side of a range is closed.
- * @param end_k the pointer of an end key of a range scan.
- * @param end_closed a flag to indicate whether the end side of a range is closed.
- * @param page a page to copy target keys/payloads. This argument is used internally.
- * @retval true if scanning finishes.
- * @retval false if scanning is in progress.
- */
-template <class Key, class Payload, class Compare>
-bool
-Scan(  //
-    const Node<Key, Payload, Compare> *node,
-    const Key *begin_k,
-    const bool begin_closed,
-    const Key *end_k,
-    const bool end_closed,
-    RecordPage<Key, Payload> *page)
-{
-  // sort records in an unsorted region
-  NewSortedMeta<Key, Payload, Compare> new_records;
-  size_t new_rec_num = 0;
-  _SortUnsortedRecords(node, begin_k, begin_closed, end_k, end_closed, new_records, new_rec_num);
+// /**
+//  * @brief Perform a range scan with specified keys.
+//  *
+//  * If a begin/end key is nullptr, it is treated as negative or positive infinite.
+//  *
+//  * @tparam Key a target key class.
+//  * @tparam Payload a target payload class.
+//  * @tparam Compare a comparetor class for keys.
+//  * @param node a target node.
+//  * @param begin_k the pointer of a begin key of a range scan.
+//  * @param begin_closed a flag to indicate whether the begin side of a range is closed.
+//  * @param end_k the pointer of an end key of a range scan.
+//  * @param end_closed a flag to indicate whether the end side of a range is closed.
+//  * @param page a page to copy target keys/payloads. This argument is used internally.
+//  * @retval true if scanning finishes.
+//  * @retval false if scanning is in progress.
+//  */
+// template <class Key, class Payload, class Compare>
+// bool
+// Scan(  //
+//     const Node<Key, Payload, Compare> *node,
+//     const Key *begin_k,
+//     const bool begin_closed,
+//     const Key *end_k,
+//     const bool end_closed,
+//     RecordPage<Key, Payload> *page)
+// {
+//   // sort records in an unsorted region
+//   NewSortedMeta<Key, Payload, Compare> new_records;
+//   size_t new_rec_num = 0;
+//   _SortUnsortedRecords(node, begin_k, begin_closed, end_k, end_closed, new_records, new_rec_num);
 
-  // sort all records by merge sort
-  MetaArray<Key, Payload, Compare> metadata;
-  size_t count = 0;
-  const auto scan_finished = _MergeSortedRecords(node, new_records, new_rec_num, begin_k,
-                                                 begin_closed, end_k, end_closed, metadata, count);
+//   // sort all records by merge sort
+//   MetaArray<Key, Payload, Compare> metadata;
+//   size_t count = 0;
+//   const auto scan_finished = _MergeSortedRecords(node, new_records, new_rec_num, begin_k,
+//                                                  begin_closed, end_k, end_closed, metadata,
+//                                                  count);
 
-  // copy scan results to a page for returning
-  std::byte *cur_addr = reinterpret_cast<std::byte *>(page) + component::kHeaderLength;
-  for (size_t i = 0; i < count; ++i) {
-    const Metadata meta = metadata[i];
-    if constexpr (IsVariableLengthData<Key>()) {
-      *(reinterpret_cast<uint32_t *>(cur_addr)) = meta.GetKeyLength();
-      cur_addr += sizeof(uint32_t);
-    }
-    if constexpr (IsVariableLengthData<Payload>()) {
-      *(reinterpret_cast<uint32_t *>(cur_addr)) = meta.GetPayloadLength();
-      cur_addr += sizeof(uint32_t);
-    }
-    if constexpr (CanCASUpdate<Payload>()) {
-      if constexpr (IsVariableLengthData<Key>()) {
-        memcpy(cur_addr, node->GetKeyAddr(meta), meta.GetKeyLength());
-        cur_addr += meta.GetKeyLength();
-      } else {
-        memcpy(cur_addr, node->GetKeyAddr(meta), sizeof(Key));
-        cur_addr += sizeof(Key);
-      }
-      *(reinterpret_cast<Payload *>(cur_addr)) =
-          MwCASDescriptor::Read<Payload>(node->GetPayloadAddr(meta));
-      cur_addr += kWordLength;
-    } else {
-      memcpy(cur_addr, node->GetKeyAddr(meta), meta.GetTotalLength());
-      cur_addr += meta.GetTotalLength();
-    }
-  }
-  page->SetEndAddress(cur_addr);
-  if (count > 0) {
-    page->SetLastKeyAddress(cur_addr - metadata[count - 1].GetTotalLength());
-  }
+//   // copy scan results to a page for returning
+//   std::byte *cur_addr = reinterpret_cast<std::byte *>(page) + component::kHeaderLength;
+//   for (size_t i = 0; i < count; ++i) {
+//     const Metadata meta = metadata[i];
+//     if constexpr (IsVariableLengthData<Key>()) {
+//       *(reinterpret_cast<uint32_t *>(cur_addr)) = meta.GetKeyLength();
+//       cur_addr += sizeof(uint32_t);
+//     }
+//     if constexpr (IsVariableLengthData<Payload>()) {
+//       *(reinterpret_cast<uint32_t *>(cur_addr)) = meta.GetPayloadLength();
+//       cur_addr += sizeof(uint32_t);
+//     }
+//     if constexpr (CanCASUpdate<Payload>()) {
+//       if constexpr (IsVariableLengthData<Key>()) {
+//         memcpy(cur_addr, node->GetKeyAddr(meta), meta.GetKeyLength());
+//         cur_addr += meta.GetKeyLength();
+//       } else {
+//         memcpy(cur_addr, node->GetKeyAddr(meta), sizeof(Key));
+//         cur_addr += sizeof(Key);
+//       }
+//       *(reinterpret_cast<Payload *>(cur_addr)) =
+//           MwCASDescriptor::Read<Payload>(node->GetPayloadAddr(meta));
+//       cur_addr += kWordLength;
+//     } else {
+//       memcpy(cur_addr, node->GetKeyAddr(meta), meta.GetTotalLength());
+//       cur_addr += meta.GetTotalLength();
+//     }
+//   }
+//   page->SetEndAddress(cur_addr);
+//   if (count > 0) {
+//     page->SetLastKeyAddress(cur_addr - metadata[count - 1].GetTotalLength());
+//   }
 
-  return scan_finished;
-}
+//   return scan_finished;
+// }
 
 /*################################################################################################
  * Write operations

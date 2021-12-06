@@ -214,16 +214,16 @@ TYPED_TEST_CASE(RecordPageFixture, KeyPayloadPairs);
  * Unit test definitions
  *################################################################################################*/
 
-TYPED_TEST(RecordPageFixture, GetLastKey_NotEmptyPage_ReturnExpectedKey)
-{  //
-  TestFixture::PreparePage(TestFixture::kKeyNumForTest);
-  TestFixture::VerifyGetLastKey(TestFixture::kKeyNumForTest);
-}
+// TYPED_TEST(RecordPageFixture, GetLastKey_NotEmptyPage_ReturnExpectedKey)
+// {  //
+//   TestFixture::PreparePage(TestFixture::kKeyNumForTest);
+//   TestFixture::VerifyGetLastKey(TestFixture::kKeyNumForTest);
+// }
 
-TYPED_TEST(RecordPageFixture, PlusPlusOperator_NotEmptyPage_ReadEveryRecord)
-{  //
-  TestFixture::PreparePage(TestFixture::kKeyNumForTest);
-  TestFixture::VerifyPlusPlusOperator(TestFixture::kKeyNumForTest);
-}
+// TYPED_TEST(RecordPageFixture, PlusPlusOperator_NotEmptyPage_ReadEveryRecord)
+// {  //
+//   TestFixture::PreparePage(TestFixture::kKeyNumForTest);
+//   TestFixture::VerifyPlusPlusOperator(TestFixture::kKeyNumForTest);
+// }
 
 }  // namespace dbgroup::index::bztree::component::test
