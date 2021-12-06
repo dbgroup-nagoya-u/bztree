@@ -246,23 +246,21 @@ class BzTree
     // freeze a target node and perform consolidation
     if (node->Freeze() != NodeReturnCode::kSuccess) return;
 
-    // gather sorted live metadata of a targetnode, and check whether split/merge is required
-    const auto [metadata, rec_count] = leaf::GatherSortedLiveMetadata(node);
-    const auto target_size = ComputeOccupiedSize(metadata, rec_count);
-    if (target_size > kPageSize - kMinFreeSpaceSize) {
-      SplitLeafNode(node, key, metadata, rec_count);
+    // create a consolidated node
+    auto *consolidated_node = CreateNewNode(kLeafFlag);
+    leaf::Consolidate(consolidated_node, node);
+
+    // check whether splitting/merging is needed
+    if (consolidated_node->GetFreeSpaceSize() < kMinFreeSpaceSize) {
+      Split(node, key);
       return;
-    } else if (rec_count < kMinSortedRecNum) {
+    } else if (consolidated_node->GetSortedCount() < kMinSortedRecNum) {
       if (MergeLeafNodes(node, key, key_length, target_size, metadata, rec_count)) return;
     }
 
-    // create a consolidated node
-    auto *new_node = CreateNewNode(kLeafFlag);
-    leaf::Consolidate(new_node, node, metadata, rec_count);
-
     // install a new node
     auto trace = TraceTargetNode(key, node);
-    InstallNewNode(trace, new_node, key, node);
+    InstallNewNode(trace, consolidated_node, key, node);
 
     // register frozen nodes with garbage collection
     gc_.AddGarbage(node);
@@ -279,38 +277,30 @@ class BzTree
    * @param rec_count the number of metadata.
    */
   void
-  SplitLeafNode(  //
+  Split(  //
       const Node_t *node,
-      const Key &key,
-      const MetaArray &metadata,
-      const size_t rec_count)
+      const Key &key)
   {
-    const size_t left_rec_count = rec_count / 2;
-    const auto split_key_length = metadata[left_rec_count - 1].GetKeyLength();
-
     /*----------------------------------------------------------------------------------------------
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
 
     NodeStack trace;
-    Node_t *parent = nullptr, *tmp_node;
-    size_t target_pos = 0;
+    Node_t *old_parent;
+    size_t target_pos;
     while (true) {
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(key, node);
+      Node_t *tmp_node{};
       std::tie(tmp_node, target_pos) = trace.back();
-      if (tmp_node != node) return;  // a target node was modified by concurrent merging
+
+      // check there is a target node in the index
+      if (tmp_node != node) return;
       trace.pop_back();
 
-      // check whether it is required to split a parent node
-      parent = trace.back().first;
-      if (NeedSplit(parent, split_key_length)) {
-        SplitInternalNode(parent, key);
-        continue;
-      }
-
       // pre-freezing of SMO targets
-      if (parent->Freeze() == NodeReturnCode::kSuccess) break;
+      old_parent = trace.back().first;
+      if (old_parent->Freeze() == NodeReturnCode::kSuccess) break;
     }
 
     /*----------------------------------------------------------------------------------------------
@@ -318,131 +308,151 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create split nodes
-    auto *right_node = CreateNewNode(kLeafFlag);
-    Split(node, right_node);
-
-    // create a new parent node
-    auto *new_parent = CreateNewNode(!kLeafFlag);
-    internal::NewParentForSplit(new_parent, parent, left_node, right_node, target_pos);
+    Node_t *new_parent;
+    if (node->IsLeaf()) {
+      const auto *right_node = LeafSplit(node);
+      new_parent = CreateParent(old_parent, node, right_node, target_pos);
+    } else {
+      const auto [left_node, right_node] = InternalSplit(node);
+      new_parent = CreateParent(old_parent, left_node, right_node, target_pos);
+    }
 
     // install new nodes
-    InstallNewNode(trace, new_parent, key, parent);
+    InstallNewNode(trace, new_parent, key, old_parent);
 
     // register frozen nodes with garbage collection
-    gc_.AddGarbage(node);
-    gc_.AddGarbage(parent);
-  }
+    gc_.AddGarbage(old_parent);
+    if (!node->IsLeaf()) {
+      gc_.AddGarbage(node);
+    }
 
-  /**
-   * @brief Split a target internal node.
-   *
-   * Note that this function may call itself recursively if needed.
-   *
-   * @param node a target internal node.
-   * @param key a target key.
-   */
-  void
-  SplitInternalNode(  //
-      Node_t *node,
-      const Key &key)
-  {
-    // get a split index and a corresponding key length
-    const auto left_rec_count = (node->GetSortedCount() / 2);
-    const auto split_key_length = node->GetMetadata(left_rec_count - 1).GetKeyLength();
-
-    /*----------------------------------------------------------------------------------------------
-     * Phase 1: preparation
-     *--------------------------------------------------------------------------------------------*/
-
-    NodeStack trace;
-    Node_t *parent = nullptr;
-    size_t target_pos = 0;
-    while (true) {
-      // check a target node is live
-      const auto target_status = node->GetStatusWordProtected();
-      if (target_status.IsFrozen()) return;
-
-      // trace and get the embedded index of a target node
-      trace = TraceTargetNode(key, node);
-      target_pos = trace.back().second;
-
-      MwCASDescriptor desc;
-      if (trace.size() > 1) {  // target is not a root node (i.e., there is a parent node)
-        trace.pop_back();
-        parent = trace.back().first;
-
-        // check whether it is required to split a parent node
-        if (NeedSplit(parent, split_key_length)) {
-          SplitInternalNode(parent, key);
-          continue;
-        }
-
-        // check a parent node is live
-        const auto parent_status = parent->GetStatusWordProtected();
-        if (parent_status.IsFrozen()) continue;
-
-        // pre-freezing of SMO targets
-        parent->SetStatusForMwCAS(desc, parent_status, parent_status.Freeze());
+    // split the new parent node if needed
+    if (new_parent->GetStatusWord().IsFrozen) {
+      if (trace.empty()) {
+        RootSplit(new_parent);
+      } else {
+        Split(new_parent, key);
       }
-
-      // pre-freezing of SMO targets
-      node->SetStatusForMwCAS(desc, target_status, target_status.Freeze());
-      if (desc.MwCAS()) break;
     }
-
-    /*----------------------------------------------------------------------------------------------
-     * Phase 2: installation
-     *--------------------------------------------------------------------------------------------*/
-
-    // create new nodes
-    auto *left_node = CreateNewNode(!kLeafFlag);
-    auto *right_node = CreateNewNode(!kLeafFlag);
-    internal::Split(left_node, right_node, node, left_rec_count);
-    auto *new_parent = CreateNewNode(!kLeafFlag);
-    if (parent != nullptr) {  // target is not a root node
-      internal::NewParentForSplit(new_parent, parent, left_node, right_node, target_pos);
-    } else {  // target is a root node
-      internal::CreateNewRoot(new_parent, left_node, right_node);
-      parent = node;  // set parent as a target node for installation
-    }
-
-    // install new nodes
-    InstallNewNode(trace, new_parent, key, parent);
-
-    // register frozen nodes with garbage collection
-    gc_.AddGarbage(node);
-    if (parent != node) gc_.AddGarbage(parent);
   }
 
-  void
-  Split(  //
-      Node_t *node,
-      Node_t *right_node)
+  auto
+  LeafSplit(Node_t *node)  //
+      -> Node_t *
   {
+    auto *r_node = CreateNewNode(kLeafFlag);
+
     // set a right-end flag if needed
     if (!node->HasNext()) {
       node->SetRightEndFlag(false);
-      right_node->SetRightEndFlag(true);
+      r_node->SetRightEndFlag(true);
     }
 
     // copy records from the consolidated node to a right node
-    const auto total_count = node->GetSortedCount();
-    const size_t l_count = total_count / 2;
-
-    auto r_offset = kPageSize;
-    if (node->IsLeaf()) {
-      r_offset = right_node->CopyRecordsFrom<Payload>(node, l_count, total_count, 0, r_offset);
-    } else {
-      r_offset = right_node->CopyRecordsFrom<Node_t *>(node, l_count, total_count, 0, r_offset);
-    }
+    const auto rec_count = node->GetSortedCount();
+    const size_t l_count = rec_count / 2;
+    auto offset = r_node->template CopyRecordsFrom<Payload>(node, l_count, rec_count, 0, kPageSize);
 
     // update headers of left/right nodes
-    const auto l_offset = node->GetMetadata(l_count).GetOffset();
     node->SetSortedCount(l_count);
-    node->SetStatus(StatusWord{l_count, kPageSize - l_offset});
-    const auto r_count = total_count - l_count;
-    right_node->SetSortedCount(r_count);
-    right_node->SetStatus(StatusWord{r_count, kPageSize - r_offset});
+    node->SetStatus(StatusWord{l_count, kPageSize - node->GetMetadata(l_count).GetOffset()});
+    const auto r_count = rec_count - l_count;
+    r_node->SetSortedCount(r_count);
+    r_node->SetStatus(StatusWord{r_count, kPageSize - offset});
+
+    return r_node;
+  }
+
+  auto
+  InternalSplit(const Node_t *node)  //
+      -> std::pair<Node_t *, Node_t *>
+  {
+    auto *l_node = CreateNewNode(!kLeafFlag);
+    auto *r_node = CreateNewNode(!kLeafFlag);
+
+    // set a right-end flag if needed
+    if (!node->HasNext()) {
+      l_node->SetRightEndFlag(false);
+      r_node->SetRightEndFlag(true);
+    }
+
+    // copy records to a left node
+    const auto rec_count = node->GetSortedCount();
+    const size_t l_count = rec_count / 2;
+    auto offset = l_node->template CopyRecordsFrom<Node_t *>(node, 0, l_count, 0, kPageSize);
+    node->SetSortedCount(l_count);
+    node->SetStatus(StatusWord{l_count, kPageSize - offset});
+
+    // copy records to a right node
+    offset = r_node->template CopyRecordsFrom<Node_t *>(node, l_count, rec_count, 0, kPageSize);
+    const auto r_count = rec_count - l_count;
+    r_node->SetSortedCount(r_count);
+    r_node->SetStatus(StatusWord{r_count, kPageSize - offset});
+
+    return {l_node, r_node};
+  }
+
+  void
+  RootSplit(const Node_t *node)
+  {
+    const auto [l_child, r_child] = InternalSplit(node);
+
+    auto *new_root = CreateNewNode(!kLeafFlag);
+    new_root->SetRightEndFlag(true);
+
+    // insert children nodes
+    const auto l_meta = l_child->GetMetadata(l_child->GetSortedCount() - 1);
+    auto offset = new_root->InsertChild(l_child, l_meta, l_child, 0, kPageSize);
+    const auto r_meta = r_child->GetMetadata(r_child->GetSortedCount() - 1);
+    offset = new_root->InsertChild(r_child, r_meta, r_child, 1, offset);
+
+    // set header information
+    new_root->SetSortedCount(2);
+    new_root->SetStatus(StatusWord{2, kPageSize - offset});
+
+    // install the new root node
+    reinterpret_cast<std::atomic<Node_t *> *>(root_)->store(new_root, std::memory_order_release);
+  }
+
+  auto
+  CreateParent(  //
+      const Node_t *old_node,
+      const Node_t *l_child,
+      const Node_t *r_child,
+      const size_t l_pos)  //
+      -> Node_t *
+  {
+    auto *new_node = CreateNewNode(!kLeafFlag);
+
+    // set a right-end flag if needed
+    if (!old_node->HasNext()) {
+      new_node->SetRightEndFlag(true);
+    }
+
+    // copy lower records
+    auto offset = new_node->CopyRecordsFrom<Node_t *>(old_node, 0, l_pos, 0, kPageSize);
+
+    // insert children nodes
+    const auto l_meta = l_child->GetMetadata(l_child->GetSortedCount() - 1);
+    offset = new_node->InsertChild(l_child, l_meta, l_child, l_pos, offset);
+    const auto r_meta = old_node->GetMetadata(l_pos);
+    const auto r_pos = l_pos + 1;
+    offset = new_node->InsertChild(old_node, r_meta, r_child, r_pos, offset);
+
+    // copy upper records
+    auto rec_count = old_node->GetSortedCount();
+    offset = new_node->CopyRecordsFrom<Node_t *>(old_node, r_pos, rec_count++, r_pos + 1, offset);
+
+    // set an updated header
+    new_node->SetSortedCount(rec_count);
+    const auto status = StatusWord{rec_count, kPageSize - offset};
+    if (status.GetFreeSpaceSize() < kMinFreeSpaceSize) {
+      new_node->SetStatus(status);
+    } else {  // freeze the node to split recursively
+      new_node->SetStatus(status.Freeze());
+    }
+
+    return new_node;
   }
 
   /**

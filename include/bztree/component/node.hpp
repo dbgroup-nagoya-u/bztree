@@ -205,6 +205,14 @@ class alignas(kCacheLineSize) Node
     return sorted_count_;
   }
 
+  auto
+  GetFreeSpaceSize() const  //
+      -> size_t
+  {
+    const auto status = GetStatusWordProtected();
+    return kPageSize - status.GetOccupiedSize();
+  }
+
   /**
    * @brief Read a status word without MwCAS read protection.
    *
@@ -430,6 +438,26 @@ class alignas(kCacheLineSize) Node
     }
   }
 
+  template <class T>
+  auto
+  SetRecord(  //
+      const Key &key,
+      const size_t key_length,
+      const T &payload,
+      const size_t payload_length,
+      size_t offset)  //
+      -> size_t
+  {
+    SetPayload(offset, payload, payload_length);
+    SetKey(offset, key, key_length);
+
+    if constexpr (CanCASUpdate<T>()) {
+      AlignOffset<Key>(offset);
+    }
+
+    return offset;
+  }
+
   /**
    * @brief Set an old/new status word pair to a MwCAS target.
    *
@@ -531,6 +559,23 @@ class alignas(kCacheLineSize) Node
     }
 
     return NodeReturnCode::kSuccess;
+  }
+
+  auto
+  InsertChild(  //
+      const Node *orig_node,
+      const Metadata orig_meta,
+      const Node *child_node,
+      const size_t rec_count,
+      size_t offset)  //
+      -> size_t
+  {
+    const auto key = orig_node->GetKey(orig_meta);
+    const auto key_len = orig_meta.GetKeyLength();
+    offset = SetRecord(key, key_len, child_node, kWordLength, offset);
+    SetMetadata(rec_count, Metadata{offset, key_len, key_len + kWordLength});
+
+    return offset;
   }
 
   template <class T>

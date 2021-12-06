@@ -260,46 +260,6 @@ CreateInitialRoot()
 }
 
 /**
- * @brief Split a target internal node.
- *
- * @tparam Key a target key class.
- * @tparam Payload a target payload class.
- * @tparam Compare a comparetor class for keys.
- * @param orig_node an original node.
- * @param left_rec_count the number of records in a split left node.
- * @return std::pair<Node_t*, Node_t*>: split left/right nodes.
- */
-template <class Key, class Payload, class Compare>
-void
-Split(  //
-    Node<Key, Payload, Compare> *left_node,
-    Node<Key, Payload, Compare> *right_node,
-    const Node<Key, Payload, Compare> *orig_node,
-    const size_t left_rec_count)
-{
-  const auto rec_count = orig_node->GetSortedCount();
-  const auto right_rec_count = rec_count - left_rec_count;
-
-  if (!orig_node->HasNext()) {
-    right_node->SetRightEndFlag();
-  }
-
-  // create a split left node
-  auto offset = kPageSize;
-  _CopySortedRecords(left_node, 0, offset, orig_node, 0, left_rec_count);
-
-  left_node->SetSortedCount(left_rec_count);
-  left_node->SetStatus(StatusWord{left_rec_count, kPageSize - offset});
-
-  // create a split right node
-  offset = kPageSize;
-  _CopySortedRecords(right_node, 0, offset, orig_node, left_rec_count, rec_count);
-
-  right_node->SetSortedCount(right_rec_count);
-  right_node->SetStatus(StatusWord{right_rec_count, kPageSize - offset});
-}
-
-/**
  * @brief Merge internal nodes.
  *
  * @tparam Key a target key class.
@@ -331,80 +291,6 @@ Merge(  //
 
   new_node->SetSortedCount(rec_count);
   new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
-}
-
-/**
- * @tparam Key a target key class.
- * @tparam Payload a target payload class.
- * @tparam Compare a comparetor class for keys.
- * @param left_child a left child node.
- * @param right_child a right child node.
- * @return Node_t*: a new root node.
- */
-template <class Key, class Payload, class Compare>
-void
-CreateNewRoot(  //
-    Node<Key, Payload, Compare> *new_root,
-    const Node<Key, Payload, Compare> *left_child,
-    const Node<Key, Payload, Compare> *right_child)
-{
-  new_root->SetRightEndFlag();
-
-  auto offset = kPageSize;
-
-  // insert children
-  _InsertChild(new_root, left_child, 0, offset);
-  _InsertChild(new_root, right_child, 1, offset);
-
-  // set a new header
-  new_root->SetSortedCount(2);
-  new_root->SetStatus(StatusWord{2, kPageSize - offset});
-}
-
-/**
- * @tparam Key a target key class.
- * @tparam Payload a target payload class.
- * @tparam Compare a comparetor class for keys.
- * @param old_parent an old parent node.
- * @param left_node a split left node.
- * @param right_node a split right node.
- * @param split_pos the position of a split node.
- * @return Node_t*: a new parent node of a split node.
- */
-template <class Key, class Payload, class Compare>
-void
-NewParentForSplit(  //
-    Node<Key, Payload, Compare> *new_parent,
-    const Node<Key, Payload, Compare> *old_parent,
-    const Node<Key, Payload, Compare> *left_node,
-    const Node<Key, Payload, Compare> *right_node,
-    const size_t split_pos)
-{
-  const auto rec_count = old_parent->GetSortedCount();
-
-  if (!old_parent->HasNext()) {
-    new_parent->SetRightEndFlag();
-  }
-
-  auto offset = kPageSize;
-  if (split_pos > 0) {
-    // copy left sorted records
-    _CopySortedRecords(new_parent, 0, offset, old_parent, 0, split_pos);
-  }
-
-  // insert split nodes
-  _InsertChild(new_parent, left_node, split_pos, offset);
-  _CopyChild(new_parent, right_node, split_pos + 1, offset, old_parent, split_pos);
-
-  if (split_pos < rec_count - 1) {
-    // copy right sorted records
-    _CopySortedRecords(new_parent, split_pos + 2, offset,  //
-                       old_parent, split_pos + 1, rec_count);
-  }
-
-  // set an updated header
-  new_parent->SetSortedCount(rec_count + 1);
-  new_parent->SetStatus(StatusWord{rec_count + 1, kPageSize - offset});
 }
 
 /**

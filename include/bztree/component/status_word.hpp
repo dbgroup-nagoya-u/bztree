@@ -161,6 +161,16 @@ class StatusWord
   }
 
   /**
+   * @return the free-space size in a node.
+   */
+  constexpr auto
+  GetFreeSpaceSize() const  //
+      -> size_t
+  {
+    return kPageSize - GetOccupiedSize();
+  }
+
+  /**
    * @return size_t: the total byte length of live metadata/records in a node.
    */
   constexpr size_t

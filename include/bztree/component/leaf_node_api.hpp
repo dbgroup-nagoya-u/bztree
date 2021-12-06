@@ -994,47 +994,6 @@ Consolidate(  //
 }
 
 /**
- * @brief Split a target leaf node.
- *
- * @tparam Key a target key class.
- * @tparam Payload a target payload class.
- * @tparam Compare a comparetor class for keys.
- * @param orig_node an original node.
- * @param metadata an array of consolidated metadata.
- * @param rec_count the number of metadata.
- * @param left_rec_count the number of records in a split left node.
- * @return std::pair<Node_t*, Node_t*>: split left/right nodes.
- */
-template <class Key, class Payload, class Compare>
-void
-Split(  //
-    Node<Key, Payload, Compare> *left_node,
-    Node<Key, Payload, Compare> *right_node,
-    const Node<Key, Payload, Compare> *orig_node,
-    const MetaArray<Key, Payload, Compare> &metadata,
-    const size_t rec_count,
-    const size_t left_rec_count)
-{
-  const auto right_rec_count = rec_count - left_rec_count;
-
-  if (!orig_node->HasNext()) {
-    right_node->SetRightEndFlag();
-  }
-
-  // create a split left node
-  auto offset = kPageSize;
-  _CopyRecords(left_node, 0, offset, orig_node, metadata, 0, left_rec_count);
-  left_node->SetSortedCount(left_rec_count);
-  left_node->SetStatus(StatusWord{left_rec_count, kPageSize - offset});
-
-  // create a split right node
-  offset = kPageSize;
-  _CopyRecords(right_node, 0, offset, orig_node, metadata, left_rec_count, rec_count);
-  right_node->SetSortedCount(right_rec_count);
-  right_node->SetStatus(StatusWord{right_rec_count, kPageSize - offset});
-}
-
-/**
  * @brief Merge leaf nodes.
  *
  * @tparam Key a target key class.
