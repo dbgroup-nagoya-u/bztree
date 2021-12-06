@@ -52,6 +52,7 @@ class InternalNodeFixture : public testing::Test
   static constexpr size_t kPayloadLength = kWordLength;
   static constexpr size_t kMaxNodeSize = kPageSize / 2;
   static constexpr size_t kDummyNodeNum = 10;
+  static constexpr bool kInterFlag = false;
 
   // actual keys and payloads
   size_t key_length;
@@ -194,7 +195,9 @@ class InternalNodeFixture : public testing::Test
     node.reset(PrepareDummyNode(kDummyNodeNum));
 
     const size_t left_rec_count = kDummyNodeNum / 2;
-    auto [left_node, right_node] = internal::Split(node.get(), left_rec_count);
+    auto *left_node = new Node_t{kInterFlag};
+    auto *right_node = new Node_t{kInterFlag};
+    internal::Split(left_node, right_node, node.get(), left_rec_count);
 
     VerifyInternalNode(left_node, left_rec_count);
     VerifyDummyChildren(left_node, left_rec_count, 0);
@@ -208,11 +211,12 @@ class InternalNodeFixture : public testing::Test
   void
   VerifyMerge()
   {
-    Node_t *sibling_node, *merged_node;
+    Node_t *sibling_node;
     node.reset(PrepareDummyNode(kDummyNodeNum));
     sibling_node = PrepareDummyNode(kDummyNodeNum, kDummyNodeNum);
 
-    merged_node = internal::Merge(node.get(), sibling_node);
+    auto *merged_node = new Node_t{kInterFlag};
+    internal::Merge(merged_node, node.get(), sibling_node);
 
     VerifyInternalNode(merged_node, kDummyNodeNum * 2);
     VerifyDummyChildren(merged_node, kDummyNodeNum * 2, 0);
@@ -228,7 +232,9 @@ class InternalNodeFixture : public testing::Test
     auto right_node = PrepareDummyNode(kDummyNodeNum);
     std::vector<Node_t *> expected_children = {left_node, right_node};
 
-    node.reset(internal::CreateNewRoot(left_node, right_node));
+    auto *new_root = new Node_t{kInterFlag};
+    internal::CreateNewRoot(new_root, left_node, right_node);
+    node.reset(new_root);
 
     VerifyInternalNode(node.get(), 2);
     VerifyChildren(node.get(), 2, &expected_children);
@@ -246,9 +252,15 @@ class InternalNodeFixture : public testing::Test
     auto right_left = PrepareDummyNode(kDummyNodeNum);
     auto right_right = PrepareDummyNode(kDummyNodeNum);
 
-    node.reset(internal::CreateNewRoot(init_left, init_right));
-    node.reset(internal::NewParentForSplit(node.get(), left_left, left_right, 0));
-    node.reset(internal::NewParentForSplit(node.get(), right_left, right_right, 2));
+    auto *new_node = new Node_t{kInterFlag};
+    internal::CreateNewRoot(new_node, init_left, init_right);
+    node.reset(new_node);
+    new_node = new Node_t{kInterFlag};
+    internal::NewParentForSplit(new_node, node.get(), left_left, left_right, 0);
+    node.reset(new_node);
+    new_node = new Node_t{kInterFlag};
+    internal::NewParentForSplit(new_node, node.get(), right_left, right_right, 2);
+    node.reset(new_node);
 
     std::vector<Node_t *> expected_children = {left_left, left_right, right_left, right_right};
 
@@ -271,11 +283,21 @@ class InternalNodeFixture : public testing::Test
     auto right_left = PrepareDummyNode(kDummyNodeNum);
     auto right_right = PrepareDummyNode(kDummyNodeNum);
 
-    node.reset(internal::CreateNewRoot(init_left, init_right));
-    node.reset(internal::NewParentForSplit(node.get(), left_left, left_right, 0));
-    node.reset(internal::NewParentForSplit(node.get(), right_left, right_right, 2));
-    node.reset(internal::NewParentForMerge(node.get(), init_left, 0));
-    node.reset(internal::NewParentForMerge(node.get(), init_right, 1));
+    auto *new_node = new Node_t{kInterFlag};
+    internal::CreateNewRoot(new_node, init_left, init_right);
+    node.reset(new_node);
+    new_node = new Node_t{kInterFlag};
+    internal::NewParentForSplit(new_node, node.get(), left_left, left_right, 0);
+    node.reset(new_node);
+    new_node = new Node_t{kInterFlag};
+    internal::NewParentForSplit(new_node, node.get(), right_left, right_right, 2);
+    node.reset(new_node);
+    new_node = new Node_t{kInterFlag};
+    internal::NewParentForMerge(new_node, node.get(), init_left, 0);
+    node.reset(new_node);
+    new_node = new Node_t{kInterFlag};
+    internal::NewParentForMerge(new_node, node.get(), init_right, 1);
+    node.reset(new_node);
 
     std::vector<Node_t *> expected_children = {init_left, init_right};
 

@@ -17,6 +17,7 @@
 #pragma once
 
 #include <stdlib.h>
+#include <string.h>
 
 #include <algorithm>
 #include <atomic>
@@ -60,7 +61,7 @@ class alignas(kCacheLineSize) Node
   StatusWord status_;
 
   /// the head of a metadata array.
-  Metadata meta_array_[0];
+  Metadata meta_array_[(kPageSize - kHeaderLength) / sizeof(Metadata)];
 
  public:
   /*################################################################################################
@@ -134,7 +135,12 @@ class alignas(kCacheLineSize) Node
    * @brief Destroy the node object.
    *
    */
-  ~Node() = default;
+  ~Node()
+  {
+    for (size_t i = 0; i < sizeof(meta_array_) / sizeof(Metadata); ++i) {
+      meta_array_[i] = Metadata{};
+    }
+  }
 
   Node(const Node &) = delete;
   Node &operator=(const Node &) = delete;
@@ -149,6 +155,12 @@ class alignas(kCacheLineSize) Node
   operator new(std::size_t)
   {
     return calloc(1UL, kPageSize);
+  }
+
+  static void *
+  operator new(std::size_t, void *where)
+  {
+    return where;
   }
 
   static void
