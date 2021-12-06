@@ -1142,6 +1142,10 @@ Consolidate(  //
     const MetaArray<Key, Payload, Compare> &metadata,
     const size_t rec_count)
 {
+  if (!orig_node->HasNext()) {
+    new_node->SetRightEndFlag();
+  }
+
   // copy records
   auto offset = kPageSize;
   _CopyRecords(new_node, 0, offset, orig_node, metadata, 0, rec_count);
@@ -1172,6 +1176,10 @@ Split(  //
     const size_t left_rec_count)
 {
   const auto right_rec_count = rec_count - left_rec_count;
+
+  if (!orig_node->HasNext()) {
+    right_node->SetRightEndFlag();
+  }
 
   // create a split left node
   auto offset = kPageSize;
@@ -1212,6 +1220,10 @@ Merge(  //
     const size_t r_rec_count)
 {
   const auto rec_count = l_rec_count + r_rec_count;
+
+  if (!right_node->HasNext()) {
+    new_node->SetRightEndFlag();
+  }
 
   // create a merged node
   auto offset = kPageSize;

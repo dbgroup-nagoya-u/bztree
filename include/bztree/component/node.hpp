@@ -48,11 +48,14 @@ class alignas(kCacheLineSize) Node
   /// the byte length of a node page.
   uint64_t node_size_ : 32;
 
+  /// the number of sorted records.
+  uint64_t sorted_count_ : 16;
+
   /// a flag to indicate whether this node is a leaf or internal node.
   uint64_t is_leaf_ : 1;
 
-  /// the number of sorted records.
-  uint64_t sorted_count_ : 16;
+  /// a flag to indicate whether this node is a right end node.
+  uint64_t is_right_end_ : 1;
 
   /// a black block for alignment.
   uint64_t : 0;
@@ -127,7 +130,7 @@ class alignas(kCacheLineSize) Node
    * @param is_leaf a flag to indicate whether a leaf node is constructed.
    */
   explicit Node(const bool is_leaf)
-      : node_size_{kPageSize}, is_leaf_{is_leaf}, sorted_count_{0}, status_{}
+      : node_size_{kPageSize}, sorted_count_{0}, is_leaf_{is_leaf}, is_right_end_{false}, status_{}
   {
   }
 
@@ -181,6 +184,16 @@ class alignas(kCacheLineSize) Node
   IsLeaf() const
   {
     return is_leaf_;
+  }
+
+  /**
+   * @retval true if this node has a next sibling node.
+   * @retval false otherwise.
+   */
+  constexpr bool
+  HasNext() const
+  {
+    return !static_cast<bool>(is_right_end_);
   }
 
   /**
@@ -317,6 +330,16 @@ class alignas(kCacheLineSize) Node
   SetSortedCount(const size_t sorted_count)
   {
     sorted_count_ = sorted_count;
+  }
+
+  /**
+   * @brief Set a right-end flag to this node.
+   *
+   */
+  void
+  SetRightEndFlag()
+  {
+    is_right_end_ = true;
   }
 
   /**

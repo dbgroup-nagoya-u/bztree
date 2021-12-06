@@ -73,7 +73,7 @@ class InternalNodeFixture : public testing::Test
   SetUp()
   {
     // initialize a leaf node and expected statistics
-    node.reset(new Node_t{kInternalFlag});
+    node.reset(new Node_t{!kLeafFlag});
 
     // prepare keys
     key_length = (IsVariableLengthData<Key>()) ? 7 : sizeof(Key);
@@ -99,7 +99,7 @@ class InternalNodeFixture : public testing::Test
       const size_t child_num,
       const size_t payload_begin = 0)
   {
-    auto dummy_node = new Node_t{kInternalFlag};
+    auto dummy_node = new Node_t{!kLeafFlag};
 
     // embeds dummy childrens
     auto offset = kPageSize;

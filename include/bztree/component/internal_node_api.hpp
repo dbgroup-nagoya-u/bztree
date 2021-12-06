@@ -33,9 +33,6 @@ using component::StatusWord;
 /// a flag to indicate leaf nodes.
 constexpr bool kLeafFlag = true;
 
-/// a flag to indicate internal nodes.
-constexpr bool kInternalFlag = false;
-
 /*################################################################################################
  * Internal utility functions
  *##############################################################################################*/
@@ -245,8 +242,10 @@ template <class Key, class Payload, class Compare>
 Node<Key, Payload, Compare> *
 CreateInitialRoot()
 {
-  auto root = new Node<Key, Payload, Compare>{kInternalFlag};
-  const auto leaf_node = new Node<Key, Payload, Compare>{kLeafFlag};
+  auto *root = new Node<Key, Payload, Compare>{!kLeafFlag};
+  root->SetRightEndFlag();
+  auto *leaf_node = new Node<Key, Payload, Compare>{kLeafFlag};
+  leaf_node->SetRightEndFlag();
 
   // set an inital leaf node
   auto offset = kPageSize;
@@ -280,6 +279,10 @@ Split(  //
 {
   const auto rec_count = orig_node->GetSortedCount();
   const auto right_rec_count = rec_count - left_rec_count;
+
+  if (!orig_node->HasNext()) {
+    right_node->SetRightEndFlag();
+  }
 
   // create a split left node
   auto offset = kPageSize;
@@ -317,6 +320,10 @@ Merge(  //
   const auto right_rec_count = right_node->GetSortedCount();
   const auto rec_count = left_rec_count + right_rec_count;
 
+  if (!right_node->HasNext()) {
+    new_node->SetRightEndFlag();
+  }
+
   // create a merged node
   auto offset = kPageSize;
   _CopySortedRecords(new_node, 0, offset, left_node, 0, left_rec_count);
@@ -341,6 +348,8 @@ CreateNewRoot(  //
     const Node<Key, Payload, Compare> *left_child,
     const Node<Key, Payload, Compare> *right_child)
 {
+  new_root->SetRightEndFlag();
+
   auto offset = kPageSize;
 
   // insert children
@@ -372,8 +381,12 @@ NewParentForSplit(  //
     const size_t split_pos)
 {
   const auto rec_count = old_parent->GetSortedCount();
-  auto offset = kPageSize;
 
+  if (!old_parent->HasNext()) {
+    new_parent->SetRightEndFlag();
+  }
+
+  auto offset = kPageSize;
   if (split_pos > 0) {
     // copy left sorted records
     _CopySortedRecords(new_parent, 0, offset, old_parent, 0, split_pos);
@@ -412,8 +425,12 @@ NewParentForMerge(  //
     const size_t del_pos)
 {
   const auto rec_count = old_parent->GetSortedCount();
-  auto offset = kPageSize;
 
+  if (!old_parent->HasNext()) {
+    new_parent->SetRightEndFlag();
+  }
+
+  auto offset = kPageSize;
   if (del_pos > 0) {
     // copy left sorted records
     _CopySortedRecords(new_parent, 0, offset, old_parent, 0, del_pos);

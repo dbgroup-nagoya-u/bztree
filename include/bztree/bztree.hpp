@@ -61,8 +61,6 @@ class BzTree
 
   static constexpr bool kLeafFlag = true;
 
-  static constexpr bool kInterFlag = false;
-
   /*################################################################################################
    * Internal member variables
    *##############################################################################################*/
@@ -79,6 +77,14 @@ class BzTree
   /*################################################################################################
    * Internal utility functions
    *##############################################################################################*/
+
+  auto
+  CreateNewNode(const bool is_leaf)  //
+      -> Node_t *
+  {
+    auto *page = gc_.template GetPageIfPossible<Node_t>();
+    return (page == nullptr) ? new Node_t{is_leaf} : new (page) Node_t{is_leaf};
+  }
 
   /**
    * @return Node_t*: a current root node.
@@ -251,8 +257,7 @@ class BzTree
     }
 
     // create a consolidated node
-    auto *page = gc_.template GetPageIfPossible<Node_t>();
-    auto *new_node = (page == nullptr) ? new Node_t{kLeafFlag} : new (page) Node_t{kLeafFlag};
+    auto *new_node = CreateNewNode(kLeafFlag);
     leaf::Consolidate(new_node, node, metadata, rec_count);
 
     // install a new node
@@ -312,14 +317,13 @@ class BzTree
      * Phase 2: installation
      *--------------------------------------------------------------------------------------------*/
 
-    // create new nodes
-    auto *page = gc_.template GetPageIfPossible<Node_t>();
-    auto *left_node = (page == nullptr) ? new Node_t{kLeafFlag} : new (page) Node_t{kLeafFlag};
-    page = gc_.template GetPageIfPossible<Node_t>();
-    auto *right_node = (page == nullptr) ? new Node_t{kLeafFlag} : new (page) Node_t{kLeafFlag};
+    // create split nodes
+    auto *left_node = CreateNewNode(kLeafFlag);
+    auto *right_node = CreateNewNode(kLeafFlag);
     leaf::Split(left_node, right_node, node, metadata, rec_count, left_rec_count);
-    page = gc_.template GetPageIfPossible<Node_t>();
-    auto *new_parent = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
+
+    // create a new parent node
+    auto *new_parent = CreateNewNode(!kLeafFlag);
     internal::NewParentForSplit(new_parent, parent, left_node, right_node, target_pos);
 
     // install new nodes
@@ -392,13 +396,10 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    auto *page = gc_.template GetPageIfPossible<Node_t>();
-    auto *left_node = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
-    page = gc_.template GetPageIfPossible<Node_t>();
-    auto *right_node = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
+    auto *left_node = CreateNewNode(!kLeafFlag);
+    auto *right_node = CreateNewNode(!kLeafFlag);
     internal::Split(left_node, right_node, node, left_rec_count);
-    page = gc_.template GetPageIfPossible<Node_t>();
-    auto *new_parent = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
+    auto *new_parent = CreateNewNode(!kLeafFlag);
     if (parent != nullptr) {  // target is not a root node
       internal::NewParentForSplit(new_parent, parent, left_node, right_node, target_pos);
     } else {  // target is a root node
@@ -479,8 +480,7 @@ class BzTree
 
     // create new nodes
     const auto [sib_meta, sib_rec_count] = leaf::GatherSortedLiveMetadata(sib_node);
-    auto *page = gc_.template GetPageIfPossible<Node_t>();
-    auto *merged_node = (page == nullptr) ? new Node_t{kLeafFlag} : new (page) Node_t{kLeafFlag};
+    auto *merged_node = CreateNewNode(kLeafFlag);
     size_t deleted_pos;
     if (sib_is_left) {
       leaf::Merge(merged_node, sib_node, sib_meta, sib_rec_count, node, metadata, rec_count);
@@ -489,8 +489,7 @@ class BzTree
       leaf::Merge(merged_node, node, metadata, rec_count, sib_node, sib_meta, sib_rec_count);
       deleted_pos = target_pos;
     }
-    page = gc_.template GetPageIfPossible<Node_t>();
-    auto *new_parent = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
+    auto *new_parent = CreateNewNode(!kLeafFlag);
     internal::NewParentForMerge(new_parent, parent, merged_node, deleted_pos);
 
     // install new nodes
@@ -566,8 +565,7 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    auto *page = gc_.template GetPageIfPossible<Node_t>();
-    auto *merged_node = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
+    auto *merged_node = CreateNewNode(!kLeafFlag);
     size_t deleted_pos;
     if (sib_is_left) {
       internal::Merge(merged_node, sib_node, node);
@@ -576,8 +574,7 @@ class BzTree
       internal::Merge(merged_node, node, sib_node);
       deleted_pos = target_pos;
     }
-    page = gc_.template GetPageIfPossible<Node_t>();
-    auto *new_parent = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
+    auto *new_parent = CreateNewNode(!kLeafFlag);
     internal::NewParentForMerge(new_parent, parent, merged_node, deleted_pos);
 
     // install new nodes
