@@ -50,7 +50,7 @@ class BaseNodeFixture : public testing::Test
   void
   SetUp() override
   {
-    node.reset(new Node_t{leaf::kLeafFlag});
+    node.reset(new Node_t{kLeafFlag});
 
     for (size_t index = 0; index < kKeyNumForTest; index++) {
       keys[index] = index + 1;
@@ -91,7 +91,7 @@ class BaseNodeFixture : public testing::Test
       const size_t begin_index,
       const size_t end_index)
   {
-    auto tmp_leaf_node = new Node_t{leaf::kLeafFlag};
+    auto tmp_leaf_node = new Node_t{kLeafFlag};
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
     auto [tmp_meta, rec_count] = leaf::GatherSortedLiveMetadata(tmp_leaf_node);
     auto new_node = new Node_t{kLeafFlag};

@@ -49,9 +49,6 @@ using MetaArray = std::array<Metadata, Node<Key, Payload, Compare>::kMaxRecordNu
 template <class Key, class Payload, class Compare>
 using NewSortedMeta = std::array<MetaRecord<Key, Payload, Compare>, kMaxUnsortedRecNum>;
 
-/// a flag to indicate leaf nodes.
-constexpr bool kLeafFlag = true;
-
 /*################################################################################################
  * Internal utility functions
  *##############################################################################################*/

@@ -61,6 +61,7 @@ class LeafNodeFixture : public testing::Test
   static constexpr size_t kKeyNumForTest = 1024;
   static constexpr size_t kKeyLength = kWordLength;
   static constexpr size_t kPayloadLength = kWordLength;
+  static constexpr bool kLeafFlag = true;
 
   /*################################################################################################
    * Internal member variables
