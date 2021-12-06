@@ -52,6 +52,7 @@ class InternalNodeFixture : public testing::Test
   static constexpr size_t kPayloadLength = kWordLength;
   static constexpr size_t kMaxNodeSize = kPageSize / 2;
   static constexpr size_t kDummyNodeNum = 10;
+  static constexpr bool kInterFlag = false;
 
   // actual keys and payloads
   size_t key_length;
@@ -194,7 +195,9 @@ class InternalNodeFixture : public testing::Test
     node.reset(PrepareDummyNode(kDummyNodeNum));
 
     const size_t left_rec_count = kDummyNodeNum / 2;
-    auto [left_node, right_node] = internal::Split(node.get(), left_rec_count);
+    auto *left_node = new Node_t{kInterFlag};
+    auto *right_node = new Node_t{kInterFlag};
+    internal::Split(left_node, right_node, node.get(), left_rec_count);
 
     VerifyInternalNode(left_node, left_rec_count);
     VerifyDummyChildren(left_node, left_rec_count, 0);

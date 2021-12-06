@@ -271,8 +271,10 @@ CreateInitialRoot()
  * @return std::pair<Node_t*, Node_t*>: split left/right nodes.
  */
 template <class Key, class Payload, class Compare>
-std::pair<Node<Key, Payload, Compare> *, Node<Key, Payload, Compare> *>
+void
 Split(  //
+    Node<Key, Payload, Compare> *left_node,
+    Node<Key, Payload, Compare> *right_node,
     const Node<Key, Payload, Compare> *orig_node,
     const size_t left_rec_count)
 {
@@ -280,7 +282,6 @@ Split(  //
   const auto right_rec_count = rec_count - left_rec_count;
 
   // create a split left node
-  auto left_node = new Node<Key, Payload, Compare>{kInternalFlag};
   auto offset = kPageSize;
   _CopySortedRecords(left_node, 0, offset, orig_node, 0, left_rec_count);
 
@@ -288,14 +289,11 @@ Split(  //
   left_node->SetStatus(StatusWord{left_rec_count, kPageSize - offset});
 
   // create a split right node
-  auto right_node = new Node<Key, Payload, Compare>{kInternalFlag};
   offset = kPageSize;
   _CopySortedRecords(right_node, 0, offset, orig_node, left_rec_count, rec_count);
 
   right_node->SetSortedCount(right_rec_count);
   right_node->SetStatus(StatusWord{right_rec_count, kPageSize - offset});
-
-  return {left_node, right_node};
 }
 
 /**

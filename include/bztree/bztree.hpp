@@ -61,7 +61,7 @@ class BzTree
 
   static constexpr bool kLeafFlag = true;
 
-  static constexpr bool kInternalFlag = false;
+  static constexpr bool kInterFlag = false;
 
   /*################################################################################################
    * Internal member variables
@@ -313,7 +313,11 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    const auto [left_node, right_node] = leaf::Split(node, metadata, rec_count, left_rec_count);
+    auto *page = gc_.template GetPageIfPossible<Node_t>();
+    auto *left_node = (page == nullptr) ? new Node_t{kLeafFlag} : new (page) Node_t{kLeafFlag};
+    page = gc_.template GetPageIfPossible<Node_t>();
+    auto *right_node = (page == nullptr) ? new Node_t{kLeafFlag} : new (page) Node_t{kLeafFlag};
+    leaf::Split(left_node, right_node, node, metadata, rec_count, left_rec_count);
     const auto new_parent = internal::NewParentForSplit(parent, left_node, right_node, target_pos);
 
     // install new nodes
@@ -386,7 +390,11 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    const auto [left_node, right_node] = internal::Split(node, left_rec_count);
+    auto *page = gc_.template GetPageIfPossible<Node_t>();
+    auto *left_node = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
+    page = gc_.template GetPageIfPossible<Node_t>();
+    auto *right_node = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
+    internal::Split(left_node, right_node, node, left_rec_count);
     Node_t *new_parent;
     if (parent != nullptr) {  // target is not a root node
       new_parent = internal::NewParentForSplit(parent, left_node, right_node, target_pos);

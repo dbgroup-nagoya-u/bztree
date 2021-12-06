@@ -1165,8 +1165,10 @@ Consolidate(  //
  * @return std::pair<Node_t*, Node_t*>: split left/right nodes.
  */
 template <class Key, class Payload, class Compare>
-std::pair<Node<Key, Payload, Compare> *, Node<Key, Payload, Compare> *>
+void
 Split(  //
+    Node<Key, Payload, Compare> *left_node,
+    Node<Key, Payload, Compare> *right_node,
     const Node<Key, Payload, Compare> *orig_node,
     const MetaArray<Key, Payload, Compare> &metadata,
     const size_t rec_count,
@@ -1175,20 +1177,16 @@ Split(  //
   const auto right_rec_count = rec_count - left_rec_count;
 
   // create a split left node
-  auto left_node = new Node<Key, Payload, Compare>{kLeafFlag};
   auto offset = kPageSize;
   _CopyRecords(left_node, 0, offset, orig_node, metadata, 0, left_rec_count);
   left_node->SetSortedCount(left_rec_count);
   left_node->SetStatus(StatusWord{left_rec_count, kPageSize - offset});
 
   // create a split right node
-  auto right_node = new Node<Key, Payload, Compare>{kLeafFlag};
   offset = kPageSize;
   _CopyRecords(right_node, 0, offset, orig_node, metadata, left_rec_count, rec_count);
   right_node->SetSortedCount(right_rec_count);
   right_node->SetStatus(StatusWord{right_rec_count, kPageSize - offset});
-
-  return {left_node, right_node};
 }
 
 /**
