@@ -232,7 +232,9 @@ class InternalNodeFixture : public testing::Test
     auto right_node = PrepareDummyNode(kDummyNodeNum);
     std::vector<Node_t *> expected_children = {left_node, right_node};
 
-    node.reset(internal::CreateNewRoot(left_node, right_node));
+    auto *new_root = new Node_t{kInterFlag};
+    internal::CreateNewRoot(new_root, left_node, right_node);
+    node.reset(new_root);
 
     VerifyInternalNode(node.get(), 2);
     VerifyChildren(node.get(), 2, &expected_children);
@@ -250,9 +252,15 @@ class InternalNodeFixture : public testing::Test
     auto right_left = PrepareDummyNode(kDummyNodeNum);
     auto right_right = PrepareDummyNode(kDummyNodeNum);
 
-    node.reset(internal::CreateNewRoot(init_left, init_right));
-    node.reset(internal::NewParentForSplit(node.get(), left_left, left_right, 0));
-    node.reset(internal::NewParentForSplit(node.get(), right_left, right_right, 2));
+    auto *new_node = new Node_t{kInterFlag};
+    internal::CreateNewRoot(new_node, init_left, init_right);
+    node.reset(new_node);
+    new_node = new Node_t{kInterFlag};
+    internal::NewParentForSplit(new_node, node.get(), left_left, left_right, 0);
+    node.reset(new_node);
+    new_node = new Node_t{kInterFlag};
+    internal::NewParentForSplit(new_node, node.get(), right_left, right_right, 2);
+    node.reset(new_node);
 
     std::vector<Node_t *> expected_children = {left_left, left_right, right_left, right_right};
 
@@ -275,11 +283,21 @@ class InternalNodeFixture : public testing::Test
     auto right_left = PrepareDummyNode(kDummyNodeNum);
     auto right_right = PrepareDummyNode(kDummyNodeNum);
 
-    node.reset(internal::CreateNewRoot(init_left, init_right));
-    node.reset(internal::NewParentForSplit(node.get(), left_left, left_right, 0));
-    node.reset(internal::NewParentForSplit(node.get(), right_left, right_right, 2));
-    node.reset(internal::NewParentForMerge(node.get(), init_left, 0));
-    node.reset(internal::NewParentForMerge(node.get(), init_right, 1));
+    auto *new_node = new Node_t{kInterFlag};
+    internal::CreateNewRoot(new_node, init_left, init_right);
+    node.reset(new_node);
+    new_node = new Node_t{kInterFlag};
+    internal::NewParentForSplit(new_node, node.get(), left_left, left_right, 0);
+    node.reset(new_node);
+    new_node = new Node_t{kInterFlag};
+    internal::NewParentForSplit(new_node, node.get(), right_left, right_right, 2);
+    node.reset(new_node);
+    new_node = new Node_t{kInterFlag};
+    internal::NewParentForMerge(new_node, node.get(), init_left, 0);
+    node.reset(new_node);
+    new_node = new Node_t{kInterFlag};
+    internal::NewParentForMerge(new_node, node.get(), init_right, 1);
+    node.reset(new_node);
 
     std::vector<Node_t *> expected_children = {init_left, init_right};
 

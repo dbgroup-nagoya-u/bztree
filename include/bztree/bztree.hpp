@@ -318,7 +318,9 @@ class BzTree
     page = gc_.template GetPageIfPossible<Node_t>();
     auto *right_node = (page == nullptr) ? new Node_t{kLeafFlag} : new (page) Node_t{kLeafFlag};
     leaf::Split(left_node, right_node, node, metadata, rec_count, left_rec_count);
-    const auto new_parent = internal::NewParentForSplit(parent, left_node, right_node, target_pos);
+    page = gc_.template GetPageIfPossible<Node_t>();
+    auto *new_parent = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
+    internal::NewParentForSplit(new_parent, parent, left_node, right_node, target_pos);
 
     // install new nodes
     InstallNewNode(trace, new_parent, key, parent);
@@ -395,11 +397,12 @@ class BzTree
     page = gc_.template GetPageIfPossible<Node_t>();
     auto *right_node = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
     internal::Split(left_node, right_node, node, left_rec_count);
-    Node_t *new_parent;
+    page = gc_.template GetPageIfPossible<Node_t>();
+    auto *new_parent = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
     if (parent != nullptr) {  // target is not a root node
-      new_parent = internal::NewParentForSplit(parent, left_node, right_node, target_pos);
+      internal::NewParentForSplit(new_parent, parent, left_node, right_node, target_pos);
     } else {  // target is a root node
-      new_parent = internal::CreateNewRoot(left_node, right_node);
+      internal::CreateNewRoot(new_parent, left_node, right_node);
       parent = node;  // set parent as a target node for installation
     }
 
@@ -486,7 +489,9 @@ class BzTree
       leaf::Merge(merged_node, node, metadata, rec_count, sib_node, sib_meta, sib_rec_count);
       deleted_pos = target_pos;
     }
-    const auto new_parent = internal::NewParentForMerge(parent, merged_node, deleted_pos);
+    page = gc_.template GetPageIfPossible<Node_t>();
+    auto *new_parent = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
+    internal::NewParentForMerge(new_parent, parent, merged_node, deleted_pos);
 
     // install new nodes
     InstallNewNode(trace, new_parent, key, parent);
@@ -571,7 +576,9 @@ class BzTree
       internal::Merge(merged_node, node, sib_node);
       deleted_pos = target_pos;
     }
-    const auto new_parent = internal::NewParentForMerge(parent, merged_node, deleted_pos);
+    page = gc_.template GetPageIfPossible<Node_t>();
+    auto *new_parent = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
+    internal::NewParentForMerge(new_parent, parent, merged_node, deleted_pos);
 
     // install new nodes
     InstallNewNode(trace, new_parent, key, parent);
