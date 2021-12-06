@@ -479,8 +479,10 @@ class LeafNodeFixture : public testing::Test
     }
     auto [right_meta, right_rec_count] = leaf::GatherSortedLiveMetadata(right_node.get());
 
-    node.reset(leaf::Merge(node.get(), left_meta, left_rec_count,  //
-                           right_node.get(), right_meta, right_rec_count));
+    auto *merged_node = new Node_t{kLeafFlag};
+    leaf::Merge(merged_node, node.get(), left_meta, left_rec_count,  //
+                right_node.get(), right_meta, right_rec_count);
+    node.reset(merged_node);
 
     expected_record_count = (left_end - left_begin + 1) + (right_end - right_begin + 1);
     expected_block_size = expected_record_count * record_length;

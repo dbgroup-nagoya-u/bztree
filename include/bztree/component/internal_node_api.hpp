@@ -307,8 +307,9 @@ Split(  //
  * @return Node_t*: a merged node.
  */
 template <class Key, class Payload, class Compare>
-Node<Key, Payload, Compare> *
+void
 Merge(  //
+    Node<Key, Payload, Compare> *new_node,
     const Node<Key, Payload, Compare> *left_node,
     const Node<Key, Payload, Compare> *right_node)
 {
@@ -317,15 +318,12 @@ Merge(  //
   const auto rec_count = left_rec_count + right_rec_count;
 
   // create a merged node
-  auto merged_node = new Node<Key, Payload, Compare>{kInternalFlag};
   auto offset = kPageSize;
-  _CopySortedRecords(merged_node, 0, offset, left_node, 0, left_rec_count);
-  _CopySortedRecords(merged_node, left_rec_count, offset, right_node, 0, right_rec_count);
+  _CopySortedRecords(new_node, 0, offset, left_node, 0, left_rec_count);
+  _CopySortedRecords(new_node, left_rec_count, offset, right_node, 0, right_rec_count);
 
-  merged_node->SetSortedCount(rec_count);
-  merged_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
-
-  return merged_node;
+  new_node->SetSortedCount(rec_count);
+  new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
 }
 
 /**

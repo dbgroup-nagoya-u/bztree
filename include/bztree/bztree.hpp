@@ -476,13 +476,14 @@ class BzTree
 
     // create new nodes
     const auto [sib_meta, sib_rec_count] = leaf::GatherSortedLiveMetadata(sib_node);
-    Node_t *merged_node;
+    auto *page = gc_.template GetPageIfPossible<Node_t>();
+    auto *merged_node = (page == nullptr) ? new Node_t{kLeafFlag} : new (page) Node_t{kLeafFlag};
     size_t deleted_pos;
     if (sib_is_left) {
-      merged_node = leaf::Merge(sib_node, sib_meta, sib_rec_count, node, metadata, rec_count);
+      leaf::Merge(merged_node, sib_node, sib_meta, sib_rec_count, node, metadata, rec_count);
       deleted_pos = target_pos - 1;
     } else {
-      merged_node = leaf::Merge(node, metadata, rec_count, sib_node, sib_meta, sib_rec_count);
+      leaf::Merge(merged_node, node, metadata, rec_count, sib_node, sib_meta, sib_rec_count);
       deleted_pos = target_pos;
     }
     const auto new_parent = internal::NewParentForMerge(parent, merged_node, deleted_pos);
@@ -560,13 +561,14 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    Node_t *merged_node;
+    auto *page = gc_.template GetPageIfPossible<Node_t>();
+    auto *merged_node = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
     size_t deleted_pos;
     if (sib_is_left) {
-      merged_node = internal::Merge(sib_node, node);
+      internal::Merge(merged_node, sib_node, node);
       deleted_pos = target_pos - 1;
     } else {
-      merged_node = internal::Merge(node, sib_node);
+      internal::Merge(merged_node, node, sib_node);
       deleted_pos = target_pos;
     }
     const auto new_parent = internal::NewParentForMerge(parent, merged_node, deleted_pos);

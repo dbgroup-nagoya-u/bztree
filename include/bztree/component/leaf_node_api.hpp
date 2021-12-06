@@ -1204,8 +1204,9 @@ Split(  //
  * @return Node_t*: a merged node.
  */
 template <class Key, class Payload, class Compare>
-Node<Key, Payload, Compare> *
+void
 Merge(  //
+    Node<Key, Payload, Compare> *new_node,
     const Node<Key, Payload, Compare> *left_node,
     const MetaArray<Key, Payload, Compare> &left_meta,
     const size_t l_rec_count,
@@ -1216,14 +1217,11 @@ Merge(  //
   const auto rec_count = l_rec_count + r_rec_count;
 
   // create a merged node
-  auto new_node = new Node<Key, Payload, Compare>{kLeafFlag};
   auto offset = kPageSize;
   _CopyRecords(new_node, 0, offset, left_node, left_meta, 0, l_rec_count);
   _CopyRecords(new_node, l_rec_count, offset, right_node, right_meta, 0, r_rec_count);
   new_node->SetSortedCount(rec_count);
   new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
-
-  return new_node;
 }
 
 /*################################################################################################

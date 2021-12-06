@@ -211,11 +211,12 @@ class InternalNodeFixture : public testing::Test
   void
   VerifyMerge()
   {
-    Node_t *sibling_node, *merged_node;
+    Node_t *sibling_node;
     node.reset(PrepareDummyNode(kDummyNodeNum));
     sibling_node = PrepareDummyNode(kDummyNodeNum, kDummyNodeNum);
 
-    merged_node = internal::Merge(node.get(), sibling_node);
+    auto *merged_node = new Node_t{kInterFlag};
+    internal::Merge(merged_node, node.get(), sibling_node);
 
     VerifyInternalNode(merged_node, kDummyNodeNum * 2);
     VerifyDummyChildren(merged_node, kDummyNodeNum * 2, 0);
