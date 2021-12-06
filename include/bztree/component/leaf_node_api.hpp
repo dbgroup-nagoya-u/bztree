@@ -283,14 +283,15 @@ _HasSpace(  //
  * @param count the number of metadata.
  */
 template <class Key, class Payload, class Compare>
-void
-_SortUnsortedRecords(  //
-    const Node<Key, Payload, Compare> *node,
-    NewSortedMeta<Key, Payload, Compare> &arr,
-    size_t &count)
+auto
+_SortNewRecords(const Node<Key, Payload, Compare> *node)  //
+    -> std::pair<size_t, NewSortedMeta<Key, Payload, Compare>>
 {
   const int64_t rec_count = node->GetStatusWordProtected().GetRecordCount();
   const int64_t sorted_count = node->GetSortedCount();
+
+  NewSortedMeta<Key, Payload, Compare> arr;
+  size_t count = 0;
 
   // sort unsorted records by insertion sort
   for (int64_t index = rec_count - 1; index >= sorted_count; --index) {
@@ -320,207 +321,8 @@ _SortUnsortedRecords(  //
       }
     }
   }
-}
 
-/**
- * @brief Sort unsorted metadata by using inserting sort for scanning.
- *
- * @tparam Key a target key class.
- * @tparam Payload a target payload class.
- * @tparam Compare a comparetor class for keys.
- * @param node a target leaf node.
- * @param begin_key the pointer of a begin key of a range scan.
- * @param begin_closed a flag to indicate whether the begin side of a range is closed.
- * @param end_key the pointer of an end key of a range scan.
- * @param end_closed a flag to indicate whether the end side of a range is closed.
- * @param arr a result array of sorted metadata.
- * @param count the number of metadata.
- */
-template <class Key, class Payload, class Compare>
-void
-_SortUnsortedRecords(  //
-    const Node<Key, Payload, Compare> *node,
-    const Key *begin_key,
-    const bool begin_closed,
-    const Key *end_key,
-    const bool end_closed,
-    NewSortedMeta<Key, Payload, Compare> &arr,
-    size_t &count)
-{
-  const int64_t rec_count = node->GetStatusWordProtected().GetRecordCount();
-  const int64_t sorted_count = node->GetSortedCount();
-
-  // sort unsorted records by insertion sort
-  for (int64_t index = rec_count - 1L; index >= sorted_count; --index) {
-    const auto meta = node->GetMetadataProtected(index);
-    if (!meta.IsInProgress()) {
-      auto key = node->GetKey(meta);
-      if (!IsInRange<Compare>(key, begin_key, begin_closed, end_key, end_closed)) continue;
-
-      if (count == 0) {
-        // insert a first record
-        arr[0] = MetaRecord<Key, Payload, Compare>{meta, std::move(key)};
-        ++count;
-        continue;
-      }
-
-      // insert a new record into an appropiate position
-      MetaRecord<Key, Payload, Compare> target{meta, node->GetKey(meta)};
-      const auto ins_iter = std::lower_bound(arr.begin(), arr.begin() + count, target);
-      if (*ins_iter != target) {
-        const size_t ins_id = std::distance(arr.begin(), ins_iter);
-        if (ins_id < count) {
-          // shift upper records
-          memmove(&(arr[ins_id + 1]), &(arr[ins_id]),
-                  sizeof(MetaRecord<Key, Payload, Compare>) * (count - ins_id));
-        }
-
-        // insert a new record
-        arr[ins_id] = std::move(target);
-        ++count;
-      }
-    }
-  }
-}
-
-/**
- * @brief Sort all metadata by using merge sort for SMOs.
- *
- * @tparam Key a target key class.
- * @tparam Payload a target payload class.
- * @tparam Compare a comparetor class for keys.
- * @param node a target leaf node.
- * @param new_records an array of metadata of new records.
- * @param new_rec_num the number of new records.
- * @param arr a result array of sorted metadata.
- * @param count the total number of metadata.
- */
-template <class Key, class Payload, class Compare>
-void
-_MergeSortedRecords(  //
-    const Node<Key, Payload, Compare> *node,
-    const NewSortedMeta<Key, Payload, Compare> &new_records,
-    const size_t new_rec_num,
-    MetaArray<Key, Payload, Compare> &arr,
-    size_t &count)
-{
-  const auto sorted_count = node->GetSortedCount();
-
-  size_t j = 0;
-  for (size_t i = 0; i < sorted_count; ++i) {
-    const auto meta = node->GetMetadataProtected(i);
-    MetaRecord<Key, Payload, Compare> target{meta, node->GetKey(meta)};
-
-    // move lower new records
-    for (; j < new_rec_num && new_records[j] < target; ++j) {
-      if (new_records[j].meta.IsVisible()) {
-        arr[count++] = new_records[j].meta;
-      }
-    }
-
-    // insert a target record
-    if (j < new_rec_num && new_records[j] == target) {
-      if (new_records[j].meta.IsVisible()) {
-        arr[count++] = new_records[j].meta;
-      }
-      ++j;
-    } else {
-      if (target.meta.IsVisible()) {
-        arr[count++] = meta;
-      }
-    }
-  }
-
-  // move remaining new records
-  for (; j < new_rec_num; ++j) {
-    if (new_records[j].meta.IsVisible()) {
-      arr[count++] = new_records[j].meta;
-    }
-  }
-}
-
-/**
- * @brief Sort all metadata by using merge sort for scanning.
- *
- * @tparam Key a target key class.
- * @tparam Payload a target payload class.
- * @tparam Compare a comparetor class for keys.
- * @param node a target leaf node.
- * @param new_records an array of metadata of new records.
- * @param new_rec_num the number of new records.
- * @param begin_key the pointer of a begin key of a range scan.
- * @param begin_closed a flag to indicate whether the begin side of a range is closed.
- * @param end_key the pointer of an end key of a range scan.
- * @param end_closed a flag to indicate whether the end side of a range is closed.
- * @param arr a result array of sorted metadata.
- * @param count the total number of metadata.
- * @retval true if scanning finishes.
- * @retval false if scanning is in progress.
- */
-template <class Key, class Payload, class Compare>
-bool
-_MergeSortedRecords(  //
-    const Node<Key, Payload, Compare> *node,
-    const NewSortedMeta<Key, Payload, Compare> &new_records,
-    const int64_t new_rec_num,
-    const Key *begin_k,
-    const bool begin_closed,
-    const Key *end_k,
-    const bool end_closed,
-    MetaArray<Key, Payload, Compare> &arr,
-    size_t &count)
-{
-  const int64_t sorted_count = node->GetSortedCount();
-
-  // search a begin index for scan
-  int64_t begin_index = 0;
-  if (begin_k != nullptr) {
-    KeyExistence rc;
-    std::tie(rc, begin_index) = _SearchSortedMetadata(node, *begin_k);
-    if (rc == KeyExistence::kDeleted || (rc == KeyExistence::kExist && !begin_closed)) {
-      ++begin_index;
-    }
-  }
-
-  int64_t j = 0;
-  bool scan_finished = false;
-  for (int64_t i = begin_index; i < sorted_count; ++i) {
-    const auto meta = node->GetMetadataProtected(i);
-    auto key = node->GetKey(meta);
-    if (end_k != nullptr && (Compare{}(*end_k, key) || (!end_closed && !Compare{}(key, *end_k)))) {
-      scan_finished = true;
-      break;
-    }
-
-    // move lower new records
-    MetaRecord<Key, Payload, Compare> target{meta, std::move(key)};
-    for (; j < new_rec_num && new_records[j] < target; ++j) {
-      if (new_records[j].meta.IsVisible()) {
-        arr[count++] = new_records[j].meta;
-      }
-    }
-
-    // insert a target record
-    if (j < new_rec_num && new_records[j] == target) {
-      if (new_records[j].meta.IsVisible()) {
-        arr[count++] = new_records[j].meta;
-      }
-      ++j;
-    } else {
-      if (target.meta.IsVisible()) {
-        arr[count++] = meta;
-      }
-    }
-  }
-
-  // move remaining new records
-  for (; j < new_rec_num; ++j) {
-    if (new_records[j].meta.IsVisible()) {
-      arr[count++] = new_records[j].meta;
-    }
-  }
-
-  return scan_finished;
+  return {count, arr};
 }
 
 /*################################################################################################
@@ -1130,26 +932,63 @@ Delete(  //
  * @tparam Key a target key class.
  * @tparam Payload a target payload class.
  * @tparam Compare a comparetor class for keys.
- * @param orig_node an original node.
- * @param metadata an array of consolidated metadata.
- * @param rec_count the number of metadata.
- * @return Node_t*: a consolidated node.
+ * @param new_node a consolidated node.
+ * @param old_node an original node.
  */
 template <class Key, class Payload, class Compare>
 void
 Consolidate(  //
     Node<Key, Payload, Compare> *new_node,
-    const Node<Key, Payload, Compare> *orig_node,
-    const MetaArray<Key, Payload, Compare> &metadata,
-    const size_t rec_count)
+    const Node<Key, Payload, Compare> *old_node)
 {
-  if (!orig_node->HasNext()) {
+  if (!old_node->HasNext()) {
     new_node->SetRightEndFlag();
   }
 
-  // copy records
-  auto offset = kPageSize;
-  _CopyRecords(new_node, 0, offset, orig_node, metadata, 0, rec_count);
+  // sort records in an unsorted region
+  const auto [new_rec_num, records] = _SortNewRecords(old_node);
+
+  // perform merge-sort to consolidate a node
+  const auto sorted_count = old_node->GetSortedCount();
+  size_t offset = kPageSize;
+  size_t rec_count = 0;
+
+  size_t j = 0;
+  for (size_t i = 0; i < sorted_count; ++i) {
+    const auto meta = node->GetMetadataProtected(i);
+    const auto key = node->GetKey(meta);
+
+    // copy new records
+    for (; j < new_rec_num; ++j) {
+      auto [target_meta, target_key] = records[j];
+      if (Compare{}(key, target_key)) break;
+
+      // check a new record is active
+      if (target_meta.IsVisible()) {
+        offset = new_node->CopyRecordFrom<Payload>(old_node, target_meta, rec_count++, offset);
+      }
+    }
+
+    // check a new record is updated one
+    if (j < new_rec_num && IsEqual(key, records[j].key)) {
+      const auto target_meta = records[j++].meta;
+      if (target_meta.IsVisible()) {
+        offset = new_node->CopyRecordFrom<Payload>(old_node, target_meta, rec_count++, offset);
+      }
+    } else if (meta.IsVisible()) {
+      offset = new_node->CopyRecordFrom<Payload>(old_node, meta, rec_count++, offset);
+    }
+  }
+
+  // move remaining new records
+  for (; j < new_rec_num; ++j) {
+    const auto target_meta = records[j++].meta;
+    if (target_meta.IsVisible()) {
+      offset = new_node->CopyRecordFrom<Payload>(old_node, target_meta, rec_count++, offset);
+    }
+  }
+
+  // set header information
   new_node->SetSortedCount(rec_count);
   new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
 }
@@ -1254,7 +1093,7 @@ GatherSortedLiveMetadata(const Node<Key, Payload, Compare> *node)
   // sort records in an unsorted region
   NewSortedMeta<Key, Payload, Compare> new_records;
   size_t new_rec_num = 0;
-  _SortUnsortedRecords(node, new_records, new_rec_num);
+  _SortNewRecords(node, new_records, new_rec_num);
 
   // sort all records by merge sort
   MetaArray<Key, Payload, Compare> results;

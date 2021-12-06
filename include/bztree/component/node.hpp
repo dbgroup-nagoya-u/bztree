@@ -532,6 +532,30 @@ class alignas(kCacheLineSize) Node
 
     return NodeReturnCode::kSuccess;
   }
+
+  template <class T>
+  auto
+  CopyRecordFrom(  //
+      const Node *orig_node,
+      const Metadata target_meta,
+      const size_t rec_count,
+      size_t offset)  //
+      -> size_t
+  {
+    // copy a record from the given node
+    const auto total_length = target_meta.GetTotalLength();
+    offset -= total_length;
+    memcpy(ShiftAddress(this, offset), orig_node->GetKeyAddr(target_meta), total_length);
+
+    // set new metadata
+    SetMetadata(rec_count, target_meta.UpdateOffset(offset));
+
+    if constexpr (CanCASUpdate<T>()) {
+      AlignOffset<Key>(offset);
+    }
+
+    return offset;
+  }
 };
 
 }  // namespace dbgroup::index::bztree::component
