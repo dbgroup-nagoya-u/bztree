@@ -337,9 +337,9 @@ class alignas(kCacheLineSize) Node
    *
    */
   void
-  SetRightEndFlag()
+  SetRightEndFlag(const bool is_right_end = true)
   {
-    is_right_end_ = true;
+    is_right_end_ = is_right_end;
   }
 
   /**
@@ -552,6 +552,25 @@ class alignas(kCacheLineSize) Node
 
     if constexpr (CanCASUpdate<T>()) {
       AlignOffset<Key>(offset);
+    }
+
+    return offset;
+  }
+
+  template <class T>
+  auto
+  CopyRecordsFrom(  //
+      const Node *orig_node,
+      const size_t begin_pos,
+      const size_t end_pos,
+      size_t rec_count,
+      size_t offset)  //
+      -> size_t
+  {
+    // copy records from the given node
+    for (size_t i = begin_pos; i < end_pos; ++i) {
+      const auto target_meta = orig_node->GetMetadata(i);
+      offset = CopyRecordFrom(orig_node, target_meta, rec_count++, offset);
     }
 
     return offset;

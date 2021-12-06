@@ -318,9 +318,8 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create split nodes
-    auto *left_node = CreateNewNode(kLeafFlag);
     auto *right_node = CreateNewNode(kLeafFlag);
-    leaf::Split(left_node, right_node, node, metadata, rec_count, left_rec_count);
+    Split(node, right_node);
 
     // create a new parent node
     auto *new_parent = CreateNewNode(!kLeafFlag);
@@ -413,6 +412,37 @@ class BzTree
     // register frozen nodes with garbage collection
     gc_.AddGarbage(node);
     if (parent != node) gc_.AddGarbage(parent);
+  }
+
+  void
+  Split(  //
+      Node_t *node,
+      Node_t *right_node)
+  {
+    // set a right-end flag if needed
+    if (!node->HasNext()) {
+      node->SetRightEndFlag(false);
+      right_node->SetRightEndFlag(true);
+    }
+
+    // copy records from the consolidated node to a right node
+    const auto total_count = node->GetSortedCount();
+    const size_t l_count = total_count / 2;
+
+    auto r_offset = kPageSize;
+    if (node->IsLeaf()) {
+      r_offset = right_node->CopyRecordsFrom<Payload>(node, l_count, total_count, 0, r_offset);
+    } else {
+      r_offset = right_node->CopyRecordsFrom<Node_t *>(node, l_count, total_count, 0, r_offset);
+    }
+
+    // update headers of left/right nodes
+    const auto l_offset = node->GetMetadata(l_count).GetOffset();
+    node->SetSortedCount(l_count);
+    node->SetStatus(StatusWord{l_count, kPageSize - l_offset});
+    const auto r_count = total_count - l_count;
+    right_node->SetSortedCount(r_count);
+    right_node->SetStatus(StatusWord{r_count, kPageSize - r_offset});
   }
 
   /**
