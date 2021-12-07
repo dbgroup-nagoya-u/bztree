@@ -32,6 +32,7 @@
 namespace dbgroup::index::bztree::leaf
 {
 using component::AlignOffset;
+using component::CanCASUpdate;
 using component::IsEqual;
 using component::IsInRange;
 using component::KeyExistence;
@@ -39,7 +40,6 @@ using component::Metadata;
 using component::MwCASDescriptor;
 using component::Node;
 using component::NodeReturnCode;
-using component::ReadMwCASField;
 using component::RecordPage;
 using component::StatusWord;
 
@@ -630,7 +630,7 @@ Scan(  //
         cur_addr += sizeof(Key);
       }
       *(reinterpret_cast<Payload *>(cur_addr)) =
-          ReadMwCASField<Payload>(node->GetPayloadAddr(meta));
+          MwCASDescriptor::Read<Payload>(node->GetPayloadAddr(meta));
       cur_addr += kWordLength;
     } else {
       memcpy(cur_addr, node->GetKeyAddr(meta), meta.GetTotalLength());
@@ -1149,20 +1149,18 @@ Delete(  //
  * @return Node_t*: a consolidated node.
  */
 template <class Key, class Payload, class Compare>
-Node<Key, Payload, Compare> *
+void
 Consolidate(  //
+    Node<Key, Payload, Compare> *new_node,
     const Node<Key, Payload, Compare> *orig_node,
     const MetaArray<Key, Payload, Compare> &metadata,
     const size_t rec_count)
 {
-  // create a new node and copy records
-  auto new_node = new Node<Key, Payload, Compare>{kLeafFlag};
+  // copy records
   auto offset = kPageSize;
   _CopyRecords(new_node, 0, offset, orig_node, metadata, 0, rec_count);
   new_node->SetSortedCount(rec_count);
   new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
-
-  return new_node;
 }
 
 /**
@@ -1178,8 +1176,10 @@ Consolidate(  //
  * @return std::pair<Node_t*, Node_t*>: split left/right nodes.
  */
 template <class Key, class Payload, class Compare>
-std::pair<Node<Key, Payload, Compare> *, Node<Key, Payload, Compare> *>
+void
 Split(  //
+    Node<Key, Payload, Compare> *left_node,
+    Node<Key, Payload, Compare> *right_node,
     const Node<Key, Payload, Compare> *orig_node,
     const MetaArray<Key, Payload, Compare> &metadata,
     const size_t rec_count,
@@ -1188,20 +1188,16 @@ Split(  //
   const auto right_rec_count = rec_count - left_rec_count;
 
   // create a split left node
-  auto left_node = new Node<Key, Payload, Compare>{kLeafFlag};
   auto offset = kPageSize;
   _CopyRecords(left_node, 0, offset, orig_node, metadata, 0, left_rec_count);
   left_node->SetSortedCount(left_rec_count);
   left_node->SetStatus(StatusWord{left_rec_count, kPageSize - offset});
 
   // create a split right node
-  auto right_node = new Node<Key, Payload, Compare>{kLeafFlag};
   offset = kPageSize;
   _CopyRecords(right_node, 0, offset, orig_node, metadata, left_rec_count, rec_count);
   right_node->SetSortedCount(right_rec_count);
   right_node->SetStatus(StatusWord{right_rec_count, kPageSize - offset});
-
-  return {left_node, right_node};
 }
 
 /**
@@ -1219,8 +1215,9 @@ Split(  //
  * @return Node_t*: a merged node.
  */
 template <class Key, class Payload, class Compare>
-Node<Key, Payload, Compare> *
+void
 Merge(  //
+    Node<Key, Payload, Compare> *new_node,
     const Node<Key, Payload, Compare> *left_node,
     const MetaArray<Key, Payload, Compare> &left_meta,
     const size_t l_rec_count,
@@ -1231,14 +1228,11 @@ Merge(  //
   const auto rec_count = l_rec_count + r_rec_count;
 
   // create a merged node
-  auto new_node = new Node<Key, Payload, Compare>{kLeafFlag};
   auto offset = kPageSize;
   _CopyRecords(new_node, 0, offset, left_node, left_meta, 0, l_rec_count);
   _CopyRecords(new_node, l_rec_count, offset, right_node, right_meta, 0, r_rec_count);
   new_node->SetSortedCount(rec_count);
   new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
-
-  return new_node;
 }
 
 /*################################################################################################

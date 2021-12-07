@@ -238,10 +238,18 @@ class Metadata
   }
 };
 
-// metadata must be represented by one word.
-static_assert(sizeof(Metadata) == kWordLength);
-
-// metadata must be trivially copyable.
-static_assert(std::is_trivially_copyable_v<Metadata>);
-
 }  // namespace dbgroup::index::bztree::component
+
+namespace dbgroup::atomic::mwcas
+{
+/**
+ * @brief Specialization for enabling MwCAS.
+ *
+ */
+template <>
+constexpr bool
+CanMwCAS<::dbgroup::index::bztree::component::Metadata>()
+{
+  return true;
+}
+}  // namespace dbgroup::atomic::mwcas

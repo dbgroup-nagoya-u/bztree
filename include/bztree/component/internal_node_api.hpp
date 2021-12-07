@@ -24,9 +24,10 @@
 namespace dbgroup::index::bztree::internal
 {
 using component::AlignOffset;
+using component::CanCASUpdate;
 using component::Metadata;
+using component::MwCASDescriptor;
 using component::Node;
-using component::ReadMwCASField;
 using component::StatusWord;
 
 /// a flag to indicate leaf nodes.
@@ -158,7 +159,7 @@ _CopySortedRecords(  //
     const auto meta = orig_node->GetMetadata(index);
     const auto key = orig_node->GetKey(meta);
     const auto child_addr =
-        ReadMwCASField<Node<Key, Payload, Compare> *>(orig_node->GetPayloadAddr(meta));
+        MwCASDescriptor::Read<Node<Key, Payload, Compare> *>(orig_node->GetPayloadAddr(meta));
     _SetChild(target_node, key, meta.GetKeyLength(), child_addr, offset);
 
     const auto new_meta = meta.UpdateOffset(offset);
@@ -227,7 +228,7 @@ GetChildNode(  //
     const size_t index)
 {
   const auto meta = node->GetMetadata(index);
-  return ReadMwCASField<Node<Key, Payload, Compare> *>(node->GetPayloadAddr(meta));
+  return MwCASDescriptor::Read<Node<Key, Payload, Compare> *>(node->GetPayloadAddr(meta));
 }
 
 /**
@@ -304,8 +305,10 @@ CreateInitialRoot()
  * @return std::pair<Node_t*, Node_t*>: split left/right nodes.
  */
 template <class Key, class Payload, class Compare>
-std::pair<Node<Key, Payload, Compare> *, Node<Key, Payload, Compare> *>
+void
 Split(  //
+    Node<Key, Payload, Compare> *left_node,
+    Node<Key, Payload, Compare> *right_node,
     const Node<Key, Payload, Compare> *orig_node,
     const size_t left_rec_count)
 {
@@ -313,7 +316,6 @@ Split(  //
   const auto right_rec_count = rec_count - left_rec_count;
 
   // create a split left node
-  auto left_node = new Node<Key, Payload, Compare>{kInternalFlag};
   auto offset = kPageSize;
   _CopySortedRecords(left_node, 0, offset, orig_node, 0, left_rec_count);
 
@@ -321,14 +323,11 @@ Split(  //
   left_node->SetStatus(StatusWord{left_rec_count, kPageSize - offset});
 
   // create a split right node
-  auto right_node = new Node<Key, Payload, Compare>{kInternalFlag};
   offset = kPageSize;
   _CopySortedRecords(right_node, 0, offset, orig_node, left_rec_count, rec_count);
 
   right_node->SetSortedCount(right_rec_count);
   right_node->SetStatus(StatusWord{right_rec_count, kPageSize - offset});
-
-  return {left_node, right_node};
 }
 
 /**
@@ -342,8 +341,9 @@ Split(  //
  * @return Node_t*: a merged node.
  */
 template <class Key, class Payload, class Compare>
-Node<Key, Payload, Compare> *
+void
 Merge(  //
+    Node<Key, Payload, Compare> *new_node,
     const Node<Key, Payload, Compare> *left_node,
     const Node<Key, Payload, Compare> *right_node)
 {
@@ -352,15 +352,12 @@ Merge(  //
   const auto rec_count = left_rec_count + right_rec_count;
 
   // create a merged node
-  auto merged_node = new Node<Key, Payload, Compare>{kInternalFlag};
   auto offset = kPageSize;
-  _CopySortedRecords(merged_node, 0, offset, left_node, 0, left_rec_count);
-  _CopySortedRecords(merged_node, left_rec_count, offset, right_node, 0, right_rec_count);
+  _CopySortedRecords(new_node, 0, offset, left_node, 0, left_rec_count);
+  _CopySortedRecords(new_node, left_rec_count, offset, right_node, 0, right_rec_count);
 
-  merged_node->SetSortedCount(rec_count);
-  merged_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
-
-  return merged_node;
+  new_node->SetSortedCount(rec_count);
+  new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
 }
 
 /**
@@ -372,13 +369,13 @@ Merge(  //
  * @return Node_t*: a new root node.
  */
 template <class Key, class Payload, class Compare>
-Node<Key, Payload, Compare> *
+void
 CreateNewRoot(  //
+    Node<Key, Payload, Compare> *new_root,
     const Node<Key, Payload, Compare> *left_child,
     const Node<Key, Payload, Compare> *right_child)
 {
   auto offset = kPageSize;
-  auto new_root = new Node<Key, Payload, Compare>{kInternalFlag};
 
   // insert children
   _InsertChild(new_root, left_child, 0, offset);
@@ -387,8 +384,6 @@ CreateNewRoot(  //
   // set a new header
   new_root->SetSortedCount(2);
   new_root->SetStatus(StatusWord{2, kPageSize - offset});
-
-  return new_root;
 }
 
 /**
@@ -402,15 +397,15 @@ CreateNewRoot(  //
  * @return Node_t*: a new parent node of a split node.
  */
 template <class Key, class Payload, class Compare>
-Node<Key, Payload, Compare> *
+void
 NewParentForSplit(  //
+    Node<Key, Payload, Compare> *new_parent,
     const Node<Key, Payload, Compare> *old_parent,
     const Node<Key, Payload, Compare> *left_node,
     const Node<Key, Payload, Compare> *right_node,
     const size_t split_pos)
 {
   const auto rec_count = old_parent->GetSortedCount();
-  auto new_parent = new Node<Key, Payload, Compare>{kInternalFlag};
   auto offset = kPageSize;
 
   if (split_pos > 0) {
@@ -431,8 +426,6 @@ NewParentForSplit(  //
   // set an updated header
   new_parent->SetSortedCount(rec_count + 1);
   new_parent->SetStatus(StatusWord{rec_count + 1, kPageSize - offset});
-
-  return new_parent;
 }
 
 /**
@@ -445,14 +438,14 @@ NewParentForSplit(  //
  * @return Node_t*: a new parent node of a merged node.
  */
 template <class Key, class Payload, class Compare>
-Node<Key, Payload, Compare> *
+void
 NewParentForMerge(  //
+    Node<Key, Payload, Compare> *new_parent,
     const Node<Key, Payload, Compare> *old_parent,
     const Node<Key, Payload, Compare> *merged_node,
     const size_t del_pos)
 {
   const auto rec_count = old_parent->GetSortedCount();
-  auto new_parent = new Node<Key, Payload, Compare>{kInternalFlag};
   auto offset = kPageSize;
 
   if (del_pos > 0) {
@@ -471,8 +464,6 @@ NewParentForMerge(  //
 
   new_parent->SetSortedCount(rec_count - 1);
   new_parent->SetStatus(StatusWord{rec_count - 1, kPageSize - offset});
-
-  return new_parent;
 }
 
 }  // namespace dbgroup::index::bztree::internal

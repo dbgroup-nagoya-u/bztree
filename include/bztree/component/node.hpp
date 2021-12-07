@@ -17,6 +17,7 @@
 #pragma once
 
 #include <stdlib.h>
+#include <string.h>
 
 #include <algorithm>
 #include <atomic>
@@ -60,7 +61,7 @@ class alignas(kCacheLineSize) Node
   StatusWord status_;
 
   /// the head of a metadata array.
-  Metadata meta_array_[0];
+  Metadata meta_array_[(kPageSize - kHeaderLength) / sizeof(Metadata)];
 
  public:
   /*################################################################################################
@@ -134,7 +135,12 @@ class alignas(kCacheLineSize) Node
    * @brief Destroy the node object.
    *
    */
-  ~Node() = default;
+  ~Node()
+  {
+    for (size_t i = 0; i < sizeof(meta_array_) / sizeof(Metadata); ++i) {
+      meta_array_[i] = Metadata{};
+    }
+  }
 
   Node(const Node &) = delete;
   Node &operator=(const Node &) = delete;
@@ -145,7 +151,17 @@ class alignas(kCacheLineSize) Node
    * new/delete definitions
    *##############################################################################################*/
 
-  static void *operator new(std::size_t) { return calloc(1UL, kPageSize); }
+  static void *
+  operator new(std::size_t)
+  {
+    return calloc(1UL, kPageSize);
+  }
+
+  static void *
+  operator new(std::size_t, void *where)
+  {
+    return where;
+  }
 
   static void
   operator delete(void *p) noexcept
@@ -201,7 +217,7 @@ class alignas(kCacheLineSize) Node
   StatusWord
   GetStatusWordProtected() const
   {
-    return ReadMwCASField<StatusWord>(&status_);
+    return MwCASDescriptor::Read<StatusWord>(&status_);
   }
 
   /**
@@ -229,7 +245,7 @@ class alignas(kCacheLineSize) Node
   Metadata
   GetMetadataProtected(const size_t position) const
   {
-    return ReadMwCASField<Metadata>(&meta_array_[position]);
+    return MwCASDescriptor::Read<Metadata>(&meta_array_[position]);
   }
 
   /**
@@ -286,7 +302,7 @@ class alignas(kCacheLineSize) Node
       out_payload = reinterpret_cast<Payload>(::operator new(payload_length));
       memcpy(out_payload, this->GetPayloadAddr(meta), payload_length);
     } else if constexpr (CanCASUpdate<Payload>()) {
-      out_payload = ReadMwCASField<Payload>(this->GetPayloadAddr(meta));
+      out_payload = MwCASDescriptor::Read<Payload>(this->GetPayloadAddr(meta));
     } else {
       memcpy(&out_payload, this->GetPayloadAddr(meta), sizeof(Payload));
     }

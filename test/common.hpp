@@ -50,6 +50,21 @@ struct MyClass {
   }
 };
 
+namespace dbgroup::atomic::mwcas
+{
+/**
+ * @brief Specialization to enable MwCAS to swap our sample class.
+ *
+ */
+template <>
+constexpr bool
+CanMwCAS<MyClass>()
+{
+  return true;
+}
+
+}  // namespace dbgroup::atomic::mwcas
+
 namespace dbgroup::index::bztree
 {
 /**
@@ -59,17 +74,6 @@ namespace dbgroup::index::bztree
 template <>
 constexpr bool
 IsVariableLengthData<char *>()
-{
-  return true;
-}
-
-/**
- * @brief An example specialization to enable CAS-based update.
- *
- */
-template <>
-constexpr bool
-CanCASUpdate<MyClass>()
 {
   return true;
 }

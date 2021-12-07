@@ -61,6 +61,7 @@ class LeafNodeFixture : public testing::Test
   static constexpr size_t kKeyNumForTest = 1024;
   static constexpr size_t kKeyLength = kWordLength;
   static constexpr size_t kPayloadLength = kWordLength;
+  static constexpr bool kLeafFlag = true;
 
   /*################################################################################################
    * Internal member variables
@@ -195,7 +196,9 @@ class LeafNodeFixture : public testing::Test
   Consolidation()
   {
     auto [metadata, rec_count] = leaf::GatherSortedLiveMetadata(node.get());
-    node.reset(leaf::Consolidate(node.get(), metadata, rec_count));
+    auto new_node = new Node_t{kLeafFlag};
+    leaf::Consolidate(new_node, node.get(), metadata, rec_count);
+    node.reset(new_node);
   }
 
   /*################################################################################################
@@ -442,7 +445,10 @@ class LeafNodeFixture : public testing::Test
   {
     WriteOrderedKeys(begin_index, end_index);
     auto [metadata, rec_count] = leaf::GatherSortedLiveMetadata(node.get());
-    auto [left_node, right_node] = leaf::Split(node.get(), metadata, rec_count, left_rec_count);
+
+    auto *left_node = new Node_t{kLeafFlag};
+    auto *right_node = new Node_t{kLeafFlag};
+    leaf::Split(left_node, right_node, node.get(), metadata, rec_count, left_rec_count);
 
     if (target_is_left) {
       node.reset(left_node);
@@ -474,8 +480,10 @@ class LeafNodeFixture : public testing::Test
     }
     auto [right_meta, right_rec_count] = leaf::GatherSortedLiveMetadata(right_node.get());
 
-    node.reset(leaf::Merge(node.get(), left_meta, left_rec_count,  //
-                           right_node.get(), right_meta, right_rec_count));
+    auto *merged_node = new Node_t{kLeafFlag};
+    leaf::Merge(merged_node, node.get(), left_meta, left_rec_count,  //
+                right_node.get(), right_meta, right_rec_count);
+    node.reset(merged_node);
 
     expected_record_count = (left_end - left_begin + 1) + (right_end - right_begin + 1);
     expected_block_size = expected_record_count * record_length;
