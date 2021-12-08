@@ -475,14 +475,16 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    const auto [left_node, right_node] = internal::Split(node, left_rec_count);
-    Node_t *new_parent;
+    auto *left_node = new Node_t{kInterFlag};
+    auto *right_node = new Node_t{kInterFlag};
+    internal::Split(left_node, right_node, node, left_rec_count);
+    auto *new_parent = new Node_t{kInterFlag};
     if (parent != nullptr) {  // target is not a root node
       // get the embedded index of a target node
       size_t target_pos = parent->GetSortedCount() - 1;
-      new_parent = internal::NewParentForSplit(parent, left_node, right_node, target_pos);
+      internal::NewParentForSplit(new_parent, parent, left_node, right_node, target_pos);
     } else {  // target is a root node
-      new_parent = internal::CreateNewRoot(left_node, right_node);
+      internal::CreateNewRoot(new_parent, left_node, right_node);
     }
 
     // install new nodes
