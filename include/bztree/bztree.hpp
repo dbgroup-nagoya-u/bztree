@@ -176,34 +176,6 @@ class BzTree
   }
 
   /**
-   * @brief Get a sibling node for merging.
-   *
-   * @param parent a parent node of a target node.
-   * @param target_pos the position of a target node in its parent.
-   * @param target_size the size of target node.
-   * @return std::pair<Node_t *, bool>: a sibling node if it can be merged. Note that a
-   * boolean value indicates that a sibing node is left (true) or right (false) side.
-   */
-  static std::pair<Node_t *, bool>
-  GetSiblingNode(  //
-      Node_t *parent,
-      const size_t target_pos,
-      const size_t target_size)
-  {
-    if (target_pos > 0) {
-      const auto sib_node = internal::GetChildNode(parent, target_pos - 1);
-      const auto sib_size = sib_node->GetStatusWordProtected().GetLiveDataSize();
-      if ((target_size + sib_size) < kPageSize / 2) return {sib_node, true};
-    }
-    if (target_pos < parent->GetSortedCount() - 1) {
-      const auto sib_node = internal::GetChildNode(parent, target_pos + 1);
-      const auto sib_size = sib_node->GetStatusWordProtected().GetLiveDataSize();
-      if ((target_size + sib_size) < kPageSize / 2) return {sib_node, false};
-    }
-    return {nullptr, false};
-  }
-
-  /**
    * @brief Compute the size of a data block of a consolidated node.
    *
    * @param metadata an array of metadata of a consolidated node.
@@ -249,10 +221,11 @@ class BzTree
     // create a consolidated node
     auto *consolidated_node = CreateNewNode(kLeafFlag);
     leaf::Consolidate(consolidated_node, node);
+    gc_.AddGarbage(node);
 
     // check whether splitting/merging is needed
     if (consolidated_node->GetFreeSpaceSize() < kMinFreeSpaceSize) {
-      Split(node, key);
+      Split(consolidated_node, key);
       return;
     } else if (consolidated_node->GetSortedCount() < kMinSortedRecNum) {
       if (MergeLeafNodes(node, key, key_length, target_size, metadata, rec_count)) return;
@@ -261,9 +234,6 @@ class BzTree
     // install a new node
     auto trace = TraceTargetNode(key, node);
     InstallNewNode(trace, consolidated_node, key, node);
-
-    // register frozen nodes with garbage collection
-    gc_.AddGarbage(node);
   }
 
   /**
@@ -278,7 +248,7 @@ class BzTree
    */
   void
   Split(  //
-      const Node_t *node,
+      Node_t *node,
       const Key &key)
   {
     /*----------------------------------------------------------------------------------------------
@@ -291,12 +261,13 @@ class BzTree
     while (true) {
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(key, node);
-      Node_t *tmp_node{};
-      std::tie(tmp_node, target_pos) = trace.back();
-
-      // check there is a target node in the index
-      if (tmp_node != node) return;
+      target_pos = trace.back().second;
       trace.pop_back();
+
+      if (trace.empty()) {
+        // if the target node is a root, insert a new root node
+        RootSplit(node);
+      }
 
       // pre-freezing of SMO targets
       old_parent = trace.back().first;
@@ -307,14 +278,21 @@ class BzTree
      * Phase 2: installation
      *--------------------------------------------------------------------------------------------*/
 
-    // create split nodes
-    Node_t *new_parent;
-    if (node->IsLeaf()) {
-      const auto *right_node = LeafSplit(node);
-      new_parent = CreateParent(old_parent, node, right_node, target_pos);
+    // create split nodes and its parent node
+    const auto is_leaf = node->IsLeaf();
+    Node_t *left_node = (is_leaf) ? node : CreateNewNode(!kLeafFlag);
+    Node_t *right_node = CreateNewNode(is_leaf);
+    if (is_leaf) {
+      InnerSplit<Payload>(node, left_node, right_node);
     } else {
-      const auto [left_node, right_node] = InternalSplit(node);
-      new_parent = CreateParent(old_parent, left_node, right_node, target_pos);
+      InnerSplit<Node_t *>(node, left_node, right_node);
+    }
+    Node_t *new_parent = CreateParent(old_parent, left_node, right_node, target_pos);
+
+    // check the parent node has sufficent capacity
+    const auto parent_need_split = new_parent->GetFreeSpaceSize() < kMinFreeSpaceSize;
+    if (parent_need_split) {
+      new_parent->Freeze();  // pre-freeze for recursive splitting
     }
 
     // install new nodes
@@ -322,54 +300,23 @@ class BzTree
 
     // register frozen nodes with garbage collection
     gc_.AddGarbage(old_parent);
-    if (!node->IsLeaf()) {
+    if (!is_leaf) {
       gc_.AddGarbage(node);
     }
 
     // split the new parent node if needed
-    if (new_parent->GetStatusWord().IsFrozen) {
-      if (trace.empty()) {
-        RootSplit(new_parent);
-      } else {
-        Split(new_parent, key);
-      }
+    if (parent_need_split) {
+      Split(new_parent, key);
     }
   }
 
-  auto
-  LeafSplit(Node_t *node)  //
-      -> Node_t *
+  template <class T>
+  void
+  InnerSplit(  //
+      Node_t *node,
+      Node_t *l_node,
+      Node_t *r_node)
   {
-    auto *r_node = CreateNewNode(kLeafFlag);
-
-    // set a right-end flag if needed
-    if (!node->HasNext()) {
-      node->SetRightEndFlag(false);
-      r_node->SetRightEndFlag(true);
-    }
-
-    // copy records from the consolidated node to a right node
-    const auto rec_count = node->GetSortedCount();
-    const size_t l_count = rec_count / 2;
-    auto offset = r_node->template CopyRecordsFrom<Payload>(node, l_count, rec_count, 0, kPageSize);
-
-    // update headers of left/right nodes
-    node->SetSortedCount(l_count);
-    node->SetStatus(StatusWord{l_count, kPageSize - node->GetMetadata(l_count).GetOffset()});
-    const auto r_count = rec_count - l_count;
-    r_node->SetSortedCount(r_count);
-    r_node->SetStatus(StatusWord{r_count, kPageSize - offset});
-
-    return r_node;
-  }
-
-  auto
-  InternalSplit(const Node_t *node)  //
-      -> std::pair<Node_t *, Node_t *>
-  {
-    auto *l_node = CreateNewNode(!kLeafFlag);
-    auto *r_node = CreateNewNode(!kLeafFlag);
-
     // set a right-end flag if needed
     if (!node->HasNext()) {
       l_node->SetRightEndFlag(false);
@@ -379,25 +326,35 @@ class BzTree
     // copy records to a left node
     const auto rec_count = node->GetSortedCount();
     const size_t l_count = rec_count / 2;
-    auto offset = l_node->template CopyRecordsFrom<Node_t *>(node, 0, l_count, 0, kPageSize);
-    node->SetSortedCount(l_count);
-    node->SetStatus(StatusWord{l_count, kPageSize - offset});
+    size_t l_offset;
+    if constexpr (std::is_same_v<T, Node_t *>) {
+      l_offset = l_node->CopyRecordsFrom<T>(node, 0, l_count, 0, kPageSize);
+    } else {  // when splitting a leaf node, only update its offset
+      l_offset = l_node->GetMetadata(l_count - 1).GetOffset();
+    }
+    l_node->SetSortedCount(l_count);
+    l_node->SetStatus(StatusWord{l_count, kPageSize - l_offset});
 
     // copy records to a right node
-    offset = r_node->template CopyRecordsFrom<Node_t *>(node, l_count, rec_count, 0, kPageSize);
+    const auto r_offset = r_node->CopyRecordsFrom<T>(node, l_count, rec_count, 0, kPageSize);
     const auto r_count = rec_count - l_count;
     r_node->SetSortedCount(r_count);
-    r_node->SetStatus(StatusWord{r_count, kPageSize - offset});
-
-    return {l_node, r_node};
+    r_node->SetStatus(StatusWord{r_count, kPageSize - r_offset});
   }
 
   void
-  RootSplit(const Node_t *node)
+  RootSplit(Node_t *node)
   {
-    const auto [l_child, r_child] = InternalSplit(node);
-
-    auto *new_root = CreateNewNode(!kLeafFlag);
+    // create split nodes and its parent node
+    const auto is_leaf = node->IsLeaf();
+    Node_t *l_child = (is_leaf) ? node : CreateNewNode(!kLeafFlag);
+    Node_t *r_child = CreateNewNode(is_leaf);
+    if (is_leaf) {
+      InnerSplit<Payload>(node, l_child, r_child);
+    } else {
+      InnerSplit<Node_t *>(node, l_child, r_child);
+    }
+    Node_t *new_root = CreateNewNode(!kLeafFlag);
     new_root->SetRightEndFlag(true);
 
     // insert children nodes
@@ -422,7 +379,7 @@ class BzTree
       const size_t l_pos)  //
       -> Node_t *
   {
-    auto *new_node = CreateNewNode(!kLeafFlag);
+    Node_t *new_node = CreateNewNode(!kLeafFlag);
 
     // set a right-end flag if needed
     if (!old_node->HasNext()) {
@@ -432,7 +389,7 @@ class BzTree
     // copy lower records
     auto offset = new_node->CopyRecordsFrom<Node_t *>(old_node, 0, l_pos, 0, kPageSize);
 
-    // insert children nodes
+    // insert split nodes
     const auto l_meta = l_child->GetMetadata(l_child->GetSortedCount() - 1);
     offset = new_node->InsertChild(l_child, l_meta, l_child, l_pos, offset);
     const auto r_meta = old_node->GetMetadata(l_pos);
@@ -441,16 +398,11 @@ class BzTree
 
     // copy upper records
     auto rec_count = old_node->GetSortedCount();
-    offset = new_node->CopyRecordsFrom<Node_t *>(old_node, r_pos, rec_count++, r_pos + 1, offset);
+    offset = new_node->CopyRecordsFrom<Node_t *>(old_node, r_pos, rec_count, r_pos + 1, offset);
 
     // set an updated header
-    new_node->SetSortedCount(rec_count);
-    const auto status = StatusWord{rec_count, kPageSize - offset};
-    if (status.GetFreeSpaceSize() < kMinFreeSpaceSize) {
-      new_node->SetStatus(status);
-    } else {  // freeze the node to split recursively
-      new_node->SetStatus(status.Freeze());
-    }
+    new_node->SetSortedCount(++rec_count);
+    new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
 
     return new_node;
   }
@@ -474,23 +426,20 @@ class BzTree
       const Node_t *node,
       const Key &key,
       const size_t key_length,
-      const size_t target_size,
-      const MetaArray &metadata,
-      const size_t rec_count)
+      const size_t target_size)
   {
     /*----------------------------------------------------------------------------------------------
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
 
     NodeStack trace;
-    Node_t *parent = nullptr, *sib_node = nullptr, *tmp_node;
+    Node_t *parent = nullptr, *sib_node = nullptr;
     bool sib_is_left = true;
     size_t target_pos = 0;
     while (true) {
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(key, node);
-      std::tie(tmp_node, target_pos) = trace.back();
-      if (tmp_node != node) return true;  // a target node was modified by concurrent merging
+      target_pos = trace.back().second;
       trace.pop_back();
 
       // check a parent node is live
