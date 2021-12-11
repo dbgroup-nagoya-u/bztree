@@ -206,6 +206,13 @@ class alignas(kCacheLineSize) Node
   }
 
   auto
+  GetUsedSize() const  //
+      -> size_t
+  {
+    return GetStatusWordProtected().GetOccupiedSize();
+  }
+
+  auto
   GetFreeSpaceSize() const  //
       -> size_t
   {

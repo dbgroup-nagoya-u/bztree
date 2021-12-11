@@ -95,6 +95,16 @@ class BzTree
     return MwCASDescriptor::Read<Node_t *>(&root_);
   }
 
+  auto
+  GetChild(  //
+      const Node_t *node,
+      const size_t position)  //
+      -> Node_t *
+  {
+    const auto meta = node->GetMetadata(position);
+    return MwCASDescriptor::Read<Node_t *>(node->GetPayloadAddr(meta));
+  }
+
   /**
    * @brief Search a leaf node with a specified key.
    *
@@ -156,44 +166,6 @@ class BzTree
     trace.emplace_back(current_node, index);
 
     return trace;
-  }
-
-  /**
-   * @brief Check whether a target node should be split.
-   *
-   * @param internal_node a target node.
-   * @param key_length the length of a target key.
-   * @retval true if a target node should be split.
-   * @retval false if a target node do not need to be split.
-   */
-  static constexpr bool
-  NeedSplit(  //
-      const Node_t *internal_node,
-      const size_t key_length)
-  {
-    return internal_node->GetStatusWordProtected().GetOccupiedSize() + key_length
-           > kPageSize - 2 * kWordLength;
-  }
-
-  /**
-   * @brief Compute the size of a data block of a consolidated node.
-   *
-   * @param metadata an array of metadata of a consolidated node.
-   * @param rec_count the number of metadata.
-   * @return constexpr size_t: the size of a data block.
-   */
-  static constexpr size_t
-  ComputeOccupiedSize(  //
-      const MetaArray &metadata,
-      const size_t rec_count)
-  {
-    size_t block_size = 0;
-    for (size_t i = 0; i < rec_count; ++i) {
-      block_size += metadata[i].GetTotalLength();
-    }
-    block_size += component::kHeaderLength + (kWordLength * rec_count);
-
-    return block_size;
   }
 
   /*################################################################################################
@@ -408,95 +380,6 @@ class BzTree
   }
 
   /**
-   * @brief Merge a target leaf node.
-   *
-   * Note that this function may call a merge function for internal nodes if needed.
-   *
-   * @param node a target leaf node.
-   * @param key a target key.
-   * @param key_length the length of a target key.
-   * @param target_size the size of a target leaf node.
-   * @param metadata an array of consolidated metadata.
-   * @param rec_count the number of metadata.
-   * @retval true if a target leaf node is merged.
-   * @retval false if a target leaf node is not merged.
-   */
-  bool
-  MergeLeafNodes(  //
-      const Node_t *node,
-      const Key &key,
-      const size_t key_length,
-      const size_t target_size)
-  {
-    /*----------------------------------------------------------------------------------------------
-     * Phase 1: preparation
-     *--------------------------------------------------------------------------------------------*/
-
-    NodeStack trace;
-    Node_t *parent = nullptr, *sib_node = nullptr;
-    bool sib_is_left = true;
-    size_t target_pos = 0;
-    while (true) {
-      // trace and get the embedded index of a target node
-      trace = TraceTargetNode(key, node);
-      target_pos = trace.back().second;
-      trace.pop_back();
-
-      // check a parent node is live
-      parent = trace.back().first;
-      const auto parent_status = parent->GetStatusWordProtected();
-      if (parent_status.IsFrozen()) continue;
-
-      // check a left/right sibling node is live
-      std::tie(sib_node, sib_is_left) = GetSiblingNode(parent, target_pos, target_size);
-      if (sib_node == nullptr) return false;  // there is no live sibling node
-      const auto sibling_status = sib_node->GetStatusWordProtected();
-      if (sibling_status.IsFrozen()) {
-        if (sib_is_left) continue;
-        return false;
-      }
-
-      // pre-freezing of SMO targets
-      MwCASDescriptor desc;
-      parent->SetStatusForMwCAS(desc, parent_status, parent_status.Freeze());
-      sib_node->SetStatusForMwCAS(desc, sibling_status, sibling_status.Freeze());
-      if (desc.MwCAS()) break;
-    }
-
-    /*----------------------------------------------------------------------------------------------
-     * Phase 2: installation
-     *--------------------------------------------------------------------------------------------*/
-
-    // create new nodes
-    const auto [sib_meta, sib_rec_count] = leaf::GatherSortedLiveMetadata(sib_node);
-    auto *merged_node = CreateNewNode(kLeafFlag);
-    size_t deleted_pos;
-    if (sib_is_left) {
-      leaf::Merge(merged_node, sib_node, sib_meta, sib_rec_count, node, metadata, rec_count);
-      deleted_pos = target_pos - 1;
-    } else {
-      leaf::Merge(merged_node, node, metadata, rec_count, sib_node, sib_meta, sib_rec_count);
-      deleted_pos = target_pos;
-    }
-    auto *new_parent = CreateNewNode(!kLeafFlag);
-    internal::NewParentForMerge(new_parent, parent, merged_node, deleted_pos);
-
-    // install new nodes
-    InstallNewNode(trace, new_parent, key, parent);
-
-    // register frozen nodes with garbage collection
-    gc_.AddGarbage(node);
-    gc_.AddGarbage(parent);
-    gc_.AddGarbage(sib_node);
-
-    // check whether it is required to merge a new parent node
-    if (trace.size() != 0 && new_parent->GetSortedCount() < kMinSortedRecNum) {
-      MergeInternalNodes(new_parent, key, key_length);
-    }
-    return true;
-  }
-
-  /**
    * @brief Merge a target internal node.
    *
    * Note that this function may call itself recursively if needed.
@@ -505,47 +388,46 @@ class BzTree
    * @param key a target key.
    * @param key_length the length of a target key.
    */
-  void
-  MergeInternalNodes(  //
+  auto
+  Merge(  //
       Node_t *node,
-      const Key &key,
-      const size_t key_length)
+      const Key &key)  //
+      -> bool
   {
+    const auto l_size = node->GetUsedSize();
+
     /*----------------------------------------------------------------------------------------------
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
 
     NodeStack trace;
-    Node_t *parent = nullptr, *sib_node = nullptr;
-    bool sib_is_left;
-    size_t target_pos = 0;
+    Node_t *old_parent;
+    Node_t *right_node;
+    size_t target_pos;
     while (true) {
-      // check a target node is not frozen and live
-      const auto target_status = node->GetStatusWordProtected();
-      if (target_status.IsFrozen()) return;
-
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(key, node);
       target_pos = trace.back().second;
       trace.pop_back();
 
-      // check a parent node is live
-      parent = trace.back().first;
-      const auto parent_status = parent->GetStatusWordProtected();
-      if (parent_status.IsFrozen()) continue;
+      // check a parent node is live and has a right child node
+      old_parent = trace.back().first;
+      const auto p_count = old_parent->GetSortedCount();
+      if (target_pos >= p_count - 1) return false;  // there is no mergeable node
+      const auto p_status = old_parent->GetStatusWordProtected();
+      if (p_status.IsFrozen()) continue;
 
-      // check a left/right sibling node is live
-      const auto target_size = target_status.GetOccupiedSize();
-      std::tie(sib_node, sib_is_left) = GetSiblingNode(parent, target_pos, target_size);
-      if (sib_node == nullptr) return;
-      const auto sibling_status = sib_node->GetStatusWordProtected();
-      if (sibling_status.IsFrozen()) continue;
+      // check a right sibling node is live
+      right_node = GetChild(old_parent, target_pos + 1);
+      const auto r_size = right_node->GetUsedSize();
+      if (l_size + r_size > kMaxMergedSize - component::kHeaderLength) return false;
+      const auto r_status = right_node->GetStatusWordProtected();
+      if (r_status.IsFrozen()) continue;
 
       // pre-freezing of SMO targets
-      auto desc = MwCASDescriptor{};
-      parent->SetStatusForMwCAS(desc, parent_status, parent_status.Freeze());
-      node->SetStatusForMwCAS(desc, target_status, target_status.Freeze());
-      sib_node->SetStatusForMwCAS(desc, sibling_status, sibling_status.Freeze());
+      MwCASDescriptor desc{};
+      old_parent->SetStatusForMwCAS(desc, p_status, p_status.Freeze());
+      right_node->SetStatusForMwCAS(desc, r_status, r_status.Freeze());
       if (desc.MwCAS()) break;
     }
 
@@ -554,30 +436,106 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    auto *merged_node = CreateNewNode(!kLeafFlag);
-    size_t deleted_pos;
-    if (sib_is_left) {
-      internal::Merge(merged_node, sib_node, node);
-      deleted_pos = target_pos - 1;
+    const auto is_leaf = node->IsLeaf();
+    Node_t *merged_node = (is_leaf) ? node : CreateNewNode(!kLeafFlag);
+    if (is_leaf) {
+      InnerMerge<Payload>(node, right_node, merged_node);
     } else {
-      internal::Merge(merged_node, node, sib_node);
-      deleted_pos = target_pos;
+      InnerMerge<Node_t *>(node, right_node, merged_node);
     }
-    auto *new_parent = CreateNewNode(!kLeafFlag);
-    internal::NewParentForMerge(new_parent, parent, merged_node, deleted_pos);
+    Node_t *new_parent = CreateParent(old_parent, merged_node, target_pos);
+
+    // check the parent node should be merged
+    const auto parent_need_merge = new_parent->GetSortedCount() < kMinSortedRecNum;
+    if (parent_need_merge) {
+      if (trace.size() > 1 || new_parent->GetSortedCount() > 1) {
+        new_parent->Freeze();  // pre-freeze for recursive merging
+      } else {
+        // the new root node has only one child, use the merged child as a new root
+        gc_.AddGarbage(new_parent);
+        new_parent = merged_node;
+      }
+    }
 
     // install new nodes
-    InstallNewNode(trace, new_parent, key, parent);
+    InstallNewNode(trace, new_parent, key, old_parent);
 
     // register frozen nodes with garbage collection
-    gc_.AddGarbage(node);
-    gc_.AddGarbage(parent);
-    gc_.AddGarbage(sib_node);
-
-    // check whether it is required to merge a parent node
-    if (trace.size() != 0 && new_parent->GetSortedCount() < kMinSortedRecNum) {
-      MergeInternalNodes(new_parent, key, key_length);
+    gc_.AddGarbage(old_parent);
+    gc_.AddGarbage(right_node);
+    if (!is_leaf) {
+      gc_.AddGarbage(node);
     }
+
+    // merge the new parent node if needed
+    if (parent_need_merge && (trace.empty() || !Merge(new_parent, key))) {
+      // if the parent node cannot be merged, unfreeze it
+      new_parent->SetStatus(new_parent->GetStatusWord().Unfreeze());
+    }
+
+    return true;
+  }
+
+  template <class T>
+  void
+  InnerMerge(  //
+      Node_t *l_node,
+      Node_t *r_node,
+      Node_t *merged_node)
+  {
+    // set a right-end flag if needed
+    if (!r_node->HasNext()) {
+      merged_node->SetRightEndFlag();
+    }
+
+    // copy records in left/right nodes
+    const auto l_count = l_node->GetSortedCount();
+    size_t offset;
+    if constexpr (std::is_same_v<T, Node_t *>) {
+      offset = merged_node->CopyRecordsFrom<T>(l_node, 0, l_count, 0, kPageSize);
+    } else {  // when merging a leaf node, only update its offset
+      offset = merged_node->GetMetadata(l_count - 1).GetOffset();
+    }
+    const auto r_count = r_node->GetSortedCount();
+    offset = merged_node->CopyRecordsFrom<T>(r_node, 0, r_count, l_count, offset);
+
+    // create a merged node
+    const auto rec_count = l_count + r_count;
+    merged_node->SetSortedCount(rec_count);
+    merged_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
+  }
+
+  auto
+  CreateParent(  //
+      const Node_t *old_node,
+      const Node_t *merged_child,
+      const size_t position)  //
+      -> Node_t *
+  {
+    Node_t *new_node = CreateNewNode(!kLeafFlag);
+
+    // set a right-end flag if needed
+    if (!old_node->HasNext()) {
+      new_node->SetRightEndFlag(true);
+    }
+
+    // copy lower records
+    auto offset = new_node->CopyRecordsFrom<Node_t *>(old_node, 0, position, 0, kPageSize);
+
+    // insert a merged node
+    const auto r_pos = position + 1;
+    const auto meta = old_node->GetMetadata(r_pos);
+    offset = new_node->InsertChild(old_node, meta, merged_child, position, offset);
+
+    // copy upper records
+    auto rec_count = old_node->GetSortedCount();
+    offset = new_node->CopyRecordsFrom<Node_t *>(old_node, r_pos + 1, rec_count, r_pos, offset);
+
+    // set an updated header
+    new_node->SetSortedCount(--rec_count);
+    new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
+
+    return new_node;
   }
 
   /**

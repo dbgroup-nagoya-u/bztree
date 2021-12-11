@@ -195,6 +195,18 @@ class StatusWord
   }
 
   /**
+   * @return StatusWord: a frozen status word.
+   */
+  constexpr auto
+  Unfreeze() const  //
+      -> StatusWord
+  {
+    auto unfrozen_status = *this;
+    unfrozen_status.frozen_ = 0;
+    return unfrozen_status;
+  }
+
+  /**
    * @param record_count the number of added records.
    * @param block_size the byte length of added records.
    * @return StatusWord: a new status word with added records.
