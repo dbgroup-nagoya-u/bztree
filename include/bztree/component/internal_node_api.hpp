@@ -86,35 +86,4 @@ SearchChildNode(  //
   return begin_id;
 }
 
-/*################################################################################################
- * Public structure modification operations
- *##############################################################################################*/
-
-/**
- * @tparam Key a target key class.
- * @tparam Payload a target payload class.
- * @tparam Compare a comparetor class for keys.
- * @return Node_t*: an initial root node for BzTree.
- */
-template <class Key, class Payload, class Compare>
-Node<Key, Payload, Compare> *
-CreateInitialRoot()
-{
-  auto *root = new Node<Key, Payload, Compare>{!kLeafFlag};
-  root->SetRightEndFlag();
-  auto *leaf_node = new Node<Key, Payload, Compare>{kLeafFlag};
-  leaf_node->SetRightEndFlag();
-
-  // set an inital leaf node
-  auto offset = kPageSize;
-  root->SetPayload(offset, leaf_node, kWordLength);
-  root->SetMetadata(0, Metadata{offset, 0, kWordLength});
-
-  // set a new header
-  root->SetSortedCount(1);
-  root->SetStatus(StatusWord{1, kWordLength});
-
-  return root;
-}
-
 }  // namespace dbgroup::index::bztree::internal

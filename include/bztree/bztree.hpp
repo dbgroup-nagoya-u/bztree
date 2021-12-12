@@ -66,13 +66,13 @@ class BzTree
    *##############################################################################################*/
 
   /// an epoch to count the number of failure
-  const size_t index_epoch_;
+  const size_t index_epoch_ = 1;
 
   /// a root node of BzTree
-  Node_t *root_;
+  std::atomic<Node_t *> root_ = nullptr;
 
   /// garbage collector
-  NodeGC_t gc_;
+  NodeGC_t gc_ = 100000;
 
   /*################################################################################################
    * Internal utility functions
@@ -601,11 +601,15 @@ class BzTree
    *
    * @param gc_interval_microsec GC internal [us]
    */
-  explicit BzTree(const size_t gc_interval_microsec = 100000)
-      : index_epoch_{1},
-        root_{internal::CreateInitialRoot<Key, Payload, Compare>()},
-        gc_{gc_interval_microsec}
+  explicit BzTree(const size_t gc_interval_microsec = 100000) : gc_{gc_interval_microsec}
   {
+    // create an initial root node
+    Node_t *leaf = CreateNewNode(kLeafFlag);
+    leaf->SetRightEndFlag(true);
+    leaf->SetStatus(StatusWord{});
+    root_->store(leaf, std::memory_order_relaxed);
+
+    // start GC for nodes
     gc_.StartGC();
   }
 
