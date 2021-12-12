@@ -562,12 +562,12 @@ class alignas(kCacheLineSize) Node
       const bool range_is_closed) const  //
       -> size_t
   {
-    size_t begin_pos = 0;
+    int64_t begin_pos = 0;
     int64_t end_pos = GetSortedCount() - 2;
     while (begin_pos <= end_pos) {
       size_t pos = (begin_pos + end_pos) >> 1;
 
-      const auto meta = GetMetadataProtected(pos);
+      const auto meta = GetMetadata(pos);
       const auto index_key = GetKey(meta);
 
       if (Compare{}(key, index_key)) {  // a target key is in a left side
@@ -584,6 +584,97 @@ class alignas(kCacheLineSize) Node
     }
 
     return begin_pos;
+  }
+
+  /**
+   * @brief Get the position of a specified key by using binary search. If there is no
+   * specified key, this returns the minimum metadata index that is greater than the
+   * specified key
+   *
+   * @param node a target node.
+   * @param key a target key.
+   * @return std::pair<KeyExistence, int64_t>: a pair of key existence and a key position.
+   */
+  auto
+  SearchSortedRecord(const Key &key) const  //
+      -> std::pair<KeyExistence, size_t>
+  {
+    int64_t begin_pos = 0;
+    int64_t end_pos = GetSortedCount() - 1;
+    while (begin_pos <= end_pos) {
+      size_t pos = (begin_pos + end_pos) >> 1;
+
+      const auto meta = GetMetadataProtected(pos);
+      const auto index_key = GetKey(meta);
+
+      if (Compare{}(key, index_key)) {  // a target key is in a left side
+        end_pos = pos - 1;
+      } else if (Compare{}(index_key, key)) {  // a target key is in a right side
+        begin_pos = pos + 1;
+      } else if (meta.IsVisible()) {  // find an equivalent key
+        return {kExist, pos};
+      } else {  // find an equivalent key, but it is deleted
+        return {kDeleted, pos};
+      }
+    }
+
+    return {kNotExist, begin_pos};
+  }
+
+  auto
+  SearchUnsortedRecord(  //
+      const Key &key,
+      const size_t begin_pos) const  //
+      -> std::pair<KeyExistence, size_t>
+  {
+    const int64_t sorted_count = GetSortedCount();
+
+    // perform a linear search in revese order
+    for (int64_t pos = begin_pos; pos >= sorted_count; --pos) {
+      const auto meta = GetMetadataProtected(pos);
+      if (meta.IsInProgress()) return {kUncertain, pos};
+
+      const auto target_key = GetKey(meta);
+      if (IsEqual<Compare>(key, target_key)) {
+        if (meta.IsVisible()) return {kExist, pos};
+        return {kDeleted, pos};
+      }
+    }
+
+    return {kNotExist, 0};
+  }
+
+  /**
+   * @brief Check uniqueness of a target key in a specifeid node.
+   *
+   * @param key a target key.
+   * @param rec_count the total number of records in a node.
+   * @return std::pair<KeyExistence, int64_t>: a pair of key existence and a key position.
+   */
+  auto
+  CheckUniqueness(  //
+      const Key &key,
+      const int64_t rec_count) const  //
+      -> std::pair<KeyExistence, size_t>
+  {
+    KeyExistence rc;
+    size_t pos;
+
+    if constexpr (CanCASUpdate<Payload>()) {
+      std::tie(rc, pos) = SearchSortedRecord(key);
+      if (rc == kNotExist || rc == kDeleted) {
+        // a new record may be inserted in an unsorted region
+        std::tie(rc, pos) = SearchUnsortedRecord(key, rec_count - 1);
+      }
+    } else {
+      std::tie(rc, pos) = SearchUnsortedRecord(key, rec_count - 1);
+      if (rc == kNotExist) {
+        // a record may be in a sorted region
+        std::tie(rc, pos) = SearchSortedRecord(key);
+      }
+    }
+
+    return {rc, pos};
   }
 
   /**

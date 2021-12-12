@@ -54,134 +54,6 @@ using NewSortedMeta = std::array<MetaRecord<Key, Payload, Compare>, kMaxUnsorted
  *##############################################################################################*/
 
 /**
- * @brief Get the position of a specified key by using binary search. If there is no
- * specified key, this returns the minimum metadata index that is greater than the
- * specified key
- *
- * @tparam Key a target key class.
- * @tparam Payload a target payload class.
- * @tparam Compare a comparetor class for keys.
- * @param node a target node.
- * @param key a target key.
- * @return std::pair<KeyExistence, int64_t>: a pair of key existence and a key position.
- */
-template <class Key, class Payload, class Compare>
-KeyIndex
-_SearchSortedMetadata(  //
-    const Node<Key, Payload, Compare> *node,
-    const Key &key)
-{
-  const int64_t sorted_count = node->GetSortedCount();
-
-  int64_t index;
-  int64_t begin_index = 0;
-  int64_t end_index = sorted_count - 1;
-
-  while (begin_index <= end_index) {
-    index = (begin_index + end_index) >> 1;
-
-    const auto meta = node->GetMetadataProtected(index);
-    const auto index_key = node->GetKey(meta);
-
-    if (Compare{}(key, index_key)) {
-      // a target key is in a left side
-      end_index = index - 1;
-    } else if (Compare{}(index_key, key)) {
-      // a target key is in a right side
-      begin_index = index + 1;
-    } else {
-      // find an equivalent key
-      if (meta.IsVisible()) {
-        return {KeyExistence::kExist, index};
-      } else {
-        return {KeyExistence::kDeleted, index};
-      }
-    }
-  }
-
-  return {KeyExistence::kNotExist, begin_index};
-}
-
-/**
- * @brief Get a position of a specified key by using a reverse linear search.
- *
- * @tparam Key a target key class.
- * @tparam Payload a target payload class.
- * @tparam Compare a comparetor class for keys.
- * @param node a target node.
- * @param key a target key.
- * @param begin_index a begin index of a reverse linear search.
- * @param sorted_count an end index of a reverse linear search.
- * @param epoch an epoch of the BzTree instance.
- * @return std::pair<KeyExistence, int64_t>: a pair of key existence and a key position.
- */
-template <class Key, class Payload, class Compare>
-KeyIndex
-_SearchUnsortedMeta(  //
-    const Node<Key, Payload, Compare> *node,
-    const Key &key,
-    const int64_t begin_id,
-    const int64_t sorted_count,
-    const size_t epoch = 0)
-{
-  // perform a linear search in revese order
-  for (int64_t index = begin_id; index >= sorted_count; --index) {
-    const auto meta = node->GetMetadataProtected(index);
-    if (meta.IsInProgress()) {
-      if (epoch > 0 && meta.GetOffset() == epoch) {
-        return {KeyExistence::kUncertain, index};
-      }
-      continue;
-    }
-
-    const auto target_key = node->GetKey(meta);
-    if (IsEqual<Compare>(key, target_key)) {
-      if (meta.IsVisible()) return {KeyExistence::kExist, index};
-      return {KeyExistence::kDeleted, index};
-    }
-  }
-  return {KeyExistence::kNotExist, 0};
-}
-
-/**
- * @brief Check uniqueness of a target key in a specifeid node.
- *
- * @tparam Key a target key class.
- * @tparam Payload a target payload class.
- * @tparam Compare a comparetor class for keys.
- * @param node a target node.
- * @param key a target key.
- * @param rec_count the total number of records in a node.
- * @param epoch an epoch of the BzTree instance.
- * @return std::pair<KeyExistence, int64_t>: a pair of key existence and a key position.
- */
-template <class Key, class Payload, class Compare>
-KeyIndex
-_CheckUniqueness(  //
-    const Node<Key, Payload, Compare> *node,
-    const Key &key,
-    const int64_t rec_count,
-    const size_t epoch = 0)
-{
-  if constexpr (CanCASUpdate<Payload>()) {
-    const auto [rc, index] = _SearchSortedMetadata(node, key);
-    if (rc == KeyExistence::kNotExist || rc == KeyExistence::kDeleted) {
-      // a new record may be inserted in an unsorted region
-      return _SearchUnsortedMeta(node, key, rec_count - 1, node->GetSortedCount(), epoch);
-    }
-    return {rc, index};
-  } else {
-    const auto [rc, index] =
-        _SearchUnsortedMeta(node, key, rec_count - 1, node->GetSortedCount(), epoch);
-    if (rc == KeyExistence::kNotExist) {
-      // a record may be in a sorted region
-      return _SearchSortedMetadata(node, key);
-    }
-    return {rc, index};
-  }
-}
-
-/**
  * @brief Align a specified block size if needed.
  *
  * @tparam Key a target key class.
@@ -205,47 +77,6 @@ _GetAlignedSize(const size_t block_size)
     }
   }
   return block_size;
-}
-
-/**
- * @brief Copy records from an original node.
- *
- * @tparam Key a target key class.
- * @tparam Payload a target payload class.
- * @tparam Compare a comparetor class for keys.
- * @param target_node a leaf node to be copied.
- * @param current_rec_count the number of records in a target node.
- * @param offset a current offset of a target node.
- * @param original_node an original leaf node.
- * @param metadata an array of consolidated metadata.
- * @param begin_id a begin index of metadata.
- * @param end_id an end index of metadata.
- */
-template <class Key, class Payload, class Compare>
-void
-_CopyRecords(  //
-    Node<Key, Payload, Compare> *target_node,
-    size_t current_rec_count,
-    size_t &offset,
-    const Node<Key, Payload, Compare> *original_node,
-    const MetaArray<Key, Payload, Compare> &metadata,
-    const size_t begin_id,
-    const size_t end_id)
-{
-  for (size_t i = begin_id; i < end_id; ++i, ++current_rec_count) {
-    // copy a record
-    const auto meta = metadata[i];
-    const auto total_length = meta.GetTotalLength();
-    offset -= total_length;
-    memcpy(ShiftAddress(target_node, offset), original_node->GetKeyAddr(meta), total_length);
-    // copy metadata
-    const auto new_meta = meta.UpdateOffset(offset);
-    target_node->SetMetadata(current_rec_count, new_meta);
-
-    if constexpr (CanCASUpdate<Payload>()) {
-      AlignOffset<Key>(offset);
-    }
-  }
 }
 
 /**
@@ -349,7 +180,7 @@ Read(  //
     Payload &out_payload)
 {
   const auto status = node->GetStatusWordProtected();
-  const auto [existence, index] = _CheckUniqueness(node, key, status.GetRecordCount());
+  const auto [existence, index] = node->CheckUniqueness(key, status.GetRecordCount());
   if (existence == KeyExistence::kNotExist || existence == KeyExistence::kDeleted) {
     return NodeReturnCode::kKeyNotExist;
   }
@@ -489,7 +320,7 @@ Write(  //
     rec_count = cur_status.GetRecordCount();
     if constexpr (CanCASUpdate<Payload>()) {
       // check whether a node includes a target key
-      const auto [uniqueness, target_index] = _SearchSortedMetadata(node, key);
+      const auto [uniqueness, target_index] = node->SearchSortedRecord(key);
       if (uniqueness == KeyExistence::kExist) {
         const auto target_meta = node->GetMetadataProtected(target_index);
 
@@ -598,7 +429,7 @@ Insert(  //
     // check uniqueness
     rec_count = cur_status.GetRecordCount();
     if (uniqueness != KeyExistence::kUncertain) {
-      uniqueness = _CheckUniqueness(node, key, rec_count, epoch).first;
+      uniqueness = node->CheckUniqueness(key, rec_count).first;
       if (uniqueness == KeyExistence::kExist) {
         return NodeReturnCode::kKeyExist;
       }
@@ -640,7 +471,7 @@ Insert(  //
 
     // recheck uniqueness if required
     if (uniqueness == KeyExistence::kUncertain) {
-      uniqueness = _CheckUniqueness(node, key, rec_count, epoch).first;
+      uniqueness = node->CheckUniqueness(key, rec_count).first;
       if (uniqueness == KeyExistence::kExist) {
         // delete an inserted record
         node->SetMetadataByCAS(rec_count, in_progress_meta.UpdateOffset(0));
@@ -715,7 +546,7 @@ Update(  //
     // check whether a node includes a target key
     rec_count = cur_status.GetRecordCount();
     if (uniqueness != KeyExistence::kUncertain) {
-      std::tie(uniqueness, target_index) = _CheckUniqueness(node, key, rec_count, epoch);
+      std::tie(uniqueness, target_index) = node->CheckUniqueness(key, rec_count);
       if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
         return NodeReturnCode::kKeyNotExist;
       }
@@ -772,7 +603,7 @@ Update(  //
 
     // recheck uniqueness if required
     if (uniqueness == KeyExistence::kUncertain) {
-      uniqueness = _CheckUniqueness(node, key, rec_count, epoch).first;
+      uniqueness = node->CheckUniqueness(key, rec_count).first;
       if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
         // delete an inserted record
         node->SetMetadataByCAS(rec_count, in_progress_meta.UpdateOffset(0));
@@ -839,7 +670,7 @@ Delete(  //
     // check whether a node includes a target key
     rec_count = cur_status.GetRecordCount();
     if (uniqueness != KeyExistence::kUncertain) {
-      std::tie(uniqueness, target_index) = _CheckUniqueness(node, key, rec_count, epoch);
+      std::tie(uniqueness, target_index) = node->CheckUniqueness(key, rec_count);
       if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
         return NodeReturnCode::kKeyNotExist;
       }
@@ -901,7 +732,7 @@ Delete(  //
 
     // recheck uniqueness if required
     if (uniqueness == KeyExistence::kUncertain) {
-      uniqueness = _CheckUniqueness(node, key, rec_count, epoch).first;
+      uniqueness = node->CheckUniqueness(key, rec_count).first;
       if (uniqueness == KeyExistence::kNotExist || uniqueness == KeyExistence::kDeleted) {
         // delete an inserted record
         node->SetMetadataByCAS(rec_count, in_progress_meta.UpdateOffset(0));
