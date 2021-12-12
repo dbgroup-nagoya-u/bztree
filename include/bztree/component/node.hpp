@@ -336,7 +336,7 @@ class alignas(kCacheLineSize) Node
     // variables and constants shared in Phase 1 & 2
     const auto total_length = key_length + payload_length;
     const auto block_size = GetAlignedSize(total_length);
-    const auto in_progress_meta = Metadata{epoch, key_length, total_length, true};
+    const auto in_progress_meta = Metadata{0, key_length, total_length, true};
     StatusWord cur_status;
     size_t rec_count;
 
@@ -426,7 +426,6 @@ class alignas(kCacheLineSize) Node
    */
   auto
   Insert(  //
-      Node<Key, Payload, Compare> *node,
       const Key &key,
       const size_t key_length,
       const Payload &payload,
@@ -436,7 +435,7 @@ class alignas(kCacheLineSize) Node
     // variables and constants shared in Phase 1 & 2
     const auto total_length = key_length + payload_length;
     const auto block_size = GetAlignedSize(total_length);
-    const auto in_progress_meta = Metadata{epoch, key_length, total_length, true};
+    const auto in_progress_meta = Metadata{0, key_length, total_length, true};
     StatusWord cur_status;
     size_t rec_count;
     KeyExistence rc;
@@ -535,7 +534,7 @@ class alignas(kCacheLineSize) Node
     // variables and constants shared in Phase 1 & 2
     const auto total_length = key_length + payload_length;
     const auto block_size = GetAlignedSize(total_length);
-    const auto in_progress_meta = Metadata{epoch, key_length, total_length, true};
+    const auto in_progress_meta = Metadata{0, key_length, total_length, true};
     StatusWord cur_status;
     size_t rec_count, target_index = 0;
     KeyExistence rc;
@@ -642,7 +641,7 @@ class alignas(kCacheLineSize) Node
       -> NodeReturnCode
   {
     // variables and constants
-    const auto in_progress_meta = Metadata{epoch, key_length, key_length, true};
+    const auto in_progress_meta = Metadata{0, key_length, key_length, true};
     StatusWord cur_status;
     size_t rec_count, target_index = 0;
     KeyExistence rc;
@@ -745,7 +744,7 @@ class alignas(kCacheLineSize) Node
     is_right_end_ = old_node->is_right_end_;
 
     // sort records in an unsorted region
-    const auto [new_rec_num, records] = SortNewRecords(old_node);
+    const auto [new_rec_num, records] = old_node->SortNewRecords();
 
     // perform merge-sort to consolidate a node
     const auto sorted_count = old_node->sorted_count_;
@@ -769,7 +768,7 @@ class alignas(kCacheLineSize) Node
       }
 
       // check a new record is updated one
-      if (j < new_rec_num && IsEqual(key, records[j].key)) {
+      if (j < new_rec_num && IsEqual<Compare>(key, records[j].key)) {
         const auto target_meta = records[j++].meta;
         if (target_meta.IsVisible()) {
           offset = CopyRecordFrom<Payload>(old_node, target_meta, rec_count++, offset);
@@ -861,7 +860,7 @@ class alignas(kCacheLineSize) Node
 
     // insert initial children
     const auto l_meta = l_child->meta_array_[l_child->sorted_count_ - 1];
-    offset = InsertChild(l_child, l_meta, l_child, 0, offset);
+    auto offset = InsertChild(l_child, l_meta, l_child, 0, kPageSize);
     const auto r_meta = r_child->meta_array_[r_child->sorted_count_ - 1];
     offset = InsertChild(r_child, r_meta, r_child, 1, offset);
 
@@ -1317,9 +1316,7 @@ class alignas(kCacheLineSize) Node
     SetKey(offset, key, key_len);
     meta_array_[rec_count] = Metadata{offset, key_len, key_len + kWordLength};
 
-    if constexpr (CanCASUpdate<T>()) {
-      AlignOffset<Key>(offset);
-    }
+    AlignOffset<Key>(offset);
 
     return offset;
   }
@@ -1361,7 +1358,7 @@ class alignas(kCacheLineSize) Node
     // copy records from the given node
     for (size_t i = begin_pos; i < end_pos; ++i) {
       const auto target_meta = orig_node->meta_array_[i];
-      offset = CopyRecordFrom(orig_node, target_meta, rec_count++, offset);
+      offset = CopyRecordFrom<T>(orig_node, target_meta, rec_count++, offset);
     }
 
     return offset;

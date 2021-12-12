@@ -44,8 +44,6 @@ class BzTree
   using Node_t = component::Node<Key, Payload, Compare>;
   using MetaArray = std::array<Metadata, Node_t::kMaxRecordNum>;
   using NodeReturnCode = component::NodeReturnCode;
-  using RecordPage_t = component::RecordPage<Key, Payload>;
-  using RecordIterator_t = component::RecordIterator<Key, Payload, Compare>;
   using NodeGC_t = ::dbgroup::memory::EpochBasedGC<Node_t>;
   using NodeStack = std::vector<std::pair<Node_t *, size_t>>;
   using MwCASDescriptor = component::MwCASDescriptor;
@@ -172,8 +170,7 @@ class BzTree
   void
   Consolidate(  //
       Node_t *node,
-      const Key &key,
-      const size_t key_length)
+      const Key &key)
   {
     // freeze a target node and perform consolidation
     if (node->Freeze() != NodeReturnCode::kSuccess) return;
@@ -245,9 +242,9 @@ class BzTree
     Node_t *left_node = (is_leaf) ? node : CreateNewNode(!kLeafFlag);
     Node_t *right_node = CreateNewNode(is_leaf);
     if (is_leaf) {
-      Node_t::Split<Payload>(node, left_node, right_node);
+      Node_t::template Split<Payload>(node, left_node, right_node);
     } else {
-      Node_t::Split<Node_t *>(node, left_node, right_node);
+      Node_t::template Split<Node_t *>(node, left_node, right_node);
     }
     Node_t *new_parent = CreateNewNode(!kLeafFlag);
     if (trace.empty()) {  // create a new root node
@@ -337,9 +334,9 @@ class BzTree
     const auto is_leaf = node->IsLeaf();
     Node_t *merged_node = (is_leaf) ? node : CreateNewNode(!kLeafFlag);
     if (is_leaf) {
-      Node_t::Merge<Payload>(node, right_node, merged_node);
+      Node_t::template Merge<Payload>(node, right_node, merged_node);
     } else {
-      Node_t::Merge<Node_t *>(node, right_node, merged_node);
+      Node_t::template Merge<Node_t *>(node, right_node, merged_node);
     }
     Node_t *new_parent = CreateNewNode(!kLeafFlag);
     new_parent->InitAsMergeParent(old_parent, merged_node, target_pos);
@@ -420,7 +417,7 @@ class BzTree
          * Swapping a new root node
          *----------------------------------------------------------------------------------------*/
 
-        const Node_t *old_node = trace.back().first;
+        Node_t *old_node = trace.back().first;
         if (old_node != target_node) return;
         trace.pop_back();
         desc.AddMwCASTarget(&root_, old_node, new_node);
@@ -465,7 +462,6 @@ class BzTree
    * @tparam Payload a target payload class
    * @tparam Compare a key-comparator class
    */
-  template <class Key, class Payload, class Compare>
   class RecordIterator
   {
     using BzTree_t = BzTree<Key, Payload, Compare>;
@@ -547,7 +543,7 @@ class BzTree
     GetKey() const  //
         -> Key
     {
-      return node->GetKey(current_pos_);
+      return node_->GetKey(current_pos_);
     }
 
     /**
@@ -556,7 +552,7 @@ class BzTree
     constexpr Payload
     GetPayload() const
     {
-      return node->GetPayload(current_pos_);
+      return node_->GetPayload(current_pos_);
     }
 
    private:
@@ -590,7 +586,7 @@ class BzTree
   {
     // create an initial root node
     Node_t *leaf = CreateNewNode(kLeafFlag);
-    root_->store(leaf, std::memory_order_relaxed);
+    root_.store(leaf, std::memory_order_relaxed);
 
     // start GC for nodes
     gc_.StartGC();
@@ -659,7 +655,7 @@ class BzTree
       const Key &begin_key,
       const bool begin_closed = false,
       Node_t *page = nullptr)  //
-      -> RecordIterator_t
+      -> RecordIterator
   {
     const auto guard = gc_.CreateEpochGuard();
 
@@ -669,7 +665,7 @@ class BzTree
     }
     page->Consolidate(node);
 
-    return RecordIterator_t{this, page, page->Search(begin_key, begin_closed)};
+    return RecordIterator{this, page, page->Search(begin_key, begin_closed)};
   }
 
   /*################################################################################################
@@ -708,7 +704,7 @@ class BzTree
       if (rc == NodeReturnCode::kSuccess) {
         break;
       } else if (rc == NodeReturnCode::kNeedConsolidation) {
-        Consolidate(node, key, key_length);
+        Consolidate(node, key);
       }
     }
     return ReturnCode::kSuccess;
@@ -749,7 +745,7 @@ class BzTree
         if (rc == NodeReturnCode::kKeyExist) return ReturnCode::kKeyExist;
         break;
       } else if (rc == NodeReturnCode::kNeedConsolidation) {
-        Consolidate(node, key, key_length);
+        Consolidate(node, key);
       }
     }
     return ReturnCode::kSuccess;
@@ -789,7 +785,7 @@ class BzTree
         if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
         break;
       } else if (rc == NodeReturnCode::kNeedConsolidation) {
-        Consolidate(node, key, key_length);
+        Consolidate(node, key);
       }
     }
     return ReturnCode::kSuccess;
@@ -825,7 +821,7 @@ class BzTree
         if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
         break;
       } else if (rc == NodeReturnCode::kNeedConsolidation) {
-        Consolidate(node, key, key_length);
+        Consolidate(node, key);
       }
     }
     return ReturnCode::kSuccess;

@@ -46,7 +46,6 @@ class BzTreeFixture : public testing::Test
   // define type aliases for simplicity
   using Node_t = component::Node<Key, Payload, KeyComp>;
   using BzTree_t = BzTree<Key, Payload, KeyComp>;
-  using RecordPage_t = component::RecordPage<Key, Payload>;
 
  protected:
   /*################################################################################################

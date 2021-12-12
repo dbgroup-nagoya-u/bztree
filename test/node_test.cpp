@@ -68,7 +68,7 @@ class BaseNodeFixture : public testing::Test
       const size_t write_num)
   {
     for (size_t index = 0; index < write_num; ++index) {
-      leaf::Write(target_node, key_null, kKeyLength, payload_null, kPayloadLength);
+      target_node->Write(key_null, kKeyLength, payload_null, kPayloadLength);
     }
   }
 
@@ -81,7 +81,7 @@ class BaseNodeFixture : public testing::Test
     assert(end_index < kKeyNumForTest);
 
     for (size_t index = begin_index; index <= end_index; ++index) {
-      leaf::Write(target_node, keys[index], kKeyLength, payloads[index], kPayloadLength);
+      target_node->Write(keys[index], kKeyLength, payloads[index], kPayloadLength);
     }
   }
 
@@ -92,9 +92,8 @@ class BaseNodeFixture : public testing::Test
   {
     auto tmp_leaf_node = new Node_t{kLeafFlag};
     WriteOrderedKeys(tmp_leaf_node, begin_index, end_index);
-    auto [tmp_meta, rec_count] = leaf::GatherSortedLiveMetadata(tmp_leaf_node);
     auto new_node = new Node_t{kLeafFlag};
-    leaf::Consolidate(new_node, tmp_leaf_node, tmp_meta, rec_count);
+    new_node->Consolidate(tmp_leaf_node);
     return new_node;
   }
 };
@@ -104,13 +103,13 @@ TEST_F(BaseNodeFixture, New_EmptyNode_CorrectlyInitialized)
   auto status = *reinterpret_cast<StatusWord *>(ShiftAddress(node.get(), kWordLength));
 
   EXPECT_EQ(0, node->GetSortedCount());
-  EXPECT_EQ(status, node->GetStatusWord());
+  EXPECT_EQ(status, node->GetStatusWordProtected());
 }
 
 TEST_F(BaseNodeFixture, Freeze_NotFrozenNode_FreezeNode)
 {
   auto rc = node->Freeze();
-  auto status = node->GetStatusWord();
+  auto status = node->GetStatusWordProtected();
 
   EXPECT_EQ(NodeReturnCode::kSuccess, rc);
   EXPECT_TRUE(status.IsFrozen());
@@ -120,7 +119,7 @@ TEST_F(BaseNodeFixture, Freeze_FrozenNode_FreezeFailed)
 {
   node->Freeze();
   auto rc = node->Freeze();
-  auto status = node->GetStatusWord();
+  auto status = node->GetStatusWordProtected();
 
   EXPECT_EQ(NodeReturnCode::kFrozen, rc);
   EXPECT_TRUE(status.IsFrozen());
