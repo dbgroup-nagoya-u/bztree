@@ -124,9 +124,9 @@ class alignas(kCacheLineSize) Node
    * @retval false otherwise.
    */
   constexpr bool
-  HasNext() const
+  IsRightEnd() const
   {
-    return !static_cast<bool>(is_right_end_);
+    return is_right_end_;
   }
 
   /**
@@ -161,17 +161,21 @@ class alignas(kCacheLineSize) Node
     return MwCASDescriptor::Read<Node *>(GetPayloadAddr(meta_array_[position]));
   }
 
-  /**
-   * @param meta metadata of a corresponding record.
-   * @return Key: a target key.
-   */
-  constexpr Key
-  GetKey(const Metadata meta) const
+  constexpr auto
+  GetKey(const size_t pos) const  //
+      -> Key
   {
-    if constexpr (std::is_pointer_v<Key>) {
-      return GetKeyAddr(meta);
+    return GetKey(meta_array_[pos]);
+  }
+
+  constexpr auto
+  GetPayload(const size_t pos) const  //
+      -> Payload
+  {
+    if constexpr (std::is_pointer_v<Payload>) {
+      return GetPayloadAddr(meta_array_[pos]);
     } else {
-      return *GetKeyAddr(meta);
+      return *GetPayloadAddr(meta_array_[pos]);
     }
   }
 
@@ -215,7 +219,7 @@ class alignas(kCacheLineSize) Node
    * @return size_t: the position of a specified key.
    */
   auto
-  SearchChild(  //
+  Search(  //
       const Key &key,
       const bool range_is_closed) const  //
       -> size_t
@@ -982,6 +986,20 @@ class alignas(kCacheLineSize) Node
   GetMetadataProtected(const size_t position) const
   {
     return MwCASDescriptor::Read<Metadata>(&meta_array_[position]);
+  }
+
+  /**
+   * @param meta metadata of a corresponding record.
+   * @return Key: a target key.
+   */
+  constexpr Key
+  GetKey(const Metadata meta) const
+  {
+    if constexpr (std::is_pointer_v<Key>) {
+      return GetKeyAddr(meta);
+    } else {
+      return *GetKeyAddr(meta);
+    }
   }
 
   /**

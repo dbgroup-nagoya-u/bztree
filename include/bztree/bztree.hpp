@@ -23,7 +23,7 @@
 #include <utility>
 #include <vector>
 
-#include "component/record_iterator.hpp"
+#include "component/node.hpp"
 #include "memory/epoch_based_gc.hpp"
 #include "utility.hpp"
 
@@ -107,7 +107,7 @@ class BzTree
   {
     Node_t *current_node = GetRoot();
     do {
-      const auto index = current_node->SearchChild(key, range_is_closed);
+      const auto index = current_node->Search(key, range_is_closed);
       current_node = current_node->GetChild(index);
     } while (!current_node->IsLeaf());
 
@@ -148,7 +148,7 @@ class BzTree
     Node_t *current_node = GetRoot();
     while (current_node != target_node && !current_node->IsLeaf()) {
       trace.emplace_back(current_node, index);
-      index = current_node->SearchChild(key, true);
+      index = current_node->Search(key, true);
       current_node = current_node->GetChild(index);
     }
     trace.emplace_back(current_node, index);
@@ -455,6 +455,129 @@ class BzTree
 
  public:
   /*################################################################################################
+   * Public classes
+   *##############################################################################################*/
+
+  /**
+   * @brief A class to represent a iterator for scan results.
+   *
+   * @tparam Key a target key class
+   * @tparam Payload a target payload class
+   * @tparam Compare a key-comparator class
+   */
+  template <class Key, class Payload, class Compare>
+  class RecordIterator
+  {
+    using BzTree_t = BzTree<Key, Payload, Compare>;
+
+   public:
+    /*##############################################################################################
+     * Public constructors/destructors
+     *############################################################################################*/
+
+    constexpr RecordIterator(  //
+        BzTree_t *bztree,
+        Node_t *node,
+        size_t current_pos)
+        : bztree_{bztree},
+          node_{node},
+          record_count_{node->GetSortedCount()},
+          current_pos_{current_pos}
+    {
+    }
+
+    ~RecordIterator() = default;
+
+    RecordIterator(const RecordIterator &) = delete;
+    RecordIterator &operator=(const RecordIterator &) = delete;
+    constexpr RecordIterator(RecordIterator &&) = default;
+    constexpr RecordIterator &operator=(RecordIterator &&) = default;
+
+    /*##############################################################################################
+     * Public operators for iterators
+     *############################################################################################*/
+
+    /**
+     * @return std::pair<Key, Payload>: a current key and payload pair
+     */
+    constexpr std::pair<Key, Payload>
+    operator*() const
+    {
+      return {GetKey(), GetPayload()};
+    }
+
+    /**
+     * @brief Forward an iterator.
+     *
+     */
+    void
+    operator++()
+    {
+      current_pos_++;
+    }
+
+    /*##############################################################################################
+     * Public getters/setters
+     *############################################################################################*/
+
+    /**
+     * @brief Check if there are any records left.
+     *
+     * function may call a scan function internally to get a next leaf node.
+     *
+     * @retval true if there are any records or next node left.
+     * @retval false if there are no records and node left.
+     */
+    bool
+    HasNext()
+    {
+      if (current_pos_ < record_count_) return true;
+      if (node_->IsRightEnd()) return false;
+
+      current_pos_ = record_count_ - 1;
+      *this = bztree_->Scan(GetKey, false, node_);
+
+      return HasNext();
+    }
+
+    /**
+     * @return Key: a key of a current record
+     */
+    constexpr auto
+    GetKey() const  //
+        -> Key
+    {
+      return node->GetKey(current_pos_);
+    }
+
+    /**
+     * @return Payload: a payload of a current record
+     */
+    constexpr Payload
+    GetPayload() const
+    {
+      return node->GetPayload(current_pos_);
+    }
+
+   private:
+    /*##############################################################################################
+     * Internal member variables
+     *############################################################################################*/
+
+    /// a pointer to BwTree to perform continuous scan
+    BzTree_t *bztree_;
+
+    /// node
+    Node_t *node_;
+
+    /// the number of records in this node.
+    size_t record_count_;
+
+    /// an index of a current record
+    size_t current_pos_;
+  };
+
+  /*################################################################################################
    * Public constructor/destructor
    *##############################################################################################*/
 
@@ -521,39 +644,33 @@ class BzTree
     }
   }
 
-  // /**
-  //  * @brief Perform a range scan with specified keys.
-  //  *
-  //  * If a begin/end key is nullptr, it is treated as negative or positive infinite.
-  //  *
-  //  * @param begin_key the pointer of a begin key of a range scan.
-  //  * @param begin_closed a flag to indicate whether the begin side of a range is closed.
-  //  * @param end_key the pointer of an end key of a range scan.
-  //  * @param end_closed a flag to indicate whether the end side of a range is closed.
-  //  * @param page a page to copy target keys/payloads. This argument is used internally.
-  //  * @return RecordIterator_t: an iterator to access target records.
-  //  */
-  // RecordIterator_t
-  // Scan(  //
-  //     const Key *begin_key = nullptr,
-  //     const bool begin_closed = false,
-  //     const Key *end_key = nullptr,
-  //     const bool end_closed = false,
-  //     RecordPage_t *page = nullptr)
-  // {
-  //   if (page == nullptr) {
-  //     page = new RecordPage_t{};
-  //   }
+  /**
+   * @brief Perform a range scan with specified keys.
+   *
+   * If a begin/end key is nullptr, it is treated as negative or positive infinite.
+   *
+   * @param begin_key the pointer of a begin key of a range scan.
+   * @param begin_closed a flag to indicate whether the begin side of a range is closed.
+   * @param page a page to copy target keys/payloads. This argument is used internally.
+   * @return an iterator to access target records.
+   */
+  auto
+  Scan(  //
+      const Key &begin_key,
+      const bool begin_closed = false,
+      Node_t *page = nullptr)  //
+      -> RecordIterator_t
+  {
+    const auto guard = gc_.CreateEpochGuard();
 
-  //   const auto guard = gc_.CreateEpochGuard();
+    const Node_t *node = SearchLeafNode(begin_key, begin_closed);
+    if (page == nullptr) {
+      page = CreateNewNode(kLeafFlag);
+    }
+    page->Consolidate(node);
 
-  //   const auto node =
-  //       (begin_key == nullptr) ? SearchLeftEdgeLeaf() : SearchLeafNode(*begin_key, begin_closed);
-  //   const auto scan_finished = leaf::Scan(node, begin_key, begin_closed, end_key, end_closed,
-  //   page);
-
-  //   return RecordIterator_t{this, end_key, end_closed, page, scan_finished};
-  // }
+    return RecordIterator_t{this, page, page->Search(begin_key, begin_closed)};
+  }
 
   /*################################################################################################
    * Public write APIs
