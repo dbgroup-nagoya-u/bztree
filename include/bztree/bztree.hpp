@@ -181,7 +181,7 @@ class BzTree
    * @param key_length the length of a target key.
    */
   void
-  ConsolidateLeafNode(  //
+  Consolidate(  //
       Node_t *node,
       const Key &key,
       const size_t key_length)
@@ -191,7 +191,7 @@ class BzTree
 
     // create a consolidated node
     auto *consolidated_node = CreateNewNode(kLeafFlag);
-    leaf::Consolidate(consolidated_node, node);
+    Node_t::Consolidate(consolidated_node, node);
     gc_.AddGarbage(node);
 
     // check whether splitting/merging is needed
@@ -642,10 +642,10 @@ class BzTree
   {
     const auto guard = gc_.CreateEpochGuard();
 
-    const auto node = SearchLeafNode(key, true);
+    const Node_t *node = SearchLeafNode(key, true);
 
     Payload payload{};
-    const auto rc = leaf::Read(node, key, payload);
+    const auto rc = node->Read(key, payload);
     if (rc == NodeReturnCode::kSuccess) {
       if constexpr (IsVariableLengthData<Payload>()) {
         return std::make_pair(ReturnCode::kSuccess, Binary_p{payload});
@@ -724,13 +724,13 @@ class BzTree
     const auto guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto node = SearchLeafNode(key, true);
-      const auto rc = leaf::Write(node, key, key_length, payload, payload_length, index_epoch_);
+      Node_t *node = SearchLeafNode(key, true);
+      const auto rc = node->Write(key, key_length, payload, payload_length);
 
       if (rc == NodeReturnCode::kSuccess) {
         break;
       } else if (rc == NodeReturnCode::kNeedConsolidation) {
-        ConsolidateLeafNode(node, key, key_length);
+        Consolidate(node, key, key_length);
       }
     }
     return ReturnCode::kSuccess;
@@ -764,14 +764,14 @@ class BzTree
     const auto guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto node = SearchLeafNode(key, true);
-      const auto rc = leaf::Insert(node, key, key_length, payload, payload_length, index_epoch_);
+      Node_t *node = SearchLeafNode(key, true);
+      const auto rc = node->Insert(key, key_length, payload, payload_length);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyExist) {
         if (rc == NodeReturnCode::kKeyExist) return ReturnCode::kKeyExist;
         break;
       } else if (rc == NodeReturnCode::kNeedConsolidation) {
-        ConsolidateLeafNode(node, key, key_length);
+        Consolidate(node, key, key_length);
       }
     }
     return ReturnCode::kSuccess;
@@ -804,14 +804,14 @@ class BzTree
     const auto guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto node = SearchLeafNode(key, true);
-      const auto rc = leaf::Update(node, key, key_length, payload, payload_length, index_epoch_);
+      Node_t *node = SearchLeafNode(key, true);
+      const auto rc = node->Update(key, key_length, payload, payload_length);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
         if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
         break;
       } else if (rc == NodeReturnCode::kNeedConsolidation) {
-        ConsolidateLeafNode(node, key, key_length);
+        Consolidate(node, key, key_length);
       }
     }
     return ReturnCode::kSuccess;
@@ -840,14 +840,14 @@ class BzTree
     const auto guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto node = SearchLeafNode(key, true);
-      const auto rc = leaf::Delete(node, key, key_length);
+      Node_t *node = SearchLeafNode(key, true);
+      const auto rc = node->Delete(key, key_length);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
         if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
         break;
       } else if (rc == NodeReturnCode::kNeedConsolidation) {
-        ConsolidateLeafNode(node, key, key_length);
+        Consolidate(node, key, key_length);
       }
     }
     return ReturnCode::kSuccess;
