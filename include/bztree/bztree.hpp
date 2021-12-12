@@ -23,7 +23,6 @@
 #include <utility>
 #include <vector>
 
-#include "component/leaf_node_api.hpp"
 #include "component/record_iterator.hpp"
 #include "memory/epoch_based_gc.hpp"
 #include "utility.hpp"
@@ -191,7 +190,7 @@ class BzTree
 
     // create a consolidated node
     auto *consolidated_node = CreateNewNode(kLeafFlag);
-    Node_t::Consolidate(consolidated_node, node);
+    Node_t::Consolidate(node, consolidated_node);
     gc_.AddGarbage(node);
 
     // check whether splitting/merging is needed
@@ -255,17 +254,17 @@ class BzTree
     Node_t *left_node = (is_leaf) ? node : CreateNewNode(!kLeafFlag);
     Node_t *right_node = CreateNewNode(is_leaf);
     if (is_leaf) {
-      InnerSplit<Payload>(node, left_node, right_node);
+      Node_t::Split<Payload>(node, left_node, right_node);
     } else {
-      InnerSplit<Node_t *>(node, left_node, right_node);
+      Node_t::Split<Node_t *>(node, left_node, right_node);
     }
     Node_t *new_parent = CreateNewNode(!kLeafFlag);
     if (trace.empty()) {  // create a new root node
       new_parent->SetSortedCount(1);
       new_parent->SetRightEndFlag(true);
-      CreateSplitParent(new_parent, new_parent, left_node, right_node, target_pos);
+      Node_t::CreateSplitParent(new_parent, new_parent, left_node, right_node, target_pos);
     } else {
-      CreateSplitParent(old_parent, new_parent, left_node, right_node, target_pos);
+      Node_t::CreateSplitParent(old_parent, new_parent, left_node, right_node, target_pos);
     }
 
     // check the parent node has sufficent capacity
@@ -287,70 +286,6 @@ class BzTree
     if (parent_need_split) {
       Split(new_parent, key);
     }
-  }
-
-  template <class T>
-  void
-  InnerSplit(  //
-      Node_t *node,
-      Node_t *l_node,
-      Node_t *r_node)
-  {
-    // set a right-end flag if needed
-    if (!node->HasNext()) {
-      l_node->SetRightEndFlag(false);
-      r_node->SetRightEndFlag(true);
-    }
-
-    // copy records to a left node
-    const auto rec_count = node->GetSortedCount();
-    const size_t l_count = rec_count / 2;
-    size_t l_offset;
-    if constexpr (std::is_same_v<T, Node_t *>) {
-      l_offset = l_node->CopyRecordsFrom<T>(node, 0, l_count, 0, kPageSize);
-    } else {  // when splitting a leaf node, only update its offset
-      l_offset = l_node->GetMetadata(l_count - 1).GetOffset();
-    }
-    l_node->SetSortedCount(l_count);
-    l_node->SetStatus(StatusWord{l_count, kPageSize - l_offset});
-
-    // copy records to a right node
-    const auto r_offset = r_node->CopyRecordsFrom<T>(node, l_count, rec_count, 0, kPageSize);
-    const auto r_count = rec_count - l_count;
-    r_node->SetSortedCount(r_count);
-    r_node->SetStatus(StatusWord{r_count, kPageSize - r_offset});
-  }
-
-  void
-  CreateSplitParent(  //
-      const Node_t *old_node,
-      Node_t *new_node,
-      const Node_t *l_child,
-      const Node_t *r_child,
-      const size_t l_pos)  //
-  {
-    // set a right-end flag if needed
-    if (!old_node->HasNext()) {
-      new_node->SetRightEndFlag(true);
-    }
-
-    // copy lower records
-    auto offset = new_node->CopyRecordsFrom<Node_t *>(old_node, 0, l_pos, 0, kPageSize);
-
-    // insert split nodes
-    const auto l_meta = l_child->GetMetadata(l_child->GetSortedCount() - 1);
-    offset = new_node->InsertChild(l_child, l_meta, l_child, l_pos, offset);
-    const auto r_meta = old_node->GetMetadata(l_pos);
-    const auto r_pos = l_pos + 1;
-    offset = new_node->InsertChild(old_node, r_meta, r_child, r_pos, offset);
-
-    // copy upper records
-    auto rec_count = old_node->GetSortedCount();
-    offset = new_node->CopyRecordsFrom<Node_t *>(old_node, r_pos, rec_count, r_pos + 1, offset);
-
-    // set an updated header
-    new_node->SetSortedCount(++rec_count);
-    new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
   }
 
   /**
@@ -413,11 +348,12 @@ class BzTree
     const auto is_leaf = node->IsLeaf();
     Node_t *merged_node = (is_leaf) ? node : CreateNewNode(!kLeafFlag);
     if (is_leaf) {
-      InnerMerge<Payload>(node, right_node, merged_node);
+      Node_t::Merge<Payload>(node, right_node, merged_node);
     } else {
-      InnerMerge<Node_t *>(node, right_node, merged_node);
+      Node_t::Merge<Node_t *>(node, right_node, merged_node);
     }
-    Node_t *new_parent = CreateMergeParent(old_parent, merged_node, target_pos);
+    Node_t *new_parent = CreateNewNode(!kLeafFlag);
+    Node_t::CreateMergeParent(old_parent, new_parent, merged_node, target_pos);
 
     // check the parent node should be merged
     const auto parent_need_merge = new_parent->GetSortedCount() < kMinSortedRecNum;
@@ -450,68 +386,6 @@ class BzTree
     return true;
   }
 
-  template <class T>
-  void
-  InnerMerge(  //
-      Node_t *l_node,
-      Node_t *r_node,
-      Node_t *merged_node)
-  {
-    // set a right-end flag if needed
-    if (!r_node->HasNext()) {
-      merged_node->SetRightEndFlag();
-    }
-
-    // copy records in left/right nodes
-    const auto l_count = l_node->GetSortedCount();
-    size_t offset;
-    if constexpr (std::is_same_v<T, Node_t *>) {
-      offset = merged_node->CopyRecordsFrom<T>(l_node, 0, l_count, 0, kPageSize);
-    } else {  // when merging a leaf node, only update its offset
-      offset = merged_node->GetMetadata(l_count - 1).GetOffset();
-    }
-    const auto r_count = r_node->GetSortedCount();
-    offset = merged_node->CopyRecordsFrom<T>(r_node, 0, r_count, l_count, offset);
-
-    // create a merged node
-    const auto rec_count = l_count + r_count;
-    merged_node->SetSortedCount(rec_count);
-    merged_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
-  }
-
-  auto
-  CreateMergeParent(  //
-      const Node_t *old_node,
-      const Node_t *merged_child,
-      const size_t position)  //
-      -> Node_t *
-  {
-    Node_t *new_node = CreateNewNode(!kLeafFlag);
-
-    // set a right-end flag if needed
-    if (!old_node->HasNext()) {
-      new_node->SetRightEndFlag(true);
-    }
-
-    // copy lower records
-    auto offset = new_node->CopyRecordsFrom<Node_t *>(old_node, 0, position, 0, kPageSize);
-
-    // insert a merged node
-    const auto r_pos = position + 1;
-    const auto meta = old_node->GetMetadata(r_pos);
-    offset = new_node->InsertChild(old_node, meta, merged_child, position, offset);
-
-    // copy upper records
-    auto rec_count = old_node->GetSortedCount();
-    offset = new_node->CopyRecordsFrom<Node_t *>(old_node, r_pos + 1, rec_count, r_pos, offset);
-
-    // set an updated header
-    new_node->SetSortedCount(--rec_count);
-    new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
-
-    return new_node;
-  }
-
   /**
    * @brief Install a new node by using MwCAS.
    *
@@ -540,7 +414,7 @@ class BzTree
         auto [old_node, target_pos] = trace.back();
         if (old_node != target_node) return;
         trace.pop_back();
-        auto parent = trace.back().first;
+        Node_t *parent = trace.back().first;
 
         // check wether related nodes are frozen
         const auto parent_status = parent->GetStatusWordProtected();
@@ -557,7 +431,7 @@ class BzTree
          * Swapping a new root node
          *----------------------------------------------------------------------------------------*/
 
-        const auto old_node = trace.back().first;
+        const Node_t *old_node = trace.back().first;
         if (old_node != target_node) return;
         trace.pop_back();
         desc.AddMwCASTarget(&root_, old_node, new_node);
@@ -582,7 +456,7 @@ class BzTree
     if (!node->IsLeaf()) {
       // delete children nodes recursively
       for (size_t i = 0; i < node->GetSortedCount(); ++i) {
-        auto child_node = internal::GetChildNode(node, i);
+        Node_t *child_node = GetChild(node, i);
         DeleteChildren(child_node);
       }
     }
@@ -878,7 +752,7 @@ class BzTree
     if (!node->IsLeaf()) {
       // delete children nodes recursively
       for (size_t i = 0; i < node->GetSortedCount(); ++i) {
-        auto child_node = internal::GetChildNode(node, i);
+        Node_t *child_node = GetChild(node, i);
         std::tie(internal_count, leaf_count) = CountNodes(child_node, internal_count, leaf_count);
       }
       return {internal_count + 1, leaf_count};

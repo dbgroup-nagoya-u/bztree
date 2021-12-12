@@ -19,7 +19,6 @@
 #include <functional>
 #include <memory>
 
-#include "bztree/component/leaf_node_api.hpp"
 #include "gtest/gtest.h"
 
 namespace dbgroup::index::bztree::component::test

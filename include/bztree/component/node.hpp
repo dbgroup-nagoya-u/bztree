@@ -1401,8 +1401,8 @@ class alignas(kCacheLineSize) Node
    */
   static void
   Consolidate(  //
-      Node<Key, Payload, Compare> *new_node,
-      const Node<Key, Payload, Compare> *old_node)
+      const Node *old_node,
+      Node *new_node)
   {
     if (!old_node->HasNext()) {
       new_node->SetRightEndFlag();
@@ -1453,6 +1453,128 @@ class alignas(kCacheLineSize) Node
 
     // set header information
     new_node->SetSortedCount(rec_count);
+    new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
+  }
+
+  template <class T>
+  static void
+  Split(  //
+      Node *node,
+      Node *l_node,
+      Node *r_node)
+  {
+    // set a right-end flag if needed
+    if (!node->HasNext()) {
+      l_node->SetRightEndFlag(false);
+      r_node->SetRightEndFlag(true);
+    }
+
+    // copy records to a left node
+    const auto rec_count = node->GetSortedCount();
+    const size_t l_count = rec_count / 2;
+    size_t l_offset;
+    if constexpr (std::is_same_v<T, Node *>) {
+      l_offset = l_node->CopyRecordsFrom<T>(node, 0, l_count, 0, kPageSize);
+    } else {  // when splitting a leaf node, only update its offset
+      l_offset = l_node->GetMetadata(l_count - 1).GetOffset();
+    }
+    l_node->SetSortedCount(l_count);
+    l_node->SetStatus(StatusWord{l_count, kPageSize - l_offset});
+
+    // copy records to a right node
+    const auto r_offset = r_node->CopyRecordsFrom<T>(node, l_count, rec_count, 0, kPageSize);
+    const auto r_count = rec_count - l_count;
+    r_node->SetSortedCount(r_count);
+    r_node->SetStatus(StatusWord{r_count, kPageSize - r_offset});
+  }
+
+  static void
+  CreateSplitParent(  //
+      const Node *old_node,
+      Node *new_node,
+      const Node *l_child,
+      const Node *r_child,
+      const size_t l_pos)
+  {
+    // set a right-end flag if needed
+    if (!old_node->HasNext()) {
+      new_node->SetRightEndFlag(true);
+    }
+
+    // copy lower records
+    auto offset = new_node->CopyRecordsFrom<Node *>(old_node, 0, l_pos, 0, kPageSize);
+
+    // insert split nodes
+    const auto l_meta = l_child->GetMetadata(l_child->GetSortedCount() - 1);
+    offset = new_node->InsertChild(l_child, l_meta, l_child, l_pos, offset);
+    const auto r_meta = old_node->GetMetadata(l_pos);
+    const auto r_pos = l_pos + 1;
+    offset = new_node->InsertChild(old_node, r_meta, r_child, r_pos, offset);
+
+    // copy upper records
+    auto rec_count = old_node->GetSortedCount();
+    offset = new_node->CopyRecordsFrom<Node *>(old_node, r_pos, rec_count, r_pos + 1, offset);
+
+    // set an updated header
+    new_node->SetSortedCount(++rec_count);
+    new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
+  }
+
+  template <class T>
+  static void
+  Merge(  //
+      Node *l_node,
+      Node *r_node,
+      Node *merged_node)
+  {
+    // set a right-end flag if needed
+    if (!r_node->HasNext()) {
+      merged_node->SetRightEndFlag();
+    }
+
+    // copy records in left/right nodes
+    const auto l_count = l_node->GetSortedCount();
+    size_t offset;
+    if constexpr (std::is_same_v<T, Node *>) {
+      offset = merged_node->CopyRecordsFrom<T>(l_node, 0, l_count, 0, kPageSize);
+    } else {  // when merging a leaf node, only update its offset
+      offset = merged_node->GetMetadata(l_count - 1).GetOffset();
+    }
+    const auto r_count = r_node->GetSortedCount();
+    offset = merged_node->CopyRecordsFrom<T>(r_node, 0, r_count, l_count, offset);
+
+    // create a merged node
+    const auto rec_count = l_count + r_count;
+    merged_node->SetSortedCount(rec_count);
+    merged_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
+  }
+
+  static void
+  CreateMergeParent(  //
+      const Node *old_node,
+      Node *new_node,
+      const Node *merged_child,
+      const size_t position)
+  {
+    // set a right-end flag if needed
+    if (!old_node->HasNext()) {
+      new_node->SetRightEndFlag(true);
+    }
+
+    // copy lower records
+    auto offset = new_node->CopyRecordsFrom<Node *>(old_node, 0, position, 0, kPageSize);
+
+    // insert a merged node
+    const auto r_pos = position + 1;
+    const auto meta = old_node->GetMetadata(r_pos);
+    offset = new_node->InsertChild(old_node, meta, merged_child, position, offset);
+
+    // copy upper records
+    auto rec_count = old_node->GetSortedCount();
+    offset = new_node->CopyRecordsFrom<Node *>(old_node, r_pos + 1, rec_count, r_pos, offset);
+
+    // set an updated header
+    new_node->SetSortedCount(--rec_count);
     new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
   }
 };
