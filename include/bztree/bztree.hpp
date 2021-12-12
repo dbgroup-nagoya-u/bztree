@@ -238,7 +238,8 @@ class BzTree
 
       if (trace.empty()) {
         // if the target node is a root, insert a new root node
-        RootSplit(node);
+        old_parent = node;
+        break;
       }
 
       // pre-freezing of SMO targets
@@ -259,7 +260,14 @@ class BzTree
     } else {
       InnerSplit<Node_t *>(node, left_node, right_node);
     }
-    Node_t *new_parent = CreateParent(old_parent, left_node, right_node, target_pos);
+    Node_t *new_parent = CreateNewNode(!kLeafFlag);
+    if (trace.empty()) {  // create a new root node
+      new_parent->SetSortedCount(1);
+      new_parent->SetRightEndFlag(true);
+      CreateSplitParent(new_parent, new_parent, left_node, right_node, target_pos);
+    } else {
+      CreateSplitParent(old_parent, new_parent, left_node, right_node, target_pos);
+    }
 
     // check the parent node has sufficent capacity
     const auto parent_need_split = new_parent->GetFreeSpaceSize() < kMinFreeSpaceSize;
@@ -315,44 +323,13 @@ class BzTree
   }
 
   void
-  RootSplit(Node_t *node)
-  {
-    // create split nodes and its parent node
-    const auto is_leaf = node->IsLeaf();
-    Node_t *l_child = (is_leaf) ? node : CreateNewNode(!kLeafFlag);
-    Node_t *r_child = CreateNewNode(is_leaf);
-    if (is_leaf) {
-      InnerSplit<Payload>(node, l_child, r_child);
-    } else {
-      InnerSplit<Node_t *>(node, l_child, r_child);
-    }
-    Node_t *new_root = CreateNewNode(!kLeafFlag);
-    new_root->SetRightEndFlag(true);
-
-    // insert children nodes
-    const auto l_meta = l_child->GetMetadata(l_child->GetSortedCount() - 1);
-    auto offset = new_root->InsertChild(l_child, l_meta, l_child, 0, kPageSize);
-    const auto r_meta = r_child->GetMetadata(r_child->GetSortedCount() - 1);
-    offset = new_root->InsertChild(r_child, r_meta, r_child, 1, offset);
-
-    // set header information
-    new_root->SetSortedCount(2);
-    new_root->SetStatus(StatusWord{2, kPageSize - offset});
-
-    // install the new root node
-    reinterpret_cast<std::atomic<Node_t *> *>(root_)->store(new_root, std::memory_order_release);
-  }
-
-  auto
-  CreateParent(  //
+  CreateSplitParent(  //
       const Node_t *old_node,
+      Node_t *new_node,
       const Node_t *l_child,
       const Node_t *r_child,
       const size_t l_pos)  //
-      -> Node_t *
   {
-    Node_t *new_node = CreateNewNode(!kLeafFlag);
-
     // set a right-end flag if needed
     if (!old_node->HasNext()) {
       new_node->SetRightEndFlag(true);
@@ -375,8 +352,6 @@ class BzTree
     // set an updated header
     new_node->SetSortedCount(++rec_count);
     new_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
-
-    return new_node;
   }
 
   /**
@@ -417,7 +392,7 @@ class BzTree
       const auto p_status = old_parent->GetStatusWordProtected();
       if (p_status.IsFrozen()) continue;
 
-      // check a right sibling node is live
+      // check a right sibling node is live and has sufficent capacity
       right_node = GetChild(old_parent, target_pos + 1);
       const auto r_size = right_node->GetUsedSize();
       if (l_size + r_size > kMaxMergedSize - component::kHeaderLength) return false;
@@ -443,7 +418,7 @@ class BzTree
     } else {
       InnerMerge<Node_t *>(node, right_node, merged_node);
     }
-    Node_t *new_parent = CreateParent(old_parent, merged_node, target_pos);
+    Node_t *new_parent = CreateMergeParent(old_parent, merged_node, target_pos);
 
     // check the parent node should be merged
     const auto parent_need_merge = new_parent->GetSortedCount() < kMinSortedRecNum;
@@ -506,7 +481,7 @@ class BzTree
   }
 
   auto
-  CreateParent(  //
+  CreateMergeParent(  //
       const Node_t *old_node,
       const Node_t *merged_child,
       const size_t position)  //
