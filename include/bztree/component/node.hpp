@@ -548,6 +548,45 @@ class alignas(kCacheLineSize) Node
    *##############################################################################################*/
 
   /**
+   * @brief Get the position of a specified key by using binary search. If there is no
+   * specified key, this returns the minimum metadata index that is greater than the
+   * specified key
+   *
+   * @param key a target key.
+   * @param range_is_closed a flag to indicate that a target key is included.
+   * @return size_t: the position of a specified key.
+   */
+  auto
+  SearchChild(  //
+      const Key &key,
+      const bool range_is_closed) const  //
+      -> size_t
+  {
+    size_t begin_pos = 0;
+    int64_t end_pos = GetSortedCount() - 2;
+    while (begin_pos <= end_pos) {
+      size_t pos = (begin_pos + end_pos) >> 1;
+
+      const auto meta = GetMetadataProtected(pos);
+      const auto index_key = GetKey(meta);
+
+      if (Compare{}(key, index_key)) {  // a target key is in a left side
+        end_pos = pos - 1;
+      } else if (Compare{}(index_key, key)) {  // a target key is in a right side
+        begin_pos = pos + 1;
+      } else if (range_is_closed) {  // find an equivalent key
+        begin_pos = pos;
+        break;
+      } else {  // find an equivalent key, but the range is open
+        begin_pos = pos + 1;
+        break;
+      }
+    }
+
+    return begin_pos;
+  }
+
+  /**
    * @brief Freeze this node for SMOs.
    *
    * @retval kSuccess if a node has become frozen.

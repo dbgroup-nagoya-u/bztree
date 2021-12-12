@@ -23,7 +23,6 @@
 #include <utility>
 #include <vector>
 
-#include "component/internal_node_api.hpp"
 #include "component/leaf_node_api.hpp"
 #include "component/record_iterator.hpp"
 #include "memory/epoch_based_gc.hpp"
@@ -117,10 +116,10 @@ class BzTree
       const Key &key,
       const bool range_is_closed)
   {
-    auto current_node = GetRoot();
+    Node_t *current_node = GetRoot();
     do {
-      const auto index = internal::SearchChildNode(current_node, key, range_is_closed);
-      current_node = internal::GetChildNode(current_node, index);
+      const auto index = current_node->SearchChild(key, range_is_closed);
+      current_node = GetChild(current_node, index);
     } while (!current_node->IsLeaf());
 
     return current_node;
@@ -132,9 +131,9 @@ class BzTree
   Node_t *
   SearchLeftEdgeLeaf()
   {
-    auto current_node = GetRoot();
+    Node_t *current_node = GetRoot();
     do {
-      current_node = internal::GetChildNode(current_node, 0);
+      current_node = GetChildNode(current_node, 0);
     } while (!current_node->IsLeaf());
 
     return current_node;
@@ -157,11 +156,11 @@ class BzTree
     // trace nodes to a target internal node
     NodeStack trace;
     size_t index = 0;
-    auto current_node = GetRoot();
+    Node_t *current_node = GetRoot();
     while (current_node != target_node && !current_node->IsLeaf()) {
       trace.emplace_back(current_node, index);
-      index = internal::SearchChildNode(current_node, key, true);
-      current_node = internal::GetChildNode(current_node, index);
+      index = current_node->SearchChild(key, true);
+      current_node = GetChildNode(current_node, index);
     }
     trace.emplace_back(current_node, index);
 
