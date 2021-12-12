@@ -93,16 +93,6 @@ class BzTree
     return MwCASDescriptor::Read<Node_t *>(&root_);
   }
 
-  auto
-  GetChild(  //
-      const Node_t *node,
-      const size_t position)  //
-      -> Node_t *
-  {
-    const auto meta = node->GetMetadata(position);
-    return MwCASDescriptor::Read<Node_t *>(node->GetPayloadAddr(meta));
-  }
-
   /**
    * @brief Search a leaf node with a specified key.
    *
@@ -118,7 +108,7 @@ class BzTree
     Node_t *current_node = GetRoot();
     do {
       const auto index = current_node->SearchChild(key, range_is_closed);
-      current_node = GetChild(current_node, index);
+      current_node = current_node->GetChild(index);
     } while (!current_node->IsLeaf());
 
     return current_node;
@@ -132,7 +122,7 @@ class BzTree
   {
     Node_t *current_node = GetRoot();
     do {
-      current_node = GetChildNode(current_node, 0);
+      current_node = current_node->GetChild(0);
     } while (!current_node->IsLeaf());
 
     return current_node;
@@ -159,7 +149,7 @@ class BzTree
     while (current_node != target_node && !current_node->IsLeaf()) {
       trace.emplace_back(current_node, index);
       index = current_node->SearchChild(key, true);
-      current_node = GetChildNode(current_node, index);
+      current_node = current_node->GetChild(index);
     }
     trace.emplace_back(current_node, index);
 
@@ -189,16 +179,17 @@ class BzTree
     if (node->Freeze() != NodeReturnCode::kSuccess) return;
 
     // create a consolidated node
-    auto *consolidated_node = CreateNewNode(kLeafFlag);
-    Node_t::Consolidate(node, consolidated_node);
+    Node_t *consolidated_node = CreateNewNode(kLeafFlag);
+    consolidated_node->Consolidate(node);
     gc_.AddGarbage(node);
 
     // check whether splitting/merging is needed
-    if (consolidated_node->GetFreeSpaceSize() < kMinFreeSpaceSize) {
+    const auto stat = consolidated_node->GetStatusWordProtected();
+    if (stat.GetFreeSpaceSize() < kMinFreeSpaceSize) {
       Split(consolidated_node, key);
       return;
-    } else if (consolidated_node->GetSortedCount() < kMinSortedRecNum) {
-      if (MergeLeafNodes(node, key, key_length, target_size, metadata, rec_count)) return;
+    } else if (stat.GetRecordCount() < kMinSortedRecNum) {
+      if (Merge(consolidated_node, key)) return;
     }
 
     // install a new node
@@ -260,15 +251,14 @@ class BzTree
     }
     Node_t *new_parent = CreateNewNode(!kLeafFlag);
     if (trace.empty()) {  // create a new root node
-      new_parent->SetSortedCount(1);
-      new_parent->SetRightEndFlag(true);
-      Node_t::CreateSplitParent(new_parent, new_parent, left_node, right_node, target_pos);
+      new_parent->InitAsRoot(left_node, right_node);
     } else {
-      Node_t::CreateSplitParent(old_parent, new_parent, left_node, right_node, target_pos);
+      new_parent->InitAsSplitParent(old_parent, left_node, right_node, target_pos);
     }
 
     // check the parent node has sufficent capacity
-    const auto parent_need_split = new_parent->GetFreeSpaceSize() < kMinFreeSpaceSize;
+    const auto p_stat = new_parent->GetStatusWordProtected();
+    const auto parent_need_split = p_stat.GetFreeSpaceSize() < kMinFreeSpaceSize;
     if (parent_need_split) {
       new_parent->Freeze();  // pre-freeze for recursive splitting
     }
@@ -303,7 +293,7 @@ class BzTree
       const Key &key)  //
       -> bool
   {
-    const auto l_size = node->GetUsedSize();
+    const auto l_size = node->GetStatusWordProtected().GetUsedSize();
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: preparation
@@ -327,10 +317,9 @@ class BzTree
       if (p_status.IsFrozen()) continue;
 
       // check a right sibling node is live and has sufficent capacity
-      right_node = GetChild(old_parent, target_pos + 1);
-      const auto r_size = right_node->GetUsedSize();
-      if (l_size + r_size > kMaxMergedSize - component::kHeaderLength) return false;
+      right_node = old_parent->GetChild(target_pos + 1);
       const auto r_status = right_node->GetStatusWordProtected();
+      if (l_size + r_status.GetUsedSize() > kMaxMergedSize - component::kHeaderLength) return false;
       if (r_status.IsFrozen()) continue;
 
       // pre-freezing of SMO targets
@@ -353,7 +342,7 @@ class BzTree
       Node_t::Merge<Node_t *>(node, right_node, merged_node);
     }
     Node_t *new_parent = CreateNewNode(!kLeafFlag);
-    Node_t::CreateMergeParent(old_parent, new_parent, merged_node, target_pos);
+    new_parent->InitAsMergeParent(old_parent, merged_node, target_pos);
 
     // check the parent node should be merged
     const auto parent_need_merge = new_parent->GetSortedCount() < kMinSortedRecNum;
@@ -380,7 +369,7 @@ class BzTree
     // merge the new parent node if needed
     if (parent_need_merge && (trace.empty() || !Merge(new_parent, key))) {
       // if the parent node cannot be merged, unfreeze it
-      new_parent->SetStatus(new_parent->GetStatusWord().Unfreeze());
+      new_parent->Unfreeze();
     }
 
     return true;
@@ -425,7 +414,7 @@ class BzTree
 
         // install a new internal node by PMwCAS
         parent->SetStatusForMwCAS(desc, parent_status, parent_status);
-        parent->SetPayloadForMwCAS(desc, parent->GetMetadata(target_pos), old_node, new_node);
+        parent->SetChildForMwCAS(desc, target_pos, old_node, new_node);
       } else {
         /*------------------------------------------------------------------------------------------
          * Swapping a new root node
@@ -456,7 +445,7 @@ class BzTree
     if (!node->IsLeaf()) {
       // delete children nodes recursively
       for (size_t i = 0; i < node->GetSortedCount(); ++i) {
-        Node_t *child_node = GetChild(node, i);
+        Node_t *child_node = node->GetChild(i);
         DeleteChildren(child_node);
       }
     }
@@ -478,8 +467,6 @@ class BzTree
   {
     // create an initial root node
     Node_t *leaf = CreateNewNode(kLeafFlag);
-    leaf->SetRightEndFlag(true);
-    leaf->SetStatus(StatusWord{});
     root_->store(leaf, std::memory_order_relaxed);
 
     // start GC for nodes
@@ -752,7 +739,7 @@ class BzTree
     if (!node->IsLeaf()) {
       // delete children nodes recursively
       for (size_t i = 0; i < node->GetSortedCount(); ++i) {
-        Node_t *child_node = GetChild(node, i);
+        Node_t *child_node = node->GetChild(i);
         std::tie(internal_count, leaf_count) = CountNodes(child_node, internal_count, leaf_count);
       }
       return {internal_count + 1, leaf_count};

@@ -155,7 +155,7 @@ class StatusWord
    * @return size_t: the total byte length of a header, metadata, and records in a node.
    */
   constexpr size_t
-  GetOccupiedSize() const
+  GetUsedSize() const
   {
     return kHeaderLength + (kWordLength * record_count_) + block_size_;
   }
@@ -167,7 +167,7 @@ class StatusWord
   GetFreeSpaceSize() const  //
       -> size_t
   {
-    return kPageSize - GetOccupiedSize();
+    return kPageSize - GetUsedSize();
   }
 
   /**

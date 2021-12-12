@@ -131,7 +131,7 @@ TEST_F(StatusWordFixture, GetOccupiedSize_EmptyStatusWord_GetCorrectSize)
 {
   StatusWord status{};
 
-  EXPECT_EQ(kHeaderLength, status.GetOccupiedSize());
+  EXPECT_EQ(kHeaderLength, status.GetUsedSize());
 }
 
 TEST_F(StatusWordFixture, GetOccupiedSize_ActiveStatusWord_GetCorrectSize)
@@ -141,7 +141,7 @@ TEST_F(StatusWordFixture, GetOccupiedSize_ActiveStatusWord_GetCorrectSize)
   auto expected_occupied_size =
       kHeaderLength + (kWordLength * kExpectedRecordCount) + kExpectedBlockSize;
 
-  EXPECT_EQ(expected_occupied_size, status.GetOccupiedSize());
+  EXPECT_EQ(expected_occupied_size, status.GetUsedSize());
 }
 
 TEST_F(StatusWordFixture, GetLiveDataSize_EmptyStatusWord_GetCorrectSize)
