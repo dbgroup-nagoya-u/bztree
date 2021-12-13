@@ -132,6 +132,35 @@ GetMaxRecordNum()
 }
 
 /**
+ * @brief Align a specified block size if needed.
+ *
+ * @param block_size a target block size.
+ * @return size_t: an aligned block size.
+ */
+template <class Key, class Payload>
+constexpr auto
+PadRecord(const size_t rec_length)  //
+    -> size_t
+{
+  if constexpr (CanCASUpdate<Payload>()) {
+    // alignment is required
+    constexpr auto kRecLength = sizeof(Key) + sizeof(Payload);
+
+    if constexpr (IsVariableLengthData<Key>()) {
+      const auto align_diff = rec_length % alignof(Payload);
+      if (align_diff > 0) {
+        return rec_length + (alignof(Payload) - align_diff);
+      }
+    } else if constexpr (kRecLength % alignof(Payload) != 0) {
+      // use a fixed padding size
+      constexpr auto kPaddingSize = alignof(Payload) - (kRecLength % alignof(Payload));
+      return rec_length + kPaddingSize;
+    }
+  }
+  return rec_length;
+}
+
+/**
  * @brief Align a given offset to perform CAS operations.
  *
  * @tparam Key a target key class.

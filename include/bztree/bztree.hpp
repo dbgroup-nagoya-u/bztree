@@ -104,10 +104,10 @@ class BzTree
       const bool range_is_closed)
   {
     Node_t *current_node = GetRoot();
-    do {
+    while (!current_node->IsLeaf()) {
       const auto index = current_node->Search(key, range_is_closed);
       current_node = current_node->GetChild(index);
-    } while (!current_node->IsLeaf());
+    }
 
     return current_node;
   }
@@ -119,9 +119,9 @@ class BzTree
   SearchLeftEdgeLeaf()
   {
     Node_t *current_node = GetRoot();
-    do {
+    while (!current_node->IsLeaf()) {
       current_node = current_node->GetChild(0);
-    } while (!current_node->IsLeaf());
+    }
 
     return current_node;
   }
@@ -178,7 +178,6 @@ class BzTree
     // create a consolidated node
     Node_t *consolidated_node = CreateNewNode(kLeafFlag);
     consolidated_node->Consolidate(node);
-    gc_.AddGarbage(node);
 
     // check whether splitting/merging is needed
     const auto stat = consolidated_node->GetStatusWordProtected();
@@ -192,6 +191,7 @@ class BzTree
     // install a new node
     auto trace = TraceTargetNode(key, node);
     InstallNewNode(trace, consolidated_node, key, node);
+    gc_.AddGarbage(node);
   }
 
   /**
@@ -247,31 +247,34 @@ class BzTree
       Node_t::template Split<Node_t *>(node, left_node, right_node);
     }
     Node_t *new_parent = CreateNewNode(!kLeafFlag);
-    if (trace.empty()) {  // create a new root node
+    if (trace.empty()) {
+      // create a new root node
       new_parent->InitAsRoot(left_node, right_node);
+      root_.store(new_parent, std::memory_order_relaxed);
     } else {
+      // create a new parent node
       new_parent->InitAsSplitParent(old_parent, left_node, right_node, target_pos);
-    }
 
-    // check the parent node has sufficent capacity
-    const auto p_stat = new_parent->GetStatusWordProtected();
-    const auto parent_need_split = p_stat.GetFreeSpaceSize() < kMinFreeSpaceSize;
-    if (parent_need_split) {
-      new_parent->Freeze();  // pre-freeze for recursive splitting
-    }
+      // check the parent node has sufficent capacity
+      const auto p_stat = new_parent->GetStatusWordProtected();
+      const auto parent_need_split = p_stat.GetFreeSpaceSize() < kMinFreeSpaceSize;
+      if (parent_need_split) {
+        new_parent->Freeze();  // pre-freeze for recursive splitting
+      }
 
-    // install new nodes
-    InstallNewNode(trace, new_parent, key, old_parent);
+      // install new nodes to the index
+      InstallNewNode(trace, new_parent, key, old_parent);
+
+      // split the new parent node if needed
+      if (parent_need_split) {
+        Split(new_parent, key);
+      }
+    }
 
     // register frozen nodes with garbage collection
     gc_.AddGarbage(old_parent);
     if (!is_leaf) {
       gc_.AddGarbage(node);
-    }
-
-    // split the new parent node if needed
-    if (parent_need_split) {
-      Split(new_parent, key);
     }
   }
 
@@ -305,6 +308,9 @@ class BzTree
       trace = TraceTargetNode(key, node);
       target_pos = trace.back().second;
       trace.pop_back();
+
+      // if the target node is a root, do nothing
+      if (trace.empty()) return false;
 
       // check a parent node is live and has a right child node
       old_parent = trace.back().first;
@@ -364,7 +370,7 @@ class BzTree
     }
 
     // merge the new parent node if needed
-    if (parent_need_merge && (trace.empty() || !Merge(new_parent, key))) {
+    if (parent_need_merge && !Merge(new_parent, key)) {
       // if the parent node cannot be merged, unfreeze it
       new_parent->Unfreeze();
     }

@@ -335,7 +335,7 @@ class alignas(kCacheLineSize) Node
   {
     // variables and constants shared in Phase 1 & 2
     const auto total_length = key_length + payload_length;
-    const auto block_size = GetAlignedSize(total_length);
+    const auto block_size = PadRecord<Key, Payload>(total_length);
     const auto in_progress_meta = Metadata{0, key_length, total_length, true};
     StatusWord cur_status;
     size_t rec_count;
@@ -434,7 +434,7 @@ class alignas(kCacheLineSize) Node
   {
     // variables and constants shared in Phase 1 & 2
     const auto total_length = key_length + payload_length;
-    const auto block_size = GetAlignedSize(total_length);
+    const auto block_size = PadRecord<Key, Payload>(total_length);
     const auto in_progress_meta = Metadata{0, key_length, total_length, true};
     StatusWord cur_status;
     size_t rec_count;
@@ -533,7 +533,7 @@ class alignas(kCacheLineSize) Node
   {
     // variables and constants shared in Phase 1 & 2
     const auto total_length = key_length + payload_length;
-    const auto block_size = GetAlignedSize(total_length);
+    const auto block_size = PadRecord<Key, Payload>(total_length);
     const auto in_progress_meta = Metadata{0, key_length, total_length, true};
     StatusWord cur_status;
     size_t rec_count, target_index = 0;
@@ -568,7 +568,7 @@ class alignas(kCacheLineSize) Node
 
       // prepare new status for MwCAS
       const auto target_meta = GetMetadataProtected(target_index);
-      const auto deleted_size = kWordLength + GetAlignedSize(target_meta.GetTotalLength());
+      const auto deleted_size = kWordLength + PadRecord<Key, Payload>(target_meta.GetTotalLength());
       const auto new_status = cur_status.Add(1, block_size).Delete(deleted_size);
 
       // perform MwCAS to reserve space
@@ -663,7 +663,8 @@ class alignas(kCacheLineSize) Node
         if (rc == kExist && target_index < sorted_count_) {
           const auto target_meta = GetMetadataProtected(target_index);
           const auto deleted_meta = target_meta.Delete();
-          const auto deleted_size = kWordLength + GetAlignedSize(target_meta.GetTotalLength());
+          const auto deleted_size =
+              kWordLength + PadRecord<Key, Payload>(target_meta.GetTotalLength());
           const auto new_status = cur_status.Delete(deleted_size);
 
           // delete a record directly
@@ -678,7 +679,7 @@ class alignas(kCacheLineSize) Node
       // prepare new status for MwCAS
       const auto target_meta = GetMetadataProtected(target_index);
       const auto deleted_size =
-          (2 * kWordLength) + GetAlignedSize(target_meta.GetTotalLength()) + key_length;
+          (2 * kWordLength) + PadRecord<Key, Payload>(target_meta.GetTotalLength()) + key_length;
       const auto new_status = cur_status.Add(1, key_length).Delete(deleted_size);
 
       // perform MwCAS to reserve space
@@ -753,8 +754,8 @@ class alignas(kCacheLineSize) Node
 
     size_t j = 0;
     for (size_t i = 0; i < sorted_count; ++i) {
-      const auto meta = GetMetadataProtected(i);
-      const auto key = GetKey(meta);
+      const auto meta = old_node->GetMetadataProtected(i);
+      const auto key = old_node->GetKey(meta);
 
       // copy new records
       for (; j < new_rec_num; ++j) {
@@ -780,7 +781,7 @@ class alignas(kCacheLineSize) Node
 
     // move remaining new records
     for (; j < new_rec_num; ++j) {
-      const auto target_meta = records[j++].meta;
+      const auto target_meta = records[j].meta;
       if (target_meta.IsVisible()) {
         offset = CopyRecordFrom<Payload>(old_node, target_meta, rec_count++, offset);
       }
@@ -799,8 +800,8 @@ class alignas(kCacheLineSize) Node
       Node *r_node)
   {
     // set a right-end flag
-    l_node->is_right_end_ = false;
     r_node->is_right_end_ = node->is_right_end_;
+    l_node->is_right_end_ = false;
 
     // copy records to a left node
     const auto rec_count = node->sorted_count_;
@@ -837,9 +838,9 @@ class alignas(kCacheLineSize) Node
     // insert split nodes
     const auto l_meta = l_child->meta_array_[l_child->sorted_count_ - 1];
     offset = InsertChild(l_child, l_meta, l_child, l_pos, offset);
-    const auto r_meta = old_node->meta_array_[l_pos];
+    const auto r_meta = r_child->meta_array_[r_child->sorted_count_ - 1];
     const auto r_pos = l_pos + 1;
-    offset = InsertChild(old_node, r_meta, r_child, r_pos, offset);
+    offset = InsertChild(r_child, r_meta, r_child, r_pos, offset);
 
     // copy upper records
     auto rec_count = old_node->sorted_count_;
@@ -1167,30 +1168,6 @@ class alignas(kCacheLineSize) Node
   /*################################################################################################
    * Internal utility functions
    *##############################################################################################*/
-
-  /**
-   * @brief Align a specified block size if needed.
-   *
-   * @param block_size a target block size.
-   * @return size_t: an aligned block size.
-   */
-  static constexpr auto
-  GetAlignedSize(const size_t block_size)  //
-      -> size_t
-  {
-    if constexpr (CanCASUpdate<Payload>()) {
-      if constexpr (IsVariableLengthData<Key>()) {
-        const auto align_size = block_size & (kWordLength - 1);
-        if (align_size > 0) {
-          return block_size + (kWordLength - align_size);
-        }
-      } else if constexpr (sizeof(Key) % kWordLength != 0) {
-        constexpr auto kAlignedSize = sizeof(Key) - (sizeof(Key) % kWordLength);
-        return block_size + kAlignedSize;
-      }
-    }
-    return block_size;
-  }
 
   /**
    * @brief Check a target node requires consolidation.
