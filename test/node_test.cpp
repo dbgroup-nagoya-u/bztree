@@ -28,7 +28,6 @@ namespace dbgroup::index::bztree::component::test
  * Global constants
  *################################################################################################*/
 
-constexpr size_t kVarDataLength = 9;
 constexpr size_t kMaxRecSize = 24 + sizeof(Metadata);
 constexpr size_t kKeyNumForTest = 1e5;
 constexpr bool kLeafFlag = true;
@@ -244,14 +243,15 @@ class NodeFixture : public testing::Test
   }
 
   void
-  VerifyLeafSplit()
+  VerifySplit()
   {
     PrepareConsolidatedNode();
 
-    Node_t *left_node = node.get();
+    Node_t *left_node = new Node_t{kLeafFlag};
     Node_t *right_node = new Node_t{kLeafFlag};
-    Node_t::template Split<Payload>(left_node, left_node, right_node);
+    Node_t::template Split<Payload>(node.get(), left_node, right_node);
 
+    node.reset(left_node);
     for (size_t i = 0; i < kMaxUnsortedRecNum; ++i) {
       VerifyRead(i, i, kExpectSuccess);
     }
@@ -263,62 +263,94 @@ class NodeFixture : public testing::Test
   }
 
   void
-  VerifyInternalSplit()
-  {
-    if constexpr (sizeof(Payload) == kWordLength && !std::is_pointer_v<Payload>) {
-      PrepareConsolidatedNode();
-
-      Node_t *left_node = new Node_t{kLeafFlag};
-      Node_t *right_node = new Node_t{kLeafFlag};
-      Node_t::template Split<Node_t *>(node.get(), left_node, right_node);
-
-      node.reset(left_node);
-      for (size_t i = 0; i < kMaxUnsortedRecNum; ++i) {
-        VerifyRead(i, i, kExpectSuccess);
-      }
-
-      node.reset(right_node);
-      for (size_t i = kMaxUnsortedRecNum; i < 2 * kMaxUnsortedRecNum; ++i) {
-        VerifyRead(i, i, kExpectSuccess);
-      }
-    }
-  }
-
-  void
-  VerifyLeafMerge()
+  VerifyMerge()
   {
     PrepareConsolidatedNode();
 
-    Node_t *left_node = node.get();
+    Node_t *left_node = new Node_t{kLeafFlag};
     Node_t *right_node = new Node_t{kLeafFlag};
-    Node_t::template Split<Payload>(left_node, left_node, right_node);
-    Node_t::template Merge<Payload>(left_node, right_node, left_node);
-    delete right_node;
+    Node_t::template Split<Payload>(node.get(), left_node, right_node);
+    Node_t *merged_node = new Node_t{kLeafFlag};
+    Node_t::template Merge<Payload>(left_node, right_node, merged_node);
 
+    node.reset(merged_node);
     for (size_t i = 0; i < 2 * kMaxUnsortedRecNum; ++i) {
       VerifyRead(i, i, kExpectSuccess);
     }
+
+    delete left_node;
+    delete right_node;
   }
 
   void
-  VerifyInternalMerge()
+  VerifyInitAsRoot()
   {
-    if constexpr (sizeof(Payload) == kWordLength && !std::is_pointer_v<Payload>) {
-      PrepareConsolidatedNode();
+    PrepareConsolidatedNode();
 
-      Node_t *left_node = new Node_t{kLeafFlag};
-      Node_t *right_node = new Node_t{kLeafFlag};
-      Node_t::template Split<Node_t *>(node.get(), left_node, right_node);
-      Node_t *merged_node = new Node_t{kLeafFlag};
-      Node_t::template Merge<Node_t *>(left_node, right_node, merged_node);
-      delete left_node;
-      delete right_node;
+    Node_t *left_node = new Node_t{kLeafFlag};
+    Node_t *right_node = new Node_t{kLeafFlag};
+    Node_t::template Split<Payload>(node.get(), left_node, right_node);
+    Node_t *root = new Node_t{!kLeafFlag};
+    root->InitAsRoot(left_node, right_node);
 
-      node.reset(merged_node);
-      for (size_t i = 0; i < 2 * kMaxUnsortedRecNum; ++i) {
-        VerifyRead(i, i, kExpectSuccess);
-      }
-    }
+    EXPECT_EQ(left_node, root->GetChild(0));
+    EXPECT_EQ(right_node, root->GetChild(1));
+
+    delete left_node;
+    delete right_node;
+    delete root;
+  }
+
+  void
+  VerifyInitAsSplitParent()
+  {
+    PrepareConsolidatedNode();
+
+    Node_t *l_node = new Node_t{kLeafFlag};
+    Node_t *r_node = new Node_t{kLeafFlag};
+    Node_t::template Split<Payload>(node.get(), l_node, r_node);
+    Node_t *old_parent = new Node_t{!kLeafFlag};
+    old_parent->InitAsRoot(l_node, r_node);
+    Node_t *r_l_node = new Node_t{kLeafFlag};
+    Node_t *r_r_node = new Node_t{kLeafFlag};
+    Node_t::template Split<Payload>(r_node, r_l_node, r_r_node);
+    Node_t *new_parent = new Node_t{!kLeafFlag};
+    new_parent->InitAsSplitParent(old_parent, r_node, r_r_node, 1);
+
+    EXPECT_EQ(l_node, new_parent->GetChild(0));
+    EXPECT_EQ(r_node, new_parent->GetChild(1));
+    EXPECT_EQ(r_r_node, new_parent->GetChild(2));
+
+    delete l_node;
+    delete r_node;
+    delete r_l_node;
+    delete r_r_node;
+    delete old_parent;
+    delete new_parent;
+  }
+
+  void
+  VerifyInitAsMergeParent()
+  {
+    PrepareConsolidatedNode();
+
+    Node_t *l_node = new Node_t{kLeafFlag};
+    Node_t *r_node = new Node_t{kLeafFlag};
+    Node_t::template Split<Payload>(node.get(), l_node, r_node);
+    Node_t *old_parent = new Node_t{!kLeafFlag};
+    old_parent->InitAsRoot(l_node, r_node);
+    Node_t *merged_node = new Node_t{kLeafFlag};
+    Node_t::template Merge<Payload>(l_node, r_node, merged_node);
+    Node_t *new_parent = new Node_t{!kLeafFlag};
+    new_parent->InitAsMergeParent(old_parent, merged_node, 0);
+
+    EXPECT_EQ(merged_node, new_parent->GetChild(0));
+
+    delete l_node;
+    delete r_node;
+    delete merged_node;
+    delete old_parent;
+    delete new_parent;
   }
 
   /*################################################################################################
@@ -748,24 +780,29 @@ TYPED_TEST(NodeFixture, ConsolidateWithSortedAndUnsortedRecordsCreateConsolidate
   }
 }
 
-TYPED_TEST(NodeFixture, SplitWithLeafNodeDivideWrittenRecordsIntoEachNode)
-{
-  TestFixture::VerifyLeafSplit();
+TYPED_TEST(NodeFixture, SplitDivideWrittenRecordsIntoTwoNodes)
+{  //
+  TestFixture::VerifySplit();
 }
 
-TYPED_TEST(NodeFixture, SplitWithInternalNodeDivideWrittenRecordsIntoEachNode)
-{
-  TestFixture::VerifyInternalSplit();
+TYPED_TEST(NodeFixture, MergeCopyWrittenRecordsIntoSingleNode)
+{  //
+  TestFixture::VerifyMerge();
 }
 
-TYPED_TEST(NodeFixture, MergeWithLeafNodesMergeWrittenRecordsIntoSingleNode)
-{
-  TestFixture::VerifyLeafMerge();
+TYPED_TEST(NodeFixture, InitAsRootCreateRootWithTwoChildren)
+{  //
+  TestFixture::VerifyInitAsRoot();
 }
 
-TYPED_TEST(NodeFixture, MergeWithInternalNodesMergeWrittenRecordsIntoSingleNode)
+TYPED_TEST(NodeFixture, InitAsSplitParentCreateParentWithChildren)
 {
-  TestFixture::VerifyInternalMerge();
+  TestFixture::VerifyInitAsSplitParent();
+}
+
+TYPED_TEST(NodeFixture, InitAsMergeParentCreateParentWithChild)
+{
+  TestFixture::VerifyInitAsMergeParent();
 }
 
 }  // namespace dbgroup::index::bztree::component::test

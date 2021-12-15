@@ -760,7 +760,7 @@ class alignas(kCacheLineSize) Node
       // copy new records
       for (; j < new_rec_num; ++j) {
         auto [target_meta, target_key] = records[j];
-        if (Compare{}(key, target_key)) break;
+        if (!Compare{}(target_key, key)) break;
 
         // check a new record is active
         if (target_meta.IsVisible()) {
@@ -795,7 +795,7 @@ class alignas(kCacheLineSize) Node
   template <class T>
   static void
   Split(  //
-      Node *node,
+      const Node *node,
       Node *l_node,
       Node *r_node)
   {
@@ -806,12 +806,7 @@ class alignas(kCacheLineSize) Node
     // copy records to a left node
     const auto rec_count = node->sorted_count_;
     const size_t l_count = rec_count / 2;
-    size_t l_offset;
-    if constexpr (std::is_same_v<T, Node *>) {
-      l_offset = l_node->CopyRecordsFrom<T>(node, 0, l_count, 0, kPageSize);
-    } else {  // when splitting a leaf node, only update its offset
-      l_offset = l_node->meta_array_[l_count - 1].GetOffset();
-    }
+    const auto l_offset = l_node->CopyRecordsFrom<T>(node, 0, l_count, 0, kPageSize);
     l_node->sorted_count_ = l_count;
     l_node->SetStatus(StatusWord{l_count, kPageSize - l_offset});
 
@@ -873,8 +868,8 @@ class alignas(kCacheLineSize) Node
   template <class T>
   static void
   Merge(  //
-      Node *l_node,
-      Node *r_node,
+      const Node *l_node,
+      const Node *r_node,
       Node *merged_node)
   {
     // set a right-end flag
@@ -882,12 +877,7 @@ class alignas(kCacheLineSize) Node
 
     // copy records in left/right nodes
     const auto l_count = l_node->sorted_count_;
-    size_t offset;
-    if constexpr (std::is_same_v<T, Node *>) {
-      offset = merged_node->CopyRecordsFrom<T>(l_node, 0, l_count, 0, kPageSize);
-    } else {  // when merging a leaf node, only update its offset
-      offset = merged_node->meta_array_[l_count - 1].GetOffset();
-    }
+    auto offset = merged_node->CopyRecordsFrom<T>(l_node, 0, l_count, 0, kPageSize);
     const auto r_count = r_node->sorted_count_;
     offset = merged_node->CopyRecordsFrom<T>(r_node, 0, r_count, l_count, offset);
 
