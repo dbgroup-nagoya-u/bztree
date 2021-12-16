@@ -877,7 +877,12 @@ class alignas(kCacheLineSize) Node
 
     // copy records in left/right nodes
     const auto l_count = l_node->sorted_count_;
-    auto offset = merged_node->CopyRecordsFrom<T>(l_node, 0, l_count, 0, kPageSize);
+    size_t offset;
+    if constexpr (std::is_same_v<T, Node *>) {
+      offset = merged_node->CopyRecordsFrom<T>(l_node, 0, l_count, 0, kPageSize);
+    } else {  // when merging a leaf node, only update its offset
+      offset = (l_count > 0) ? merged_node->meta_array_[l_count - 1].GetOffset() : kPageSize;
+    }
     const auto r_count = r_node->sorted_count_;
     offset = merged_node->CopyRecordsFrom<T>(r_node, 0, r_count, l_count, offset);
 
@@ -900,11 +905,11 @@ class alignas(kCacheLineSize) Node
     auto offset = CopyRecordsFrom<Node *>(old_node, 0, position, 0, kPageSize);
 
     // insert a merged node
-    const auto r_pos = position + 1;
-    const auto meta = old_node->meta_array_[r_pos];
-    offset = InsertChild(old_node, meta, merged_child, position, offset);
+    const auto meta = merged_child->meta_array_[merged_child->sorted_count_ - 1];
+    offset = InsertChild(merged_child, meta, merged_child, position, offset);
 
     // copy upper records
+    const auto r_pos = position + 1;
     auto rec_count = old_node->sorted_count_;
     offset = CopyRecordsFrom<Node *>(old_node, r_pos + 1, rec_count, r_pos, offset);
 

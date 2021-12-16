@@ -20,6 +20,8 @@
 
 #include "bztree/utility.hpp"
 
+constexpr size_t kVarDataLength = 9;
+
 /**
  * @brief An example class to represent CAS-updatable data.
  *

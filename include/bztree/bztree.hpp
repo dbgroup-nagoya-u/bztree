@@ -178,6 +178,7 @@ class BzTree
     // create a consolidated node
     Node_t *consolidated_node = CreateNewNode(kLeafFlag);
     consolidated_node->Consolidate(node);
+    gc_.AddGarbage(node);
 
     // check whether splitting/merging is needed
     const auto stat = consolidated_node->GetStatusWordProtected();
@@ -191,7 +192,6 @@ class BzTree
     // install a new node
     auto trace = TraceTargetNode(key, node);
     InstallNewNode(trace, consolidated_node, key, node);
-    gc_.AddGarbage(node);
   }
 
   /**
@@ -214,19 +214,15 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     NodeStack trace;
-    Node_t *old_parent;
-    size_t target_pos;
+    Node_t *old_parent{};
+    size_t target_pos{};
     while (true) {
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(key, node);
       target_pos = trace.back().second;
       trace.pop_back();
 
-      if (trace.empty()) {
-        // if the target node is a root, insert a new root node
-        old_parent = node;
-        break;
-      }
+      if (trace.empty()) break;
 
       // pre-freezing of SMO targets
       old_parent = trace.back().first;
@@ -239,7 +235,7 @@ class BzTree
 
     // create split nodes and its parent node
     const auto is_leaf = node->IsLeaf();
-    Node_t *left_node = (is_leaf) ? node : CreateNewNode(!kLeafFlag);
+    Node_t *left_node = CreateNewNode(is_leaf);
     Node_t *right_node = CreateNewNode(is_leaf);
     if (is_leaf) {
       Node_t::template Split<Payload>(node, left_node, right_node);
@@ -269,13 +265,11 @@ class BzTree
       if (parent_need_split) {
         Split(new_parent, key);
       }
-    }
 
-    // register frozen nodes with garbage collection
-    gc_.AddGarbage(old_parent);
-    if (!is_leaf) {
-      gc_.AddGarbage(node);
+      // register frozen nodes with garbage collection
+      gc_.AddGarbage(old_parent);
     }
+    gc_.AddGarbage(node);
   }
 
   /**
@@ -289,11 +283,11 @@ class BzTree
    */
   auto
   Merge(  //
-      Node_t *node,
+      Node_t *right_node,
       const Key &key)  //
       -> bool
   {
-    const auto l_size = node->GetStatusWordProtected().GetUsedSize();
+    const auto r_size = right_node->GetStatusWordProtected().GetUsedSize();
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: preparation
@@ -301,34 +295,30 @@ class BzTree
 
     NodeStack trace;
     Node_t *old_parent;
-    Node_t *right_node;
+    Node_t *left_node;
     size_t target_pos;
     while (true) {
       // trace and get the embedded index of a target node
-      trace = TraceTargetNode(key, node);
+      trace = TraceTargetNode(key, right_node);
       target_pos = trace.back().second;
+      if (target_pos <= 0) return false;  // there is no mergeable node
+
+      // check a parent node is live
       trace.pop_back();
-
-      // if the target node is a root, do nothing
-      if (trace.empty()) return false;
-
-      // check a parent node is live and has a right child node
       old_parent = trace.back().first;
-      const auto p_count = old_parent->GetSortedCount();
-      if (target_pos >= p_count - 1) return false;  // there is no mergeable node
       const auto p_status = old_parent->GetStatusWordProtected();
       if (p_status.IsFrozen()) continue;
 
       // check a right sibling node is live and has sufficent capacity
-      right_node = old_parent->GetChild(target_pos + 1);
-      const auto r_status = right_node->GetStatusWordProtected();
-      if (l_size + r_status.GetUsedSize() > kMaxMergedSize - component::kHeaderLength) return false;
-      if (r_status.IsFrozen()) continue;
+      left_node = old_parent->GetChild(target_pos - 1);
+      const auto l_stat = left_node->GetStatusWordProtected();
+      if (r_size + l_stat.GetUsedSize() > kMaxMergedSize - component::kHeaderLength) return false;
+      if (l_stat.IsFrozen()) continue;
 
       // pre-freezing of SMO targets
       MwCASDescriptor desc{};
       old_parent->SetStatusForMwCAS(desc, p_status, p_status.Freeze());
-      right_node->SetStatusForMwCAS(desc, r_status, r_status.Freeze());
+      left_node->SetStatusForMwCAS(desc, l_stat, l_stat.Freeze());
       if (desc.MwCAS()) break;
     }
 
@@ -337,15 +327,16 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    const auto is_leaf = node->IsLeaf();
-    Node_t *merged_node = (is_leaf) ? node : CreateNewNode(!kLeafFlag);
+    const auto is_leaf = right_node->IsLeaf();
+    Node_t *merged_node = CreateNewNode(is_leaf);
     if (is_leaf) {
-      Node_t::template Merge<Payload>(node, right_node, merged_node);
+      merged_node->Consolidate(left_node);
+      Node_t::template Merge<Payload>(merged_node, right_node, merged_node);
     } else {
-      Node_t::template Merge<Node_t *>(node, right_node, merged_node);
+      Node_t::template Merge<Node_t *>(left_node, right_node, merged_node);
     }
     Node_t *new_parent = CreateNewNode(!kLeafFlag);
-    new_parent->InitAsMergeParent(old_parent, merged_node, target_pos);
+    new_parent->InitAsMergeParent(old_parent, merged_node, target_pos - 1);
 
     // check the parent node should be merged
     const auto parent_need_merge = new_parent->GetSortedCount() < kMinSortedRecNum;
@@ -364,10 +355,8 @@ class BzTree
 
     // register frozen nodes with garbage collection
     gc_.AddGarbage(old_parent);
+    gc_.AddGarbage(left_node);
     gc_.AddGarbage(right_node);
-    if (!is_leaf) {
-      gc_.AddGarbage(node);
-    }
 
     // merge the new parent node if needed
     if (parent_need_merge && !Merge(new_parent, key)) {
@@ -515,7 +504,7 @@ class BzTree
     void
     operator++()
     {
-      current_pos_++;
+      ++current_pos_;
     }
 
     /*##############################################################################################
@@ -602,7 +591,11 @@ class BzTree
    * @brief Destroy the BzTree object.
    *
    */
-  ~BzTree() { DeleteChildren(GetRoot()); }
+  ~BzTree()
+  {
+    gc_.StopGC();
+    DeleteChildren(GetRoot());
+  }
 
   BzTree(const BzTree &) = delete;
   BzTree &operator=(const BzTree &) = delete;
