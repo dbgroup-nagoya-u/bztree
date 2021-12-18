@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef BZTREE_COMPONENT_METADATA_HPP
+#define BZTREE_COMPONENT_METADATA_HPP
 
 #include "common.hpp"
 
@@ -26,32 +27,9 @@ namespace dbgroup::index::bztree::component
  */
 class Metadata
 {
- private:
-  /*################################################################################################
-   * Internal member variables
-   *##############################################################################################*/
-
-  /// an offset to a corresponding record.
-  uint64_t offset_ : 27;
-
-  /// a flag to indicate whether a record is visible.
-  uint64_t visible_ : 1;
-
-  /// a flag to indicate whether a record is in progress.
-  uint64_t in_progress_ : 1;
-
-  /// the length of a key in a corresponding record.
-  uint64_t key_length_ : 16;
-
-  /// the total length of a corresponding record.
-  uint64_t total_length_ : 16;
-
-  /// control bits for PMwCAS.
-  uint64_t control_region_ : 3;
-
  public:
   /*################################################################################################
-   * Public getters/setters
+   * Public constructors and assignment operators
    *##############################################################################################*/
 
   /**
@@ -75,11 +53,10 @@ class Metadata
   constexpr Metadata(  //
       const size_t offset,
       const size_t key_length,
-      const size_t total_length,
-      const bool is_in_progress = false)
+      const size_t total_length)
       : offset_{offset},
-        visible_{!is_in_progress},
-        in_progress_{is_in_progress},
+        visible_{1},
+        in_progress_{0},
         key_length_{key_length},
         total_length_{total_length},
         control_region_{0}
@@ -87,15 +64,35 @@ class Metadata
   }
 
   /**
-   * @brief Destroy the metadata object.
+   * @brief Construct a new in-progress metadata object with given arguments.
    *
    */
-  ~Metadata() = default;
+  constexpr Metadata(  //
+      const size_t key_length,
+      const size_t total_length)
+      : offset_{0},
+        visible_{1},
+        in_progress_{1},
+        key_length_{key_length},
+        total_length_{total_length},
+        control_region_{0}
+  {
+  }
 
   constexpr Metadata(const Metadata &) = default;
   constexpr Metadata &operator=(const Metadata &) = default;
   constexpr Metadata(Metadata &&) = default;
   constexpr Metadata &operator=(Metadata &&) = default;
+
+  /*################################################################################################
+   * Public destructors
+   *##############################################################################################*/
+
+  /**
+   * @brief Destroy the metadata object.
+   *
+   */
+  ~Metadata() = default;
 
   /*################################################################################################
    * Public getters/setters
@@ -105,8 +102,9 @@ class Metadata
    * @retval true if a corresponding record is visible.
    * @retval false if a corresponding record is invisible.
    */
-  constexpr bool
-  IsVisible() const
+  constexpr auto
+  IsVisible() const  //
+      -> bool
   {
     return visible_;
   }
@@ -115,64 +113,49 @@ class Metadata
    * @retval true if a corresponding record is in progress.
    * @retval false if a corresponding record is a definite state.
    */
-  constexpr bool
-  IsInProgress() const
+  constexpr auto
+  IsInProgress() const  //
+      -> bool
   {
     return in_progress_;
   }
 
   /**
-   * @retval true if a corresponding record is deleted.
-   * @retval false if a corresponding record is live.
+   * @return an offset to a corresponding record.
    */
-  constexpr bool
-  IsDeleted() const
-  {
-    return !IsVisible() && !IsInProgress();
-  }
-
-  /**
-   * @retval true if a corresponding record is broken because of failure.
-   * @retval false if a corresponding record is valid.
-   */
-  constexpr bool
-  IsFailedRecord(const size_t index_epoch) const
-  {
-    return IsInProgress() && (GetOffset() != index_epoch);
-  }
-
-  /**
-   * @return size_t: an offset to a corresponding record.
-   */
-  constexpr size_t
-  GetOffset() const
+  constexpr auto
+  GetOffset() const  //
+      -> size_t
   {
     return offset_;
   }
 
   /**
-   * @return size_t: the length of a key in a corresponding record.
+   * @return the length of a key in a corresponding record.
    */
-  constexpr size_t
-  GetKeyLength() const
+  constexpr auto
+  GetKeyLength() const  //
+      -> size_t
   {
     return key_length_;
   }
 
   /**
-   * @return size_t: the total length of a corresponding record.
+   * @return the total length of a corresponding record.
    */
-  constexpr size_t
-  GetTotalLength() const
+  constexpr auto
+  GetTotalLength() const  //
+      -> size_t
   {
     return total_length_;
   }
 
   /**
-   * @return size_t: the length of a payload in a corresponding record.
+   * @return the length of a payload in a corresponding record.
    */
-  constexpr size_t
-  GetPayloadLength() const
+  constexpr auto
+  GetPayloadLength() const  //
+      -> size_t
   {
     return GetTotalLength() - GetKeyLength();
   }
@@ -183,10 +166,11 @@ class Metadata
 
   /**
    * @param offset a new offset to be set.
-   * @return Metadata: a new metadata object.
+   * @return a new metadata object.
    */
-  constexpr Metadata
-  UpdateOffset(const size_t offset) const
+  constexpr auto
+  UpdateOffset(const size_t offset) const  //
+      -> Metadata
   {
     auto updated_meta = *this;
     updated_meta.offset_ = offset;
@@ -194,31 +178,33 @@ class Metadata
   }
 
   /**
-   * @brief Make metadata visible with updating its offset.
+   * @brief Make metadata visible with committing it.
    *
    * @param offset a new offset to be set.
-   * @return Metadata: a new metadata object.
+   * @return a new metadata object.
    */
-  constexpr Metadata
-  MakeVisible(const size_t offset) const
+  constexpr auto
+  Commit(const size_t offset) const  //
+      -> Metadata
   {
     auto new_meta = *this;
-    new_meta.visible_ = 1;
     new_meta.in_progress_ = 0;
     new_meta.offset_ = offset;
     return new_meta;
   }
 
   /**
-   * @brief Make metadata invisible with updating its offset.
+   * @brief Make metadata invisible with committing it.
    *
    * @param offset a new offset to be set.
-   * @return Metadata: a new metadata object.
+   * @return a new metadata object.
    */
-  constexpr Metadata
-  MakeInvisible(const size_t offset) const
+  constexpr auto
+  Delete(const size_t offset) const  //
+      -> Metadata
   {
     auto new_meta = *this;
+    new_meta.visible_ = 0;
     new_meta.in_progress_ = 0;
     new_meta.offset_ = offset;
     return new_meta;
@@ -227,15 +213,39 @@ class Metadata
   /**
    * @brief Make metadata invisible.
    *
-   * @return Metadata: a new metadata object.
+   * @return a new metadata object.
    */
-  constexpr Metadata
-  Delete() const
+  constexpr auto
+  Delete() const  //
+      -> Metadata
   {
     auto new_meta = *this;
     new_meta.visible_ = 0;
     return new_meta;
   }
+
+ private:
+  /*################################################################################################
+   * Internal member variables
+   *##############################################################################################*/
+
+  /// an offset to a corresponding record.
+  uint64_t offset_ : 27;
+
+  /// a flag to indicate whether a record is visible.
+  uint64_t visible_ : 1;
+
+  /// a flag to indicate whether a record is in progress.
+  uint64_t in_progress_ : 1;
+
+  /// the length of a key in a corresponding record.
+  uint64_t key_length_ : 16;
+
+  /// the total length of a corresponding record.
+  uint64_t total_length_ : 16;
+
+  /// control bits for PMwCAS.
+  uint64_t control_region_ : 3;
 };
 
 }  // namespace dbgroup::index::bztree::component
@@ -247,9 +257,12 @@ namespace dbgroup::atomic::mwcas
  *
  */
 template <>
-constexpr bool
-CanMwCAS<::dbgroup::index::bztree::component::Metadata>()
+constexpr auto
+CanMwCAS<::dbgroup::index::bztree::component::Metadata>()  //
+    -> bool
 {
   return true;
 }
 }  // namespace dbgroup::atomic::mwcas
+
+#endif  // BZTREE_COMPONENT_METADATA_HPP

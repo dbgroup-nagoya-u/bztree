@@ -336,7 +336,7 @@ class alignas(kCacheLineSize) Node
     // variables and constants shared in Phase 1 & 2
     const auto total_length = key_length + payload_length;
     const auto block_size = PadRecord<Key, Payload>(total_length);
-    const auto in_progress_meta = Metadata{0, key_length, total_length, true};
+    const auto in_progress_meta = Metadata{key_length, total_length};
     StatusWord cur_status;
     size_t rec_count;
 
@@ -385,7 +385,7 @@ class alignas(kCacheLineSize) Node
     SetKey(offset, key, key_length);
 
     // prepare record metadata for MwCAS
-    const auto inserted_meta = in_progress_meta.MakeVisible(offset);
+    const auto inserted_meta = in_progress_meta.Commit(offset);
 
     // check conflicts (concurrent SMOs)
     while (true) {
@@ -435,7 +435,7 @@ class alignas(kCacheLineSize) Node
     // variables and constants shared in Phase 1 & 2
     const auto total_length = key_length + payload_length;
     const auto block_size = PadRecord<Key, Payload>(total_length);
-    const auto in_progress_meta = Metadata{0, key_length, total_length, true};
+    const auto in_progress_meta = Metadata{key_length, total_length};
     StatusWord cur_status;
     size_t rec_count;
     KeyExistence rc;
@@ -473,7 +473,7 @@ class alignas(kCacheLineSize) Node
     SetKey(offset, key, key_length);
 
     // prepare record metadata for MwCAS
-    const auto inserted_meta = in_progress_meta.MakeVisible(offset);
+    const auto inserted_meta = in_progress_meta.Commit(offset);
 
     while (true) {
       // check concurrent SMOs
@@ -485,7 +485,7 @@ class alignas(kCacheLineSize) Node
         rc = CheckUniqueness(key, rec_count).first;
         if (rc == kExist) {
           // delete an inserted record
-          SetMetadata(rec_count, in_progress_meta.UpdateOffset(0));
+          SetMetadata(rec_count, in_progress_meta.Delete());
           return NodeReturnCode::kKeyExist;
         } else if (rc == kUncertain) {
           // retry if there are still uncertain records
@@ -534,7 +534,7 @@ class alignas(kCacheLineSize) Node
     // variables and constants shared in Phase 1 & 2
     const auto total_length = key_length + payload_length;
     const auto block_size = PadRecord<Key, Payload>(total_length);
-    const auto in_progress_meta = Metadata{0, key_length, total_length, true};
+    const auto in_progress_meta = Metadata{key_length, total_length};
     StatusWord cur_status;
     size_t rec_count, target_index = 0;
     KeyExistence rc;
@@ -588,7 +588,7 @@ class alignas(kCacheLineSize) Node
     SetKey(offset, key, key_length);
 
     // prepare record metadata for MwCAS
-    const auto inserted_meta = in_progress_meta.MakeVisible(offset);
+    const auto inserted_meta = in_progress_meta.Commit(offset);
 
     while (true) {
       // check conflicts (concurrent SMOs)
@@ -600,7 +600,7 @@ class alignas(kCacheLineSize) Node
         rc = CheckUniqueness(key, rec_count).first;
         if (rc == kNotExist || rc == kDeleted) {
           // delete an inserted record
-          SetMetadata(rec_count, in_progress_meta.UpdateOffset(0));
+          SetMetadata(rec_count, in_progress_meta.Delete());
           return NodeReturnCode::kKeyNotExist;
         } else if (rc == kUncertain) {
           continue;
@@ -641,7 +641,7 @@ class alignas(kCacheLineSize) Node
       -> NodeReturnCode
   {
     // variables and constants
-    const auto in_progress_meta = Metadata{0, key_length, key_length, true};
+    const auto in_progress_meta = Metadata{key_length, key_length};
     StatusWord cur_status;
     size_t rec_count, target_index = 0;
     KeyExistence rc;
@@ -698,7 +698,7 @@ class alignas(kCacheLineSize) Node
     SetKey(offset, key, key_length);
 
     // prepare record metadata for MwCAS
-    const auto deleted_meta = in_progress_meta.MakeInvisible(offset);
+    const auto deleted_meta = in_progress_meta.Delete(offset);
 
     while (true) {
       // check concurrent SMOs
@@ -710,7 +710,7 @@ class alignas(kCacheLineSize) Node
         rc = CheckUniqueness(key, rec_count).first;
         if (rc == kNotExist || rc == kDeleted) {
           // delete an inserted record
-          SetMetadata(rec_count, in_progress_meta.UpdateOffset(0));
+          SetMetadata(rec_count, in_progress_meta.Delete());
           return NodeReturnCode::kKeyNotExist;
         } else if (rc == kUncertain) {
           // retry if there are still uncertain records
@@ -919,6 +919,13 @@ class alignas(kCacheLineSize) Node
   }
 
  private:
+  /*################################################################################################
+   * Internal constants
+   *##############################################################################################*/
+
+  /// the maximum number of records in a node
+  static constexpr bool kInProgressFlag = true;
+
   /*################################################################################################
    * Internal classes
    *##############################################################################################*/
@@ -1227,7 +1234,10 @@ class alignas(kCacheLineSize) Node
     // perform a linear search in revese order
     for (int64_t pos = begin_pos; pos >= sorted_count_; --pos) {
       const auto meta = GetMetadataProtected(pos);
-      if (meta.IsInProgress()) return {kUncertain, pos};
+      if (meta.IsInProgress()) {
+        if (meta.IsVisible()) return {kUncertain, pos};
+        continue;
+      }
 
       const auto target_key = GetKey(meta);
       if (IsEqual<Compare>(key, target_key)) {
@@ -1358,28 +1368,28 @@ class alignas(kCacheLineSize) Node
     // sort unsorted records by insertion sort
     for (int64_t index = rec_count - 1; index >= sorted_count_; --index) {
       const auto meta = GetMetadataProtected(index);
-      if (!meta.IsInProgress()) {
-        if (count == 0) {
-          // insert a first record
-          arr[0] = MetaRecord{meta, GetKey(meta)};
-          ++count;
-          continue;
+      if (meta.IsInProgress()) continue;
+
+      if (count == 0) {
+        // insert a first record
+        arr[0] = MetaRecord{meta, GetKey(meta)};
+        ++count;
+        continue;
+      }
+
+      // insert a new record into an appropiate position
+      MetaRecord target{meta, GetKey(meta)};
+      const auto ins_iter = std::lower_bound(arr.begin(), arr.begin() + count, target);
+      if (*ins_iter != target) {
+        const size_t ins_id = std::distance(arr.begin(), ins_iter);
+        if (ins_id < count) {
+          // shift upper records
+          memmove(&(arr[ins_id + 1]), &(arr[ins_id]), sizeof(MetaRecord) * (count - ins_id));
         }
 
-        // insert a new record into an appropiate position
-        MetaRecord target{meta, GetKey(meta)};
-        const auto ins_iter = std::lower_bound(arr.begin(), arr.begin() + count, target);
-        if (*ins_iter != target) {
-          const size_t ins_id = std::distance(arr.begin(), ins_iter);
-          if (ins_id < count) {
-            // shift upper records
-            memmove(&(arr[ins_id + 1]), &(arr[ins_id]), sizeof(MetaRecord) * (count - ins_id));
-          }
-
-          // insert a new record
-          arr[ins_id] = std::move(target);
-          ++count;
-        }
+        // insert a new record
+        arr[ins_id] = std::move(target);
+        ++count;
       }
     }
 
