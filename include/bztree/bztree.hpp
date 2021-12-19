@@ -178,20 +178,19 @@ class BzTree
     // create a consolidated node
     Node_t *consolidated_node = CreateNewNode(kLeafFlag);
     consolidated_node->Consolidate(node);
-    gc_.AddGarbage(node);
 
     // check whether splitting/merging is needed
     const auto stat = consolidated_node->GetStatusWordProtected();
     if (stat.NeedSplit()) {
+      // invoke splitting
       Split(consolidated_node, key);
-      return;
-    } else if (stat.NeedMerge()) {
-      if (Merge(consolidated_node, key)) return;
+    } else if (!stat.NeedMerge() || !Merge(consolidated_node, key)) {  // try merging
+      // install the consolidated node
+      auto trace = TraceTargetNode(key, node);
+      InstallNewNode(trace, consolidated_node, key, node);
     }
 
-    // install a new node
-    auto trace = TraceTargetNode(key, node);
-    InstallNewNode(trace, consolidated_node, key, node);
+    gc_.AddGarbage(node);
   }
 
   /**
@@ -339,15 +338,17 @@ class BzTree
     new_parent->InitAsMergeParent(old_parent, merged_node, target_pos - 1);
 
     // check the parent node should be merged
-    const auto parent_need_merge = new_parent->GetStatusWordProtected().NeedMerge();
-    if (parent_need_merge) {
-      if (trace.size() > 1 || new_parent->GetSortedCount() > 1) {
+    bool parent_need_merge = false;
+    if (trace.size() > 1) {
+      // if the parent is not a root, try merging
+      parent_need_merge = new_parent->GetStatusWordProtected().NeedMerge();
+      if (parent_need_merge) {
         new_parent->Freeze();  // pre-freeze for recursive merging
-      } else {
-        // the new root node has only one child, use the merged child as a new root
-        gc_.AddGarbage(new_parent);
-        new_parent = merged_node;
       }
+    } else if (new_parent->GetSortedCount() == 1) {
+      // the new root node has only one child, use the merged child as a new root
+      gc_.AddGarbage(new_parent);
+      new_parent = merged_node;
     }
 
     // install new nodes
