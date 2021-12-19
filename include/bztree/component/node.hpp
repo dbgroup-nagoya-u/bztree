@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef BZTREE_COMPONENT_NODE_HPP
+#define BZTREE_COMPONENT_NODE_HPP
 
 #include <stdlib.h>
-#include <string.h>
 
 #include <algorithm>
 #include <atomic>
@@ -38,18 +38,11 @@ namespace dbgroup::index::bztree::component
  * @tparam Compare a comparetor class for keys.
  */
 template <class Key, class Payload, class Compare>
-class alignas(kCacheLineSize) Node
+class alignas(kMaxAlignment) Node
 {
  public:
   /*################################################################################################
-   * Public constants
-   *##############################################################################################*/
-
-  /// the maximum number of records in a node
-  static constexpr size_t kMaxRecordNum = GetMaxRecordNum<Key, Payload>();
-
-  /*################################################################################################
-   * Public constructors/destructors
+   * Public constructors and assignment operators
    *##############################################################################################*/
 
   /**
@@ -62,14 +55,23 @@ class alignas(kCacheLineSize) Node
   {
   }
 
+  Node(const Node &) = delete;
+  Node &operator=(const Node &) = delete;
+  Node(Node &&) = delete;
+  Node &operator=(Node &&) = delete;
+
+  /*################################################################################################
+   * Public destructors
+   *##############################################################################################*/
+
   /**
    * @brief Destroy the node object.
    *
    */
   ~Node()
   {
-    constexpr auto kRepeatNum = (kPageSize - kHeaderLength) / kWordLength;
-    for (size_t i = 0; i < kRepeatNum; ++i) {
+    // fill a metadata region with zeros
+    for (size_t i = 0; i < GetMaxRecordNum(); ++i) {
       auto *dummy_p = reinterpret_cast<size_t *>(meta_array_ + i);
       *dummy_p = 0UL;
     }
@@ -78,23 +80,20 @@ class alignas(kCacheLineSize) Node
     SetStatus(StatusWord{});
   }
 
-  Node(const Node &) = delete;
-  Node &operator=(const Node &) = delete;
-  Node(Node &&) = delete;
-  Node &operator=(Node &&) = delete;
-
   /*################################################################################################
-   * new/delete definitions
+   * new/delete operators
    *##############################################################################################*/
 
-  static void *
-  operator new(std::size_t)
+  static auto
+  operator new(std::size_t)  //
+      -> void *
   {
     return calloc(1UL, kPageSize);
   }
 
-  static void *
-  operator new(std::size_t, void *where)
+  static auto
+  operator new(std::size_t, void *where)  //
+      -> void *
   {
     return where;
   }
@@ -111,10 +110,11 @@ class alignas(kCacheLineSize) Node
 
   /**
    * @retval true if this is a leaf node.
-   * @retval false if this is an internal node.
+   * @retval false otherwise.
    */
-  constexpr bool
-  IsLeaf() const
+  constexpr auto
+  IsLeaf() const  //
+      -> bool
   {
     return is_leaf_;
   }
@@ -123,31 +123,49 @@ class alignas(kCacheLineSize) Node
    * @retval true if this node has a next sibling node.
    * @retval false otherwise.
    */
-  constexpr bool
-  IsRightEnd() const
+  constexpr auto
+  IsRightEnd() const  //
+      -> bool
   {
     return is_right_end_;
   }
 
   /**
-   * @return size_t: the number of sorted records.
+   * @return the number of sorted records.
    */
-  constexpr size_t
-  GetSortedCount() const
+  constexpr auto
+  GetSortedCount() const  //
+      -> size_t
   {
     return sorted_count_;
+  }
+
+  /**
+   * @brief Read a status word without MwCAS read protection.
+   *
+   * This function assumes that there are no other threads modify this node
+   * concurrently.
+   *
+   * @return a status word.
+   */
+  auto
+  GetStatusWord() const  //
+      -> StatusWord
+  {
+    return status_;
   }
 
   /**
    * @brief Read a status word with MwCAS read protection.
    *
    * This function uses a MwCAS read operation internally, and so it is guaranteed that
-   * a read status word is valid.
+   * a read status word is valid in multi-threading.
    *
-   * @return StatusWord: a status word.
+   * @return a status word.
    */
-  StatusWord
-  GetStatusWordProtected() const
+  auto
+  GetStatusWordProtected() const  //
+      -> StatusWord
   {
     const auto stat = MwCASDescriptor::Read<StatusWord>(&status_);
     std::atomic_thread_fence(std::memory_order_acquire);
@@ -216,7 +234,7 @@ class alignas(kCacheLineSize) Node
    *
    * @param key a target key.
    * @param range_is_closed a flag to indicate that a target key is included.
-   * @return size_t: the position of a specified key.
+   * @return the position of a specified key.
    */
   auto
   Search(  //
@@ -224,6 +242,9 @@ class alignas(kCacheLineSize) Node
       const bool range_is_closed) const  //
       -> size_t
   {
+    const auto *atomic_stat = reinterpret_cast<const std::atomic<StatusWord> *>(&status_);
+    [[maybe_unused]] const auto stat = atomic_stat->load(std::memory_order_acquire);
+
     int64_t begin_pos = 0;
     int64_t end_pos = sorted_count_ - 2;
     while (begin_pos <= end_pos) {
@@ -235,11 +256,9 @@ class alignas(kCacheLineSize) Node
         end_pos = pos - 1;
       } else if (Compare{}(index_key, key)) {  // a target key is in a right side
         begin_pos = pos + 1;
-      } else if (range_is_closed) {  // find an equivalent key
+      } else {  // find an equivalent key
+        if (!range_is_closed) ++pos;
         begin_pos = pos;
-        break;
-      } else {  // find an equivalent key, but the range is open
-        begin_pos = pos + 1;
         break;
       }
     }
@@ -251,23 +270,28 @@ class alignas(kCacheLineSize) Node
    * @brief Freeze this node for SMOs.
    *
    * @retval kSuccess if a node has become frozen.
-   * @retval kFrozen if a node is already frozen.
+   * @retval kFrozen if a node has been already frozen.
    */
-  NodeReturnCode
-  Freeze()
+  auto
+  Freeze()  //
+      -> NodeReturnCode
   {
     while (true) {
       const auto current_status = GetStatusWordProtected();
-      if (current_status.IsFrozen()) return NodeReturnCode::kFrozen;
+      if (current_status.IsFrozen()) return kFrozen;
 
       MwCASDescriptor desc;
       SetStatusForMwCAS(desc, current_status, current_status.Freeze());
       if (desc.MwCAS()) break;
     }
 
-    return NodeReturnCode::kSuccess;
+    return kSuccess;
   }
 
+  /**
+   * @brief Unfreeze this node for accepting other modification.
+   *
+   */
   void
   Unfreeze()
   {
@@ -292,15 +316,24 @@ class alignas(kCacheLineSize) Node
       Payload &out_payload) const  //
       -> NodeReturnCode
   {
+    // check whether there is a given key in this node
     const auto status = GetStatusWordProtected();
     const auto [rc, pos] = CheckUniqueness(key, status.GetRecordCount());
-    if (rc == kNotExist || rc == kDeleted) {
-      return NodeReturnCode::kKeyNotExist;
+    if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
+
+    // copy a written payload to a given address
+    const auto meta = GetMetadataProtected(pos);
+    if constexpr (IsVariableLengthData<Payload>()) {
+      const auto payload_length = meta.GetPayloadLength();
+      out_payload = reinterpret_cast<Payload>(::operator new(payload_length));
+      memcpy(out_payload, GetPayloadAddr(meta), payload_length);
+    } else if constexpr (CanCASUpdate<Payload>()) {
+      out_payload = MwCASDescriptor::Read<Payload>(GetPayloadAddr(meta));
+    } else {
+      memcpy(&out_payload, GetPayloadAddr(meta), sizeof(Payload));
     }
 
-    const auto meta = GetMetadataProtected(pos);
-    CopyPayload(meta, out_payload);
-    return NodeReturnCode::kSuccess;
+    return kSuccess;
   }
 
   /*################################################################################################
@@ -345,7 +378,7 @@ class alignas(kCacheLineSize) Node
      *--------------------------------------------------------------------------------------------*/
     while (true) {
       cur_status = GetStatusWordProtected();
-      if (cur_status.IsFrozen()) return NodeReturnCode::kFrozen;
+      if (cur_status.IsFrozen()) return kFrozen;
 
       if constexpr (CanCASUpdate<Payload>()) {
         // check whether a node includes a target key
@@ -358,14 +391,14 @@ class alignas(kCacheLineSize) Node
           SetStatusForMwCAS(desc, cur_status, cur_status);
           SetMetadataForMwCAS(desc, target_pos, target_meta, target_meta);
           SetPayloadForMwCAS(desc, target_meta, payload);
-          if (desc.MwCAS()) return NodeReturnCode::kSuccess;
+          if (desc.MwCAS()) return kSuccess;
           continue;
         }
       }
 
       // prepare new status for MwCAS
       const auto new_status = cur_status.Add(block_size);
-      if (new_status.NeedConsolidation(sorted_count_)) return NodeReturnCode::kNeedConsolidation;
+      if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
       target_pos = cur_status.GetRecordCount();
 
       // perform MwCAS to reserve space
@@ -390,9 +423,7 @@ class alignas(kCacheLineSize) Node
     // check conflicts (concurrent SMOs)
     while (true) {
       const auto status = GetStatusWordProtected();
-      if (status.IsFrozen()) {
-        return NodeReturnCode::kFrozen;
-      }
+      if (status.IsFrozen()) return kFrozen;
 
       // perform MwCAS to complete a write
       MwCASDescriptor desc{};
@@ -400,8 +431,9 @@ class alignas(kCacheLineSize) Node
       SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
     }
+    std::atomic_thread_fence(std::memory_order_release);
 
-    return NodeReturnCode::kSuccess;
+    return kSuccess;
   }
 
   /**
@@ -445,16 +477,16 @@ class alignas(kCacheLineSize) Node
      *--------------------------------------------------------------------------------------------*/
     while (true) {
       cur_status = GetStatusWordProtected();
-      if (cur_status.IsFrozen()) return NodeReturnCode::kFrozen;
+      if (cur_status.IsFrozen()) return kFrozen;
 
       // prepare new status for MwCAS
       const auto new_status = cur_status.Add(block_size);
-      if (new_status.NeedConsolidation(sorted_count_)) return NodeReturnCode::kNeedConsolidation;
+      if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
       // check uniqueness
       target_pos = cur_status.GetRecordCount();
       rc = CheckUniqueness(key, target_pos).first;
-      if (rc == kExist) return NodeReturnCode::kKeyExist;
+      if (rc == kExist) return kKeyExist;
 
       // perform MwCAS to reserve space
       MwCASDescriptor desc{};
@@ -475,10 +507,10 @@ class alignas(kCacheLineSize) Node
     // prepare record metadata for MwCAS
     const auto inserted_meta = in_progress_meta.Commit(offset);
 
+    // check concurrent SMOs
     while (true) {
-      // check concurrent SMOs
       const auto status = GetStatusWordProtected();
-      if (status.IsFrozen()) return NodeReturnCode::kFrozen;
+      if (status.IsFrozen()) return kFrozen;
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
@@ -486,7 +518,7 @@ class alignas(kCacheLineSize) Node
         if (rc == kExist) {
           // delete an inserted record
           SetMetadata(target_pos, in_progress_meta.Delete());
-          return NodeReturnCode::kKeyExist;
+          return kKeyExist;
         } else if (rc == kUncertain) {
           // retry if there are still uncertain records
           continue;
@@ -499,8 +531,9 @@ class alignas(kCacheLineSize) Node
       SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
     }
+    std::atomic_thread_fence(std::memory_order_release);
 
-    return NodeReturnCode::kSuccess;
+    return kSuccess;
   }
 
   /**
@@ -544,13 +577,13 @@ class alignas(kCacheLineSize) Node
      *--------------------------------------------------------------------------------------------*/
     while (true) {
       cur_status = GetStatusWordProtected();
-      if (cur_status.IsFrozen()) return NodeReturnCode::kFrozen;
+      if (cur_status.IsFrozen()) return kFrozen;
 
       // check whether a node includes a target key
       target_pos = cur_status.GetRecordCount();
       size_t exist_pos;
       std::tie(rc, exist_pos) = CheckUniqueness(key, target_pos);
-      if (rc == kNotExist || rc == kDeleted) return NodeReturnCode::kKeyNotExist;
+      if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
       if constexpr (CanCASUpdate<Payload>()) {
         if (rc == kExist && exist_pos < sorted_count_) {
@@ -561,16 +594,16 @@ class alignas(kCacheLineSize) Node
           SetStatusForMwCAS(desc, cur_status, cur_status);
           SetMetadataForMwCAS(desc, exist_pos, target_meta, target_meta);
           SetPayloadForMwCAS(desc, target_meta, payload);
-          if (desc.MwCAS()) return NodeReturnCode::kSuccess;
+          if (desc.MwCAS()) return kSuccess;
           continue;
         }
       }
 
       // prepare new status for MwCAS
       const auto target_meta = GetMetadataProtected(exist_pos);
-      const auto deleted_size = kWordLength + PadRecord<Key, Payload>(target_meta.GetTotalLength());
+      const auto deleted_size = kWordLength + target_meta.GetTotalLength();
       const auto new_status = cur_status.Add(block_size).Delete(deleted_size);
-      if (new_status.NeedConsolidation(sorted_count_)) return NodeReturnCode::kNeedConsolidation;
+      if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
       // perform MwCAS to reserve space
       MwCASDescriptor desc{};
@@ -591,10 +624,10 @@ class alignas(kCacheLineSize) Node
     // prepare record metadata for MwCAS
     const auto inserted_meta = in_progress_meta.Commit(offset);
 
+    // check conflicts (concurrent SMOs)
     while (true) {
-      // check conflicts (concurrent SMOs)
       const auto status = GetStatusWordProtected();
-      if (status.IsFrozen()) return NodeReturnCode::kFrozen;
+      if (status.IsFrozen()) return kFrozen;
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
@@ -602,7 +635,7 @@ class alignas(kCacheLineSize) Node
         if (rc == kNotExist || rc == kDeleted) {
           // delete an inserted record
           SetMetadata(target_pos, in_progress_meta.Delete());
-          return NodeReturnCode::kKeyNotExist;
+          return kKeyNotExist;
         } else if (rc == kUncertain) {
           continue;
         }
@@ -614,8 +647,9 @@ class alignas(kCacheLineSize) Node
       SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
     }
+    std::atomic_thread_fence(std::memory_order_release);
 
-    return NodeReturnCode::kSuccess;
+    return kSuccess;
   }
 
   /**
@@ -652,20 +686,19 @@ class alignas(kCacheLineSize) Node
      *--------------------------------------------------------------------------------------------*/
     while (true) {
       cur_status = GetStatusWordProtected();
-      if (cur_status.IsFrozen()) return NodeReturnCode::kFrozen;
+      if (cur_status.IsFrozen()) return kFrozen;
 
       // check whether a node includes a target key
       target_pos = cur_status.GetRecordCount();
       size_t exist_pos;
       std::tie(rc, exist_pos) = CheckUniqueness(key, target_pos);
-      if (rc == kNotExist || rc == kDeleted) return NodeReturnCode::kKeyNotExist;
+      if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
       const auto target_meta = GetMetadataProtected(exist_pos);
       if constexpr (CanCASUpdate<Payload>()) {
         if (rc == kExist && exist_pos < sorted_count_) {
           const auto deleted_meta = target_meta.Delete();
-          const auto deleted_size =
-              kWordLength + PadRecord<Key, Payload>(target_meta.GetTotalLength());
+          const auto deleted_size = kWordLength + target_meta.GetTotalLength();
           const auto new_status = cur_status.Delete(deleted_size);
           if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
@@ -673,16 +706,15 @@ class alignas(kCacheLineSize) Node
           MwCASDescriptor desc{};
           SetStatusForMwCAS(desc, cur_status, new_status);
           SetMetadataForMwCAS(desc, exist_pos, target_meta, deleted_meta);
-          if (desc.MwCAS()) return NodeReturnCode::kSuccess;
+          if (desc.MwCAS()) return kSuccess;
           continue;
         }
       }
 
       // prepare new status for MwCAS
-      const auto deleted_size =
-          (2 * kWordLength) + PadRecord<Key, Payload>(target_meta.GetTotalLength()) + key_length;
+      const auto deleted_size = (2 * kWordLength) + target_meta.GetTotalLength() + key_length;
       const auto new_status = cur_status.Add(key_length).Delete(deleted_size);
-      if (new_status.NeedConsolidation(sorted_count_)) return NodeReturnCode::kNeedConsolidation;
+      if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
       // perform MwCAS to reserve space
       MwCASDescriptor desc{};
@@ -702,10 +734,10 @@ class alignas(kCacheLineSize) Node
     // prepare record metadata for MwCAS
     const auto deleted_meta = in_progress_meta.Delete(offset);
 
+    // check concurrent SMOs
     while (true) {
-      // check concurrent SMOs
       const auto status = GetStatusWordProtected();
-      if (status.IsFrozen()) return NodeReturnCode::kFrozen;
+      if (status.IsFrozen()) return kFrozen;
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
@@ -713,7 +745,7 @@ class alignas(kCacheLineSize) Node
         if (rc == kNotExist || rc == kDeleted) {
           // delete an inserted record
           SetMetadata(target_pos, in_progress_meta.Delete());
-          return NodeReturnCode::kKeyNotExist;
+          return kKeyNotExist;
         } else if (rc == kUncertain) {
           // retry if there are still uncertain records
           continue;
@@ -726,8 +758,9 @@ class alignas(kCacheLineSize) Node
       SetMetadataForMwCAS(desc, target_pos, in_progress_meta, deleted_meta);
       if (desc.MwCAS()) break;
     }
+    std::atomic_thread_fence(std::memory_order_release);
 
-    return NodeReturnCode::kSuccess;
+    return kSuccess;
   }
 
   /*################################################################################################
@@ -922,13 +955,6 @@ class alignas(kCacheLineSize) Node
 
  private:
   /*################################################################################################
-   * Internal constants
-   *##############################################################################################*/
-
-  /// the maximum number of records in a node
-  static constexpr bool kInProgressFlag = true;
-
-  /*################################################################################################
    * Internal classes
    *##############################################################################################*/
 
@@ -986,8 +1012,9 @@ class alignas(kCacheLineSize) Node
    *
    * @return Metadata: metadata.
    */
-  Metadata
-  GetMetadataProtected(const size_t position) const
+  auto
+  GetMetadataProtected(const size_t position) const  //
+      -> Metadata
   {
     return MwCASDescriptor::Read<Metadata>(&meta_array_[position]);
   }
@@ -996,8 +1023,9 @@ class alignas(kCacheLineSize) Node
    * @param meta metadata of a corresponding record.
    * @return Key: a target key.
    */
-  constexpr Key
-  GetKey(const Metadata meta) const
+  constexpr auto
+  GetKey(const Metadata meta) const  //
+      -> Key
   {
     if constexpr (std::is_pointer_v<Key>) {
       return GetKeyAddr(meta);
@@ -1014,9 +1042,9 @@ class alignas(kCacheLineSize) Node
   GetKeyAddr(const Metadata meta) const
   {
     if constexpr (std::is_pointer_v<Key>) {
-      return Cast<Key>(ShiftAddress(this, meta.GetOffset()));
+      return Cast<Key>(ShiftAddr(this, meta.GetOffset()));
     } else {
-      return Cast<Key *>(ShiftAddress(this, meta.GetOffset()));
+      return Cast<Key *>(ShiftAddr(this, meta.GetOffset()));
     }
   }
 
@@ -1024,32 +1052,11 @@ class alignas(kCacheLineSize) Node
    * @param meta metadata of a corresponding record.
    * @return void*: an address of a target payload.
    */
-  constexpr void *
-  GetPayloadAddr(const Metadata meta) const
+  constexpr auto
+  GetPayloadAddr(const Metadata meta) const  //
+      -> void *
   {
-    return ShiftAddress(this, meta.GetOffset() + meta.GetKeyLength());
-  }
-
-  /**
-   * @brief Copy a target payload to a specified reference.
-   *
-   * @param meta metadata of a corresponding record.
-   * @param out_payload a reference to be copied a target payload.
-   */
-  void
-  CopyPayload(  //
-      const Metadata meta,
-      Payload &out_payload) const
-  {
-    if constexpr (IsVariableLengthData<Payload>()) {
-      const auto payload_length = meta.GetPayloadLength();
-      out_payload = reinterpret_cast<Payload>(::operator new(payload_length));
-      memcpy(out_payload, this->GetPayloadAddr(meta), payload_length);
-    } else if constexpr (CanCASUpdate<Payload>()) {
-      out_payload = MwCASDescriptor::Read<Payload>(this->GetPayloadAddr(meta));
-    } else {
-      memcpy(&out_payload, this->GetPayloadAddr(meta), sizeof(Payload));
-    }
+    return ShiftAddr(this, meta.GetOffset() + meta.GetKeyLength());
   }
 
   /*################################################################################################
@@ -1064,7 +1071,7 @@ class alignas(kCacheLineSize) Node
   void
   SetStatus(const StatusWord status)
   {
-    auto atomic_stat = reinterpret_cast<std::atomic<StatusWord> *>(&status_);
+    auto *atomic_stat = reinterpret_cast<std::atomic<StatusWord> *>(&status_);
     atomic_stat->store(status, std::memory_order_release);
   }
 
@@ -1098,10 +1105,10 @@ class alignas(kCacheLineSize) Node
   {
     if constexpr (IsVariableLengthData<Key>()) {
       offset -= key_length;
-      memcpy(ShiftAddress(this, offset), key, key_length);
+      memcpy(ShiftAddr(this, offset), key, key_length);
     } else {
       offset -= sizeof(Key);
-      memcpy(ShiftAddress(this, offset), &key, sizeof(Key));
+      memcpy(ShiftAddr(this, offset), &key, sizeof(Key));
     }
   }
 
@@ -1122,10 +1129,10 @@ class alignas(kCacheLineSize) Node
   {
     if constexpr (IsVariableLengthData<T>()) {
       offset -= payload_length;
-      memcpy(ShiftAddress(this, offset), payload, payload_length);
+      memcpy(ShiftAddr(this, offset), payload, payload_length);
     } else {
       offset -= sizeof(T);
-      memcpy(ShiftAddress(this, offset), &payload, sizeof(T));
+      memcpy(ShiftAddr(this, offset), &payload, sizeof(T));
     }
   }
 
@@ -1164,14 +1171,42 @@ class alignas(kCacheLineSize) Node
   {
     static_assert(CanCASUpdate<Payload>());
 
-    Payload old_payload{};
-    this->CopyPayload(meta, old_payload);
+    const auto old_payload = MwCASDescriptor::Read<Payload>(GetPayloadAddr(meta));
     desc.AddMwCASTarget(GetPayloadAddr(meta), old_payload, new_payload);
   }
 
   /*################################################################################################
    * Internal utility functions
    *##############################################################################################*/
+
+  /**
+   * @brief Compute the maximum number of records in a node.
+   *
+   * @return size_t the expected maximum number of records.
+   */
+  constexpr auto
+  GetMaxRecordNum() const  //
+      -> size_t
+  {
+    // the length of metadata
+    auto record_min_length = kWordLength;
+
+    // the length of keys
+    if constexpr (IsVariableLengthData<Key>()) {
+      record_min_length += 1;
+    } else {
+      record_min_length += sizeof(Key);
+    }
+
+    // the length of payloads
+    if constexpr (IsVariableLengthData<Payload>()) {
+      record_min_length += 1;
+    } else {
+      record_min_length += sizeof(Payload);
+    }
+
+    return (kPageSize - kHeaderLength) / record_min_length;
+  }
 
   /**
    * @brief Get the position of a specified key by using binary search. If there is no
@@ -1298,7 +1333,7 @@ class alignas(kCacheLineSize) Node
     // copy a record from the given node
     const auto total_length = target_meta.GetTotalLength();
     offset -= total_length;
-    memcpy(ShiftAddress(this, offset), orig_node->GetKeyAddr(target_meta), total_length);
+    memcpy(ShiftAddr(this, offset), orig_node->GetKeyAddr(target_meta), total_length);
 
     // set new metadata
     meta_array_[rec_count] = target_meta.UpdateOffset(offset);
@@ -1406,3 +1441,5 @@ class alignas(kCacheLineSize) Node
 };
 
 }  // namespace dbgroup::index::bztree::component
+
+#endif  // BZTREE_COMPONENT_NODE_HPP

@@ -42,7 +42,6 @@ class BzTree
   using Metadata = component::Metadata;
   using StatusWord = component::StatusWord;
   using Node_t = component::Node<Key, Payload, Compare>;
-  using MetaArray = std::array<Metadata, Node_t::kMaxRecordNum>;
   using NodeReturnCode = component::NodeReturnCode;
   using NodeGC_t = ::dbgroup::memory::EpochBasedGC<Node_t>;
   using NodeStack = std::vector<std::pair<Node_t *, size_t>>;

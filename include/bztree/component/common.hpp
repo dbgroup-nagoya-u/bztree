@@ -66,6 +66,8 @@ enum KeyExistence
 /// alias of memory order for simplicity.
 constexpr auto mo_relax = std::memory_order_relaxed;
 
+constexpr size_t kMaxAlignment = 16;
+
 /*##################################################################################################
  * Internal utility functions
  *################################################################################################*/
@@ -101,31 +103,6 @@ Cast(const void *addr)
   static_assert(std::is_pointer_v<T>);
 
   return static_cast<T>(const_cast<void *>(addr));
-}
-
-/**
- * @brief Compute the maximum number of records in a node.
- *
- * @tparam Key a target key class.
- * @tparam Payload a target payload class.
- * @return size_t the expected maximum number of records.
- */
-template <class Key, class Payload>
-constexpr size_t
-GetMaxRecordNum()
-{
-  auto record_min_length = kWordLength;
-  if constexpr (IsVariableLengthData<Key>()) {
-    record_min_length += 1;
-  } else {
-    record_min_length += sizeof(Key);
-  }
-  if constexpr (IsVariableLengthData<Payload>()) {
-    record_min_length += 1;
-  } else {
-    record_min_length += sizeof(Payload);
-  }
-  return (kPageSize - kHeaderLength) / record_min_length;
 }
 
 /**
@@ -240,7 +217,7 @@ IsInRange(  //
  * @return void* a shifted address.
  */
 constexpr void *
-ShiftAddress(  //
+ShiftAddr(  //
     const void *addr,
     const size_t offset)
 {
