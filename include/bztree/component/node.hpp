@@ -338,7 +338,7 @@ class alignas(kCacheLineSize) Node
     const auto block_size = PadRecord<Key, Payload>(total_length);
     const auto in_progress_meta = Metadata{key_length, total_length};
     StatusWord cur_status;
-    size_t rec_count;
+    size_t target_pos;
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: reserve free space to write a record
@@ -346,9 +346,7 @@ class alignas(kCacheLineSize) Node
     while (true) {
       cur_status = GetStatusWordProtected();
       if (cur_status.IsFrozen()) return NodeReturnCode::kFrozen;
-      if (!HasSpace(cur_status, block_size)) return NodeReturnCode::kNeedConsolidation;
 
-      rec_count = cur_status.GetRecordCount();
       if constexpr (CanCASUpdate<Payload>()) {
         // check whether a node includes a target key
         const auto [rc, target_pos] = SearchSortedRecord(key);
@@ -366,12 +364,14 @@ class alignas(kCacheLineSize) Node
       }
 
       // prepare new status for MwCAS
-      const auto new_status = cur_status.Add(1, block_size);
+      const auto new_status = cur_status.Add(block_size);
+      if (new_status.NeedConsolidation(sorted_count_)) return NodeReturnCode::kNeedConsolidation;
+      target_pos = cur_status.GetRecordCount();
 
       // perform MwCAS to reserve space
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, cur_status, new_status);
-      SetMetadataForMwCAS(desc, rec_count, Metadata{}, in_progress_meta);
+      SetMetadataForMwCAS(desc, target_pos, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -397,7 +397,7 @@ class alignas(kCacheLineSize) Node
       // perform MwCAS to complete a write
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, status, status);
-      SetMetadataForMwCAS(desc, rec_count, in_progress_meta, inserted_meta);
+      SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -437,7 +437,7 @@ class alignas(kCacheLineSize) Node
     const auto block_size = PadRecord<Key, Payload>(total_length);
     const auto in_progress_meta = Metadata{key_length, total_length};
     StatusWord cur_status;
-    size_t rec_count;
+    size_t target_pos;
     KeyExistence rc;
 
     /*----------------------------------------------------------------------------------------------
@@ -446,20 +446,20 @@ class alignas(kCacheLineSize) Node
     while (true) {
       cur_status = GetStatusWordProtected();
       if (cur_status.IsFrozen()) return NodeReturnCode::kFrozen;
-      if (!HasSpace(cur_status, block_size)) return NodeReturnCode::kNeedConsolidation;
-
-      // check uniqueness
-      rec_count = cur_status.GetRecordCount();
-      rc = CheckUniqueness(key, rec_count).first;
-      if (rc == kExist) return NodeReturnCode::kKeyExist;
 
       // prepare new status for MwCAS
-      const auto new_status = cur_status.Add(1, block_size);
+      const auto new_status = cur_status.Add(block_size);
+      if (new_status.NeedConsolidation(sorted_count_)) return NodeReturnCode::kNeedConsolidation;
+
+      // check uniqueness
+      target_pos = cur_status.GetRecordCount();
+      rc = CheckUniqueness(key, target_pos).first;
+      if (rc == kExist) return NodeReturnCode::kKeyExist;
 
       // perform MwCAS to reserve space
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, cur_status, new_status);
-      SetMetadataForMwCAS(desc, rec_count, Metadata{}, in_progress_meta);
+      SetMetadataForMwCAS(desc, target_pos, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -482,10 +482,10 @@ class alignas(kCacheLineSize) Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
-        rc = CheckUniqueness(key, rec_count).first;
+        rc = CheckUniqueness(key, target_pos).first;
         if (rc == kExist) {
           // delete an inserted record
-          SetMetadata(rec_count, in_progress_meta.Delete());
+          SetMetadata(target_pos, in_progress_meta.Delete());
           return NodeReturnCode::kKeyExist;
         } else if (rc == kUncertain) {
           // retry if there are still uncertain records
@@ -496,7 +496,7 @@ class alignas(kCacheLineSize) Node
       // perform MwCAS to complete an insert
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, status, status);
-      SetMetadataForMwCAS(desc, rec_count, in_progress_meta, inserted_meta);
+      SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -536,7 +536,7 @@ class alignas(kCacheLineSize) Node
     const auto block_size = PadRecord<Key, Payload>(total_length);
     const auto in_progress_meta = Metadata{key_length, total_length};
     StatusWord cur_status;
-    size_t rec_count, target_index = 0;
+    size_t target_pos;
     KeyExistence rc;
 
     /*----------------------------------------------------------------------------------------------
@@ -545,21 +545,21 @@ class alignas(kCacheLineSize) Node
     while (true) {
       cur_status = GetStatusWordProtected();
       if (cur_status.IsFrozen()) return NodeReturnCode::kFrozen;
-      if (!HasSpace(cur_status, block_size)) return NodeReturnCode::kNeedConsolidation;
 
       // check whether a node includes a target key
-      rec_count = cur_status.GetRecordCount();
-      std::tie(rc, target_index) = CheckUniqueness(key, rec_count);
+      target_pos = cur_status.GetRecordCount();
+      size_t exist_pos;
+      std::tie(rc, exist_pos) = CheckUniqueness(key, target_pos);
       if (rc == kNotExist || rc == kDeleted) return NodeReturnCode::kKeyNotExist;
 
       if constexpr (CanCASUpdate<Payload>()) {
-        if (rc == kExist && target_index < sorted_count_) {
-          const auto target_meta = GetMetadataProtected(target_index);
+        if (rc == kExist && exist_pos < sorted_count_) {
+          const auto target_meta = GetMetadataProtected(exist_pos);
 
           // update a record directly
           MwCASDescriptor desc{};
           SetStatusForMwCAS(desc, cur_status, cur_status);
-          SetMetadataForMwCAS(desc, target_index, target_meta, target_meta);
+          SetMetadataForMwCAS(desc, exist_pos, target_meta, target_meta);
           SetPayloadForMwCAS(desc, target_meta, payload);
           if (desc.MwCAS()) return NodeReturnCode::kSuccess;
           continue;
@@ -567,14 +567,15 @@ class alignas(kCacheLineSize) Node
       }
 
       // prepare new status for MwCAS
-      const auto target_meta = GetMetadataProtected(target_index);
+      const auto target_meta = GetMetadataProtected(exist_pos);
       const auto deleted_size = kWordLength + PadRecord<Key, Payload>(target_meta.GetTotalLength());
-      const auto new_status = cur_status.Add(1, block_size).Delete(deleted_size);
+      const auto new_status = cur_status.Add(block_size).Delete(deleted_size);
+      if (new_status.NeedConsolidation(sorted_count_)) return NodeReturnCode::kNeedConsolidation;
 
       // perform MwCAS to reserve space
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, cur_status, new_status);
-      SetMetadataForMwCAS(desc, rec_count, Metadata{}, in_progress_meta);
+      SetMetadataForMwCAS(desc, target_pos, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -597,10 +598,10 @@ class alignas(kCacheLineSize) Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
-        rc = CheckUniqueness(key, rec_count).first;
+        rc = CheckUniqueness(key, target_pos).first;
         if (rc == kNotExist || rc == kDeleted) {
           // delete an inserted record
-          SetMetadata(rec_count, in_progress_meta.Delete());
+          SetMetadata(target_pos, in_progress_meta.Delete());
           return NodeReturnCode::kKeyNotExist;
         } else if (rc == kUncertain) {
           continue;
@@ -610,7 +611,7 @@ class alignas(kCacheLineSize) Node
       // perform MwCAS to complete an update
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, status, status);
-      SetMetadataForMwCAS(desc, rec_count, in_progress_meta, inserted_meta);
+      SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -643,7 +644,7 @@ class alignas(kCacheLineSize) Node
     // variables and constants
     const auto in_progress_meta = Metadata{key_length, key_length};
     StatusWord cur_status;
-    size_t rec_count, target_index = 0;
+    size_t target_pos;
     KeyExistence rc;
 
     /*----------------------------------------------------------------------------------------------
@@ -652,40 +653,41 @@ class alignas(kCacheLineSize) Node
     while (true) {
       cur_status = GetStatusWordProtected();
       if (cur_status.IsFrozen()) return NodeReturnCode::kFrozen;
-      if (!HasSpace(cur_status, key_length)) return NodeReturnCode::kNeedConsolidation;
 
       // check whether a node includes a target key
-      rec_count = cur_status.GetRecordCount();
-      std::tie(rc, target_index) = CheckUniqueness(key, rec_count);
+      target_pos = cur_status.GetRecordCount();
+      size_t exist_pos;
+      std::tie(rc, exist_pos) = CheckUniqueness(key, target_pos);
       if (rc == kNotExist || rc == kDeleted) return NodeReturnCode::kKeyNotExist;
 
+      const auto target_meta = GetMetadataProtected(exist_pos);
       if constexpr (CanCASUpdate<Payload>()) {
-        if (rc == kExist && target_index < sorted_count_) {
-          const auto target_meta = GetMetadataProtected(target_index);
+        if (rc == kExist && exist_pos < sorted_count_) {
           const auto deleted_meta = target_meta.Delete();
           const auto deleted_size =
               kWordLength + PadRecord<Key, Payload>(target_meta.GetTotalLength());
           const auto new_status = cur_status.Delete(deleted_size);
+          if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
           // delete a record directly
           MwCASDescriptor desc{};
           SetStatusForMwCAS(desc, cur_status, new_status);
-          SetMetadataForMwCAS(desc, target_index, target_meta, deleted_meta);
+          SetMetadataForMwCAS(desc, exist_pos, target_meta, deleted_meta);
           if (desc.MwCAS()) return NodeReturnCode::kSuccess;
           continue;
         }
       }
 
       // prepare new status for MwCAS
-      const auto target_meta = GetMetadataProtected(target_index);
       const auto deleted_size =
           (2 * kWordLength) + PadRecord<Key, Payload>(target_meta.GetTotalLength()) + key_length;
-      const auto new_status = cur_status.Add(1, key_length).Delete(deleted_size);
+      const auto new_status = cur_status.Add(key_length).Delete(deleted_size);
+      if (new_status.NeedConsolidation(sorted_count_)) return NodeReturnCode::kNeedConsolidation;
 
       // perform MwCAS to reserve space
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, cur_status, new_status);
-      SetMetadataForMwCAS(desc, rec_count, Metadata{}, in_progress_meta);
+      SetMetadataForMwCAS(desc, target_pos, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -707,10 +709,10 @@ class alignas(kCacheLineSize) Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
-        rc = CheckUniqueness(key, rec_count).first;
+        rc = CheckUniqueness(key, target_pos).first;
         if (rc == kNotExist || rc == kDeleted) {
           // delete an inserted record
-          SetMetadata(rec_count, in_progress_meta.Delete());
+          SetMetadata(target_pos, in_progress_meta.Delete());
           return NodeReturnCode::kKeyNotExist;
         } else if (rc == kUncertain) {
           // retry if there are still uncertain records
@@ -721,7 +723,7 @@ class alignas(kCacheLineSize) Node
       // perform MwCAS to complete an insert
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, status, status);
-      SetMetadataForMwCAS(desc, rec_count, in_progress_meta, deleted_meta);
+      SetMetadataForMwCAS(desc, target_pos, in_progress_meta, deleted_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -1170,25 +1172,6 @@ class alignas(kCacheLineSize) Node
   /*################################################################################################
    * Internal utility functions
    *##############################################################################################*/
-
-  /**
-   * @brief Check a target node requires consolidation.
-   *
-   * @param status a current status word of a target node.
-   * @param block_size a current block size of a target node.
-   * @retval true if a target node has sufficient space for inserting a new record.
-   * @retval false if a target node requires consolidation.
-   */
-  constexpr auto
-  HasSpace(  //
-      const StatusWord status,
-      const size_t block_size) const  //
-      -> bool
-  {
-    return status.GetRecordCount() - sorted_count_ < kMaxUnsortedRecNum
-           && status.GetUsedSize() + block_size <= kPageSize - kWordLength
-           && status.GetDeletedSize() < kMaxDeletedSpaceSize;
-  }
 
   /**
    * @brief Get the position of a specified key by using binary search. If there is no

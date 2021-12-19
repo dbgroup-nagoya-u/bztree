@@ -182,10 +182,10 @@ class BzTree
 
     // check whether splitting/merging is needed
     const auto stat = consolidated_node->GetStatusWordProtected();
-    if (stat.GetFreeSpaceSize() < kMinFreeSpaceSize) {
+    if (stat.NeedSplit()) {
       Split(consolidated_node, key);
       return;
-    } else if (stat.GetRecordCount() < kMinSortedRecNum) {
+    } else if (stat.NeedMerge()) {
       if (Merge(consolidated_node, key)) return;
     }
 
@@ -253,7 +253,7 @@ class BzTree
 
       // check the parent node has sufficent capacity
       const auto p_stat = new_parent->GetStatusWordProtected();
-      const auto parent_need_split = p_stat.GetFreeSpaceSize() < kMinFreeSpaceSize;
+      const auto parent_need_split = p_stat.NeedSplit();
       if (parent_need_split) {
         new_parent->Freeze();  // pre-freeze for recursive splitting
       }
@@ -287,7 +287,7 @@ class BzTree
       const Key &key)  //
       -> bool
   {
-    const auto r_size = right_node->GetStatusWordProtected().GetUsedSize();
+    const auto r_stat = right_node->GetStatusWordProtected();
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: preparation
@@ -312,7 +312,7 @@ class BzTree
       // check a right sibling node is live and has sufficent capacity
       left_node = old_parent->GetChild(target_pos - 1);
       const auto l_stat = left_node->GetStatusWordProtected();
-      if (r_size + l_stat.GetUsedSize() > kMaxMergedSize - component::kHeaderLength) return false;
+      if (!l_stat.CanMergeWith(r_stat)) return false;
       if (l_stat.IsFrozen()) continue;
 
       // pre-freezing of SMO targets
@@ -339,7 +339,7 @@ class BzTree
     new_parent->InitAsMergeParent(old_parent, merged_node, target_pos - 1);
 
     // check the parent node should be merged
-    const auto parent_need_merge = new_parent->GetSortedCount() < kMinSortedRecNum;
+    const auto parent_need_merge = new_parent->GetStatusWordProtected().NeedMerge();
     if (parent_need_merge) {
       if (trace.size() > 1 || new_parent->GetSortedCount() > 1) {
         new_parent->Freeze();  // pre-freeze for recursive merging

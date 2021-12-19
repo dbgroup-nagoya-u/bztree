@@ -82,6 +82,9 @@ constexpr size_t kWordLength = 8;
 /// Assumes that one word is represented by 8 bytes
 constexpr size_t kCacheLineSize = 64;
 
+/// Header length in bytes.
+constexpr size_t kHeaderLength = 2 * kWordLength;
+
 #ifdef BZTREE_PAGE_SIZE
 /// The page size of each node
 constexpr size_t kPageSize = BZTREE_PAGE_SIZE;
@@ -116,12 +119,12 @@ constexpr size_t kMinFreeSpaceSize = BZTREE_MIN_FREE_SPACE_SIZE;
 constexpr size_t kMinFreeSpaceSize = kMaxUnsortedRecNum * (3 * kWordLength);
 #endif
 
-#ifdef BZTREE_MIN_SORTED_REC_NUM
-/// Invoking merging if the number of sorted records falls below this threshold
-constexpr size_t kMinSortedRecNum = BZTREE_MIN_SORTED_REC_NUM;
+#ifdef BZTREE_MIN_CONSOLIDATED_SIZE
+/// Invoking merging if the node size falls below this threshold
+constexpr size_t kMinConsolidatedSize = BZTREE_MIN_CONSOLIDATED_SIZE;
 #else
-/// Invoking merging if the number of sorted records falls below this threshold
-constexpr size_t kMinSortedRecNum = 2 * kMaxUnsortedRecNum;
+/// Invoking merging if the node size falls below this threshold
+constexpr size_t kMinConsolidatedSize = kHeaderLength + kMinFreeSpaceSize;
 #endif
 
 #ifdef BZTREE_MAX_MERGED_SIZE

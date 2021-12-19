@@ -66,9 +66,6 @@ enum KeyExistence
 /// alias of memory order for simplicity.
 constexpr auto mo_relax = std::memory_order_relaxed;
 
-/// Header length in bytes.
-constexpr size_t kHeaderLength = 2 * kWordLength;
-
 /*##################################################################################################
  * Internal utility functions
  *################################################################################################*/

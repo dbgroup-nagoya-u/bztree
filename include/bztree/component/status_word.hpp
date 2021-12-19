@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef BZTREE_COMPONENT_STATUS_WORD_HPP
+#define BZTREE_COMPONENT_STATUS_WORD_HPP
 
 #include "common.hpp"
 
@@ -26,6 +27,228 @@ namespace dbgroup::index::bztree::component
  */
 class StatusWord
 {
+ public:
+  /*################################################################################################
+   * Public constructors and assignment operators
+   *##############################################################################################*/
+
+  /**
+   * @brief Create a zero-filled status word.
+   *
+   */
+  constexpr StatusWord()
+      : record_count_{0}, block_size_{0}, deleted_size_{0}, frozen_{0}, control_region_{0}
+  {
+  }
+
+  /**
+   * @brief Create a new status word with specified arguments.
+   *
+   */
+  constexpr StatusWord(  //
+      const size_t record_count,
+      const size_t block_size)
+      : record_count_{record_count},
+        block_size_{block_size},
+        deleted_size_{0},
+        frozen_{0},
+        control_region_{0}
+  {
+  }
+
+  constexpr StatusWord(const StatusWord &) = default;
+  constexpr StatusWord &operator=(const StatusWord &) = default;
+  constexpr StatusWord(StatusWord &&) = default;
+  constexpr StatusWord &operator=(StatusWord &&) = default;
+
+  /*################################################################################################
+   * Public destructors
+   *##############################################################################################*/
+
+  /**
+   * @brief Destroy the status word object.
+   *
+   */
+  ~StatusWord() = default;
+
+  /*################################################################################################
+   * Public operators
+   *##############################################################################################*/
+
+  /**
+   * @brief An operator to check equality.
+   */
+  constexpr auto
+  operator==(const StatusWord &comp) const  //
+      -> bool
+  {
+    return record_count_ == comp.record_count_     //
+           && block_size_ == comp.block_size_      //
+           && deleted_size_ == comp.deleted_size_  //
+           && frozen_ == comp.frozen_;
+  }
+
+  /**
+   * @brief An operator to check inequality.
+   */
+  constexpr auto
+  operator!=(const StatusWord &comp) const  //
+      -> bool
+  {
+    return record_count_ != comp.record_count_     //
+           || block_size_ != comp.block_size_      //
+           || deleted_size_ != comp.deleted_size_  //
+           || frozen_ != comp.frozen_;
+  }
+
+  /*################################################################################################
+   * Public getters/setters
+   *##############################################################################################*/
+
+  /**
+   * @retval true if a node is frozen (i.e., immutable).
+   * @retval false otherwise.
+   */
+  constexpr auto
+  IsFrozen() const  //
+      -> bool
+  {
+    return frozen_;
+  }
+
+  /**
+   * @return the total number of records in a node.
+   */
+  constexpr auto
+  GetRecordCount() const  //
+      -> size_t
+  {
+    return record_count_;
+  }
+
+  /**
+   * @return the total byte length of records in a node.
+   */
+  constexpr auto
+  GetBlockSize() const  //
+      -> size_t
+  {
+    return block_size_;
+  }
+
+  /*################################################################################################
+   * Public utility functions
+   *##############################################################################################*/
+
+  /**
+   * @param sorted_count the number of sorted records in this node.
+   * @retval true if this node should be consolidated.
+   * @retval false otherwise.
+   */
+  constexpr auto
+  NeedConsolidation(const size_t sorted_count) const  //
+      -> bool
+  {
+    const size_t total_size = (kWordLength * record_count_) + block_size_;
+
+    return record_count_ - sorted_count > kMaxUnsortedRecNum
+           || total_size > kPageSize - kHeaderLength  //
+           || deleted_size_ > kMaxDeletedSpaceSize;
+  }
+
+  /**
+   * @retval true if this node does not have sufficient free space.
+   * @retval false otherwise.
+   */
+  constexpr auto
+  NeedSplit() const  //
+      -> bool
+  {
+    constexpr size_t kMaxUsedSize = kPageSize - (kHeaderLength + kMinFreeSpaceSize);
+    const size_t this_size = (kWordLength * record_count_) + block_size_;
+
+    return this_size > kMaxUsedSize;
+  }
+
+  /**
+   * @retval true if this node does not have sufficient free space.
+   * @retval false otherwise.
+   */
+  constexpr auto
+  NeedMerge() const  //
+      -> bool
+  {
+    const size_t this_size = (kWordLength * record_count_) + block_size_;
+
+    return this_size < kMinConsolidatedSize - kHeaderLength;
+  }
+
+  /**
+   * @param stat the status word of a sibling node.
+   * @retval true if this node can merge with a given sibling node.
+   * @retval false otherwise.
+   */
+  constexpr auto
+  CanMergeWith(const StatusWord stat) const  //
+      -> bool
+  {
+    const size_t this_size = (kWordLength * record_count_) + block_size_;
+    const size_t sib_size = (kWordLength * stat.record_count_) + stat.block_size_;
+
+    return this_size + sib_size < kMaxMergedSize - kHeaderLength;
+  }
+
+  /**
+   * @return a frozen status word.
+   */
+  constexpr auto
+  Freeze() const  //
+      -> StatusWord
+  {
+    auto frozen_status = *this;
+    frozen_status.frozen_ = 1;
+    return frozen_status;
+  }
+
+  /**
+   * @return a frozen status word.
+   */
+  constexpr auto
+  Unfreeze() const  //
+      -> StatusWord
+  {
+    auto unfrozen_status = *this;
+    unfrozen_status.frozen_ = 0;
+    return unfrozen_status;
+  }
+
+  /**
+   * @param rec_size the byte length of an added record.
+   * @return a new status word with added records.
+   */
+  constexpr auto
+  Add(const size_t rec_size) const  //
+      -> StatusWord
+  {
+    auto new_status = *this;
+    ++new_status.record_count_;
+    new_status.block_size_ += rec_size;
+    return new_status;
+  }
+
+  /**
+   * @param deleted_size: the byte length of deleted metadata and records.
+   * @return a new status word with deleted records.
+   */
+  constexpr auto
+  Delete(const size_t deleted_size) const  //
+      -> StatusWord
+  {
+    auto new_status = *this;
+    new_status.deleted_size_ += deleted_size;
+    return new_status;
+  }
+
  private:
   /*################################################################################################
    * Internal member variables
@@ -45,194 +268,6 @@ class StatusWord
 
   /// control bits to perform PMwCAS.
   uint64_t control_region_ : 3;
-
- public:
-  /*################################################################################################
-   * Public constructors/destructors
-   *##############################################################################################*/
-
-  /**
-   * @brief Construct a new status word with zero padding.
-   *
-   */
-  constexpr StatusWord()
-      : record_count_{0}, block_size_{0}, deleted_size_{0}, frozen_{0}, control_region_{0}
-  {
-  }
-
-  /**
-   * @brief Construct a new status word with specified arguments.
-   *
-   */
-  constexpr StatusWord(  //
-      const size_t record_count,
-      const size_t block_size)
-      : record_count_{record_count},
-        block_size_{block_size},
-        deleted_size_{0},
-        frozen_{0},
-        control_region_{0}
-  {
-  }
-
-  /**
-   * @brief Destroy the status word object.
-   *
-   */
-  ~StatusWord() = default;
-
-  constexpr StatusWord(const StatusWord &) = default;
-  constexpr StatusWord &operator=(const StatusWord &) = default;
-  constexpr StatusWord(StatusWord &&) = default;
-  constexpr StatusWord &operator=(StatusWord &&) = default;
-
-  /**
-   * @brief An operator to check equality.
-   */
-  constexpr bool
-  operator==(const StatusWord &comp) const
-  {
-    return record_count_ == comp.record_count_     //
-           && block_size_ == comp.block_size_      //
-           && deleted_size_ == comp.deleted_size_  //
-           && frozen_ == comp.frozen_;
-  }
-
-  /**
-   * @brief An operator to check inequality.
-   */
-  constexpr bool
-  operator!=(const StatusWord &comp) const
-  {
-    return record_count_ != comp.record_count_     //
-           || block_size_ != comp.block_size_      //
-           || deleted_size_ != comp.deleted_size_  //
-           || frozen_ != comp.frozen_;
-  }
-
-  /*################################################################################################
-   * Public getters/setters
-   *##############################################################################################*/
-
-  /**
-   * @retval true if a node is frozen (i.e., immutable).
-   * @retval false if a node is not frozen.
-   */
-  constexpr bool
-  IsFrozen() const
-  {
-    return frozen_;
-  }
-
-  /**
-   * @return size_t: the total number of records in a node.
-   */
-  constexpr size_t
-  GetRecordCount() const
-  {
-    return record_count_;
-  }
-
-  /**
-   * @return size_t: the total byte length of records in a node.
-   */
-  constexpr size_t
-  GetBlockSize() const
-  {
-    return block_size_;
-  }
-
-  /**
-   * @return size_t: the total byte length of deleted metadata/records in a node.
-   */
-  constexpr size_t
-  GetDeletedSize() const
-  {
-    return deleted_size_;
-  }
-
-  /**
-   * @return size_t: the total byte length of a header, metadata, and records in a node.
-   */
-  constexpr size_t
-  GetUsedSize() const
-  {
-    return kHeaderLength + (kWordLength * record_count_) + block_size_;
-  }
-
-  /**
-   * @return the free-space size in a node.
-   */
-  constexpr auto
-  GetFreeSpaceSize() const  //
-      -> size_t
-  {
-    return kPageSize - GetUsedSize();
-  }
-
-  /**
-   * @return size_t: the total byte length of live metadata/records in a node.
-   */
-  constexpr size_t
-  GetLiveDataSize() const
-  {
-    return (kWordLength * record_count_) + block_size_ - deleted_size_;
-  }
-
-  /*################################################################################################
-   * Public utility functions
-   *##############################################################################################*/
-
-  /**
-   * @return StatusWord: a frozen status word.
-   */
-  constexpr StatusWord
-  Freeze() const
-  {
-    auto frozen_status = *this;
-    frozen_status.frozen_ = 1;
-    return frozen_status;
-  }
-
-  /**
-   * @return StatusWord: a frozen status word.
-   */
-  constexpr auto
-  Unfreeze() const  //
-      -> StatusWord
-  {
-    auto unfrozen_status = *this;
-    unfrozen_status.frozen_ = 0;
-    return unfrozen_status;
-  }
-
-  /**
-   * @param record_count the number of added records.
-   * @param block_size the byte length of added records.
-   * @return StatusWord: a new status word with added records.
-   */
-  constexpr StatusWord
-  Add(  //
-      const size_t record_count,
-      const size_t block_size) const
-  {
-    auto new_status = *this;
-    new_status.record_count_ += record_count;
-    new_status.block_size_ += block_size;
-    return new_status;
-  }
-
-  /**
-   * @param deleted_size: the byte length of deleted metadata and records.
-   * @return StatusWord: a new status word with deleted records.
-   */
-  constexpr StatusWord
-  Delete(const size_t deleted_size) const
-  {
-    auto new_status = *this;
-    new_status.deleted_size_ += deleted_size;
-    return new_status;
-  }
 };
 
 }  // namespace dbgroup::index::bztree::component
@@ -250,3 +285,5 @@ CanMwCAS<::dbgroup::index::bztree::component::StatusWord>()
   return true;
 }
 }  // namespace dbgroup::atomic::mwcas
+
+#endif  // BZTREE_COMPONENT_STATUS_WORD_HPP
