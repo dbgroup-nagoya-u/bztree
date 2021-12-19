@@ -19,7 +19,6 @@
 
 #include <stdlib.h>
 
-#include <algorithm>
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -962,42 +961,9 @@ class alignas(kMaxAlignment) Node
    * @brief A class to sort metadata.
    *
    */
-  struct MetaRecord {
-    /// a target metadata.
+  struct MetaKeyPair {
     Metadata meta{};
-
-    /// a target key.
     Key key{};
-
-    /**
-     * @brief An operator for less than comparison.
-     *
-     */
-    constexpr bool
-    operator<(const MetaRecord &obj) const
-    {
-      return Compare{}(this->key, obj.key);
-    }
-
-    /**
-     * @brief An operator to check equality.
-     *
-     */
-    constexpr bool
-    operator==(const MetaRecord &obj) const
-    {
-      return !Compare{}(this->key, obj.key) && !Compare{}(obj.key, this->key);
-    }
-
-    /**
-     * @brief An operator to check inequality.
-     *
-     */
-    constexpr bool
-    operator!=(const MetaRecord &obj) const
-    {
-      return Compare{}(this->key, obj.key) || Compare{}(obj.key, this->key);
-    }
   };
 
   /*################################################################################################
@@ -1376,39 +1342,35 @@ class alignas(kMaxAlignment) Node
    */
   auto
   SortNewRecords() const  //
-      -> std::pair<size_t, std::array<MetaRecord, kMaxUnsortedRecNum>>
+      -> std::pair<size_t, std::array<MetaKeyPair, kMaxUnsortedRecNum>>
   {
     const int64_t rec_count = GetStatusWordProtected().GetRecordCount();
 
-    std::array<MetaRecord, kMaxUnsortedRecNum> arr;
+    std::array<MetaKeyPair, kMaxUnsortedRecNum> arr;
     size_t count = 0;
 
     // sort unsorted records by insertion sort
     for (int64_t index = rec_count - 1; index >= sorted_count_; --index) {
+      // check whether a record has been inserted
       const auto meta = GetMetadataProtected(index);
       if (meta.IsInProgress()) continue;
 
-      if (count == 0) {
-        // insert a first record
-        arr[0] = MetaRecord{meta, GetKey(meta)};
-        ++count;
-        continue;
+      // search an inserting position
+      const auto cur_key = GetKey(meta);
+      size_t i = 0;
+      for (; i < count; ++i) {
+        if (!Compare{}(arr[i].key, cur_key)) break;
       }
 
-      // insert a new record into an appropiate position
-      MetaRecord target{meta, GetKey(meta)};
-      const auto ins_iter = std::lower_bound(arr.begin(), arr.begin() + count, target);
-      if (*ins_iter != target) {
-        const size_t ins_id = std::distance(arr.begin(), ins_iter);
-        if (ins_id < count) {
-          // shift upper records
-          memmove(&(arr[ins_id + 1]), &(arr[ins_id]), sizeof(MetaRecord) * (count - ins_id));
-        }
-
-        // insert a new record
-        arr[ins_id] = std::move(target);
-        ++count;
+      // shift upper records if needed
+      if (i < count) {
+        if (!Compare{}(cur_key, arr[i].key)) continue;  // there is a duplicate key
+        memmove(&(arr[i + 1]), &(arr[i]), sizeof(MetaKeyPair) * (count - i));
       }
+
+      // insert a new record
+      arr[i] = MetaKeyPair{meta, cur_key};
+      ++count;
     }
 
     return {count, arr};

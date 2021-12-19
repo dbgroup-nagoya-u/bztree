@@ -63,9 +63,6 @@ enum KeyExistence
  * Internal constants
  *################################################################################################*/
 
-/// alias of memory order for simplicity.
-constexpr auto mo_relax = std::memory_order_relaxed;
-
 constexpr size_t kMaxAlignment = 16;
 
 /*##################################################################################################
@@ -170,43 +167,6 @@ IsEqual(  //
     const T &obj_2)
 {
   return !Compare{}(obj_1, obj_2) && !Compare{}(obj_2, obj_1);
-}
-
-/**
- * @tparam Compare a comparator class for target keys.
- * @tparam Key a target key class.
- * @param key a target key.
- * @param begin_key a begin key of a range condition.
- * @param begin_closed a flag to indicate whether the begin side of range is closed.
- * @param end_key an end key of a range condition.
- * @param end_closed a flag to indicate whether the end side of range is closed.
- * @retval true if a target key is in a range.
- * @retval false if a target key is outside of a range.
- */
-template <class Compare, class Key>
-constexpr bool
-IsInRange(  //
-    const Key &key,
-    const Key *begin_key,
-    const bool begin_closed,
-    const Key *end_key,
-    const bool end_closed)
-{
-  if (begin_key == nullptr && end_key == nullptr) {
-    // no range condition
-    return true;
-  } else if (begin_key == nullptr) {
-    // less than or equal to
-    return Compare{}(key, *end_key) || (end_closed && !Compare{}(*end_key, key));
-  } else if (end_key == nullptr) {
-    // greater than or equal to
-    return Compare{}(*begin_key, key) || (begin_closed && !Compare{}(key, *begin_key));
-  } else {
-    // between
-    return !((Compare{}(key, *begin_key) || Compare{}(*end_key, key))
-             || (!begin_closed && IsEqual<Compare>(key, *begin_key))
-             || (!end_closed && IsEqual<Compare>(key, *end_key)));
-  }
 }
 
 /**
