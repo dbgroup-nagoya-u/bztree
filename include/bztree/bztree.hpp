@@ -476,7 +476,8 @@ class BzTree
         : bztree_{bztree},
           node_{node},
           record_count_{node->GetSortedCount()},
-          current_pos_{current_pos}
+          current_pos_{current_pos},
+          current_meta_{node->GetMetadata(current_pos_)}
     {
     }
 
@@ -494,8 +495,9 @@ class BzTree
     /**
      * @return std::pair<Key, Payload>: a current key and payload pair
      */
-    constexpr std::pair<Key, Payload>
-    operator*() const
+    constexpr auto
+    operator*() const  //
+        -> std::pair<const Key &, const Payload &>
     {
       return {GetKey(), GetPayload()};
     }
@@ -508,6 +510,7 @@ class BzTree
     operator++()
     {
       ++current_pos_;
+      current_meta_ = node_->GetMetadata(current_pos_);
     }
 
     /*##############################################################################################
@@ -528,8 +531,8 @@ class BzTree
       if (current_pos_ < record_count_) return true;
       if (node_->IsRightEnd()) return false;
 
-      current_pos_ = record_count_ - 1;
-      *this = bztree_->Scan(GetKey, false, node_);
+      current_meta_ = node_->GetMetadata(record_count_ - 1);
+      *this = bztree_->Scan(GetKey(), false, node_);
 
       return HasNext();
     }
@@ -539,7 +542,7 @@ class BzTree
      */
     constexpr auto
     GetKey() const  //
-        -> Key
+        -> const Key &
     {
       return node_->GetKey(current_pos_);
     }
@@ -547,10 +550,11 @@ class BzTree
     /**
      * @return Payload: a payload of a current record
      */
-    constexpr Payload
-    GetPayload() const
+    constexpr auto
+    GetPayload() const  //
+        -> const Payload &
     {
-      return node_->GetPayload(current_pos_);
+      return node_->GetPayload<Payload>(current_pos_);
     }
 
    private:
@@ -561,14 +565,17 @@ class BzTree
     /// a pointer to BwTree to perform continuous scan
     BzTree_t *bztree_;
 
-    /// node
+    /// the pointer to a node that includes partial scan results
     Node_t *node_;
 
-    /// the number of records in this node.
+    /// the number of records in this node
     size_t record_count_;
 
-    /// an index of a current record
+    /// the position of a current record
     size_t current_pos_;
+
+    /// the metadata of a current record
+    Metadata current_meta_;
   };
 
   /*################################################################################################

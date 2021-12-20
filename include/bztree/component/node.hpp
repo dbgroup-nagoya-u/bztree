@@ -177,6 +177,49 @@ class alignas(kMaxAlignment) Node
     return stat;
   }
 
+  /**
+   * @brief Read metadata without MwCAS read protection.
+   *
+   * @return metadata.
+   */
+  auto
+  GetMetadata(const size_t position) const  //
+      -> Metadata
+  {
+    return meta_array_[position];
+  }
+
+  /**
+   * @param meta metadata of a corresponding record.
+   * @return the reference to a target key.
+   */
+  constexpr auto
+  GetKey(const Metadata meta) const  //
+      -> const Key &
+  {
+    if constexpr (std::is_pointer_v<Key>) {
+      return reinterpret_cast<Key>(GetKeyAddr(meta));
+    } else {
+      return *reinterpret_cast<Key *>(GetKeyAddr(meta));
+    }
+  }
+
+  /**
+   * @param meta metadata of a corresponding record.
+   * @return the reference to a target payload.
+   */
+  template <class Payload>
+  constexpr auto
+  GetPayload(const Metadata meta) const  //
+      -> const Payload &
+  {
+    if constexpr (std::is_pointer_v<Payload>) {
+      return reinterpret_cast<Payload>(GetPayloadAddr(meta));
+    } else {
+      return *reinterpret_cast<Payload *>(GetPayloadAddr(meta));
+    }
+  }
+
   auto
   GetChild(const size_t position) const  //
       -> Node *
@@ -237,7 +280,7 @@ class alignas(kMaxAlignment) Node
     while (begin_pos <= end_pos) {
       size_t pos = (begin_pos + end_pos) >> 1;
 
-      const auto index_key = GetKey(meta_array_[pos]);
+      const auto &index_key = GetKey(meta_array_[pos]);
 
       if (Compare{}(key, index_key)) {  // a target key is in a left side
         end_pos = pos - 1;
@@ -781,7 +824,7 @@ class alignas(kMaxAlignment) Node
     size_t j = 0;
     for (size_t i = 0; i < sorted_count; ++i) {
       const auto meta = old_node->GetMetadataProtected(i);
-      const auto key = old_node->GetKey(meta);
+      const auto &key = old_node->GetKey(meta);
 
       // copy new records
       for (; j < new_rec_num; ++j) {
@@ -960,7 +1003,7 @@ class alignas(kMaxAlignment) Node
    */
   struct MetaKeyPair {
     Metadata meta{};
-    Key key{};
+    Key &key{};
   };
 
   /*################################################################################################
@@ -984,31 +1027,13 @@ class alignas(kMaxAlignment) Node
 
   /**
    * @param meta metadata of a corresponding record.
-   * @return Key: a target key.
-   */
-  constexpr auto
-  GetKey(const Metadata meta) const  //
-      -> Key
-  {
-    if constexpr (std::is_pointer_v<Key>) {
-      return GetKeyAddr(meta);
-    } else {
-      return *GetKeyAddr(meta);
-    }
-  }
-
-  /**
-   * @param meta metadata of a corresponding record.
    * @return auto: an address of a target key.
    */
   constexpr auto
-  GetKeyAddr(const Metadata meta) const
+  GetKeyAddr(const Metadata meta) const  //
+      -> void *
   {
-    if constexpr (std::is_pointer_v<Key>) {
-      return Cast<Key>(ShiftAddr(this, meta.GetOffset()));
-    } else {
-      return Cast<Key *>(ShiftAddr(this, meta.GetOffset()));
-    }
+    return ShiftAddr(this, meta.GetOffset());
   }
 
   /**
@@ -1267,7 +1292,7 @@ class alignas(kMaxAlignment) Node
       size_t pos = (begin_pos + end_pos) >> 1;
 
       const auto meta = GetMetadataProtected(pos);
-      const auto index_key = GetKey(meta);
+      const auto &index_key = GetKey(meta);
 
       if (Compare{}(key, index_key)) {  // a target key is in a left side
         end_pos = pos - 1;
@@ -1297,7 +1322,7 @@ class alignas(kMaxAlignment) Node
         continue;
       }
 
-      const auto target_key = GetKey(meta);
+      const auto &target_key = GetKey(meta);
       if (IsEqual<Compare>(key, target_key)) {
         if (meta.IsVisible()) return {kExist, pos};
         return {kDeleted, pos};
@@ -1350,7 +1375,7 @@ class alignas(kMaxAlignment) Node
       const size_t offset)  //
       -> size_t
   {
-    const auto key = orig_node->GetKey(orig_meta);
+    const auto &key = orig_node->GetKey(orig_meta);
     const auto key_length = orig_meta.GetKeyLength();
     const auto [key_len, pay_len, rec_len] = AlignRecord<Node *>(key_length, sizeof(Node *));
 
@@ -1436,7 +1461,7 @@ class alignas(kMaxAlignment) Node
       if (meta.IsInProgress()) continue;
 
       // search an inserting position
-      const auto cur_key = GetKey(meta);
+      const auto &cur_key = GetKey(meta);
       size_t i = 0;
       for (; i < count; ++i) {
         if (!Compare{}(arr[i].key, cur_key)) break;

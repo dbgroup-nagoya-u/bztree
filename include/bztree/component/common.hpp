@@ -87,22 +87,6 @@ CanCASUpdate()
 }
 
 /**
- * @brief Cast a given pointer to a specified pointer type.
- *
- * @tparam T a target pointer type.
- * @param addr a target pointer.
- * @return T: a casted pointer.
- */
-template <class T>
-constexpr T
-Cast(const void *addr)
-{
-  static_assert(std::is_pointer_v<T>);
-
-  return static_cast<T>(const_cast<void *>(addr));
-}
-
-/**
  * @tparam Compare a comparator class.
  * @tparam T a target class.
  * @param obj_1 an object to be compared.
