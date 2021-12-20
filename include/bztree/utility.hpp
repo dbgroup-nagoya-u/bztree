@@ -14,13 +14,15 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef BZTREE_UTILITY_HPP
+#define BZTREE_UTILITY_HPP
 
 #include <string.h>
 
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 #include "mwcas/utility.hpp"
 
@@ -79,11 +81,11 @@ IsVariableLengthData()
 /// Assumes that one word is represented by 8 bytes
 constexpr size_t kWordLength = 8;
 
-/// Assumes that one word is represented by 8 bytes
-constexpr size_t kCacheLineSize = 64;
-
 /// Header length in bytes.
 constexpr size_t kHeaderLength = 2 * kWordLength;
+
+/// the maximum alignment of keys/payloads assumed in this library
+constexpr size_t kMaxAlignment = 16;
 
 #ifdef BZTREE_PAGE_SIZE
 /// The page size of each node
@@ -136,3 +138,5 @@ constexpr size_t kMaxMergedSize = kPageSize - (2 * kMinFreeSpaceSize);
 #endif
 
 }  // namespace dbgroup::index::bztree
+
+#endif  // BZTREE_UTILITY_HPP

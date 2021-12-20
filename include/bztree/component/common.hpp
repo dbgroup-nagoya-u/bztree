@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef BZTREE_COMPONENT_COMMON_HPP
+#define BZTREE_COMPONENT_COMMON_HPP
 
 #include <cstring>
 #include <memory>
@@ -58,13 +59,6 @@ enum KeyExistence
   kDeleted,
   kUncertain
 };
-
-/*##################################################################################################
- * Internal constants
- *################################################################################################*/
-
-/// the maximum alignment of keys/payloads assumed in this library
-constexpr size_t kMaxAlignment = 16;
 
 /*##################################################################################################
  * Internal utility functions
@@ -230,3 +224,5 @@ struct PayloadDeleter {
 };
 
 }  // namespace dbgroup::index::bztree::component
+
+#endif  // BZTREE_COMPONENT_COMMON_HPP
