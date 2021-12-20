@@ -77,11 +77,16 @@ class BzTree
   CreateNewNode(const bool is_leaf)  //
       -> Node_t *
   {
+    constexpr size_t kPayloadBlock = kPageSize - component::GetInitialOffset<Key, Payload>();
+    constexpr size_t kNodeBlock = kPageSize - component::GetInitialOffset<Key, Node_t *>();
+
     auto *page = gc_.template GetPageIfPossible<Node_t>();
     if (is_leaf) {
-      return (page == nullptr) ? new Node_t<Payload>{true} : new (page) Node_t<Payload>{true};
+      return (page == nullptr) ? new Node_t{kLeafFlag, kPayloadBlock}
+                               : new (page) Node_t{kLeafFlag, kPayloadBlock};
     }
-    return (page == nullptr) ? new Node_t<Node_t *>{false} : new (page) Node_t<Node_t *>{false};
+    return (page == nullptr) ? new Node_t{!kLeafFlag, kNodeBlock}
+                             : new (page) Node_t{!kLeafFlag, kNodeBlock};
   }
 
   /**
@@ -179,7 +184,7 @@ class BzTree
 
     // create a consolidated node
     Node_t *consolidated_node = CreateNewNode(kLeafFlag);
-    consolidated_node->Consolidate<Payload>(node);
+    consolidated_node->template Consolidate<Payload>(node);
 
     // check whether splitting/merging is needed
     const auto stat = consolidated_node->GetStatusWordProtected();
@@ -331,7 +336,7 @@ class BzTree
     const auto is_leaf = right_node->IsLeaf();
     Node_t *merged_node = CreateNewNode(is_leaf);
     if (is_leaf) {
-      merged_node->Consolidate(left_node);
+      merged_node->template Consolidate<Payload>(left_node);
       Node_t::template Merge<Payload>(merged_node, right_node, merged_node);
     } else {
       Node_t::template Merge<Node_t *>(left_node, right_node, merged_node);
@@ -554,7 +559,7 @@ class BzTree
     GetPayload() const  //
         -> const Payload &
     {
-      return node_->GetPayload<Payload>(current_pos_);
+      return node_->template GetPayload<Payload>(current_pos_);
     }
 
    private:
@@ -824,7 +829,7 @@ class BzTree
 
     while (true) {
       Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->Delete<Payload>(key, key_length);
+      const auto rc = node->template Delete<Payload>(key, key_length);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
         if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;

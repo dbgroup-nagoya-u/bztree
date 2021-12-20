@@ -25,6 +25,8 @@
 
 namespace dbgroup::index::bztree::test
 {
+using component::AlignRecord;
+
 /*##################################################################################################
  * Global constants
  *################################################################################################*/
@@ -33,7 +35,6 @@ constexpr size_t kSmallKeyNum = 16;
 constexpr size_t kLargeKeyNum = 2048;
 constexpr size_t kKeyLength = kWordLength;
 constexpr size_t kPayloadLength = kWordLength;
-constexpr size_t kHeaderLength = component::kHeaderLength;
 constexpr size_t kTestMaxRecNum = (kPageSize - kHeaderLength - kMinFreeSpaceSize) / 20;
 constexpr size_t kKeyNumForTest = 2 * kTestMaxRecNum * kTestMaxRecNum + 2;
 constexpr bool kExpectSuccess = true;
@@ -59,7 +60,7 @@ class BzTreeFixture : public testing::Test
 
   // define type aliases for simplicity
   using Metadata = component::Metadata;
-  using Node_t = component::Node<Key, Payload, KeyComp>;
+  using Node_t = component::Node<Key, KeyComp>;
   using BzTree_t = BzTree<Key, Payload, KeyComp>;
 
  protected:
@@ -79,7 +80,7 @@ class BzTreeFixture : public testing::Test
     PrepareTestData(payloads, kKeyNumForTest, pay_size_);
 
     // set a record length and its maximum number
-    auto rec_size = component::PadRecord<Key, Payload>(key_size_ + pay_size_) + sizeof(Metadata);
+    auto rec_size = std::get<2>(AlignRecord<Key, Payload>(key_size_, pay_size_)) + sizeof(Metadata);
     max_rec_num_ = (kPageSize - kHeaderLength - kMinFreeSpaceSize) / rec_size;
 
     bztree = std::make_unique<BzTree_t>(1000);
@@ -442,9 +443,6 @@ TYPED_TEST(BzTreeFixture, InsertWithDeletedKeysSucceed)
     TestFixture::VerifyInsert(i, i, kExpectSuccess);
   }
   for (size_t i = 0; i < rec_num; ++i) {
-    if (i >= 840) {
-      int j = i;
-    }
     TestFixture::VerifyDelete(i, kExpectSuccess);
   }
   for (size_t i = 0; i < rec_num; ++i) {

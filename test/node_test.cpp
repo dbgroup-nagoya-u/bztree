@@ -54,9 +54,16 @@ class NodeFixture : public testing::Test
   using PayloadComp = typename KeyPayload::PayloadComp;
 
   // define type aliases for simplicity
-  using Node_t = Node<Key, Payload, KeyComp>;
+  using Node_t = Node<Key, KeyComp>;
 
  protected:
+  /*################################################################################################
+   * Internal constants
+   *##############################################################################################*/
+
+  static constexpr size_t kPayloadBlock = kPageSize - GetInitialOffset<Key, Payload>();
+  static constexpr size_t kNodeBlock = kPageSize - component::GetInitialOffset<Key, Node_t *>();
+
   /*################################################################################################
    * Setup/Teardown
    *##############################################################################################*/
@@ -67,7 +74,7 @@ class NodeFixture : public testing::Test
     static_assert(kPageSize > kMaxRecSize * kMaxUnsortedRecNum * 2 + kHeaderLength,
                   "The page size is too small to perform unit tests.");
 
-    node.reset(new Node_t{kLeafFlag});
+    node.reset(new Node_t{kLeafFlag, kPayloadBlock});
 
     // prepare keys
     key_size_ = (IsVariableLengthData<Key>()) ? kVarDataLength : sizeof(Key);
@@ -78,7 +85,7 @@ class NodeFixture : public testing::Test
     PrepareTestData(payloads_, kKeyNumForTest, pay_size_);
 
     // set a record length and its maximum number
-    const auto rec_size = PadRecord<Key, Payload>(key_size_ + pay_size_) + sizeof(Metadata);
+    auto rec_size = std::get<2>(AlignRecord<Key, Payload>(key_size_, pay_size_)) + sizeof(Metadata);
     max_rec_num_ = (kPageSize - kHeaderLength) / rec_size;
     if constexpr (CanCASUpdate<Payload>()) {
       const auto del_size = rec_size + sizeof(Metadata);
@@ -127,14 +134,14 @@ class NodeFixture : public testing::Test
   auto
   Delete(const size_t key_id)
   {
-    return node->Delete(keys_[key_id], key_size_);
+    return node->template Delete<Payload>(keys_[key_id], key_size_);
   }
 
   void
   Consolidate()
   {
-    Node_t *consolidated_node = new Node_t{kLeafFlag};
-    consolidated_node->Consolidate(node.get());
+    Node_t *consolidated_node = new Node_t{kLeafFlag, kPayloadBlock};
+    consolidated_node->template Consolidate<Payload>(node.get());
     node.reset(consolidated_node);
   }
 
@@ -247,8 +254,8 @@ class NodeFixture : public testing::Test
   {
     PrepareConsolidatedNode();
 
-    Node_t *left_node = new Node_t{kLeafFlag};
-    Node_t *right_node = new Node_t{kLeafFlag};
+    Node_t *left_node = new Node_t{kLeafFlag, kPayloadBlock};
+    Node_t *right_node = new Node_t{kLeafFlag, kPayloadBlock};
     Node_t::template Split<Payload>(node.get(), left_node, right_node);
 
     node.reset(left_node);
@@ -267,10 +274,10 @@ class NodeFixture : public testing::Test
   {
     PrepareConsolidatedNode();
 
-    Node_t *left_node = new Node_t{kLeafFlag};
-    Node_t *right_node = new Node_t{kLeafFlag};
+    Node_t *left_node = new Node_t{kLeafFlag, kPayloadBlock};
+    Node_t *right_node = new Node_t{kLeafFlag, kPayloadBlock};
     Node_t::template Split<Payload>(node.get(), left_node, right_node);
-    Node_t *merged_node = new Node_t{kLeafFlag};
+    Node_t *merged_node = left_node;
     Node_t::template Merge<Payload>(left_node, right_node, merged_node);
 
     node.reset(merged_node);
@@ -278,7 +285,6 @@ class NodeFixture : public testing::Test
       VerifyRead(i, i, kExpectSuccess);
     }
 
-    delete left_node;
     delete right_node;
   }
 
@@ -287,10 +293,10 @@ class NodeFixture : public testing::Test
   {
     PrepareConsolidatedNode();
 
-    Node_t *left_node = new Node_t{kLeafFlag};
-    Node_t *right_node = new Node_t{kLeafFlag};
+    Node_t *left_node = new Node_t{kLeafFlag, kPayloadBlock};
+    Node_t *right_node = new Node_t{kLeafFlag, kPayloadBlock};
     Node_t::template Split<Payload>(node.get(), left_node, right_node);
-    Node_t *root = new Node_t{!kLeafFlag};
+    Node_t *root = new Node_t{!kLeafFlag, kNodeBlock};
     root->InitAsRoot(left_node, right_node);
 
     EXPECT_EQ(left_node, root->GetChild(0));
@@ -306,15 +312,15 @@ class NodeFixture : public testing::Test
   {
     PrepareConsolidatedNode();
 
-    Node_t *l_node = new Node_t{kLeafFlag};
-    Node_t *r_node = new Node_t{kLeafFlag};
+    Node_t *l_node = new Node_t{kLeafFlag, kPayloadBlock};
+    Node_t *r_node = new Node_t{kLeafFlag, kPayloadBlock};
     Node_t::template Split<Payload>(node.get(), l_node, r_node);
-    Node_t *old_parent = new Node_t{!kLeafFlag};
+    Node_t *old_parent = new Node_t{!kLeafFlag, kNodeBlock};
     old_parent->InitAsRoot(l_node, r_node);
-    Node_t *r_l_node = new Node_t{kLeafFlag};
-    Node_t *r_r_node = new Node_t{kLeafFlag};
+    Node_t *r_l_node = new Node_t{kLeafFlag, kPayloadBlock};
+    Node_t *r_r_node = new Node_t{kLeafFlag, kPayloadBlock};
     Node_t::template Split<Payload>(r_node, r_l_node, r_r_node);
-    Node_t *new_parent = new Node_t{!kLeafFlag};
+    Node_t *new_parent = new Node_t{!kLeafFlag, kNodeBlock};
     new_parent->InitAsSplitParent(old_parent, r_node, r_r_node, 1);
 
     EXPECT_EQ(l_node, new_parent->GetChild(0));
@@ -334,21 +340,20 @@ class NodeFixture : public testing::Test
   {
     PrepareConsolidatedNode();
 
-    Node_t *l_node = new Node_t{kLeafFlag};
-    Node_t *r_node = new Node_t{kLeafFlag};
+    Node_t *l_node = new Node_t{kLeafFlag, kPayloadBlock};
+    Node_t *r_node = new Node_t{kLeafFlag, kPayloadBlock};
     Node_t::template Split<Payload>(node.get(), l_node, r_node);
-    Node_t *old_parent = new Node_t{!kLeafFlag};
+    Node_t *old_parent = new Node_t{!kLeafFlag, kNodeBlock};
     old_parent->InitAsRoot(l_node, r_node);
-    Node_t *merged_node = new Node_t{kLeafFlag};
+    Node_t *merged_node = l_node;
     Node_t::template Merge<Payload>(l_node, r_node, merged_node);
-    Node_t *new_parent = new Node_t{!kLeafFlag};
+    Node_t *new_parent = new Node_t{!kLeafFlag, kNodeBlock};
     new_parent->InitAsMergeParent(old_parent, merged_node, 0);
 
     EXPECT_EQ(merged_node, new_parent->GetChild(0));
 
     delete l_node;
     delete r_node;
-    delete merged_node;
     delete old_parent;
     delete new_parent;
   }

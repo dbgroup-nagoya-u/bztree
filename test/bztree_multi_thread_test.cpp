@@ -49,7 +49,7 @@ class BzTreeFixture : public testing::Test
   using PayloadComp = typename KeyPayload::PayloadComp;
 
   // define type aliases for simplicity
-  using Node_t = component::Node<Key, Payload, KeyComp>;
+  using Node_t = component::Node<Key, KeyComp>;
   using BzTree_t = BzTree<Key, Payload, KeyComp>;
 
   enum WriteType
@@ -79,8 +79,8 @@ class BzTreeFixture : public testing::Test
   static constexpr size_t kRandomSeed = 10;
 
   // actual keys and payloads
-  size_t key_length;
-  size_t payload_length;
+  size_t key_size_;
+  size_t pay_size_;
   Key keys[kKeyNumForTest];
   Payload payloads[kKeyNumForTest];
 
@@ -101,12 +101,12 @@ class BzTreeFixture : public testing::Test
   SetUp()
   {
     // prepare keys
-    key_length = (IsVariableLengthData<Key>()) ? 7 : sizeof(Key);
-    PrepareTestData(keys, kKeyNumForTest, key_length);
+    key_size_ = (IsVariableLengthData<Key>()) ? kVarDataLength : sizeof(Key);
+    PrepareTestData(keys, kKeyNumForTest, key_size_);
 
     // prepare payloads
-    payload_length = (IsVariableLengthData<Payload>()) ? 7 : sizeof(Payload);
-    PrepareTestData(payloads, kKeyNumForTest, payload_length);
+    pay_size_ = (IsVariableLengthData<Payload>()) ? kVarDataLength : sizeof(Payload);
+    PrepareTestData(payloads, kKeyNumForTest, pay_size_);
   }
 
   void
@@ -128,15 +128,15 @@ class BzTreeFixture : public testing::Test
 
     switch (ops.w_type) {
       case kInsert:
-        return bztree.Insert(key, payload, key_length, payload_length);
+        return bztree.Insert(key, payload, key_size_, pay_size_);
       case kUpdate:
-        return bztree.Update(key, payload, key_length, payload_length);
+        return bztree.Update(key, payload, key_size_, pay_size_);
       case kDelete:
-        return bztree.Delete(key, key_length);
+        return bztree.Delete(key, key_size_);
       case kWrite:
         break;
     }
-    return bztree.Write(key, payload, key_length, payload_length);
+    return bztree.Write(key, payload, key_size_, pay_size_);
   }
 
   Operation

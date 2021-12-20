@@ -49,14 +49,16 @@ class alignas(kMaxAlignment) Node
    * @brief Construct a new node object.
    *
    * @param is_leaf a flag to indicate whether a leaf node is constructed.
+   * @param block_size an initial block size to align records.
    */
-  template <class Payload>
-  explicit Node(const bool is_leaf)
+  Node(  //
+      const bool is_leaf,
+      const size_t block_size)
       : node_size_{kPageSize},
         sorted_count_{0},
         is_leaf_{is_leaf},
         is_right_end_{true},
-        status_{0, GetInitialOffset<Payload>()}
+        status_{0, block_size}
   {
   }
 
@@ -153,7 +155,7 @@ class alignas(kMaxAlignment) Node
    *
    * @return a status word.
    */
-  auto
+  constexpr auto
   GetStatusWord() const  //
       -> StatusWord
   {
@@ -182,7 +184,7 @@ class alignas(kMaxAlignment) Node
    *
    * @return metadata.
    */
-  auto
+  constexpr auto
   GetMetadata(const size_t position) const  //
       -> Metadata
   {
@@ -191,11 +193,11 @@ class alignas(kMaxAlignment) Node
 
   /**
    * @param meta metadata of a corresponding record.
-   * @return the reference to a target key.
+   * @return a key in a target record.
    */
   constexpr auto
   GetKey(const Metadata meta) const  //
-      -> const Key &
+      -> Key
   {
     if constexpr (std::is_pointer_v<Key>) {
       return reinterpret_cast<Key>(GetKeyAddr(meta));
@@ -205,13 +207,14 @@ class alignas(kMaxAlignment) Node
   }
 
   /**
+   * @tparam Payload a class of payload.
    * @param meta metadata of a corresponding record.
-   * @return the reference to a target payload.
+   * @return a payload in a target record.
    */
   template <class Payload>
   constexpr auto
   GetPayload(const Metadata meta) const  //
-      -> const Payload &
+      -> Payload
   {
     if constexpr (std::is_pointer_v<Payload>) {
       return reinterpret_cast<Payload>(GetPayloadAddr(meta));
@@ -220,6 +223,12 @@ class alignas(kMaxAlignment) Node
     }
   }
 
+  /**
+   * @brief Get a child node with MwCAS's read protection.
+   *
+   * @param position the position of a child node.
+   * @return a child node.
+   */
   auto
   GetChild(const size_t position) const  //
       -> Node *
@@ -243,6 +252,14 @@ class alignas(kMaxAlignment) Node
     desc.AddMwCASTarget(&status_, old_status, new_status);
   }
 
+  /**
+   * @brief Set old/new children nodes as a MwCAS target.
+   *
+   * @param desc a target MwCAS descriptor.
+   * @param pos the position of a target child node.
+   * @param old_child an expected child node.
+   * @param new_child a desired child node.
+   */
   constexpr void
   SetChildForMwCAS(  //
       MwCASDescriptor &desc,
@@ -273,14 +290,14 @@ class alignas(kMaxAlignment) Node
       -> size_t
   {
     const auto *atomic_stat = reinterpret_cast<const std::atomic<StatusWord> *>(&status_);
-    [[maybe_unused]] const auto stat = atomic_stat->load(std::memory_order_acquire);
+    const auto stat = atomic_stat->load(std::memory_order_acquire);
 
     int64_t begin_pos = 0;
-    int64_t end_pos = sorted_count_ - 2;
+    int64_t end_pos = stat.GetRecordCount() - 2;
     while (begin_pos <= end_pos) {
       size_t pos = (begin_pos + end_pos) >> 1;
 
-      const auto &index_key = GetKey(meta_array_[pos]);
+      const auto index_key = GetKey(meta_array_[pos]);
 
       if (Compare{}(key, index_key)) {  // a target key is in a left side
         end_pos = pos - 1;
@@ -335,6 +352,7 @@ class alignas(kMaxAlignment) Node
   /**
    * @brief Read a payload of a specified key if it exists.
    *
+   * @tparam Payload a class of payload.
    * @param key a target key.
    * @param out_payload a reference to be stored a target payload.
    * @retval kSuccess if a key exists.
@@ -349,7 +367,7 @@ class alignas(kMaxAlignment) Node
   {
     // check whether there is a given key in this node
     const auto status = GetStatusWordProtected();
-    const auto [rc, pos] = CheckUniqueness(key, status.GetRecordCount());
+    const auto [rc, pos] = CheckUniqueness<Payload>(key, status.GetRecordCount());
     if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
     // copy a written payload to a given address
@@ -381,6 +399,7 @@ class alignas(kMaxAlignment) Node
    * Note that if a target key/payload is binary data, it is required to specify its
    * length in bytes.
    *
+   * @tparam Payload a class of payload.
    * @param key a target key to be written.
    * @param payload a target payload to be written.
    * @param key_length the length of a target key.
@@ -399,7 +418,7 @@ class alignas(kMaxAlignment) Node
       -> NodeReturnCode
   {
     // variables and constants shared in Phase 1 & 2
-    const auto [key_len, pay_len, rec_len] = AlignRecord<Payload>(key_length, payload_length);
+    const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, payload_length);
     const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos;
@@ -445,7 +464,7 @@ class alignas(kMaxAlignment) Node
 
     // insert a record
     auto offset = kPageSize - cur_status.GetBlockSize();
-    offset = SetPayload(offset, payload, pay_len);
+    offset = SetPayload<Payload>(offset, payload, pay_len);
     offset = SetKey(offset, key, key_len);
 
     // prepare record metadata for MwCAS
@@ -478,6 +497,7 @@ class alignas(kMaxAlignment) Node
    * Note that if a target key/payload is binary data, it is required to specify its
    * length in bytes.
    *
+   * @tparam Payload a class of payload.
    * @param key a target key to be written.
    * @param payload a target payload to be written.
    * @param key_length the length of a target key.
@@ -497,7 +517,7 @@ class alignas(kMaxAlignment) Node
       -> NodeReturnCode
   {
     // variables and constants shared in Phase 1 & 2
-    const auto [key_len, pay_len, rec_len] = AlignRecord<Payload>(key_length, payload_length);
+    const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, payload_length);
     const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos;
@@ -516,7 +536,7 @@ class alignas(kMaxAlignment) Node
 
       // check uniqueness
       target_pos = cur_status.GetRecordCount();
-      rc = CheckUniqueness(key, target_pos).first;
+      rc = CheckUniqueness<Payload>(key, target_pos).first;
       if (rc == kExist) return kKeyExist;
 
       // perform MwCAS to reserve space
@@ -532,7 +552,7 @@ class alignas(kMaxAlignment) Node
 
     // insert a record
     auto offset = kPageSize - cur_status.GetBlockSize();
-    offset = SetPayload(offset, payload, pay_len);
+    offset = SetPayload<Payload>(offset, payload, pay_len);
     offset = SetKey(offset, key, key_len);
 
     // prepare record metadata for MwCAS
@@ -545,7 +565,7 @@ class alignas(kMaxAlignment) Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
-        rc = CheckUniqueness(key, target_pos).first;
+        rc = CheckUniqueness<Payload>(key, target_pos).first;
         if (rc == kExist) {
           // delete an inserted record
           SetMetadata(target_pos, in_progress_meta.Delete());
@@ -578,6 +598,7 @@ class alignas(kMaxAlignment) Node
    * Note that if a target key/payload is binary data, it is required to specify its
    * length in bytes.
    *
+   * @tparam Payload a class of payload.
    * @param key a target key to be written.
    * @param payload a target payload to be written.
    * @param key_length the length of a target key.
@@ -597,7 +618,7 @@ class alignas(kMaxAlignment) Node
       -> NodeReturnCode
   {
     // variables and constants shared in Phase 1 & 2
-    const auto [key_len, pay_len, rec_len] = AlignRecord<Payload>(key_length, payload_length);
+    const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, payload_length);
     const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos;
@@ -613,7 +634,7 @@ class alignas(kMaxAlignment) Node
       // check whether a node includes a target key
       target_pos = cur_status.GetRecordCount();
       size_t exist_pos;
-      std::tie(rc, exist_pos) = CheckUniqueness(key, target_pos);
+      std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
       if constexpr (CanCASUpdate<Payload>()) {
@@ -649,7 +670,7 @@ class alignas(kMaxAlignment) Node
 
     // insert a record
     auto offset = kPageSize - cur_status.GetBlockSize();
-    offset = SetPayload(offset, payload, pay_len);
+    offset = SetPayload<Payload>(offset, payload, pay_len);
     offset = SetKey(offset, key, key_len);
 
     // prepare record metadata for MwCAS
@@ -662,7 +683,7 @@ class alignas(kMaxAlignment) Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
-        rc = CheckUniqueness(key, target_pos).first;
+        rc = CheckUniqueness<Payload>(key, target_pos).first;
         if (rc == kNotExist || rc == kDeleted) {
           // delete an inserted record
           SetMetadata(target_pos, in_progress_meta.Delete());
@@ -693,6 +714,7 @@ class alignas(kMaxAlignment) Node
    * Note that if a target key is binary data, it is required to specify its length in
    * bytes.
    *
+   * @tparam Payload a class of payload.
    * @param key a target key to be written.
    * @param key_length the length of a target key.
    * @retval kSuccess if a key/payload pair is written.
@@ -708,7 +730,7 @@ class alignas(kMaxAlignment) Node
       -> NodeReturnCode
   {
     // variables and constants
-    const auto [key_len, pay_len, rec_len] = AlignRecord<Payload>(key_length, 0);
+    const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, 0);
     const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos;
@@ -724,7 +746,7 @@ class alignas(kMaxAlignment) Node
       // check whether a node includes a target key
       target_pos = cur_status.GetRecordCount();
       size_t exist_pos;
-      std::tie(rc, exist_pos) = CheckUniqueness(key, target_pos);
+      std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
       const auto target_meta = GetMetadataProtected(exist_pos);
@@ -774,7 +796,7 @@ class alignas(kMaxAlignment) Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
-        rc = CheckUniqueness(key, target_pos).first;
+        rc = CheckUniqueness<Payload>(key, target_pos).first;
         if (rc == kNotExist || rc == kDeleted) {
           // delete an inserted record
           SetMetadata(target_pos, in_progress_meta.Delete());
@@ -803,7 +825,7 @@ class alignas(kMaxAlignment) Node
   /**
    * @brief Consolidate a target leaf node.
    *
-   * @param new_node a consolidated node.
+   * @tparam Payload a class of payload.
    * @param old_node an original node.
    */
   template <class Payload>
@@ -818,13 +840,13 @@ class alignas(kMaxAlignment) Node
 
     // perform merge-sort to consolidate a node
     const auto sorted_count = old_node->sorted_count_;
-    auto offset = GetInitialOffset<Payload>();
+    auto offset = GetInitialOffset<Key, Payload>();
     size_t rec_count = 0;
 
     size_t j = 0;
     for (size_t i = 0; i < sorted_count; ++i) {
       const auto meta = old_node->GetMetadataProtected(i);
-      const auto &key = old_node->GetKey(meta);
+      const auto key = old_node->GetKey(meta);
 
       // copy new records
       for (; j < new_rec_num; ++j) {
@@ -861,6 +883,14 @@ class alignas(kMaxAlignment) Node
     SetStatus(StatusWord{rec_count, kPageSize - offset});
   }
 
+  /**
+   * @brief Split a given node into two nodes.
+   *
+   * @tparam Payload a class of payload.
+   * @param node an original node.
+   * @param l_node a split left node.
+   * @param r_node a split right node.
+   */
   template <class Payload>
   static void
   Split(  //
@@ -875,19 +905,27 @@ class alignas(kMaxAlignment) Node
     // copy records to a left node
     const auto rec_count = node->sorted_count_;
     const size_t l_count = rec_count / 2;
-    auto l_offset = GetInitialOffset<Payload>();
+    auto l_offset = GetInitialOffset<Key, Payload>();
     l_offset = l_node->CopyRecordsFrom<Payload>(node, 0, l_count, 0, l_offset);
     l_node->sorted_count_ = l_count;
     l_node->SetStatus(StatusWord{l_count, kPageSize - l_offset});
 
     // copy records to a right node
-    auto r_offset = GetInitialOffset<Payload>();
+    auto r_offset = GetInitialOffset<Key, Payload>();
     r_offset = r_node->CopyRecordsFrom<Payload>(node, l_count, rec_count, 0, r_offset);
     const auto r_count = rec_count - l_count;
     r_node->sorted_count_ = r_count;
     r_node->SetStatus(StatusWord{r_count, kPageSize - r_offset});
   }
 
+  /**
+   * @brief Initialize this node as a parent node of split nodes.
+   *
+   * @param old_node an old parent node.
+   * @param l_child a split left child node.
+   * @param r_child a split right child node.
+   * @param l_pos the position of a left child node.
+   */
   void
   InitAsSplitParent(  //
       const Node *old_node,
@@ -899,7 +937,7 @@ class alignas(kMaxAlignment) Node
     is_right_end_ = old_node->is_right_end_;
 
     // copy lower records
-    auto offset = GetInitialOffset<Node *>();
+    auto offset = GetInitialOffset<Key, Node *>();
     offset = CopyRecordsFrom<Node *>(old_node, 0, l_pos, 0, offset);
 
     // insert split nodes
@@ -918,6 +956,12 @@ class alignas(kMaxAlignment) Node
     SetStatus(StatusWord{sorted_count_, kPageSize - offset});
   }
 
+  /**
+   * @brief Initialize this node as a new root node.
+   *
+   * @param l_child a split left child node.
+   * @param r_child a split right child node.
+   */
   void
   InitAsRoot(  //
       const Node *l_child,
@@ -928,7 +972,7 @@ class alignas(kMaxAlignment) Node
 
     // insert initial children
     const auto l_meta = l_child->meta_array_[l_child->sorted_count_ - 1];
-    auto offset = GetInitialOffset<Node *>();
+    auto offset = GetInitialOffset<Key, Node *>();
     offset = InsertChild(l_child, l_meta, l_child, 0, offset);
     const auto r_meta = r_child->meta_array_[r_child->sorted_count_ - 1];
     offset = InsertChild(r_child, r_meta, r_child, 1, offset);
@@ -938,6 +982,14 @@ class alignas(kMaxAlignment) Node
     SetStatus(StatusWord{2, kPageSize - offset});
   }
 
+  /**
+   * @brief Merge given nodes into one node.
+   *
+   * @tparam Payload a class of payload.
+   * @param l_node a left node to be merged.
+   * @param r_node a right node to be merged.
+   * @param merged_node a merged node.
+   */
   template <class Payload>
   static void
   Merge(  //
@@ -950,7 +1002,7 @@ class alignas(kMaxAlignment) Node
 
     // copy records in left/right nodes
     const auto l_count = l_node->sorted_count_;
-    auto offset = GetInitialOffset<Payload>();
+    auto offset = GetInitialOffset<Key, Payload>();
     if constexpr (std::is_same_v<Payload, Node *>) {
       offset = merged_node->CopyRecordsFrom<Payload>(l_node, 0, l_count, 0, offset);
     } else {  // when merging a leaf node, only update its offset
@@ -965,6 +1017,13 @@ class alignas(kMaxAlignment) Node
     merged_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
   }
 
+  /**
+   * @brief Initialize this node as a parent node of merged nodes.
+   *
+   * @param old_node an old parent node.
+   * @param merged_child a merged child node.
+   * @param position the position of a merged child node.
+   */
   void
   InitAsMergeParent(  //
       const Node *old_node,
@@ -975,7 +1034,7 @@ class alignas(kMaxAlignment) Node
     is_right_end_ = old_node->is_right_end_;
 
     // copy lower records
-    auto offset = GetInitialOffset<Node *>();
+    auto offset = GetInitialOffset<Key, Node *>();
     offset = CopyRecordsFrom<Node *>(old_node, 0, position, 0, offset);
 
     // insert a merged node
@@ -1003,7 +1062,7 @@ class alignas(kMaxAlignment) Node
    */
   struct MetaKeyPair {
     Metadata meta{};
-    Key &key{};
+    Key key{};
   };
 
   /*################################################################################################
@@ -1016,7 +1075,7 @@ class alignas(kMaxAlignment) Node
    * This function uses a MwCAS read operation internally, and so it is guaranteed that
    * read metadata is valid.
    *
-   * @return Metadata: metadata.
+   * @return metadata.
    */
   auto
   GetMetadataProtected(const size_t position) const  //
@@ -1027,7 +1086,7 @@ class alignas(kMaxAlignment) Node
 
   /**
    * @param meta metadata of a corresponding record.
-   * @return auto: an address of a target key.
+   * @return an address of a target key.
    */
   constexpr auto
   GetKeyAddr(const Metadata meta) const  //
@@ -1038,7 +1097,7 @@ class alignas(kMaxAlignment) Node
 
   /**
    * @param meta metadata of a corresponding record.
-   * @return void*: an address of a target payload.
+   * @return an address of a target payload.
    */
   constexpr auto
   GetPayloadAddr(const Metadata meta) const  //
@@ -1096,8 +1155,7 @@ class alignas(kMaxAlignment) Node
     if constexpr (IsVariableLengthData<Key>()) {
       memcpy(ShiftAddr(this, offset), key, key_length);
     } else {
-      auto *key_addr = reinterpret_cast<Key *>(ShiftAddr(this, offset));
-      *key_addr = key;
+      memcpy(ShiftAddr(this, offset), &key, sizeof(Key));
     }
 
     return offset;
@@ -1106,7 +1164,7 @@ class alignas(kMaxAlignment) Node
   /**
    * @brief Set a target payload directly.
    *
-   * @tparam T a class of a target payload.
+   * @tparam Payload a class of payload.
    * @param offset an offset to set a target payload.
    * @param payload a target payload to be set.
    * @param payload_length the length of a target payload.
@@ -1115,7 +1173,7 @@ class alignas(kMaxAlignment) Node
   auto
   SetPayload(  //
       size_t offset,
-      const T &payload,
+      const Payload &payload,
       const size_t payload_length)  //
       -> size_t
   {
@@ -1123,8 +1181,7 @@ class alignas(kMaxAlignment) Node
     if constexpr (IsVariableLengthData<Payload>()) {
       memcpy(ShiftAddr(this, offset), payload, payload_length);
     } else {
-      auto *pay_addr = reinterpret_cast<Payload *>(ShiftAddr(this, offset));
-      *pay_addr = payload;
+      memcpy(ShiftAddr(this, offset), &payload, sizeof(Payload));
     }
 
     return offset;
@@ -1153,6 +1210,7 @@ class alignas(kMaxAlignment) Node
    *
    * An old payload is copied from a node by using specified metadata.
    *
+   * @tparam Payload a class of payload.
    * @param desc a target MwCAS descriptor.
    * @param meta metadata of a target record.
    * @param new_payload a new payload for MwCAS.
@@ -1171,13 +1229,13 @@ class alignas(kMaxAlignment) Node
   }
 
   /*################################################################################################
-   * Internal functions for record alignment
+   * Internal functions for destruction
    *##############################################################################################*/
 
   /**
    * @brief Compute the maximum number of records in a node.
    *
-   * @return size_t the expected maximum number of records.
+   * @return the expected maximum number of records.
    */
   static constexpr auto
   GetMaxRecordNum()  //
@@ -1199,76 +1257,6 @@ class alignas(kMaxAlignment) Node
     return (kPageSize - kHeaderLength) / record_min_length;
   }
 
-  template <class Payload>
-  static constexpr auto
-  GetInitialOffset()  //
-      -> size_t
-  {
-    if constexpr (IsVariableLengthData<Payload>() || IsVariableLengthData<Key>()) {
-      return kPageSize;
-    } else if constexpr (alignof(Key) <= alignof(Payload)) {
-      return kPageSize;
-    } else {
-      constexpr size_t kAlignLen = alignof(Key) - sizeof(Payload) % alignof(Key);
-      if constexpr (kAlignLen == alignof(Key)) {
-        return kPageSize;
-      } else {
-        return kPageSize - kAlignLen;
-      }
-    }
-  }
-
-  template <class Payload>
-  static constexpr auto
-  AlignRecord(  //
-      size_t key_len,
-      size_t pay_len)  //
-      -> std::tuple<size_t, size_t, size_t>
-  {
-    if constexpr (IsVariableLengthData<Key>() && IsVariableLengthData<Payload>()) {
-      // record alignment is not required
-      return {key_len, pay_len, key_len + pay_len};
-    } else if constexpr (IsVariableLengthData<Key>()) {
-      // dynamic alignment is required
-      const size_t align_len = alignof(Payload) - key_len % alignof(Payload);
-      if (align_len == alignof(Payload)) {
-        // alignment is not required
-        return {key_len, pay_len, key_len + pay_len};
-      }
-      return {key_len, pay_len, align_len + key_len + pay_len};
-    } else if constexpr (IsVariableLengthData<Payload>()) {
-      const size_t align_len = alignof(Key) - pay_len % alignof(Key);
-      if (align_len != alignof(Key)) {
-        // dynamic alignment is required
-        key_len += align_len;
-      }
-      return {key_len, pay_len, key_len + pay_len};
-    } else if constexpr (alignof(Key) < alignof(Payload)) {
-      constexpr size_t kAlignLen = alignof(Payload) - sizeof(Key) % alignof(Payload);
-      if constexpr (kAlignLen == alignof(Payload)) {
-        // alignment is not required
-        return {key_len, pay_len, key_len + pay_len};
-      } else {
-        // fixed-length alignment is required
-        constexpr size_t kKeyLen = sizeof(Key) + kAlignLen;
-        return {kKeyLen, pay_len, kKeyLen + pay_len};
-      }
-    } else if constexpr (alignof(Key) > alignof(Payload)) {
-      constexpr size_t kAlignLen = alignof(Key) - sizeof(Payload) % alignof(Key);
-      if constexpr (kAlignLen == alignof(Key)) {
-        // alignment is not required
-        return {key_len, pay_len, key_len + pay_len};
-      } else {
-        // fixed-length alignment is required
-        constexpr size_t kPayLen = sizeof(Payload) + kAlignLen;
-        return {key_len, kPayLen, key_len + kPayLen};
-      }
-    } else {
-      // alignment is not required
-      return {key_len, pay_len, key_len + pay_len};
-    }
-  }
-
   /*################################################################################################
    * Internal utility functions
    *##############################################################################################*/
@@ -1278,9 +1266,8 @@ class alignas(kMaxAlignment) Node
    * specified key, this returns the minimum metadata index that is greater than the
    * specified key
    *
-   * @param node a target node.
    * @param key a target key.
-   * @return std::pair<KeyExistence, int64_t>: a pair of key existence and a key position.
+   * @return a pair of key existence and a key position.
    */
   auto
   SearchSortedRecord(const Key &key) const  //
@@ -1292,7 +1279,7 @@ class alignas(kMaxAlignment) Node
       size_t pos = (begin_pos + end_pos) >> 1;
 
       const auto meta = GetMetadataProtected(pos);
-      const auto &index_key = GetKey(meta);
+      const auto index_key = GetKey(meta);
 
       if (Compare{}(key, index_key)) {  // a target key is in a left side
         end_pos = pos - 1;
@@ -1308,6 +1295,13 @@ class alignas(kMaxAlignment) Node
     return {kNotExist, begin_pos};
   }
 
+  /**
+   * @brief Get the position of a specified key by using lenear search.
+   *
+   * @param key a target key.
+   * @param begin_pos the begin position for searching.
+   * @return a pair of key existence and a key position.
+   */
   auto
   SearchUnsortedRecord(  //
       const Key &key,
@@ -1322,7 +1316,7 @@ class alignas(kMaxAlignment) Node
         continue;
       }
 
-      const auto &target_key = GetKey(meta);
+      const auto target_key = GetKey(meta);
       if (IsEqual<Compare>(key, target_key)) {
         if (meta.IsVisible()) return {kExist, pos};
         return {kDeleted, pos};
@@ -1335,9 +1329,10 @@ class alignas(kMaxAlignment) Node
   /**
    * @brief Check uniqueness of a target key in a specifeid node.
    *
+   * @tparam Payload a class of payload.
    * @param key a target key.
    * @param rec_count the total number of records in a node.
-   * @return std::pair<KeyExistence, int64_t>: a pair of key existence and a key position.
+   * @return a pair of key existence and a key position.
    */
   template <class Payload>
   auto
@@ -1366,6 +1361,16 @@ class alignas(kMaxAlignment) Node
     return {rc, pos};
   }
 
+  /**
+   * @brief Insert a new child node into this node.
+   *
+   * @param orig_node an original node that has a target child.
+   * @param orig_meta the corresponding metadata of a target child.
+   * @param child_node a target child node.
+   * @param rec_count the current number of records in this node.
+   * @param offset the current offset of this node.
+   * @return the updated offset value.
+   */
   auto
   InsertChild(  //
       const Node *orig_node,
@@ -1375,17 +1380,27 @@ class alignas(kMaxAlignment) Node
       const size_t offset)  //
       -> size_t
   {
-    const auto &key = orig_node->GetKey(orig_meta);
+    const auto key = orig_node->GetKey(orig_meta);
     const auto key_length = orig_meta.GetKeyLength();
-    const auto [key_len, pay_len, rec_len] = AlignRecord<Node *>(key_length, sizeof(Node *));
+    const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Node *>(key_length, sizeof(Node *));
 
-    auto tmp_offset = SetPayload(offset, child_node, pay_len);
+    auto tmp_offset = SetPayload<const Node *>(offset, child_node, pay_len);
     tmp_offset = SetKey(tmp_offset, key, key_len);
     meta_array_[rec_count] = Metadata{tmp_offset, key_len, rec_len};
 
     return offset - rec_len;
   }
 
+  /**
+   * @brief Copy a record from a given node.
+   *
+   * @tparam Payload a class of payload.
+   * @param orig_node an original node that has a target record.
+   * @param target_meta the corresponding metadata of a target record.
+   * @param rec_count the current number of records in this node.
+   * @param offset the current offset of this node.
+   * @return the updated offset value.
+   */
   template <class Payload>
   auto
   CopyRecordFrom(  //
@@ -1395,27 +1410,39 @@ class alignas(kMaxAlignment) Node
       size_t offset)  //
       -> size_t
   {
-    if constexpr (IsVariableLengthData<Key> && !IsVariableLengthData<Payload>) {
+    if constexpr (IsVariableLengthData<Key>() && !IsVariableLengthData<Payload>()) {
       // record's offset is different its aligned position
-      const auto aligned_rec_len = target_meta.GetTotalLength();
-      offset -= aligned_rec_len;
+      const auto rec_len = target_meta.GetKeyLength() + sizeof(Payload);
+      auto tmp_offset = offset - rec_len;
+      offset -= target_meta.GetTotalLength();
+      memcpy(ShiftAddr(this, tmp_offset), orig_node->GetKeyAddr(target_meta), rec_len);
 
-      const auto pad_len = aligned_rec_len - (target_meta.GetKeyLength() + sizeof(Payload));
-      auto *src_addr = ShiftAddr(orig_node->GetKeyAddr(target_meta), -pad_len);
-      memcpy(ShiftAddr(this, offset), src_addr, aligned_rec_len);
+      // set new metadata
+      meta_array_[rec_count] = target_meta.UpdateOffset(tmp_offset);
     } else {
       // copy a record from the given node
       const auto rec_len = target_meta.GetTotalLength();
       offset -= rec_len;
       memcpy(ShiftAddr(this, offset), orig_node->GetKeyAddr(target_meta), rec_len);
-    }
 
-    // set new metadata
-    meta_array_[rec_count] = target_meta.UpdateOffset(offset);
+      // set new metadata
+      meta_array_[rec_count] = target_meta.UpdateOffset(offset);
+    }
 
     return offset;
   }
 
+  /**
+   * @brief Copy records from a given node.
+   *
+   * @tparam Payload a class of payload.
+   * @param orig_node an original node that has target records.
+   * @param begin_pos the begin position of target records.
+   * @param end_pos the end position of target records.
+   * @param rec_count the current number of records in this node.
+   * @param offset the current offset of this node.
+   * @return the updated offset value.
+   */
   template <class Payload>
   auto
   CopyRecordsFrom(  //
@@ -1436,14 +1463,9 @@ class alignas(kMaxAlignment) Node
   }
 
   /**
-   * @brief Sort unsorted metadata by using inserting sort for SMOs.
+   * @brief Sort unsorted records by insertion sort.
    *
-   * @tparam Key a target key class.
-   * @tparam Payload a target payload class.
-   * @tparam Compare a comparetor class for keys.
-   * @param node a target leaf node.
-   * @param arr a result array of sorted metadata.
-   * @param count the number of metadata.
+   * @return a pair of the number of new records and its array.
    */
   auto
   SortNewRecords() const  //
@@ -1461,7 +1483,7 @@ class alignas(kMaxAlignment) Node
       if (meta.IsInProgress()) continue;
 
       // search an inserting position
-      const auto &cur_key = GetKey(meta);
+      const auto cur_key = GetKey(meta);
       size_t i = 0;
       for (; i < count; ++i) {
         if (!Compare{}(arr[i].key, cur_key)) break;
