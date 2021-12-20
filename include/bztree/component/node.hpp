@@ -22,6 +22,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <tuple>
 #include <utility>
 
 #include "metadata.hpp"
@@ -366,9 +367,8 @@ class alignas(kMaxAlignment) Node
       -> NodeReturnCode
   {
     // variables and constants shared in Phase 1 & 2
-    const auto total_length = key_length + payload_length;
-    const auto block_size = PadRecord<Key, Payload>(total_length);
-    const auto in_progress_meta = Metadata{key_length, total_length};
+    const auto [key_len, pay_len, rec_len] = AlignRecord(key_length, payload_length);
+    const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos;
 
@@ -396,7 +396,7 @@ class alignas(kMaxAlignment) Node
       }
 
       // prepare new status for MwCAS
-      const auto new_status = cur_status.Add(block_size);
+      const auto new_status = cur_status.Add(rec_len);
       if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
       target_pos = cur_status.GetRecordCount();
 
@@ -413,8 +413,8 @@ class alignas(kMaxAlignment) Node
 
     // insert a record
     auto offset = kPageSize - cur_status.GetBlockSize();
-    SetPayload(offset, payload, payload_length);
-    SetKey(offset, key, key_length);
+    offset = SetPayload(offset, payload, pay_len);
+    offset = SetKey(offset, key, key_len);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = in_progress_meta.Commit(offset);
@@ -464,9 +464,8 @@ class alignas(kMaxAlignment) Node
       -> NodeReturnCode
   {
     // variables and constants shared in Phase 1 & 2
-    const auto total_length = key_length + payload_length;
-    const auto block_size = PadRecord<Key, Payload>(total_length);
-    const auto in_progress_meta = Metadata{key_length, total_length};
+    const auto [key_len, pay_len, rec_len] = AlignRecord(key_length, payload_length);
+    const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos;
     KeyExistence rc;
@@ -479,7 +478,7 @@ class alignas(kMaxAlignment) Node
       if (cur_status.IsFrozen()) return kFrozen;
 
       // prepare new status for MwCAS
-      const auto new_status = cur_status.Add(block_size);
+      const auto new_status = cur_status.Add(rec_len);
       if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
       // check uniqueness
@@ -500,8 +499,8 @@ class alignas(kMaxAlignment) Node
 
     // insert a record
     auto offset = kPageSize - cur_status.GetBlockSize();
-    SetPayload(offset, payload, payload_length);
-    SetKey(offset, key, key_length);
+    offset = SetPayload(offset, payload, pay_len);
+    offset = SetKey(offset, key, key_len);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = in_progress_meta.Commit(offset);
@@ -564,9 +563,8 @@ class alignas(kMaxAlignment) Node
       -> NodeReturnCode
   {
     // variables and constants shared in Phase 1 & 2
-    const auto total_length = key_length + payload_length;
-    const auto block_size = PadRecord<Key, Payload>(total_length);
-    const auto in_progress_meta = Metadata{key_length, total_length};
+    const auto [key_len, pay_len, rec_len] = AlignRecord(key_length, payload_length);
+    const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos;
     KeyExistence rc;
@@ -601,7 +599,7 @@ class alignas(kMaxAlignment) Node
       // prepare new status for MwCAS
       const auto target_meta = GetMetadataProtected(exist_pos);
       const auto deleted_size = kWordLength + target_meta.GetTotalLength();
-      const auto new_status = cur_status.Add(block_size).Delete(deleted_size);
+      const auto new_status = cur_status.Add(rec_len).Delete(deleted_size);
       if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
       // perform MwCAS to reserve space
@@ -617,8 +615,8 @@ class alignas(kMaxAlignment) Node
 
     // insert a record
     auto offset = kPageSize - cur_status.GetBlockSize();
-    SetPayload(offset, payload, payload_length);
-    SetKey(offset, key, key_length);
+    offset = SetPayload(offset, payload, pay_len);
+    offset = SetKey(offset, key, key_len);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = in_progress_meta.Commit(offset);
@@ -675,7 +673,8 @@ class alignas(kMaxAlignment) Node
       -> NodeReturnCode
   {
     // variables and constants
-    const auto in_progress_meta = Metadata{key_length, key_length};
+    const auto [key_len, pay_len, rec_len] = AlignRecord(key_length, 0);
+    const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos;
     KeyExistence rc;
@@ -711,8 +710,8 @@ class alignas(kMaxAlignment) Node
       }
 
       // prepare new status for MwCAS
-      const auto deleted_size = (2 * kWordLength) + target_meta.GetTotalLength() + key_length;
-      const auto new_status = cur_status.Add(key_length).Delete(deleted_size);
+      const auto deleted_size = (2 * kWordLength) + target_meta.GetTotalLength() + rec_len;
+      const auto new_status = cur_status.Add(rec_len).Delete(deleted_size);
       if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
       // perform MwCAS to reserve space
@@ -728,7 +727,7 @@ class alignas(kMaxAlignment) Node
 
     // insert a null record
     auto offset = kPageSize - cur_status.GetBlockSize();
-    SetKey(offset, key, key_length);
+    offset = SetKey(offset, key, key_len);
 
     // prepare record metadata for MwCAS
     const auto deleted_meta = in_progress_meta.Delete(offset);
@@ -1063,19 +1062,22 @@ class alignas(kMaxAlignment) Node
    * @param key a target key to be set.
    * @param key_length the length of a target key.
    */
-  void
+  auto
   SetKey(  //
-      size_t &offset,
+      size_t offset,
       const Key &key,
-      const size_t key_length)
+      const size_t key_length)  //
+      -> size_t
   {
+    offset -= key_length;
     if constexpr (IsVariableLengthData<Key>()) {
-      offset -= key_length;
       memcpy(ShiftAddr(this, offset), key, key_length);
     } else {
-      offset -= sizeof(Key);
-      memcpy(ShiftAddr(this, offset), &key, sizeof(Key));
+      auto *key_addr = reinterpret_cast<Key *>(ShiftAddr(this, offset));
+      *key_addr = key;
     }
+
+    return offset;
   }
 
   /**
@@ -1087,19 +1089,22 @@ class alignas(kMaxAlignment) Node
    * @param payload_length the length of a target payload.
    */
   template <class T>
-  void
+  auto
   SetPayload(  //
-      size_t &offset,
+      size_t offset,
       const T &payload,
-      const size_t payload_length)
+      const size_t payload_length)  //
+      -> size_t
   {
+    offset -= payload_length;
     if constexpr (IsVariableLengthData<T>()) {
-      offset -= payload_length;
       memcpy(ShiftAddr(this, offset), payload, payload_length);
     } else {
-      offset -= sizeof(T);
-      memcpy(ShiftAddr(this, offset), &payload, sizeof(T));
+      auto *pay_addr = reinterpret_cast<T *>(ShiftAddr(this, offset));
+      *pay_addr = payload;
     }
+
+    return offset;
   }
 
   /**
@@ -1150,8 +1155,8 @@ class alignas(kMaxAlignment) Node
    *
    * @return size_t the expected maximum number of records.
    */
-  constexpr auto
-  GetMaxRecordNum() const  //
+  static constexpr auto
+  GetMaxRecordNum()  //
       -> size_t
   {
     // the length of metadata
@@ -1172,6 +1177,56 @@ class alignas(kMaxAlignment) Node
     }
 
     return (kPageSize - kHeaderLength) / record_min_length;
+  }
+
+  static constexpr auto
+  AlignRecord(  //
+      size_t key_len,
+      size_t pay_len)  //
+      -> std::tuple<size_t, size_t, size_t>
+  {
+    if constexpr (IsVariableLengthData<Key>() && IsVariableLengthData<Payload>()) {
+      // record alignment is not required
+      return {key_len, pay_len, key_len + pay_len};
+    } else if constexpr (IsVariableLengthData<Key>()) {
+      // dynamic alignment is required
+      const size_t align_len = alignof(Payload) - key_len % alignof(Payload);
+      if (align_len == alignof(Payload)) {
+        // alignment is not required
+        return {key_len, pay_len, key_len + pay_len};
+      }
+      return {key_len, pay_len, align_len + key_len + pay_len};
+    } else if constexpr (IsVariableLengthData<Payload>()) {
+      const size_t align_len = alignof(Key) - pay_len % alignof(Key);
+      if (align_len != alignof(Key)) {
+        // dynamic alignment is required
+        key_len += align_len;
+      }
+      return {key_len, pay_len, key_len + pay_len};
+    } else if constexpr (alignof(Key) < alignof(Payload)) {
+      constexpr size_t kAlignLen = alignof(Payload) - sizeof(Key) % alignof(Payload);
+      if constexpr (kAlignLen == alignof(Payload)) {
+        // alignment is not required
+        return {key_len, pay_len, key_len + pay_len};
+      } else {
+        // fixed-length alignment is required
+        constexpr size_t kKeyLen = sizeof(Key) + kAlignLen;
+        return {kKeyLen, pay_len, kKeyLen + pay_len};
+      }
+    } else if constexpr (alignof(Key) > alignof(Payload)) {
+      constexpr size_t kAlignLen = alignof(Key) - sizeof(Payload) % alignof(Key);
+      if constexpr (kAlignLen == alignof(Key)) {
+        // alignment is not required
+        return {key_len, pay_len, key_len + pay_len};
+      } else {
+        // fixed-length alignment is required
+        constexpr size_t kPayLen = sizeof(Payload) + kAlignLen;
+        return {key_len, kPayLen, key_len + kPayLen};
+      }
+    } else {
+      // alignment is not required
+      return {key_len, pay_len, key_len + pay_len};
+    }
   }
 
   /**
