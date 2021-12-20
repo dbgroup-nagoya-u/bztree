@@ -41,7 +41,7 @@ class BzTree
 {
   using Metadata = component::Metadata;
   using StatusWord = component::StatusWord;
-  using Node_t = component::Node<Key, Payload, Compare>;
+  using Node_t = component::Node<Key, Compare>;
   using NodeReturnCode = component::NodeReturnCode;
   using NodeGC_t = ::dbgroup::memory::EpochBasedGC<Node_t>;
   using NodeStack = std::vector<std::pair<Node_t *, size_t>>;
@@ -78,7 +78,10 @@ class BzTree
       -> Node_t *
   {
     auto *page = gc_.template GetPageIfPossible<Node_t>();
-    return (page == nullptr) ? new Node_t{is_leaf} : new (page) Node_t{is_leaf};
+    if (is_leaf) {
+      return (page == nullptr) ? new Node_t<Payload>{true} : new (page) Node_t<Payload>{true};
+    }
+    return (page == nullptr) ? new Node_t<Node_t *>{false} : new (page) Node_t<Node_t *>{false};
   }
 
   /**
@@ -176,7 +179,7 @@ class BzTree
 
     // create a consolidated node
     Node_t *consolidated_node = CreateNewNode(kLeafFlag);
-    consolidated_node->Consolidate(node);
+    consolidated_node->Consolidate<Payload>(node);
 
     // check whether splitting/merging is needed
     const auto stat = consolidated_node->GetStatusWordProtected();
@@ -814,7 +817,7 @@ class BzTree
 
     while (true) {
       Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->Delete(key, key_length);
+      const auto rc = node->Delete<Payload>(key, key_length);
 
       if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
         if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;

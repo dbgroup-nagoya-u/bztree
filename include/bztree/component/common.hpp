@@ -103,56 +103,6 @@ Cast(const void *addr)
 }
 
 /**
- * @brief Align a specified block size if needed.
- *
- * @param block_size a target block size.
- * @return size_t: an aligned block size.
- */
-template <class Key, class Payload>
-constexpr auto
-PadRecord(const size_t rec_length)  //
-    -> size_t
-{
-  if constexpr (CanCASUpdate<Payload>()) {
-    // alignment is required
-    constexpr auto kRecLength = sizeof(Key) + sizeof(Payload);
-
-    if constexpr (IsVariableLengthData<Key>()) {
-      const auto align_diff = rec_length % alignof(Payload);
-      if (align_diff > 0) {
-        return rec_length + (alignof(Payload) - align_diff);
-      }
-    } else if constexpr (kRecLength % alignof(Payload) != 0) {
-      // use a fixed padding size
-      constexpr auto kPaddingSize = alignof(Payload) - (kRecLength % alignof(Payload));
-      return rec_length + kPaddingSize;
-    }
-  }
-  return rec_length;
-}
-
-/**
- * @brief Align a given offset to perform CAS operations.
- *
- * @tparam Key a target key class.
- * @param offset a target offset to be aligned.
- */
-template <class Key>
-constexpr void
-AlignOffset(size_t &offset)
-{
-  if constexpr (IsVariableLengthData<Key>()) {
-    const auto align_size = offset & (kWordLength - 1);
-    if (align_size > 0) {
-      offset -= align_size;
-    }
-  } else if constexpr (sizeof(Key) % kWordLength != 0) {
-    const auto align_size = kWordLength - (sizeof(Key) % kWordLength);
-    offset -= align_size;
-  }
-}
-
-/**
  * @tparam Compare a comparator class.
  * @tparam T a target class.
  * @param obj_1 an object to be compared.
@@ -179,7 +129,7 @@ IsEqual(  //
 constexpr void *
 ShiftAddr(  //
     const void *addr,
-    const size_t offset)
+    const int64_t offset)
 {
   return static_cast<std::byte *>(const_cast<void *>(addr)) + offset;
 }
