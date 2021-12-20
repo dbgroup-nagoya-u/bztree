@@ -38,10 +38,12 @@ struct MyClass {
   constexpr MyClass(MyClass &&) = default;
   constexpr MyClass &operator=(MyClass &&) = default;
 
-  constexpr void
-  operator=(const uint64_t value)
+  constexpr auto
+  operator=(const uint64_t value)  //
+      -> MyClass &
   {
     data = value;
+    return *this;
   }
 
   // enable std::less to compare this class
@@ -90,14 +92,14 @@ PrepareTestData(  //
   if constexpr (IsVariableLengthData<T>()) {
     // variable-length data
     for (size_t i = 0; i < data_num; ++i) {
-      auto data = reinterpret_cast<char *>(::operator new(data_length));
-      snprintf(data, data_length, "%08lu", i);
+      auto *data = reinterpret_cast<char *>(::operator new(data_length));
+      snprintf(data, data_length, "%08lu", i);  // NOLINT
       data_array[i] = reinterpret_cast<T>(data);
     }
   } else if constexpr (std::is_same_v<T, uint64_t *>) {
     // pointer data
     for (size_t i = 0; i < data_num; ++i) {
-      auto data = reinterpret_cast<uint64_t *>(::operator new(data_length));
+      auto *data = reinterpret_cast<uint64_t *>(::operator new(data_length));
       *data = i;
       data_array[i] = data;
     }

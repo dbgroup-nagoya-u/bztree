@@ -24,7 +24,7 @@ namespace dbgroup::index::bztree::component::test
  * Global constants
  *##############################################################################################*/
 
-constexpr uint64_t kControlBitsMask = 7UL << 61;
+constexpr uint64_t kControlBitsMask = 7UL << 61UL;
 constexpr size_t kExpectedRecordCount = 1;
 constexpr size_t kExpectedBlockSize = 16;
 constexpr size_t kMaxBlockSize = kPageSize - kHeaderLength;
@@ -63,7 +63,7 @@ TEST_F(StatusWordFixture, ConstructWithoutArgumentsCreateZeroStatusWord)
   EXPECT_EQ(0, status.GetBlockSize());
 
   // check control bits
-  uint64_t status_uint;
+  uint64_t status_uint{};
   memcpy(&status_uint, &status, sizeof(StatusWord));
   EXPECT_EQ(0, status_uint & kControlBitsMask);
 }
@@ -77,7 +77,7 @@ TEST_F(StatusWordFixture, ConstructWithArgumentsCreateInitializedStatusWord)
   EXPECT_EQ(kExpectedBlockSize, status.GetBlockSize());
 
   // check control bits
-  uint64_t status_uint;
+  uint64_t status_uint{};
   memcpy(&status_uint, &status, sizeof(StatusWord));
   EXPECT_EQ(0, status_uint & kControlBitsMask);
 }

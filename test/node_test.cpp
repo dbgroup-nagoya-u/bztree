@@ -45,7 +45,7 @@ struct KeyPayload {
 };
 
 template <class KeyPayload>
-class NodeFixture : public testing::Test
+class NodeFixture : public testing::Test  // NOLINT
 {
   // extract key-payload types
   using Key = typename KeyPayload::Key;
@@ -74,7 +74,7 @@ class NodeFixture : public testing::Test
     static_assert(kPageSize > kMaxRecSize * kMaxUnsortedRecNum * 2 + kHeaderLength,
                   "The page size is too small to perform unit tests.");
 
-    node.reset(new Node_t{kLeafFlag, kPayloadBlock});
+    node_.reset(new Node_t{kLeafFlag, kPayloadBlock});
 
     // prepare keys
     key_size_ = (IsVariableLengthData<Key>()) ? kVarDataLength : sizeof(Key);
@@ -112,7 +112,7 @@ class NodeFixture : public testing::Test
       const size_t key_id,
       const size_t payload_id)
   {
-    return node->Write(keys_[key_id], key_size_, payloads_[payload_id], pay_size_);
+    return node_->Write(keys_[key_id], key_size_, payloads_[payload_id], pay_size_);
   }
 
   auto
@@ -120,7 +120,7 @@ class NodeFixture : public testing::Test
       const size_t key_id,
       const size_t payload_id)
   {
-    return node->Insert(keys_[key_id], key_size_, payloads_[payload_id], pay_size_);
+    return node_->Insert(keys_[key_id], key_size_, payloads_[payload_id], pay_size_);
   }
 
   auto
@@ -128,21 +128,21 @@ class NodeFixture : public testing::Test
       const size_t key_id,
       const size_t payload_id)
   {
-    return node->Update(keys_[key_id], key_size_, payloads_[payload_id], pay_size_);
+    return node_->Update(keys_[key_id], key_size_, payloads_[payload_id], pay_size_);
   }
 
   auto
   Delete(const size_t key_id)
   {
-    return node->template Delete<Payload>(keys_[key_id], key_size_);
+    return node_->template Delete<Payload>(keys_[key_id], key_size_);
   }
 
   void
   Consolidate()
   {
-    Node_t *consolidated_node = new Node_t{kLeafFlag, kPayloadBlock};
-    consolidated_node->template Consolidate<Payload>(node.get());
-    node.reset(consolidated_node);
+    auto *consolidated_node = new Node_t{kLeafFlag, kPayloadBlock};
+    consolidated_node->template Consolidate<Payload>(node_.get());
+    node_.reset(consolidated_node);
   }
 
   /*################################################################################################
@@ -176,10 +176,10 @@ class NodeFixture : public testing::Test
       const size_t expected_id,
       const bool expect_success)
   {
-    const NodeReturnCode expected_rc = (expect_success) ? kSuccess : kKeyNotExist;
+    const NodeRC expected_rc = (expect_success) ? kSuccess : kKeyNotExist;
 
     Payload payload{};
-    const auto rc = node->Read(keys_[key_id], payload);
+    const auto rc = node_->Read(keys_[key_id], payload);
 
     EXPECT_EQ(expected_rc, rc);
     if (expect_success) {
@@ -196,7 +196,7 @@ class NodeFixture : public testing::Test
       const size_t payload_id,
       const bool expect_success)
   {
-    const NodeReturnCode expected_rc = (expect_success) ? kSuccess : kNeedConsolidation;
+    const NodeRC expected_rc = (expect_success) ? kSuccess : kNeedConsolidation;
     auto rc = Write(key_id, payload_id);
 
     EXPECT_EQ(expected_rc, rc);
@@ -209,7 +209,7 @@ class NodeFixture : public testing::Test
       const bool expect_success,
       const bool expect_key_exist = false)
   {
-    NodeReturnCode expected_rc = kSuccess;
+    NodeRC expected_rc = kSuccess;
     if (!expect_success) {
       expected_rc = (expect_key_exist) ? kKeyExist : kNeedConsolidation;
     }
@@ -225,7 +225,7 @@ class NodeFixture : public testing::Test
       const bool expect_success,
       const bool expect_key_exist = false)
   {
-    NodeReturnCode expected_rc = kSuccess;
+    NodeRC expected_rc = kSuccess;
     if (!expect_success) {
       expected_rc = (expect_key_exist) ? kNeedConsolidation : kKeyNotExist;
     }
@@ -240,7 +240,7 @@ class NodeFixture : public testing::Test
       const bool expect_success,
       const bool expect_key_exist = false)
   {
-    NodeReturnCode expected_rc = kSuccess;
+    NodeRC expected_rc = kSuccess;
     if (!expect_success) {
       expected_rc = (expect_key_exist) ? kNeedConsolidation : kKeyNotExist;
     }
@@ -254,16 +254,16 @@ class NodeFixture : public testing::Test
   {
     PrepareConsolidatedNode();
 
-    Node_t *left_node = new Node_t{kLeafFlag, kPayloadBlock};
-    Node_t *right_node = new Node_t{kLeafFlag, kPayloadBlock};
-    Node_t::template Split<Payload>(node.get(), left_node, right_node);
+    auto *left_node = new Node_t{kLeafFlag, kPayloadBlock};
+    auto *right_node = new Node_t{kLeafFlag, kPayloadBlock};
+    Node_t::template Split<Payload>(node_.get(), left_node, right_node);
 
-    node.reset(left_node);
+    node_.reset(left_node);
     for (size_t i = 0; i < kMaxUnsortedRecNum; ++i) {
       VerifyRead(i, i, kExpectSuccess);
     }
 
-    node.reset(right_node);
+    node_.reset(right_node);
     for (size_t i = kMaxUnsortedRecNum; i < 2 * kMaxUnsortedRecNum; ++i) {
       VerifyRead(i, i, kExpectSuccess);
     }
@@ -274,13 +274,13 @@ class NodeFixture : public testing::Test
   {
     PrepareConsolidatedNode();
 
-    Node_t *left_node = new Node_t{kLeafFlag, kPayloadBlock};
-    Node_t *right_node = new Node_t{kLeafFlag, kPayloadBlock};
-    Node_t::template Split<Payload>(node.get(), left_node, right_node);
+    auto *left_node = new Node_t{kLeafFlag, kPayloadBlock};
+    auto *right_node = new Node_t{kLeafFlag, kPayloadBlock};
+    Node_t::template Split<Payload>(node_.get(), left_node, right_node);
     Node_t *merged_node = left_node;
     Node_t::template Merge<Payload>(left_node, right_node, merged_node);
 
-    node.reset(merged_node);
+    node_.reset(merged_node);
     for (size_t i = 0; i < 2 * kMaxUnsortedRecNum; ++i) {
       VerifyRead(i, i, kExpectSuccess);
     }
@@ -293,10 +293,10 @@ class NodeFixture : public testing::Test
   {
     PrepareConsolidatedNode();
 
-    Node_t *left_node = new Node_t{kLeafFlag, kPayloadBlock};
-    Node_t *right_node = new Node_t{kLeafFlag, kPayloadBlock};
-    Node_t::template Split<Payload>(node.get(), left_node, right_node);
-    Node_t *root = new Node_t{!kLeafFlag, kNodeBlock};
+    auto *left_node = new Node_t{kLeafFlag, kPayloadBlock};
+    auto *right_node = new Node_t{kLeafFlag, kPayloadBlock};
+    Node_t::template Split<Payload>(node_.get(), left_node, right_node);
+    auto *root = new Node_t{!kLeafFlag, kNodeBlock};
     root->InitAsRoot(left_node, right_node);
 
     EXPECT_EQ(left_node, root->GetChild(0));
@@ -312,15 +312,15 @@ class NodeFixture : public testing::Test
   {
     PrepareConsolidatedNode();
 
-    Node_t *l_node = new Node_t{kLeafFlag, kPayloadBlock};
-    Node_t *r_node = new Node_t{kLeafFlag, kPayloadBlock};
-    Node_t::template Split<Payload>(node.get(), l_node, r_node);
-    Node_t *old_parent = new Node_t{!kLeafFlag, kNodeBlock};
+    auto *l_node = new Node_t{kLeafFlag, kPayloadBlock};
+    auto *r_node = new Node_t{kLeafFlag, kPayloadBlock};
+    Node_t::template Split<Payload>(node_.get(), l_node, r_node);
+    auto *old_parent = new Node_t{!kLeafFlag, kNodeBlock};
     old_parent->InitAsRoot(l_node, r_node);
-    Node_t *r_l_node = new Node_t{kLeafFlag, kPayloadBlock};
-    Node_t *r_r_node = new Node_t{kLeafFlag, kPayloadBlock};
+    auto *r_l_node = new Node_t{kLeafFlag, kPayloadBlock};
+    auto *r_r_node = new Node_t{kLeafFlag, kPayloadBlock};
     Node_t::template Split<Payload>(r_node, r_l_node, r_r_node);
-    Node_t *new_parent = new Node_t{!kLeafFlag, kNodeBlock};
+    auto *new_parent = new Node_t{!kLeafFlag, kNodeBlock};
     new_parent->InitAsSplitParent(old_parent, r_node, r_r_node, 1);
 
     EXPECT_EQ(l_node, new_parent->GetChild(0));
@@ -340,14 +340,14 @@ class NodeFixture : public testing::Test
   {
     PrepareConsolidatedNode();
 
-    Node_t *l_node = new Node_t{kLeafFlag, kPayloadBlock};
-    Node_t *r_node = new Node_t{kLeafFlag, kPayloadBlock};
-    Node_t::template Split<Payload>(node.get(), l_node, r_node);
-    Node_t *old_parent = new Node_t{!kLeafFlag, kNodeBlock};
+    auto *l_node = new Node_t{kLeafFlag, kPayloadBlock};
+    auto *r_node = new Node_t{kLeafFlag, kPayloadBlock};
+    Node_t::template Split<Payload>(node_.get(), l_node, r_node);
+    auto *old_parent = new Node_t{!kLeafFlag, kNodeBlock};
     old_parent->InitAsRoot(l_node, r_node);
     Node_t *merged_node = l_node;
     Node_t::template Merge<Payload>(l_node, r_node, merged_node);
-    Node_t *new_parent = new Node_t{!kLeafFlag, kNodeBlock};
+    auto *new_parent = new Node_t{!kLeafFlag, kNodeBlock};
     new_parent->InitAsMergeParent(old_parent, merged_node, 0);
 
     EXPECT_EQ(merged_node, new_parent->GetChild(0));
@@ -372,7 +372,7 @@ class NodeFixture : public testing::Test
   size_t max_rec_num_{};
   size_t max_del_num_{};
 
-  std::unique_ptr<Node_t> node{nullptr};
+  std::unique_ptr<Node_t> node_{nullptr};
 };
 
 /*##################################################################################################
@@ -389,7 +389,7 @@ using KeyPayloadPairs = ::testing::Types<  //
     KeyPayload<uint64_t, MyClass, UInt64Comp, MyClassComp>,
     KeyPayload<uint64_t, int64_t, UInt64Comp, Int64Comp>  //
     >;
-TYPED_TEST_CASE(NodeFixture, KeyPayloadPairs);
+TYPED_TEST_SUITE(NodeFixture, KeyPayloadPairs);
 
 /*##################################################################################################
  * Unit test definitions

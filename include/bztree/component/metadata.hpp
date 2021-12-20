@@ -102,7 +102,7 @@ class Metadata
    * @retval true if a corresponding record is visible.
    * @retval false if a corresponding record is invisible.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   IsVisible() const  //
       -> bool
   {
@@ -113,7 +113,7 @@ class Metadata
    * @retval true if a corresponding record is in progress.
    * @retval false if a corresponding record is a definite state.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   IsInProgress() const  //
       -> bool
   {
@@ -123,7 +123,7 @@ class Metadata
   /**
    * @return an offset to a corresponding record.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   GetOffset() const  //
       -> size_t
   {
@@ -133,7 +133,7 @@ class Metadata
   /**
    * @return the length of a key in a corresponding record.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   GetKeyLength() const  //
       -> size_t
   {
@@ -143,7 +143,7 @@ class Metadata
   /**
    * @return the total length of a corresponding record.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   GetTotalLength() const  //
       -> size_t
   {
@@ -153,7 +153,7 @@ class Metadata
   /**
    * @return the length of a payload in a corresponding record.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   GetPayloadLength() const  //
       -> size_t
   {
@@ -168,7 +168,7 @@ class Metadata
    * @param offset a new offset to be set.
    * @return a new metadata object.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   UpdateOffset(const size_t offset) const  //
       -> Metadata
   {
@@ -183,7 +183,7 @@ class Metadata
    * @param offset a new offset to be set.
    * @return a new metadata object.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   Commit(const size_t offset) const  //
       -> Metadata
   {
@@ -199,7 +199,7 @@ class Metadata
    * @param offset a new offset to be set.
    * @return a new metadata object.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   Delete(const size_t offset) const  //
       -> Metadata
   {
@@ -215,7 +215,7 @@ class Metadata
    *
    * @return a new metadata object.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   Delete() const  //
       -> Metadata
   {
@@ -245,7 +245,7 @@ class Metadata
   uint64_t total_length_ : 16;
 
   /// control bits for PMwCAS.
-  uint64_t control_region_ : 3;
+  uint64_t control_region_ : 3;  // NOLINT
 };
 
 }  // namespace dbgroup::index::bztree::component

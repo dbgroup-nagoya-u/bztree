@@ -31,10 +31,7 @@ using component::AlignRecord;
  * Global constants
  *################################################################################################*/
 
-constexpr size_t kSmallKeyNum = 16;
-constexpr size_t kLargeKeyNum = 2048;
-constexpr size_t kKeyLength = kWordLength;
-constexpr size_t kPayloadLength = kWordLength;
+constexpr size_t kGCTime = 1000;
 constexpr size_t kTestMaxRecNum = (kPageSize - kHeaderLength - kMinFreeSpaceSize) / 20;
 constexpr size_t kKeyNumForTest = 2 * kTestMaxRecNum * kTestMaxRecNum + 2;
 constexpr bool kExpectSuccess = true;
@@ -50,7 +47,7 @@ struct KeyPayload {
 };
 
 template <class KeyPayload>
-class BzTreeFixture : public testing::Test
+class BzTreeFixture : public testing::Test  // NOLINT
 {
   // extract key-payload types
   using Key = typename KeyPayload::Key;
@@ -69,28 +66,28 @@ class BzTreeFixture : public testing::Test
    *##############################################################################################*/
 
   void
-  SetUp()
+  SetUp() override
   {
     // prepare keys
     key_size_ = (IsVariableLengthData<Key>()) ? kVarDataLength : sizeof(Key);
-    PrepareTestData(keys, kKeyNumForTest, key_size_);
+    PrepareTestData(keys_, kKeyNumForTest, key_size_);
 
     // prepare payloads
     pay_size_ = (IsVariableLengthData<Payload>()) ? kVarDataLength : sizeof(Payload);
-    PrepareTestData(payloads, kKeyNumForTest, pay_size_);
+    PrepareTestData(payloads_, kKeyNumForTest, pay_size_);
 
     // set a record length and its maximum number
     auto rec_size = std::get<2>(AlignRecord<Key, Payload>(key_size_, pay_size_)) + sizeof(Metadata);
     max_rec_num_ = (kPageSize - kHeaderLength - kMinFreeSpaceSize) / rec_size;
 
-    bztree = std::make_unique<BzTree_t>(1000);
+    bztree_ = std::make_unique<BzTree_t>(kGCTime);
   }
 
   void
-  TearDown()
+  TearDown() override
   {
-    ReleaseTestData(keys, kKeyNumForTest);
-    ReleaseTestData(payloads, kKeyNumForTest);
+    ReleaseTestData(keys_, kKeyNumForTest);
+    ReleaseTestData(payloads_, kKeyNumForTest);
   }
 
   /*################################################################################################
@@ -105,10 +102,10 @@ class BzTreeFixture : public testing::Test
   {
     ReturnCode expected_rc = (expect_success) ? kSuccess : kKeyNotExist;
 
-    const auto [rc, actual] = bztree->Read(keys[key_id]);
+    const auto [rc, actual] = bztree_->Read(keys_[key_id]);
     EXPECT_EQ(expected_rc, rc);
     if (expect_success) {
-      const auto expected_val = payloads[expected_id];
+      const auto expected_val = payloads_[expected_id];
       if constexpr (IsVariableLengthData<Payload>()) {
         auto *value = actual.get();
         EXPECT_TRUE(component::IsEqual<PayloadComp>(expected_val, value));
@@ -153,7 +150,7 @@ class BzTreeFixture : public testing::Test
       const size_t key_id,
       const size_t payload_id)
   {
-    auto rc = bztree->Write(keys[key_id], payloads[payload_id], key_size_, pay_size_);
+    auto rc = bztree_->Write(keys_[key_id], payloads_[payload_id], key_size_, pay_size_);
 
     EXPECT_EQ(ReturnCode::kSuccess, rc);
   }
@@ -166,7 +163,7 @@ class BzTreeFixture : public testing::Test
   {
     ReturnCode expected_rc = (expect_success) ? kSuccess : kKeyExist;
 
-    auto rc = bztree->Insert(keys[key_id], payloads[payload_id], key_size_, pay_size_);
+    auto rc = bztree_->Insert(keys_[key_id], payloads_[payload_id], key_size_, pay_size_);
     EXPECT_EQ(expected_rc, rc);
   }
 
@@ -178,7 +175,7 @@ class BzTreeFixture : public testing::Test
   {
     ReturnCode expected_rc = (expect_success) ? kSuccess : kKeyNotExist;
 
-    auto rc = bztree->Update(keys[key_id], payloads[payload_id], key_size_, pay_size_);
+    auto rc = bztree_->Update(keys_[key_id], payloads_[payload_id], key_size_, pay_size_);
     EXPECT_EQ(expected_rc, rc);
   }
 
@@ -189,7 +186,7 @@ class BzTreeFixture : public testing::Test
   {
     ReturnCode expected_rc = (expect_success) ? kSuccess : kKeyNotExist;
 
-    auto rc = bztree->Delete(keys[key_id], key_size_);
+    auto rc = bztree_->Delete(keys_[key_id], key_size_);
     EXPECT_EQ(expected_rc, rc);
   }
 
@@ -198,13 +195,13 @@ class BzTreeFixture : public testing::Test
    *##############################################################################################*/
 
   // actual keys and payloads
-  size_t key_size_;
-  size_t pay_size_;
-  Key keys[kKeyNumForTest];
-  Payload payloads[kKeyNumForTest];
+  size_t key_size_{};
+  size_t pay_size_{};
+  Key keys_[kKeyNumForTest];
+  Payload payloads_[kKeyNumForTest];
 
   // a test target BzTree
-  std::unique_ptr<BzTree_t> bztree{nullptr};
+  std::unique_ptr<BzTree_t> bztree_{nullptr};
 
   size_t max_rec_num_{};
 };
@@ -223,7 +220,7 @@ using KeyPayloadPairs = ::testing::Types<  //
     KeyPayload<uint64_t, MyClass, UInt64Comp, MyClassComp>,
     KeyPayload<uint64_t, int64_t, UInt64Comp, Int64Comp>  //
     >;
-TYPED_TEST_CASE(BzTreeFixture, KeyPayloadPairs);
+TYPED_TEST_SUITE(BzTreeFixture, KeyPayloadPairs);
 
 /*##################################################################################################
  * Unit test definitions
@@ -330,7 +327,7 @@ TYPED_TEST(BzTreeFixture, WriteWithAllDeletingReadFail)
  * Read operation
  *------------------------------------------------------------------------------------------------*/
 
-TYPED_TEST(BzTreeFixture, Read_NotPresentKey_ReadFail)
+TYPED_TEST(BzTreeFixture, ReadWithNotPresentKeyFail)
 {  //
   TestFixture::VerifyRead(0, 0, kExpectFailed);
 }

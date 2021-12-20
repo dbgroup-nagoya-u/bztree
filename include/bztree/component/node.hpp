@@ -17,9 +17,8 @@
 #ifndef BZTREE_COMPONENT_NODE_HPP
 #define BZTREE_COMPONENT_NODE_HPP
 
-#include <stdlib.h>
-
 #include <atomic>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <tuple>
@@ -56,8 +55,8 @@ class alignas(kMaxAlignment) Node
       const size_t block_size)
       : node_size_{kPageSize},
         sorted_count_{0},
-        is_leaf_{is_leaf},
-        is_right_end_{true},
+        is_leaf_{static_cast<uint64_t>(is_leaf)},
+        is_right_end_{1},
         status_{0, block_size}
   {
   }
@@ -92,14 +91,14 @@ class alignas(kMaxAlignment) Node
    *##############################################################################################*/
 
   static auto
-  operator new(std::size_t)  //
+  operator new([[maybe_unused]] std::size_t n)  //
       -> void *
   {
     return calloc(1UL, kPageSize);
   }
 
   static auto
-  operator new(std::size_t, void *where)  //
+  operator new([[maybe_unused]] std::size_t n, void *where)  //
       -> void *
   {
     return where;
@@ -119,7 +118,7 @@ class alignas(kMaxAlignment) Node
    * @retval true if this is a leaf node.
    * @retval false otherwise.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   IsLeaf() const  //
       -> bool
   {
@@ -130,7 +129,7 @@ class alignas(kMaxAlignment) Node
    * @retval true if this node has a next sibling node.
    * @retval false otherwise.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   IsRightEnd() const  //
       -> bool
   {
@@ -140,7 +139,7 @@ class alignas(kMaxAlignment) Node
   /**
    * @return the number of sorted records.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   GetSortedCount() const  //
       -> size_t
   {
@@ -155,7 +154,7 @@ class alignas(kMaxAlignment) Node
    *
    * @return a status word.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   GetStatusWord() const  //
       -> StatusWord
   {
@@ -170,7 +169,7 @@ class alignas(kMaxAlignment) Node
    *
    * @return a status word.
    */
-  auto
+  [[nodiscard]] auto
   GetStatusWordProtected() const  //
       -> StatusWord
   {
@@ -184,7 +183,7 @@ class alignas(kMaxAlignment) Node
    *
    * @return metadata.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   GetMetadata(const size_t position) const  //
       -> Metadata
   {
@@ -195,7 +194,7 @@ class alignas(kMaxAlignment) Node
    * @param meta metadata of a corresponding record.
    * @return a key in a target record.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   GetKey(const Metadata meta) const  //
       -> Key
   {
@@ -229,7 +228,7 @@ class alignas(kMaxAlignment) Node
    * @param position the position of a child node.
    * @return a child node.
    */
-  auto
+  [[nodiscard]] auto
   GetChild(const size_t position) const  //
       -> Node *
   {
@@ -283,19 +282,19 @@ class alignas(kMaxAlignment) Node
    * @param range_is_closed a flag to indicate that a target key is included.
    * @return the position of a specified key.
    */
-  auto
+  [[nodiscard]] auto
   Search(  //
       const Key &key,
       const bool range_is_closed) const  //
       -> size_t
   {
     const auto *atomic_stat = reinterpret_cast<const std::atomic<StatusWord> *>(&status_);
-    const auto stat = atomic_stat->load(std::memory_order_acquire);
+    [[maybe_unused]] const auto stat = atomic_stat->load(std::memory_order_acquire);
 
     int64_t begin_pos = 0;
-    int64_t end_pos = stat.GetRecordCount() - 2;
+    int64_t end_pos = sorted_count_ - 2;
     while (begin_pos <= end_pos) {
-      size_t pos = (begin_pos + end_pos) >> 1;
+      size_t pos = (begin_pos + end_pos) >> 1UL;  // NOLINT
 
       const auto index_key = GetKey(meta_array_[pos]);
 
@@ -321,7 +320,7 @@ class alignas(kMaxAlignment) Node
    */
   auto
   Freeze()  //
-      -> NodeReturnCode
+      -> NodeRC
   {
     while (true) {
       const auto current_status = GetStatusWordProtected();
@@ -363,7 +362,7 @@ class alignas(kMaxAlignment) Node
   Read(  //
       const Key &key,
       Payload &out_payload) const  //
-      -> NodeReturnCode
+      -> NodeRC
   {
     // check whether there is a given key in this node
     const auto status = GetStatusWordProtected();
@@ -415,13 +414,13 @@ class alignas(kMaxAlignment) Node
       const size_t key_length,
       const Payload &payload,
       const size_t payload_length)  //
-      -> NodeReturnCode
+      -> NodeRC
   {
     // variables and constants shared in Phase 1 & 2
     const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, payload_length);
     const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
-    size_t target_pos;
+    size_t target_pos{};
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: reserve free space to write a record
@@ -514,14 +513,14 @@ class alignas(kMaxAlignment) Node
       const size_t key_length,
       const Payload &payload,
       const size_t payload_length)  //
-      -> NodeReturnCode
+      -> NodeRC
   {
     // variables and constants shared in Phase 1 & 2
     const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, payload_length);
     const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
-    size_t target_pos;
-    KeyExistence rc;
+    size_t target_pos{};
+    KeyExistence rc{};
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: reserve free space to insert a record
@@ -566,13 +565,11 @@ class alignas(kMaxAlignment) Node
       // recheck uniqueness if required
       if (rc == kUncertain) {
         rc = CheckUniqueness<Payload>(key, target_pos).first;
+        if (rc == kUncertain) continue;
         if (rc == kExist) {
           // delete an inserted record
           SetMetadata(target_pos, in_progress_meta.Delete());
           return kKeyExist;
-        } else if (rc == kUncertain) {
-          // retry if there are still uncertain records
-          continue;
         }
       }
 
@@ -615,14 +612,14 @@ class alignas(kMaxAlignment) Node
       const size_t key_length,
       const Payload &payload,
       const size_t payload_length)  //
-      -> NodeReturnCode
+      -> NodeRC
   {
     // variables and constants shared in Phase 1 & 2
     const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, payload_length);
     const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
-    size_t target_pos;
-    KeyExistence rc;
+    size_t target_pos{};
+    KeyExistence rc{};
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: reserve free space to insert a record
@@ -633,7 +630,7 @@ class alignas(kMaxAlignment) Node
 
       // check whether a node includes a target key
       target_pos = cur_status.GetRecordCount();
-      size_t exist_pos;
+      size_t exist_pos{};
       std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
@@ -684,12 +681,11 @@ class alignas(kMaxAlignment) Node
       // recheck uniqueness if required
       if (rc == kUncertain) {
         rc = CheckUniqueness<Payload>(key, target_pos).first;
+        if (rc == kUncertain) continue;
         if (rc == kNotExist || rc == kDeleted) {
           // delete an inserted record
           SetMetadata(target_pos, in_progress_meta.Delete());
           return kKeyNotExist;
-        } else if (rc == kUncertain) {
-          continue;
         }
       }
 
@@ -727,14 +723,14 @@ class alignas(kMaxAlignment) Node
   Delete(  //
       const Key &key,
       const size_t key_length)  //
-      -> NodeReturnCode
+      -> NodeRC
   {
     // variables and constants
     const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, 0);
     const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
-    size_t target_pos;
-    KeyExistence rc;
+    size_t target_pos{};
+    KeyExistence rc{};
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: reserve free space to insert a null record
@@ -745,7 +741,7 @@ class alignas(kMaxAlignment) Node
 
       // check whether a node includes a target key
       target_pos = cur_status.GetRecordCount();
-      size_t exist_pos;
+      size_t exist_pos{};
       std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
@@ -797,13 +793,11 @@ class alignas(kMaxAlignment) Node
       // recheck uniqueness if required
       if (rc == kUncertain) {
         rc = CheckUniqueness<Payload>(key, target_pos).first;
+        if (rc == kUncertain) continue;
         if (rc == kNotExist || rc == kDeleted) {
           // delete an inserted record
           SetMetadata(target_pos, in_progress_meta.Delete());
           return kKeyNotExist;
-        } else if (rc == kUncertain) {
-          // retry if there are still uncertain records
-          continue;
         }
       }
 
@@ -1077,7 +1071,7 @@ class alignas(kMaxAlignment) Node
    *
    * @return metadata.
    */
-  auto
+  [[nodiscard]] auto
   GetMetadataProtected(const size_t position) const  //
       -> Metadata
   {
@@ -1088,7 +1082,7 @@ class alignas(kMaxAlignment) Node
    * @param meta metadata of a corresponding record.
    * @return an address of a target key.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   GetKeyAddr(const Metadata meta) const  //
       -> void *
   {
@@ -1099,7 +1093,7 @@ class alignas(kMaxAlignment) Node
    * @param meta metadata of a corresponding record.
    * @return an address of a target payload.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   GetPayloadAddr(const Metadata meta) const  //
       -> void *
   {
@@ -1224,7 +1218,7 @@ class alignas(kMaxAlignment) Node
   {
     static_assert(CanCASUpdate<Payload>());
 
-    const auto old_payload = MwCASDescriptor::Read<Payload>(GetPayloadAddr(meta));
+    const auto old_payload = MwCASDescriptor::Read<Payload>(GetPayloadAddr(meta));  // NOLINT
     desc.AddMwCASTarget(GetPayloadAddr(meta), old_payload, new_payload);
   }
 
@@ -1269,14 +1263,14 @@ class alignas(kMaxAlignment) Node
    * @param key a target key.
    * @return a pair of key existence and a key position.
    */
-  auto
+  [[nodiscard]] auto
   SearchSortedRecord(const Key &key) const  //
       -> std::pair<KeyExistence, size_t>
   {
     int64_t begin_pos = 0;
     int64_t end_pos = sorted_count_ - 1;
     while (begin_pos <= end_pos) {
-      size_t pos = (begin_pos + end_pos) >> 1;
+      size_t pos = (begin_pos + end_pos) >> 1UL;  // NOLINT
 
       const auto meta = GetMetadataProtected(pos);
       const auto index_key = GetKey(meta);
@@ -1302,7 +1296,7 @@ class alignas(kMaxAlignment) Node
    * @param begin_pos the begin position for searching.
    * @return a pair of key existence and a key position.
    */
-  auto
+  [[nodiscard]] auto
   SearchUnsortedRecord(  //
       const Key &key,
       const size_t begin_pos) const  //
@@ -1335,14 +1329,14 @@ class alignas(kMaxAlignment) Node
    * @return a pair of key existence and a key position.
    */
   template <class Payload>
-  auto
+  [[nodiscard]] auto
   CheckUniqueness(  //
       const Key &key,
       const int64_t rec_count) const  //
       -> std::pair<KeyExistence, size_t>
   {
-    KeyExistence rc;
-    size_t pos;
+    KeyExistence rc{};
+    size_t pos{};
 
     if constexpr (CanCASUpdate<Payload>()) {
       std::tie(rc, pos) = SearchSortedRecord(key);
@@ -1467,7 +1461,7 @@ class alignas(kMaxAlignment) Node
    *
    * @return a pair of the number of new records and its array.
    */
-  auto
+  [[nodiscard]] auto
   SortNewRecords() const  //
       -> std::pair<size_t, std::array<MetaKeyPair, kMaxUnsortedRecNum>>
   {

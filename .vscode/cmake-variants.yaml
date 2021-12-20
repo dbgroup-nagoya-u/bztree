@@ -7,6 +7,7 @@ buildType:
       long: Include debugging information without optimizations
       buildType: Debug
       settings:
+        CMAKE_CXX_CLANG_TIDY: "clang-tidy"
         BZTREE_BUILD_TESTS: ON
         BZTREE_TEST_THREAD_NUM: 8
     relWithDebInfo:
@@ -14,6 +15,7 @@ buildType:
       long: Perform optimizations and include debugging informatin
       buildType: RelWithDebInfo
       settings:
+        CMAKE_CXX_CLANG_TIDY: "clang-tidy"
         BZTREE_BUILD_TESTS: ON
         BZTREE_TEST_THREAD_NUM: 8
     release:
@@ -21,5 +23,6 @@ buildType:
       long: Perform optimizations and omit debugging informatin
       buildType: Release
       settings:
+        CMAKE_CXX_CLANG_TIDY: "clang-tidy"
         BZTREE_BUILD_TESTS: ON
         BZTREE_TEST_THREAD_NUM: 8

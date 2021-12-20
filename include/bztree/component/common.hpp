@@ -39,7 +39,7 @@ using ::dbgroup::atomic::mwcas::MwCASDescriptor;
  * @brief Internal return codes to represent results of node modification.
  *
  */
-enum NodeReturnCode
+enum NodeRC
 {
   kSuccess = 0,
   kKeyNotExist,
@@ -73,12 +73,13 @@ template <class Payload>
 constexpr bool
 CanCASUpdate()
 {
-  if constexpr (IsVariableLengthData<Payload>())
+  if constexpr (IsVariableLengthData<Payload>()) {
     return false;
-  else if constexpr (::dbgroup::atomic::mwcas::CanMwCAS<Payload>())
+  } else if constexpr (::dbgroup::atomic::mwcas::CanMwCAS<Payload>()) {
     return true;
-  else
+  } else {
     return false;
+  }
 }
 
 /**
@@ -209,7 +210,7 @@ struct PayloadDeleter {
   constexpr PayloadDeleter() noexcept = default;
 
   template <class Up, typename = typename std::enable_if_t<std::is_convertible_v<Up *, Payload *>>>
-  PayloadDeleter(const PayloadDeleter<Up> &) noexcept
+  explicit PayloadDeleter([[maybe_unused]] const PayloadDeleter<Up> &del) noexcept
   {
   }
 

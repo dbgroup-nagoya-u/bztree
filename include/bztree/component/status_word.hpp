@@ -109,7 +109,7 @@ class StatusWord
    * @retval true if a node is frozen (i.e., immutable).
    * @retval false otherwise.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   IsFrozen() const  //
       -> bool
   {
@@ -119,7 +119,7 @@ class StatusWord
   /**
    * @return the total number of records in a node.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   GetRecordCount() const  //
       -> size_t
   {
@@ -129,7 +129,7 @@ class StatusWord
   /**
    * @return the total byte length of records in a node.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   GetBlockSize() const  //
       -> size_t
   {
@@ -145,7 +145,7 @@ class StatusWord
    * @retval true if this node should be consolidated.
    * @retval false otherwise.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   NeedConsolidation(const size_t sorted_count) const  //
       -> bool
   {
@@ -160,7 +160,7 @@ class StatusWord
    * @retval true if this node does not have sufficient free space.
    * @retval false otherwise.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   NeedSplit() const  //
       -> bool
   {
@@ -174,7 +174,7 @@ class StatusWord
    * @retval true if this node does not have sufficient free space.
    * @retval false otherwise.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   NeedMerge() const  //
       -> bool
   {
@@ -188,7 +188,7 @@ class StatusWord
    * @retval true if this node can merge with a given sibling node.
    * @retval false otherwise.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   CanMergeWith(const StatusWord stat) const  //
       -> bool
   {
@@ -201,7 +201,7 @@ class StatusWord
   /**
    * @return a frozen status word.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   Freeze() const  //
       -> StatusWord
   {
@@ -213,7 +213,7 @@ class StatusWord
   /**
    * @return a frozen status word.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   Unfreeze() const  //
       -> StatusWord
   {
@@ -226,7 +226,7 @@ class StatusWord
    * @param rec_size the byte length of an added record.
    * @return a new status word with added records.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   Add(const size_t rec_size) const  //
       -> StatusWord
   {
@@ -240,7 +240,7 @@ class StatusWord
    * @param deleted_size: the byte length of deleted metadata and records.
    * @return a new status word with deleted records.
    */
-  constexpr auto
+  [[nodiscard]] constexpr auto
   Delete(const size_t deleted_size) const  //
       -> StatusWord
   {
@@ -267,7 +267,7 @@ class StatusWord
   uint64_t frozen_ : 1;
 
   /// control bits to perform PMwCAS.
-  uint64_t control_region_ : 3;
+  uint64_t control_region_ : 3;  // NOLINT
 };
 
 }  // namespace dbgroup::index::bztree::component

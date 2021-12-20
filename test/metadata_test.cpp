@@ -24,13 +24,10 @@ namespace dbgroup::index::bztree::component::test
  * Internal constants
  *##############################################################################################*/
 
-constexpr uint64_t kControlBitsMask = 7UL << 61;
+constexpr uint64_t kControlBitsMask = 7UL << 61UL;
 constexpr size_t kExpectedOffset = 256;
 constexpr size_t kExpectedKeyLength = 8;
 constexpr size_t kExpectedTotalLength = 16;
-constexpr size_t kCurrentEpoch = 1;
-constexpr size_t kDummyEpoch = 2;
-constexpr bool kInProgressFlag = true;
 
 class MetadataFixture : public testing::Test
 {
@@ -53,14 +50,14 @@ class MetadataFixture : public testing::Test
    * Utility functions
    *##############################################################################################*/
 
-  auto
+  static auto
   CreateActiveMeta()  //
       -> Metadata
   {
     return Metadata{kExpectedOffset, kExpectedKeyLength, kExpectedTotalLength};
   }
 
-  auto
+  static auto
   CreateInProgressMeta()  //
       -> Metadata
   {
@@ -84,7 +81,7 @@ TEST_F(MetadataFixture, ConstructWithNoArgumentsCreateZeroMetadata)
   EXPECT_EQ(0, meta.GetTotalLength());
 
   // check control bits
-  uint64_t meta_uint;
+  uint64_t meta_uint{};
   memcpy(&meta_uint, &meta, sizeof(Metadata));
   EXPECT_EQ(0, meta_uint & kControlBitsMask);
 }
@@ -101,7 +98,7 @@ TEST_F(MetadataFixture, ConstructWithOffsetCreateActiveMetadata)
   EXPECT_EQ(kExpectedTotalLength, meta.GetTotalLength());
 
   // check control bits
-  uint64_t meta_uint;
+  uint64_t meta_uint{};
   memcpy(&meta_uint, &meta, sizeof(Metadata));
   EXPECT_EQ(0, meta_uint & kControlBitsMask);
 }
@@ -118,7 +115,7 @@ TEST_F(MetadataFixture, ConstructWithoutOffsetCreateInProgressMetadata)
   EXPECT_EQ(kExpectedTotalLength, meta.GetTotalLength());
 
   // check control bits
-  uint64_t meta_uint;
+  uint64_t meta_uint{};
   memcpy(&meta_uint, &meta, sizeof(Metadata));
   EXPECT_EQ(0, meta_uint & kControlBitsMask);
 }
@@ -129,11 +126,11 @@ TEST_F(MetadataFixture, ConstructWithoutOffsetCreateInProgressMetadata)
 
 TEST_F(MetadataFixture, UpdateOffsetWithActiveMetadataGetUpdatedOffset)
 {
-  constexpr size_t updated_offset = kExpectedOffset / 2;
+  constexpr size_t kUpdatedOffset = kExpectedOffset / 2;
 
-  auto meta = CreateActiveMeta().UpdateOffset(updated_offset);
+  auto meta = CreateActiveMeta().UpdateOffset(kUpdatedOffset);
 
-  EXPECT_EQ(updated_offset, meta.GetOffset());
+  EXPECT_EQ(kUpdatedOffset, meta.GetOffset());
 }
 
 TEST_F(MetadataFixture, CommitWithInProgressMetadataMakeVisibleRecord)

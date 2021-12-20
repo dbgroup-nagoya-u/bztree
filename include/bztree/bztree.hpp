@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef BZTREE_BZTREE_HPP
+#define BZTREE_BZTREE_HPP
 
 #include <array>
 #include <atomic>
@@ -42,12 +43,423 @@ class BzTree
   using Metadata = component::Metadata;
   using StatusWord = component::StatusWord;
   using Node_t = component::Node<Key, Compare>;
-  using NodeReturnCode = component::NodeReturnCode;
+  using NodeRC = component::NodeRC;
   using NodeGC_t = ::dbgroup::memory::EpochBasedGC<Node_t>;
   using NodeStack = std::vector<std::pair<Node_t *, size_t>>;
   using MwCASDescriptor = component::MwCASDescriptor;
   using Binary_t = std::remove_pointer_t<Payload>;
   using Binary_p = std::unique_ptr<Binary_t, component::PayloadDeleter<Binary_t>>;
+
+ public:
+  /*################################################################################################
+   * Public classes
+   *##############################################################################################*/
+
+  /**
+   * @brief A class to represent a iterator for scan results.
+   *
+   * @tparam Key a target key class
+   * @tparam Payload a target payload class
+   * @tparam Compare a key-comparator class
+   */
+  class RecordIterator
+  {
+    using BzTree_t = BzTree<Key, Payload, Compare>;
+
+   public:
+    /*##############################################################################################
+     * Public constructors and assignment operators
+     *############################################################################################*/
+
+    RecordIterator(  //
+        BzTree_t *bztree,
+        Node_t *node,
+        const size_t current_pos)
+        : bztree_{bztree},
+          node_{node},
+          record_count_{node->GetSortedCount()},
+          current_pos_{current_pos},
+          current_meta_{node->GetMetadata(current_pos_)}
+    {
+    }
+
+    RecordIterator(const RecordIterator &) = delete;
+    RecordIterator &operator=(const RecordIterator &) = delete;
+    constexpr RecordIterator(RecordIterator &&) noexcept = default;
+    constexpr RecordIterator &operator=(RecordIterator &&) noexcept = default;
+
+    /*##############################################################################################
+     * Public destructors
+     *############################################################################################*/
+
+    ~RecordIterator() { delete node_; }
+
+    /*##############################################################################################
+     * Public operators for iterators
+     *############################################################################################*/
+
+    /**
+     * @return std::pair<Key, Payload>: a current key and payload pair
+     */
+    constexpr auto
+    operator*() const  //
+        -> std::pair<Key, Payload>
+    {
+      return {GetKey(), GetPayload()};
+    }
+
+    /**
+     * @brief Forward an iterator.
+     *
+     */
+    constexpr void
+    operator++()
+    {
+      ++current_pos_;
+      current_meta_ = node_->GetMetadata(current_pos_);
+    }
+
+    /*##############################################################################################
+     * Public getters/setters
+     *############################################################################################*/
+
+    /**
+     * @brief Check if there are any records left.
+     *
+     * function may call a scan function internally to get a next leaf node.
+     *
+     * @retval true if there are any records or next node left.
+     * @retval false if there are no records and node left.
+     */
+    bool
+    HasNext()
+    {
+      if (current_pos_ < record_count_) return true;
+      if (node_->IsRightEnd()) return false;
+
+      current_meta_ = node_->GetMetadata(record_count_ - 1);
+      *this = bztree_->Scan(GetKey(), false, node_);
+
+      return HasNext();
+    }
+
+    /**
+     * @return Key: a key of a current record
+     */
+    constexpr auto
+    GetKey() const  //
+        -> Key
+    {
+      return node_->GetKey(current_pos_);
+    }
+
+    /**
+     * @return Payload: a payload of a current record
+     */
+    constexpr auto
+    GetPayload() const  //
+        -> Payload
+    {
+      return node_->template GetPayload<Payload>(current_pos_);
+    }
+
+   private:
+    /*##############################################################################################
+     * Internal member variables
+     *############################################################################################*/
+
+    /// a pointer to BwTree to perform continuous scan
+    BzTree_t *bztree_;
+
+    /// the pointer to a node that includes partial scan results
+    Node_t *node_;
+
+    /// the number of records in this node
+    size_t record_count_;
+
+    /// the position of a current record
+    size_t current_pos_;
+
+    /// the metadata of a current record
+    Metadata current_meta_;
+  };
+
+  /*################################################################################################
+   * Public constructors and assignment operators
+   *##############################################################################################*/
+
+  /**
+   * @brief Construct a new BzTree object.
+   *
+   * @param gc_interval_microsec GC internal [us]
+   */
+  explicit BzTree(const size_t gc_interval_microsec = 100000)
+  {
+    // start GC for nodes
+    gc_ = std::make_unique<NodeGC_t>(gc_interval_microsec);
+    gc_->StartGC();
+
+    // create an initial root node
+    Node_t *leaf = CreateNewNode(kLeafFlag);
+    root_.store(leaf, std::memory_order_relaxed);
+  }
+
+  BzTree(const BzTree &) = delete;
+  BzTree &operator=(const BzTree &) = delete;
+  BzTree(BzTree &&) = delete;
+  BzTree &operator=(BzTree &&) = delete;
+
+  /*################################################################################################
+   * Public destructors
+   *##############################################################################################*/
+
+  /**
+   * @brief Destroy the BzTree object.
+   *
+   */
+  ~BzTree()
+  {
+    gc_->StopGC();
+    DeleteChildren(GetRoot());
+  }
+
+  /*################################################################################################
+   * Public read APIs
+   *##############################################################################################*/
+
+  /**
+   * @brief Read a payload of a specified key if it exists.
+   *
+   * This function returns two return codes: kSuccess and kKeyNotExist. If a return code
+   * is kSuccess, a returned pair contains a target payload. If a return code is
+   * kKeyNotExist, the value of a returned payload is undefined.
+   *
+   * @param key a target key.
+   * @return std::pair<ReturnCode, Payload>: a return code and payload pair.
+   */
+  auto
+  Read(const Key &key)
+  {
+    const auto guard = gc_->CreateEpochGuard();
+
+    const Node_t *node = SearchLeafNode(key, true);
+
+    Payload payload{};
+    const auto rc = node->Read(key, payload);
+    if constexpr (IsVariableLengthData<Payload>()) {
+      if (rc == NodeRC::kSuccess) {
+        return std::make_pair(ReturnCode::kSuccess, Binary_p{payload});
+      }
+      return std::make_pair(ReturnCode::kKeyNotExist, Binary_p{});
+    } else {
+      if (rc == NodeRC::kSuccess) {
+        return std::make_pair(ReturnCode::kSuccess, std::move(payload));
+      }
+      return std::make_pair(ReturnCode::kKeyNotExist, Payload{});
+    }
+  }
+
+  /**
+   * @brief Perform a range scan with specified keys.
+   *
+   * If a begin/end key is nullptr, it is treated as negative or positive infinite.
+   *
+   * @param begin_key the pointer of a begin key of a range scan.
+   * @param begin_closed a flag to indicate whether the begin side of a range is closed.
+   * @param page a page to copy target keys/payloads. This argument is used internally.
+   * @return an iterator to access target records.
+   */
+  auto
+  Scan(  //
+      const Key &begin_key,
+      const bool begin_closed = false,
+      Node_t *page = nullptr)  //
+      -> RecordIterator
+  {
+    const auto guard = gc_->CreateEpochGuard();
+
+    const Node_t *node = SearchLeafNode(begin_key, begin_closed);
+    if (page == nullptr) {
+      page = CreateNewNode(kLeafFlag);
+    }
+    page->Consolidate(node);
+
+    return RecordIterator{this, page, page->Search(begin_key, begin_closed)};
+  }
+
+  /*################################################################################################
+   * Public write APIs
+   *##############################################################################################*/
+
+  /**
+   * @brief Write (i.e., upsert) a specified kay/payload pair.
+   *
+   * If a specified key does not exist in the index, this function performs an insert
+   * operation. If a specified key has been already inserted, this function perfroms an
+   * update operation. Thus, this function always returns kSuccess as a return code.
+   *
+   * Note that if a target key/payload is binary data, it is required to specify its
+   * length in bytes.
+   *
+   * @param key a target key to be written.
+   * @param payload a target payload to be written.
+   * @param key_length the length of a target key.
+   * @param payload_length the length of a target payload.
+   * @return ReturnCode: kSuccess.
+   */
+  auto
+  Write(  //
+      const Key &key,
+      const Payload &payload,
+      const size_t key_length = sizeof(Key),
+      const size_t payload_length = sizeof(Payload))  //
+      -> ReturnCode
+  {
+    const auto guard = gc_->CreateEpochGuard();
+
+    while (true) {
+      Node_t *node = SearchLeafNode(key, true);
+      const auto rc = node->Write(key, key_length, payload, payload_length);
+
+      switch (rc) {
+        case NodeRC::kSuccess:
+          return ReturnCode::kSuccess;
+        case NodeRC::kNeedConsolidation:
+          Consolidate(node, key);
+        default:
+          break;
+      }
+    }
+  }
+
+  /**
+   * @brief Insert a specified kay/payload pair.
+   *
+   * This function performs a uniqueness check in its processing. If a specified key
+   * does not exist, this function insert a target payload into the index. If a
+   * specified key exists in the index, this function does nothing and returns kKeyExist
+   * as a return code.
+   *
+   * Note that if a target key/payload is binary data, it is required to specify its
+   * length in bytes.
+   *
+   * @param key a target key to be written.
+   * @param payload a target payload to be written.
+   * @param key_length the length of a target key.
+   * @param payload_length the length of a target payload.
+   * @retval.kSuccess if inserted.
+   * @retval kKeyExist if a specified key exists.
+   */
+  auto
+  Insert(  //
+      const Key &key,
+      const Payload &payload,
+      const size_t key_length = sizeof(Key),
+      const size_t payload_length = sizeof(Payload))  //
+      -> ReturnCode
+  {
+    const auto guard = gc_->CreateEpochGuard();
+
+    while (true) {
+      Node_t *node = SearchLeafNode(key, true);
+      const auto rc = node->Insert(key, key_length, payload, payload_length);
+
+      switch (rc) {
+        case NodeRC::kSuccess:
+          return ReturnCode::kSuccess;
+        case NodeRC::kKeyExist:
+          return ReturnCode::kKeyExist;
+        case NodeRC::kNeedConsolidation:
+          Consolidate(node, key);
+        default:
+          break;
+      }
+    }
+  }
+
+  /**
+   * @brief Update a target kay with a specified payload.
+   *
+   * This function performs a uniqueness check in its processing. If a specified key
+   * exist, this function update a target payload. If a specified key does not exist in
+   * the index, this function does nothing and returns kKeyNotExist as a return code.
+   *
+   * Note that if a target key/payload is binary data, it is required to specify its
+   * length in bytes.
+   *
+   * @param key a target key to be written.
+   * @param payload a target payload to be written.
+   * @param key_length the length of a target key.
+   * @param payload_length the length of a target payload.
+   * @retval kSuccess if updated.
+   * @retval kKeyNotExist if a specified key does not exist.
+   */
+  auto
+  Update(  //
+      const Key &key,
+      const Payload &payload,
+      const size_t key_length = sizeof(Key),
+      const size_t payload_length = sizeof(Payload))  //
+      -> ReturnCode
+  {
+    const auto guard = gc_->CreateEpochGuard();
+
+    while (true) {
+      Node_t *node = SearchLeafNode(key, true);
+      const auto rc = node->Update(key, key_length, payload, payload_length);
+
+      switch (rc) {
+        case NodeRC::kSuccess:
+          return ReturnCode::kSuccess;
+        case NodeRC::kKeyNotExist:
+          return ReturnCode::kKeyNotExist;
+        case NodeRC::kNeedConsolidation:
+          Consolidate(node, key);
+        default:
+          break;
+      }
+    }
+  }
+
+  /**
+   * @brief Delete a target kay from the index.
+   *
+   * This function performs a uniqueness check in its processing. If a specified key
+   * exist, this function deletes it. If a specified key does not exist in the index,
+   * this function does nothing and returns kKeyNotExist as a return code.
+   *
+   * Note that if a target key is binary data, it is required to specify its length in
+   * bytes.
+   *
+   * @param key a target key to be written.
+   * @param key_length the length of a target key.
+   * @retval kSuccess if deleted.
+   * @retval kKeyNotExist if a specified key does not exist.
+   */
+  auto
+  Delete(  //
+      const Key &key,
+      const size_t key_length = sizeof(Key))  //
+      -> ReturnCode
+  {
+    const auto guard = gc_->CreateEpochGuard();
+
+    while (true) {
+      Node_t *node = SearchLeafNode(key, true);
+      const auto rc = node->template Delete<Payload>(key, key_length);
+
+      switch (rc) {
+        case NodeRC::kSuccess:
+          return ReturnCode::kSuccess;
+        case NodeRC::kKeyNotExist:
+          return ReturnCode::kKeyNotExist;
+        case NodeRC::kNeedConsolidation:
+          Consolidate(node, key);
+        default:
+          break;
+      }
+    }
+  }
 
  private:
   /*################################################################################################
@@ -55,19 +467,6 @@ class BzTree
    *##############################################################################################*/
 
   static constexpr bool kLeafFlag = true;
-
-  /*################################################################################################
-   * Internal member variables
-   *##############################################################################################*/
-
-  /// an epoch to count the number of failure
-  const size_t index_epoch_ = 1;
-
-  /// a root node of BzTree
-  std::atomic<Node_t *> root_ = nullptr;
-
-  /// garbage collector
-  NodeGC_t gc_ = 100000;
 
   /*################################################################################################
    * Internal utility functions
@@ -80,7 +479,7 @@ class BzTree
     constexpr size_t kPayloadBlock = kPageSize - component::GetInitialOffset<Key, Payload>();
     constexpr size_t kNodeBlock = kPageSize - component::GetInitialOffset<Key, Node_t *>();
 
-    auto *page = gc_.template GetPageIfPossible<Node_t>();
+    auto *page = gc_->template GetPageIfPossible<Node_t>();
     if (is_leaf) {
       return (page == nullptr) ? new Node_t{kLeafFlag, kPayloadBlock}
                                : new (page) Node_t{kLeafFlag, kPayloadBlock};
@@ -92,8 +491,9 @@ class BzTree
   /**
    * @return Node_t*: a current root node.
    */
-  Node_t *
-  GetRoot()
+  [[nodiscard]] auto
+  GetRoot() const  //
+      -> Node_t *
   {
     return MwCASDescriptor::Read<Node_t *>(&root_);
   }
@@ -105,15 +505,16 @@ class BzTree
    * @param range_is_closed a flag to indicate whether a key is included.
    * @return Node_t*: a leaf node that may contain a target key.
    */
-  Node_t *
+  [[nodiscard]] auto
   SearchLeafNode(  //
       const Key &key,
-      const bool range_is_closed)
+      const bool range_is_closed) const  //
+      -> Node_t *
   {
     Node_t *current_node = GetRoot();
     while (!current_node->IsLeaf()) {
-      const auto index = current_node->Search(key, range_is_closed);
-      current_node = current_node->GetChild(index);
+      const auto pos = current_node->Search(key, range_is_closed);
+      current_node = current_node->GetChild(pos);
     }
 
     return current_node;
@@ -122,8 +523,9 @@ class BzTree
   /**
    * @return Node_t*: a leaf node on the far left.
    */
-  Node_t *
-  SearchLeftEdgeLeaf()
+  [[nodiscard]] auto
+  SearchLeftEdgeLeaf() const  //
+      -> Node_t *
   {
     Node_t *current_node = GetRoot();
     while (!current_node->IsLeaf()) {
@@ -142,10 +544,11 @@ class BzTree
    * @param target_node a target node.
    * @return NodeStack: a stack of nodes.
    */
-  NodeStack
+  auto
   TraceTargetNode(  //
       const Key &key,
-      const Node_t *target_node)
+      const Node_t *target_node) const  //
+      -> NodeStack
   {
     // trace nodes to a target internal node
     NodeStack trace;
@@ -180,24 +583,24 @@ class BzTree
       const Key &key)
   {
     // freeze a target node and perform consolidation
-    if (node->Freeze() != NodeReturnCode::kSuccess) return;
+    if (node->Freeze() != NodeRC::kSuccess) return;
 
     // create a consolidated node
-    Node_t *consolidated_node = CreateNewNode(kLeafFlag);
-    consolidated_node->template Consolidate<Payload>(node);
+    Node_t *consol_node = CreateNewNode(kLeafFlag);
+    consol_node->template Consolidate<Payload>(node);
 
     // check whether splitting/merging is needed
-    const auto stat = consolidated_node->GetStatusWordProtected();
+    const auto stat = consol_node->GetStatusWord();
     if (stat.NeedSplit()) {
       // invoke splitting
-      Split(consolidated_node, key);
-    } else if (!stat.NeedMerge() || !Merge(consolidated_node, key)) {  // try merging
+      Split(consol_node, key);
+    } else if (!stat.NeedMerge() || !Merge(consol_node, key)) {  // try merging
       // install the consolidated node
       auto trace = TraceTargetNode(key, node);
-      InstallNewNode(trace, consolidated_node, key, node);
+      InstallNewNode(trace, consol_node, key, node);
     }
 
-    gc_.AddGarbage(node);
+    gc_->AddGarbage(node);
   }
 
   /**
@@ -232,7 +635,7 @@ class BzTree
 
       // pre-freezing of SMO targets
       old_parent = trace.back().first;
-      if (old_parent->Freeze() == NodeReturnCode::kSuccess) break;
+      if (old_parent->Freeze() == NodeRC::kSuccess) break;
     }
 
     /*----------------------------------------------------------------------------------------------
@@ -258,7 +661,7 @@ class BzTree
       new_parent->InitAsSplitParent(old_parent, left_node, right_node, target_pos);
 
       // check the parent node has sufficent capacity
-      const auto p_stat = new_parent->GetStatusWordProtected();
+      const auto p_stat = new_parent->GetStatusWord();
       const auto parent_need_split = p_stat.NeedSplit();
       if (parent_need_split) {
         new_parent->Freeze();  // pre-freeze for recursive splitting
@@ -273,9 +676,9 @@ class BzTree
       }
 
       // register frozen nodes with garbage collection
-      gc_.AddGarbage(old_parent);
+      gc_->AddGarbage(old_parent);
     }
-    gc_.AddGarbage(node);
+    gc_->AddGarbage(node);
   }
 
   /**
@@ -293,16 +696,16 @@ class BzTree
       const Key &key)  //
       -> bool
   {
-    const auto r_stat = right_node->GetStatusWordProtected();
+    const auto r_stat = right_node->GetStatusWord();
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: preparation
      *--------------------------------------------------------------------------------------------*/
 
     NodeStack trace;
-    Node_t *old_parent;
-    Node_t *left_node;
-    size_t target_pos;
+    Node_t *old_parent{};
+    Node_t *left_node{};
+    size_t target_pos{};
     while (true) {
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(key, right_node);
@@ -312,12 +715,12 @@ class BzTree
       // check a parent node is live
       trace.pop_back();
       old_parent = trace.back().first;
-      const auto p_status = old_parent->GetStatusWordProtected();
+      const auto p_status = old_parent->GetStatusWord();
       if (p_status.IsFrozen()) continue;
 
       // check a right sibling node is live and has sufficent capacity
       left_node = old_parent->GetChild(target_pos - 1);
-      const auto l_stat = left_node->GetStatusWordProtected();
+      const auto l_stat = left_node->GetStatusWord();
       if (!l_stat.CanMergeWith(r_stat)) return false;
       if (l_stat.IsFrozen()) continue;
 
@@ -348,13 +751,13 @@ class BzTree
     bool parent_need_merge = false;
     if (trace.size() > 1) {
       // if the parent is not a root, try merging
-      parent_need_merge = new_parent->GetStatusWordProtected().NeedMerge();
+      parent_need_merge = new_parent->GetStatusWord().NeedMerge();
       if (parent_need_merge) {
         new_parent->Freeze();  // pre-freeze for recursive merging
       }
     } else if (new_parent->GetSortedCount() == 1) {
       // the new root node has only one child, use the merged child as a new root
-      gc_.AddGarbage(new_parent);
+      gc_->AddGarbage(new_parent);
       new_parent = merged_node;
     }
 
@@ -362,9 +765,9 @@ class BzTree
     InstallNewNode(trace, new_parent, key, old_parent);
 
     // register frozen nodes with garbage collection
-    gc_.AddGarbage(old_parent);
-    gc_.AddGarbage(left_node);
-    gc_.AddGarbage(right_node);
+    gc_->AddGarbage(old_parent);
+    gc_->AddGarbage(left_node);
+    gc_->AddGarbage(right_node);
 
     // merge the new parent node if needed
     if (parent_need_merge && !Merge(new_parent, key)) {
@@ -453,426 +856,17 @@ class BzTree
     delete node;
   }
 
- public:
   /*################################################################################################
-   * Public classes
+   * Internal member variables
    *##############################################################################################*/
 
-  /**
-   * @brief A class to represent a iterator for scan results.
-   *
-   * @tparam Key a target key class
-   * @tparam Payload a target payload class
-   * @tparam Compare a key-comparator class
-   */
-  class RecordIterator
-  {
-    using BzTree_t = BzTree<Key, Payload, Compare>;
+  /// a root node of BzTree
+  std::atomic<Node_t *> root_ = nullptr;
 
-   public:
-    /*##############################################################################################
-     * Public constructors/destructors
-     *############################################################################################*/
-
-    constexpr RecordIterator(  //
-        BzTree_t *bztree,
-        Node_t *node,
-        size_t current_pos)
-        : bztree_{bztree},
-          node_{node},
-          record_count_{node->GetSortedCount()},
-          current_pos_{current_pos},
-          current_meta_{node->GetMetadata(current_pos_)}
-    {
-    }
-
-    ~RecordIterator() = default;
-
-    RecordIterator(const RecordIterator &) = delete;
-    RecordIterator &operator=(const RecordIterator &) = delete;
-    constexpr RecordIterator(RecordIterator &&) = default;
-    constexpr RecordIterator &operator=(RecordIterator &&) = default;
-
-    /*##############################################################################################
-     * Public operators for iterators
-     *############################################################################################*/
-
-    /**
-     * @return std::pair<Key, Payload>: a current key and payload pair
-     */
-    constexpr auto
-    operator*() const  //
-        -> std::pair<const Key &, const Payload &>
-    {
-      return {GetKey(), GetPayload()};
-    }
-
-    /**
-     * @brief Forward an iterator.
-     *
-     */
-    void
-    operator++()
-    {
-      ++current_pos_;
-      current_meta_ = node_->GetMetadata(current_pos_);
-    }
-
-    /*##############################################################################################
-     * Public getters/setters
-     *############################################################################################*/
-
-    /**
-     * @brief Check if there are any records left.
-     *
-     * function may call a scan function internally to get a next leaf node.
-     *
-     * @retval true if there are any records or next node left.
-     * @retval false if there are no records and node left.
-     */
-    bool
-    HasNext()
-    {
-      if (current_pos_ < record_count_) return true;
-      if (node_->IsRightEnd()) return false;
-
-      current_meta_ = node_->GetMetadata(record_count_ - 1);
-      *this = bztree_->Scan(GetKey(), false, node_);
-
-      return HasNext();
-    }
-
-    /**
-     * @return Key: a key of a current record
-     */
-    constexpr auto
-    GetKey() const  //
-        -> const Key &
-    {
-      return node_->GetKey(current_pos_);
-    }
-
-    /**
-     * @return Payload: a payload of a current record
-     */
-    constexpr auto
-    GetPayload() const  //
-        -> const Payload &
-    {
-      return node_->template GetPayload<Payload>(current_pos_);
-    }
-
-   private:
-    /*##############################################################################################
-     * Internal member variables
-     *############################################################################################*/
-
-    /// a pointer to BwTree to perform continuous scan
-    BzTree_t *bztree_;
-
-    /// the pointer to a node that includes partial scan results
-    Node_t *node_;
-
-    /// the number of records in this node
-    size_t record_count_;
-
-    /// the position of a current record
-    size_t current_pos_;
-
-    /// the metadata of a current record
-    Metadata current_meta_;
-  };
-
-  /*################################################################################################
-   * Public constructor/destructor
-   *##############################################################################################*/
-
-  /**
-   * @brief Construct a new BzTree object.
-   *
-   * @param gc_interval_microsec GC internal [us]
-   */
-  explicit BzTree(const size_t gc_interval_microsec = 100000) : gc_{gc_interval_microsec}
-  {
-    // create an initial root node
-    Node_t *leaf = CreateNewNode(kLeafFlag);
-    root_.store(leaf, std::memory_order_relaxed);
-
-    // start GC for nodes
-    gc_.StartGC();
-  }
-
-  /**
-   * @brief Destroy the BzTree object.
-   *
-   */
-  ~BzTree()
-  {
-    gc_.StopGC();
-    DeleteChildren(GetRoot());
-  }
-
-  BzTree(const BzTree &) = delete;
-  BzTree &operator=(const BzTree &) = delete;
-  BzTree(BzTree &&) = delete;
-  BzTree &operator=(BzTree &&) = delete;
-
-  /*################################################################################################
-   * Public read APIs
-   *##############################################################################################*/
-
-  /**
-   * @brief Read a payload of a specified key if it exists.
-   *
-   * This function returns two return codes: kSuccess and kKeyNotExist. If a return code
-   * is kSuccess, a returned pair contains a target payload. If a return code is
-   * kKeyNotExist, the value of a returned payload is undefined.
-   *
-   * @param key a target key.
-   * @return std::pair<ReturnCode, Payload>: a return code and payload pair.
-   */
-  auto
-  Read(const Key &key)
-  {
-    const auto guard = gc_.CreateEpochGuard();
-
-    const Node_t *node = SearchLeafNode(key, true);
-
-    Payload payload{};
-    const auto rc = node->Read(key, payload);
-    if (rc == NodeReturnCode::kSuccess) {
-      if constexpr (IsVariableLengthData<Payload>()) {
-        return std::make_pair(ReturnCode::kSuccess, Binary_p{payload});
-      } else {
-        return std::make_pair(ReturnCode::kSuccess, std::move(payload));
-      }
-    }
-    if constexpr (IsVariableLengthData<Payload>()) {
-      return std::make_pair(ReturnCode::kKeyNotExist, Binary_p{});
-    } else {
-      return std::make_pair(ReturnCode::kKeyNotExist, Payload{});
-    }
-  }
-
-  /**
-   * @brief Perform a range scan with specified keys.
-   *
-   * If a begin/end key is nullptr, it is treated as negative or positive infinite.
-   *
-   * @param begin_key the pointer of a begin key of a range scan.
-   * @param begin_closed a flag to indicate whether the begin side of a range is closed.
-   * @param page a page to copy target keys/payloads. This argument is used internally.
-   * @return an iterator to access target records.
-   */
-  auto
-  Scan(  //
-      const Key &begin_key,
-      const bool begin_closed = false,
-      Node_t *page = nullptr)  //
-      -> RecordIterator
-  {
-    const auto guard = gc_.CreateEpochGuard();
-
-    const Node_t *node = SearchLeafNode(begin_key, begin_closed);
-    if (page == nullptr) {
-      page = CreateNewNode(kLeafFlag);
-    }
-    page->Consolidate(node);
-
-    return RecordIterator{this, page, page->Search(begin_key, begin_closed)};
-  }
-
-  /*################################################################################################
-   * Public write APIs
-   *##############################################################################################*/
-
-  /**
-   * @brief Write (i.e., upsert) a specified kay/payload pair.
-   *
-   * If a specified key does not exist in the index, this function performs an insert
-   * operation. If a specified key has been already inserted, this function perfroms an
-   * update operation. Thus, this function always returns kSuccess as a return code.
-   *
-   * Note that if a target key/payload is binary data, it is required to specify its
-   * length in bytes.
-   *
-   * @param key a target key to be written.
-   * @param payload a target payload to be written.
-   * @param key_length the length of a target key.
-   * @param payload_length the length of a target payload.
-   * @return ReturnCode: kSuccess.
-   */
-  ReturnCode
-  Write(  //
-      const Key &key,
-      const Payload &payload,
-      const size_t key_length = sizeof(Key),
-      const size_t payload_length = sizeof(Payload))
-  {
-    const auto guard = gc_.CreateEpochGuard();
-
-    while (true) {
-      Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->Write(key, key_length, payload, payload_length);
-
-      if (rc == NodeReturnCode::kSuccess) {
-        break;
-      } else if (rc == NodeReturnCode::kNeedConsolidation) {
-        Consolidate(node, key);
-      }
-    }
-    return ReturnCode::kSuccess;
-  }
-
-  /**
-   * @brief Insert a specified kay/payload pair.
-   *
-   * This function performs a uniqueness check in its processing. If a specified key
-   * does not exist, this function insert a target payload into the index. If a
-   * specified key exists in the index, this function does nothing and returns kKeyExist
-   * as a return code.
-   *
-   * Note that if a target key/payload is binary data, it is required to specify its
-   * length in bytes.
-   *
-   * @param key a target key to be written.
-   * @param payload a target payload to be written.
-   * @param key_length the length of a target key.
-   * @param payload_length the length of a target payload.
-   * @retval.kSuccess if inserted.
-   * @retval kKeyExist if a specified key exists.
-   */
-  ReturnCode
-  Insert(  //
-      const Key &key,
-      const Payload &payload,
-      const size_t key_length = sizeof(Key),
-      const size_t payload_length = sizeof(Payload))
-  {
-    const auto guard = gc_.CreateEpochGuard();
-
-    while (true) {
-      Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->Insert(key, key_length, payload, payload_length);
-
-      if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyExist) {
-        if (rc == NodeReturnCode::kKeyExist) return ReturnCode::kKeyExist;
-        break;
-      } else if (rc == NodeReturnCode::kNeedConsolidation) {
-        Consolidate(node, key);
-      }
-    }
-    return ReturnCode::kSuccess;
-  }
-
-  /**
-   * @brief Update a target kay with a specified payload.
-   *
-   * This function performs a uniqueness check in its processing. If a specified key
-   * exist, this function update a target payload. If a specified key does not exist in
-   * the index, this function does nothing and returns kKeyNotExist as a return code.
-   *
-   * Note that if a target key/payload is binary data, it is required to specify its
-   * length in bytes.
-   *
-   * @param key a target key to be written.
-   * @param payload a target payload to be written.
-   * @param key_length the length of a target key.
-   * @param payload_length the length of a target payload.
-   * @retval kSuccess if updated.
-   * @retval kKeyNotExist if a specified key does not exist.
-   */
-  ReturnCode
-  Update(  //
-      const Key &key,
-      const Payload &payload,
-      const size_t key_length = sizeof(Key),
-      const size_t payload_length = sizeof(Payload))
-  {
-    const auto guard = gc_.CreateEpochGuard();
-
-    while (true) {
-      Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->Update(key, key_length, payload, payload_length);
-
-      if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
-        if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
-        break;
-      } else if (rc == NodeReturnCode::kNeedConsolidation) {
-        Consolidate(node, key);
-      }
-    }
-    return ReturnCode::kSuccess;
-  }
-
-  /**
-   * @brief Delete a target kay from the index.
-   *
-   * This function performs a uniqueness check in its processing. If a specified key
-   * exist, this function deletes it. If a specified key does not exist in the index,
-   * this function does nothing and returns kKeyNotExist as a return code.
-   *
-   * Note that if a target key is binary data, it is required to specify its length in
-   * bytes.
-   *
-   * @param key a target key to be written.
-   * @param key_length the length of a target key.
-   * @retval kSuccess if deleted.
-   * @retval kKeyNotExist if a specified key does not exist.
-   */
-  ReturnCode
-  Delete(  //
-      const Key &key,
-      const size_t key_length = sizeof(Key))
-  {
-    const auto guard = gc_.CreateEpochGuard();
-
-    while (true) {
-      Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->template Delete<Payload>(key, key_length);
-
-      if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
-        if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
-        break;
-      } else if (rc == NodeReturnCode::kNeedConsolidation) {
-        Consolidate(node, key);
-      }
-    }
-    return ReturnCode::kSuccess;
-  }
-
-  /*################################################################################################
-   * Public utility functions
-   *##############################################################################################*/
-
-  /**
-   * @brief Count the total number of nodes in the index.
-   *
-   * Note that this function assumes that there are no other threads in operation.
-   *
-   * @param node a node to begin counting. If nullptr is set, a root node is used.
-   * @param internal_count the number of internal nodes.
-   * @param leaf_count the number of leaf nodes.
-   * @return std::pair<size_t, size_t>: the number of internal/leaf nodes.
-   */
-  std::pair<size_t, size_t>
-  CountNodes(  //
-      Node_t *node = nullptr,
-      size_t internal_count = 0,
-      size_t leaf_count = 0)
-  {
-    if (node == nullptr) node = GetRoot();
-
-    if (!node->IsLeaf()) {
-      // delete children nodes recursively
-      for (size_t i = 0; i < node->GetSortedCount(); ++i) {
-        Node_t *child_node = node->GetChild(i);
-        std::tie(internal_count, leaf_count) = CountNodes(child_node, internal_count, leaf_count);
-      }
-      return {internal_count + 1, leaf_count};
-    }
-    return {internal_count, leaf_count + 1};
-  }
+  /// garbage collector
+  std::unique_ptr<NodeGC_t> gc_ = nullptr;
 };
 
 }  // namespace dbgroup::index::bztree
+
+#endif  // BZTREE_BZTREE_HPP

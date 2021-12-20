@@ -17,11 +17,10 @@
 #ifndef BZTREE_UTILITY_HPP
 #define BZTREE_UTILITY_HPP
 
-#include <string.h>
-
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <type_traits>
 
 #include "mwcas/utility.hpp"
@@ -51,13 +50,9 @@ struct CompareAsCString {
   constexpr bool
   operator()(const void *a, const void *b) const noexcept
   {
-    if (a == nullptr) {
-      return false;
-    } else if (b == nullptr) {
-      return true;
-    } else {
-      return strcmp(static_cast<const char *>(a), static_cast<const char *>(b)) < 0;
-    }
+    if (a == nullptr) return false;
+    if (b == nullptr) return true;
+    return strcmp(static_cast<const char *>(a), static_cast<const char *>(b)) < 0;
   }
 };
 
