@@ -126,6 +126,36 @@ ReleaseTestData(  //
 
 }  // namespace dbgroup::index::bztree
 
+struct UInt8 {
+  using Data = uint64_t;
+  using Comp = std::less<uint64_t>;
+};
+
+struct Int8 {
+  using Data = int64_t;
+  using Comp = std::less<int64_t>;
+};
+
+struct UInt4 {
+  using Data = uint32_t;
+  using Comp = std::less<uint32_t>;
+};
+
+struct Ptr {
+  using Data = uint64_t *;
+  using Comp = std::less<uint64_t *>;
+};
+
+struct Var {
+  using Data = char *;
+  using Comp = dbgroup::index::bztree::CompareAsCString;
+};
+
+struct Original {
+  using Data = MyClass;
+  using Comp = std::less<MyClass>;
+};
+
 using UInt32Comp = std::less<uint32_t>;
 using UInt64Comp = std::less<uint64_t>;
 using Int64Comp = std::less<int64_t>;

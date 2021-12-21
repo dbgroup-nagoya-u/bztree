@@ -29,30 +29,43 @@
 
 namespace dbgroup::index::bztree::test
 {
+/*##################################################################################################
+ * Global constants
+ *################################################################################################*/
+
 constexpr size_t kGCTime = 1000;
+#ifdef BZTREE_TEST_THREAD_NUM
+constexpr size_t kThreadNum = BZTREE_TEST_THREAD_NUM;
+#else
+constexpr size_t kThreadNum = 8;
+#endif
+constexpr size_t kKeyNumForTest = 8 * 8192 * kThreadNum;
+constexpr size_t kRandomSeed = 10;
 
 // use a supper template to define key-payload pair templates
-template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
+template <class KeyType, class PayloadType>
 struct KeyPayload {
   using Key = KeyType;
   using Payload = PayloadType;
-  using KeyComp = KeyComparator;
-  using PayloadComp = PayloadComparator;
 };
 
 template <class KeyPayload>
 class BzTreeFixture : public testing::Test  // NOLINT
 {
- protected:
   // extract key-payload types
-  using Key = typename KeyPayload::Key;
-  using Payload = typename KeyPayload::Payload;
-  using KeyComp = typename KeyPayload::KeyComp;
-  using PayloadComp = typename KeyPayload::PayloadComp;
+  using Key = typename KeyPayload::Key::Data;
+  using Payload = typename KeyPayload::Payload::Data;
+  using KeyComp = typename KeyPayload::Key::Comp;
+  using PayloadComp = typename KeyPayload::Payload::Comp;
 
   // define type aliases for simplicity
   using Node_t = component::Node<Key, KeyComp>;
   using BzTree_t = BzTree<Key, Payload, KeyComp>;
+
+ protected:
+  /*################################################################################################
+   * Internal constants
+   *##############################################################################################*/
 
   enum WriteType
   {
@@ -67,33 +80,6 @@ class BzTreeFixture : public testing::Test  // NOLINT
     size_t key_id;
     size_t payload_id;
   };
-
-  // constant values for testing
-  static constexpr size_t kIndexEpoch = 1;
-#ifdef BZTREE_TEST_THREAD_NUM
-  static constexpr size_t kThreadNum = BZTREE_TEST_THREAD_NUM;
-#else
-  static constexpr size_t kThreadNum = 8;
-#endif
-  static constexpr size_t kKeyNumForTest = 8192 * kThreadNum;
-  static constexpr size_t kKeyLength = kWordLength;
-  static constexpr size_t kPayloadLength = kWordLength;
-  static constexpr size_t kRandomSeed = 10;
-
-  // actual keys and payloads
-  size_t key_size_;
-  size_t pay_size_;
-  Key keys_[kKeyNumForTest];
-  Payload payloads_[kKeyNumForTest];
-
-  // a test target BzTree
-  BzTree_t bztree_ = BzTree_t{kGCTime};
-
-  std::uniform_int_distribution<size_t> id_dist_{0, kKeyNumForTest - 2};
-
-  std::shared_mutex main_lock_;
-
-  std::shared_mutex worker_lock_;
 
   /*################################################################################################
    * Setup/Teardown
@@ -318,20 +304,42 @@ class BzTreeFixture : public testing::Test  // NOLINT
       VerifyRead(id, id, true);
     }
   }
+
+  /*################################################################################################
+   * Internal member variables
+   *##############################################################################################*/
+
+  // actual keys and payloads
+  size_t key_size_;
+  size_t pay_size_;
+  Key keys_[kKeyNumForTest];
+  Payload payloads_[kKeyNumForTest];
+
+  // a test target BzTree
+  BzTree_t bztree_ = BzTree_t{kGCTime};
+
+  std::uniform_int_distribution<size_t> id_dist_{0, kKeyNumForTest - 2};
+
+  std::shared_mutex main_lock_;
+
+  std::shared_mutex worker_lock_;
 };
 
 /*##################################################################################################
  * Preparation for typed testing
  *################################################################################################*/
 
-using KeyPayloadPairs = ::testing::Types<KeyPayload<uint64_t, uint64_t, UInt64Comp, UInt64Comp>,
-                                         KeyPayload<char *, uint64_t, CStrComp, UInt64Comp>,
-                                         KeyPayload<uint64_t, char *, UInt64Comp, CStrComp>,
-                                         KeyPayload<char *, char *, CStrComp, CStrComp>,
-                                         KeyPayload<uint32_t, uint64_t, UInt32Comp, UInt64Comp>,
-                                         KeyPayload<uint64_t, uint64_t *, UInt64Comp, PtrComp>,
-                                         KeyPayload<uint64_t, MyClass, UInt64Comp, MyClassComp>,
-                                         KeyPayload<uint64_t, int64_t, UInt64Comp, Int64Comp>>;
+using KeyPayloadPairs = ::testing::Types<  //
+    KeyPayload<UInt8, UInt8>,              // fixed and same alignment
+    KeyPayload<Var, UInt8>,                // variable-fixed
+    KeyPayload<UInt8, Var>,                // fixed-variable
+    KeyPayload<Var, Var>,                  // variable-variable
+    KeyPayload<UInt4, UInt8>,              // fixed but different alignment (key < payload)
+    KeyPayload<UInt8, UInt4>,              // fixed but different alignment (key > payload)
+    KeyPayload<UInt8, Ptr>,                // pointer payload
+    KeyPayload<UInt8, Original>,           // original class payload
+    KeyPayload<UInt8, Int8>                // payload that cannot use CAS
+    >;
 TYPED_TEST_SUITE(BzTreeFixture, KeyPayloadPairs);
 
 /*##################################################################################################

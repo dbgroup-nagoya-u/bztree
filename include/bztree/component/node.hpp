@@ -1374,9 +1374,17 @@ class alignas(kMaxAlignment) Node
       const size_t offset)  //
       -> size_t
   {
+    size_t key_len{};
+    size_t pay_len{};
+    size_t rec_len{};
+
     const auto key = orig_node->GetKey(orig_meta);
-    const auto key_length = orig_meta.GetKeyLength();
-    const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Node *>(key_length, sizeof(Node *));
+    if constexpr (IsVariableLengthData<Key>()) {
+      const auto key_length = orig_meta.GetKeyLength();
+      std::tie(key_len, pay_len, rec_len) = AlignRecord<Key, Node *>(key_length, sizeof(Node *));
+    } else {
+      std::tie(key_len, pay_len, rec_len) = AlignRecord<Key, Node *>(sizeof(Key), sizeof(Node *));
+    }
 
     auto tmp_offset = SetPayload<const Node *>(offset, child_node, pay_len);
     tmp_offset = SetKey(tmp_offset, key, key_len);
