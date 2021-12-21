@@ -126,6 +126,10 @@ ReleaseTestData(  //
 
 }  // namespace dbgroup::index::bztree
 
+/*##################################################################################################
+ * Type definitions for templated tests
+ *################################################################################################*/
+
 struct UInt8 {
   using Data = uint64_t;
   using Comp = std::less<uint64_t>;
@@ -155,10 +159,3 @@ struct Original {
   using Data = MyClass;
   using Comp = std::less<MyClass>;
 };
-
-using UInt32Comp = std::less<uint32_t>;
-using UInt64Comp = std::less<uint64_t>;
-using Int64Comp = std::less<int64_t>;
-using CStrComp = dbgroup::index::bztree::CompareAsCString;
-using PtrComp = std::less<uint64_t *>;
-using MyClassComp = std::less<MyClass>;

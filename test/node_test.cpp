@@ -36,22 +36,20 @@ constexpr bool kExpectFailed = false;
 constexpr bool kExpectKeyExist = true;
 constexpr bool kExpectKeyNotExist = false;
 
-template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
+template <class KeyType, class PayloadType>
 struct KeyPayload {
   using Key = KeyType;
   using Payload = PayloadType;
-  using KeyComp = KeyComparator;
-  using PayloadComp = PayloadComparator;
 };
 
 template <class KeyPayload>
 class NodeFixture : public testing::Test  // NOLINT
 {
   // extract key-payload types
-  using Key = typename KeyPayload::Key;
-  using Payload = typename KeyPayload::Payload;
-  using KeyComp = typename KeyPayload::KeyComp;
-  using PayloadComp = typename KeyPayload::PayloadComp;
+  using Key = typename KeyPayload::Key::Data;
+  using Payload = typename KeyPayload::Payload::Data;
+  using KeyComp = typename KeyPayload::Key::Comp;
+  using PayloadComp = typename KeyPayload::Payload::Comp;
 
   // define type aliases for simplicity
   using Node_t = Node<Key, KeyComp>;
@@ -380,14 +378,15 @@ class NodeFixture : public testing::Test  // NOLINT
  *################################################################################################*/
 
 using KeyPayloadPairs = ::testing::Types<  //
-    KeyPayload<uint64_t, uint64_t, UInt64Comp, UInt64Comp>,
-    KeyPayload<char *, uint64_t, CStrComp, UInt64Comp>,
-    KeyPayload<uint64_t, char *, UInt64Comp, CStrComp>,
-    KeyPayload<char *, char *, CStrComp, CStrComp>,
-    KeyPayload<uint32_t, uint64_t, UInt32Comp, UInt64Comp>,
-    KeyPayload<uint64_t, uint64_t *, UInt64Comp, PtrComp>,
-    KeyPayload<uint64_t, MyClass, UInt64Comp, MyClassComp>,
-    KeyPayload<uint64_t, int64_t, UInt64Comp, Int64Comp>  //
+    KeyPayload<UInt8, UInt8>,              // fixed and same alignment
+    KeyPayload<Var, UInt8>,                // variable-fixed
+    KeyPayload<UInt8, Var>,                // fixed-variable
+    KeyPayload<Var, Var>,                  // variable-variable
+    KeyPayload<UInt4, UInt8>,              // fixed but different alignment (key < payload)
+    KeyPayload<UInt8, UInt4>,              // fixed but different alignment (key > payload)
+    KeyPayload<UInt8, Ptr>,                // pointer payload
+    KeyPayload<UInt8, Original>,           // original class payload
+    KeyPayload<UInt8, Int8>                // payload that cannot use CAS
     >;
 TYPED_TEST_SUITE(NodeFixture, KeyPayloadPairs);
 
