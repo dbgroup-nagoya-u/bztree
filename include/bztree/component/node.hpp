@@ -1398,7 +1398,7 @@ class alignas(kMaxAlignment) Node
    *
    * @tparam Payload a class of payload.
    * @param orig_node an original node that has a target record.
-   * @param target_meta the corresponding metadata of a target record.
+   * @param meta the corresponding metadata of a target record.
    * @param rec_count the current number of records in this node.
    * @param offset the current offset of this node.
    * @return the updated offset value.
@@ -1407,28 +1407,42 @@ class alignas(kMaxAlignment) Node
   auto
   CopyRecordFrom(  //
       const Node *orig_node,
-      const Metadata target_meta,
+      const Metadata meta,
       const size_t rec_count,
       size_t offset)  //
       -> size_t
   {
-    if constexpr (IsVariableLengthData<Key>() && !IsVariableLengthData<Payload>()) {
-      // record's offset is different its aligned position
-      const auto rec_len = target_meta.GetKeyLength() + sizeof(Payload);
-      auto tmp_offset = offset - rec_len;
-      offset -= target_meta.GetTotalLength();
-      memcpy(ShiftAddr(this, tmp_offset), orig_node->GetKeyAddr(target_meta), rec_len);
+    if constexpr (CanCASUpdate<Payload>()) {
+      // copy a payload with MwCAS read protection
+      auto tmp_offset = offset - sizeof(Payload);
+      auto payload = MwCASDescriptor::Read<Payload>(orig_node->GetPayloadAddr(meta));  // NOLINT
+      memcpy(ShiftAddr(this, tmp_offset), &payload, sizeof(Payload));
 
-      // set new metadata
-      meta_array_[rec_count] = target_meta.UpdateOffset(tmp_offset);
+      // copy a correspondng key
+      const auto key_len = meta.GetKeyLength();
+      tmp_offset -= key_len;
+      memcpy(ShiftAddr(this, tmp_offset), orig_node->GetKeyAddr(meta), key_len);
+
+      // set new metadata and update current offset
+      meta_array_[rec_count] = meta.UpdateOffset(tmp_offset);
+      offset -= meta.GetTotalLength();
+    } else if constexpr (IsVariableLengthData<Key>() && !IsVariableLengthData<Payload>()) {
+      // record's offset is different its aligned position
+      const auto rec_len = meta.GetKeyLength() + sizeof(Payload);
+      auto tmp_offset = offset - rec_len;
+      memcpy(ShiftAddr(this, tmp_offset), orig_node->GetKeyAddr(meta), rec_len);
+
+      // set new metadata and update current offset
+      meta_array_[rec_count] = meta.UpdateOffset(tmp_offset);
+      offset -= meta.GetTotalLength();
     } else {
       // copy a record from the given node
-      const auto rec_len = target_meta.GetTotalLength();
+      const auto rec_len = meta.GetTotalLength();
       offset -= rec_len;
-      memcpy(ShiftAddr(this, offset), orig_node->GetKeyAddr(target_meta), rec_len);
+      memcpy(ShiftAddr(this, offset), orig_node->GetKeyAddr(meta), rec_len);
 
       // set new metadata
-      meta_array_[rec_count] = target_meta.UpdateOffset(offset);
+      meta_array_[rec_count] = meta.UpdateOffset(offset);
     }
 
     return offset;
