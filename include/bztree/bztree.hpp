@@ -572,7 +572,6 @@ class BzTree
    *
    * @param node a target leaf node.
    * @param key a target key.
-   * @param key_length the length of a target key.
    */
   void
   Consolidate(  //
@@ -601,14 +600,12 @@ class BzTree
   }
 
   /**
-   * @brief Split a target leaf node.
+   * @brief Split a target node.
    *
    * Note that this function may call a split function for internal nodes if needed.
    *
-   * @param node a target leaf node.
+   * @param node a target node.
    * @param key a target key.
-   * @param metadata an array of consolidated metadata.
-   * @param rec_count the number of metadata.
    */
   template <class T>
   void
@@ -621,15 +618,18 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     NodeStack trace;
-    Node_t *old_parent{};
+    Node_t *old_parent = nullptr;
     size_t target_pos{};
+    bool root_split = false;
     while (true) {
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(key, node);
+      if (trace.size() <= 1) {
+        root_split = true;
+        break;
+      }
       target_pos = trace.back().second;
       trace.pop_back();
-
-      if (trace.empty()) break;
 
       // pre-freezing of SMO targets
       old_parent = trace.back().first;
@@ -641,48 +641,41 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create split nodes and its parent node
-    Node_t *left_node = CreateNewNode<T>();
-    Node_t *right_node = CreateNewNode<T>();
-    node->template Split<T>(left_node, right_node);
+    Node_t *l_node = CreateNewNode<T>();
+    Node_t *r_node = CreateNewNode<T>();
+    node->template Split<T>(l_node, r_node);
+
+    // create a new root/parent node
+    bool recurse_split = false;
     Node_t *new_parent = CreateNewNode<Node_t *>();
-
-    if (trace.empty()) {
-      // create a new root node
-      new_parent->InitAsRoot(left_node, right_node);
-      root_.store(new_parent, std::memory_order_relaxed);
+    if (root_split) {
+      new_parent->InitAsRoot(l_node, r_node);
     } else {
-      // create a new parent node
-      new_parent->InitAsSplitParent(old_parent, left_node, right_node, target_pos);
+      recurse_split = new_parent->InitAsSplitParent(old_parent, l_node, r_node, target_pos);
+    }
 
-      // check the parent node has sufficent capacity
-      const auto p_stat = new_parent->GetStatusWord();
-      const auto parent_need_split = p_stat.NeedSplit();
-      if (parent_need_split) {
-        new_parent->Freeze();  // pre-freeze for recursive splitting
-      }
-
-      // install new nodes to the index
-      InstallNewNode(trace, new_parent, key, old_parent);
-
-      // split the new parent node if needed
-      if (parent_need_split) {
-        Split<Node_t *>(new_parent, key);
-      }
-
-      // register frozen nodes with garbage collection
+    // install new nodes to the index and register garbages
+    InstallNewNode(trace, new_parent, key, old_parent);
+    gc_->AddGarbage(node);
+    if (!root_split) {
       gc_->AddGarbage(old_parent);
     }
-    gc_->AddGarbage(node);
+
+    // split the new parent node if needed
+    if (recurse_split) {
+      Split<Node_t *>(new_parent, key);
+    }
   }
 
   /**
-   * @brief Merge a target internal node.
+   * @brief Perform left-merge for a target node.
    *
    * Note that this function may call itself recursively if needed.
    *
-   * @param node a target internal node.
+   * @param right_node a target node.
    * @param key a target key.
-   * @param key_length the length of a target key.
+   * @retval true if merging succeeds
+   * @retval false otherwise
    */
   template <class T>
   auto
@@ -734,32 +727,21 @@ class BzTree
     Node_t *merged_node = CreateNewNode<T>();
     merged_node->template Merge<T>(left_node, right_node);
     Node_t *new_parent = CreateNewNode<Node_t *>();
-    new_parent->InitAsMergeParent(old_parent, merged_node, target_pos - 1);
-
-    // check the parent node should be merged
-    bool parent_need_merge = false;
-    if (trace.size() > 1) {
-      // if the parent is not a root, try merging
-      parent_need_merge = new_parent->GetStatusWord().NeedMerge();
-      if (parent_need_merge) {
-        new_parent->Freeze();  // pre-freeze for recursive merging
-      }
-    } else if (new_parent->GetSortedCount() == 1) {
+    auto recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos - 1);
+    if (trace.size() <= 1 && new_parent->GetSortedCount() == 1) {
       // the new root node has only one child, use the merged child as a new root
       gc_->AddGarbage(new_parent);
       new_parent = merged_node;
     }
 
-    // install new nodes
+    // install new nodes to the index and register garbages
     InstallNewNode(trace, new_parent, key, old_parent);
-
-    // register frozen nodes with garbage collection
     gc_->AddGarbage(old_parent);
     gc_->AddGarbage(left_node);
     gc_->AddGarbage(right_node);
 
     // merge the new parent node if needed
-    if (parent_need_merge && !Merge<Node_t *>(new_parent, key)) {
+    if (recurse_merge && !Merge<Node_t *>(new_parent, key)) {
       // if the parent node cannot be merged, unfreeze it
       new_parent->Unfreeze();
     }
@@ -784,42 +766,29 @@ class BzTree
       const Key &key,
       const Node_t *target_node)
   {
+    if (trace.size() <= 1) {
+      // root swapping
+      root_.store(new_node, std::memory_order_relaxed);
+      return;
+    }
+
     while (true) {
-      MwCASDescriptor desc;
-      if (trace.size() > 1) {
-        /*------------------------------------------------------------------------------------------
-         * Swapping a new internal node
-         *----------------------------------------------------------------------------------------*/
+      // prepare installing nodes
+      auto [old_node, target_pos] = trace.back();
+      trace.pop_back();
+      Node_t *parent = trace.back().first;
 
-        // prepare installing nodes
-        auto [old_node, target_pos] = trace.back();
-        if (old_node != target_node) return;
-        trace.pop_back();
-        Node_t *parent = trace.back().first;
-
-        // check wether related nodes are frozen
-        const auto parent_status = parent->GetStatusWordProtected();
-        if (parent_status.IsFrozen()) {
-          trace = TraceTargetNode(key, target_node);
-          continue;
-        }
-
-        // install a new internal node by PMwCAS
+      // check wether related nodes are frozen
+      const auto parent_status = parent->GetStatusWordProtected();
+      if (!parent_status.IsFrozen()) {
+        // install a new internal node by MwCAS
+        MwCASDescriptor desc{};
         parent->SetStatusForMwCAS(desc, parent_status, parent_status);
         parent->SetChildForMwCAS(desc, target_pos, old_node, new_node);
-      } else {
-        /*------------------------------------------------------------------------------------------
-         * Swapping a new root node
-         *----------------------------------------------------------------------------------------*/
-
-        Node_t *old_node = trace.back().first;
-        if (old_node != target_node) return;
-        trace.pop_back();
-        desc.AddMwCASTarget(&root_, old_node, new_node);
+        if (desc.MwCAS()) return;
       }
 
-      if (desc.MwCAS()) return;
-
+      // traverse again to get a modified parent
       trace = TraceTargetNode(key, target_node);
     }
   }

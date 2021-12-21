@@ -917,13 +917,16 @@ class alignas(kMaxAlignment) Node
    * @param l_child a split left child node.
    * @param r_child a split right child node.
    * @param l_pos the position of a left child node.
+   * @retval true if this node needs recursive splitting
+   * @retval false otherwise
    */
-  void
+  auto
   InitAsSplitParent(  //
       const Node *old_node,
       const Node *l_child,
       const Node *r_child,
-      const size_t l_pos)
+      const size_t l_pos)  //
+      -> bool
   {
     // set a right-end flag if needed
     is_right_end_ = old_node->is_right_end_;
@@ -945,7 +948,13 @@ class alignas(kMaxAlignment) Node
 
     // set an updated header
     sorted_count_ = rec_count + 1;
-    SetStatus(StatusWord{sorted_count_, kPageSize - offset});
+    StatusWord stat{sorted_count_, kPageSize - offset};
+    if (stat.NeedSplit()) {
+      SetStatus(stat.Freeze());
+      return true;
+    }
+    SetStatus(stat);
+    return false;
   }
 
   /**
@@ -980,6 +989,8 @@ class alignas(kMaxAlignment) Node
    * @tparam Payload a class of payload.
    * @param l_node a left node to be merged.
    * @param r_node a right node to be merged.
+   * @retval true if this node needs recursive merging
+   * @retval false otherwise
    */
   template <class Payload>
   void
@@ -1019,11 +1030,12 @@ class alignas(kMaxAlignment) Node
    * @param merged_child a merged child node.
    * @param position the position of a merged child node.
    */
-  void
+  auto
   InitAsMergeParent(  //
       const Node *old_node,
       const Node *merged_child,
-      const size_t position)
+      const size_t position)  //
+      -> bool
   {
     // set a right-end flag
     is_right_end_ = old_node->is_right_end_;
@@ -1043,7 +1055,13 @@ class alignas(kMaxAlignment) Node
 
     // set an updated header
     sorted_count_ = rec_count - 1;
-    SetStatus(StatusWord{sorted_count_, kPageSize - offset});
+    StatusWord stat{sorted_count_, kPageSize - offset};
+    if (stat.NeedMerge()) {
+      SetStatus(stat.Freeze());
+      return true;
+    }
+    SetStatus(stat);
+    return false;
   }
 
  private:
