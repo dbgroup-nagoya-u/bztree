@@ -200,7 +200,7 @@ class BzTree
     gc_->StartGC();
 
     // create an initial root node
-    Node_t *leaf = CreateNewNode(kLeafFlag);
+    Node_t *leaf = CreateNewNode<Payload>();
     root_.store(leaf, std::memory_order_relaxed);
   }
 
@@ -280,7 +280,7 @@ class BzTree
 
     const Node_t *node = SearchLeafNode(begin_key, begin_closed);
     if (page == nullptr) {
-      page = CreateNewNode(kLeafFlag);
+      page = CreateNewNode<Payload>();
     }
     page->Consolidate(node);
 
@@ -472,20 +472,17 @@ class BzTree
    * Internal utility functions
    *##############################################################################################*/
 
-  auto
-  CreateNewNode(const bool is_leaf)  //
+  template <class T>
+  [[nodiscard]] auto
+  CreateNewNode()  //
       -> Node_t *
   {
-    constexpr size_t kPayloadBlock = kPageSize - component::GetInitialOffset<Key, Payload>();
-    constexpr size_t kNodeBlock = kPageSize - component::GetInitialOffset<Key, Node_t *>();
+    constexpr size_t kBlockSize = kPageSize - component::GetInitialOffset<Key, T>();
+    constexpr bool kIsLeaf = std::is_same_v<T, Payload>;
 
     auto *page = gc_->template GetPageIfPossible<Node_t>();
-    if (is_leaf) {
-      return (page == nullptr) ? new Node_t{kLeafFlag, kPayloadBlock}
-                               : new (page) Node_t{kLeafFlag, kPayloadBlock};
-    }
-    return (page == nullptr) ? new Node_t{!kLeafFlag, kNodeBlock}
-                             : new (page) Node_t{!kLeafFlag, kNodeBlock};
+    return (page == nullptr) ? new Node_t{kIsLeaf, kBlockSize}
+                             : new (page) Node_t{kIsLeaf, kBlockSize};
   }
 
   /**
@@ -586,15 +583,15 @@ class BzTree
     if (node->Freeze() != NodeRC::kSuccess) return;
 
     // create a consolidated node
-    Node_t *consol_node = CreateNewNode(kLeafFlag);
+    Node_t *consol_node = CreateNewNode<Payload>();
     consol_node->template Consolidate<Payload>(node);
 
     // check whether splitting/merging is needed
     const auto stat = consol_node->GetStatusWord();
     if (stat.NeedSplit()) {
       // invoke splitting
-      Split(consol_node, key);
-    } else if (!stat.NeedMerge() || !Merge(consol_node, key)) {  // try merging
+      Split<Payload>(consol_node, key);
+    } else if (!stat.NeedMerge() || !Merge<Payload>(consol_node, key)) {  // try merging
       // install the consolidated node
       auto trace = TraceTargetNode(key, node);
       InstallNewNode(trace, consol_node, key, node);
@@ -613,6 +610,7 @@ class BzTree
    * @param metadata an array of consolidated metadata.
    * @param rec_count the number of metadata.
    */
+  template <class T>
   void
   Split(  //
       Node_t *node,
@@ -643,15 +641,11 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create split nodes and its parent node
-    const auto is_leaf = node->IsLeaf();
-    Node_t *left_node = CreateNewNode(is_leaf);
-    Node_t *right_node = CreateNewNode(is_leaf);
-    if (is_leaf) {
-      node->template Split<Payload>(left_node, right_node);
-    } else {
-      node->template Split<Node_t *>(left_node, right_node);
-    }
-    Node_t *new_parent = CreateNewNode(!kLeafFlag);
+    Node_t *left_node = CreateNewNode<T>();
+    Node_t *right_node = CreateNewNode<T>();
+    node->template Split<T>(left_node, right_node);
+    Node_t *new_parent = CreateNewNode<Node_t *>();
+
     if (trace.empty()) {
       // create a new root node
       new_parent->InitAsRoot(left_node, right_node);
@@ -672,7 +666,7 @@ class BzTree
 
       // split the new parent node if needed
       if (parent_need_split) {
-        Split(new_parent, key);
+        Split<Node_t *>(new_parent, key);
       }
 
       // register frozen nodes with garbage collection
@@ -690,6 +684,7 @@ class BzTree
    * @param key a target key.
    * @param key_length the length of a target key.
    */
+  template <class T>
   auto
   Merge(  //
       Node_t *right_node,
@@ -736,15 +731,9 @@ class BzTree
      *--------------------------------------------------------------------------------------------*/
 
     // create new nodes
-    const auto is_leaf = right_node->IsLeaf();
-    Node_t *merged_node = CreateNewNode(is_leaf);
-    if (is_leaf) {
-      merged_node->template Consolidate<Payload>(left_node);
-      merged_node->template Merge<Payload>(merged_node, right_node);
-    } else {
-      merged_node->template Merge<Node_t *>(left_node, right_node);
-    }
-    Node_t *new_parent = CreateNewNode(!kLeafFlag);
+    Node_t *merged_node = CreateNewNode<T>();
+    merged_node->template Merge<T>(left_node, right_node);
+    Node_t *new_parent = CreateNewNode<Node_t *>();
     new_parent->InitAsMergeParent(old_parent, merged_node, target_pos - 1);
 
     // check the parent node should be merged
@@ -770,7 +759,7 @@ class BzTree
     gc_->AddGarbage(right_node);
 
     // merge the new parent node if needed
-    if (parent_need_merge && !Merge(new_parent, key)) {
+    if (parent_need_merge && !Merge<Node_t *>(new_parent, key)) {
       // if the parent node cannot be merged, unfreeze it
       new_parent->Unfreeze();
     }

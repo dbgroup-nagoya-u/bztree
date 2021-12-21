@@ -987,19 +987,24 @@ class alignas(kMaxAlignment) Node
       const Node *l_node,
       const Node *r_node)
   {
-    // set a right-end flag
-    is_right_end_ = r_node->is_right_end_;
-
     // copy records in left/right nodes
-    const auto l_count = l_node->sorted_count_;
+    size_t l_count{};
     auto offset = GetInitialOffset<Key, Payload>();
     if constexpr (std::is_same_v<Payload, Node *>) {
+      // copy records from a merged left node
+      l_count = l_node->sorted_count_;
       offset = CopyRecordsFrom<Payload>(l_node, 0, l_count, 0, offset);
-    } else {  // when merging a leaf node, only update its offset
+    } else {
+      // perform consolidation to sort and copy records in a merge left node
+      Consolidate<Payload>(l_node);
+      l_count = sorted_count_;
       offset = (l_count > 0) ? meta_array_[l_count - 1].GetOffset() : offset;
     }
     const auto r_count = r_node->sorted_count_;
     offset = CopyRecordsFrom<Payload>(r_node, 0, r_count, l_count, offset);
+
+    // set a right-end flag
+    is_right_end_ = r_node->is_right_end_;
 
     // create a merged node
     const auto rec_count = l_count + r_count;
