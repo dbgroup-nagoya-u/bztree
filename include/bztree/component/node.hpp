@@ -878,35 +878,33 @@ class alignas(kMaxAlignment) Node
   }
 
   /**
-   * @brief Split a given node into two nodes.
+   * @brief Split this node into two nodes.
    *
    * @tparam Payload a class of payload.
-   * @param node an original node.
    * @param l_node a split left node.
    * @param r_node a split right node.
    */
   template <class Payload>
-  static void
+  void
   Split(  //
-      const Node *node,
       Node *l_node,
-      Node *r_node)
+      Node *r_node) const
   {
     // set a right-end flag
-    r_node->is_right_end_ = node->is_right_end_;
+    r_node->is_right_end_ = is_right_end_;
     l_node->is_right_end_ = false;
 
     // copy records to a left node
-    const auto rec_count = node->sorted_count_;
+    const auto rec_count = sorted_count_;
     const size_t l_count = rec_count / 2;
     auto l_offset = GetInitialOffset<Key, Payload>();
-    l_offset = l_node->CopyRecordsFrom<Payload>(node, 0, l_count, 0, l_offset);
+    l_offset = l_node->CopyRecordsFrom<Payload>(this, 0, l_count, 0, l_offset);
     l_node->sorted_count_ = l_count;
     l_node->SetStatus(StatusWord{l_count, kPageSize - l_offset});
 
     // copy records to a right node
     auto r_offset = GetInitialOffset<Key, Payload>();
-    r_offset = r_node->CopyRecordsFrom<Payload>(node, l_count, rec_count, 0, r_offset);
+    r_offset = r_node->CopyRecordsFrom<Payload>(this, l_count, rec_count, 0, r_offset);
     const auto r_count = rec_count - l_count;
     r_node->sorted_count_ = r_count;
     r_node->SetStatus(StatusWord{r_count, kPageSize - r_offset});
@@ -977,38 +975,36 @@ class alignas(kMaxAlignment) Node
   }
 
   /**
-   * @brief Merge given nodes into one node.
+   * @brief Merge given nodes into this node.
    *
    * @tparam Payload a class of payload.
    * @param l_node a left node to be merged.
    * @param r_node a right node to be merged.
-   * @param merged_node a merged node.
    */
   template <class Payload>
-  static void
+  void
   Merge(  //
       const Node *l_node,
-      const Node *r_node,
-      Node *merged_node)
+      const Node *r_node)
   {
     // set a right-end flag
-    merged_node->is_right_end_ = r_node->is_right_end_;
+    is_right_end_ = r_node->is_right_end_;
 
     // copy records in left/right nodes
     const auto l_count = l_node->sorted_count_;
     auto offset = GetInitialOffset<Key, Payload>();
     if constexpr (std::is_same_v<Payload, Node *>) {
-      offset = merged_node->CopyRecordsFrom<Payload>(l_node, 0, l_count, 0, offset);
+      offset = CopyRecordsFrom<Payload>(l_node, 0, l_count, 0, offset);
     } else {  // when merging a leaf node, only update its offset
-      offset = (l_count > 0) ? merged_node->meta_array_[l_count - 1].GetOffset() : offset;
+      offset = (l_count > 0) ? meta_array_[l_count - 1].GetOffset() : offset;
     }
     const auto r_count = r_node->sorted_count_;
-    offset = merged_node->CopyRecordsFrom<Payload>(r_node, 0, r_count, l_count, offset);
+    offset = CopyRecordsFrom<Payload>(r_node, 0, r_count, l_count, offset);
 
     // create a merged node
     const auto rec_count = l_count + r_count;
-    merged_node->sorted_count_ = rec_count;
-    merged_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
+    sorted_count_ = rec_count;
+    SetStatus(StatusWord{rec_count, kPageSize - offset});
   }
 
   /**

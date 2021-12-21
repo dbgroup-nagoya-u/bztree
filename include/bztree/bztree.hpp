@@ -647,9 +647,9 @@ class BzTree
     Node_t *left_node = CreateNewNode(is_leaf);
     Node_t *right_node = CreateNewNode(is_leaf);
     if (is_leaf) {
-      Node_t::template Split<Payload>(node, left_node, right_node);
+      node->template Split<Payload>(left_node, right_node);
     } else {
-      Node_t::template Split<Node_t *>(node, left_node, right_node);
+      node->template Split<Node_t *>(left_node, right_node);
     }
     Node_t *new_parent = CreateNewNode(!kLeafFlag);
     if (trace.empty()) {
@@ -740,9 +740,9 @@ class BzTree
     Node_t *merged_node = CreateNewNode(is_leaf);
     if (is_leaf) {
       merged_node->template Consolidate<Payload>(left_node);
-      Node_t::template Merge<Payload>(merged_node, right_node, merged_node);
+      merged_node->template Merge<Payload>(merged_node, right_node);
     } else {
-      Node_t::template Merge<Node_t *>(left_node, right_node, merged_node);
+      merged_node->template Merge<Node_t *>(left_node, right_node);
     }
     Node_t *new_parent = CreateNewNode(!kLeafFlag);
     new_parent->InitAsMergeParent(old_parent, merged_node, target_pos - 1);

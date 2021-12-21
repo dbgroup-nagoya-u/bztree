@@ -254,7 +254,7 @@ class NodeFixture : public testing::Test  // NOLINT
 
     auto *left_node = new Node_t{kLeafFlag, kPayloadBlock};
     auto *right_node = new Node_t{kLeafFlag, kPayloadBlock};
-    Node_t::template Split<Payload>(node_.get(), left_node, right_node);
+    node_->template Split<Payload>(left_node, right_node);
 
     node_.reset(left_node);
     for (size_t i = 0; i < kMaxUnsortedRecNum; ++i) {
@@ -274,9 +274,9 @@ class NodeFixture : public testing::Test  // NOLINT
 
     auto *left_node = new Node_t{kLeafFlag, kPayloadBlock};
     auto *right_node = new Node_t{kLeafFlag, kPayloadBlock};
-    Node_t::template Split<Payload>(node_.get(), left_node, right_node);
+    node_->template Split<Payload>(left_node, right_node);
     Node_t *merged_node = left_node;
-    Node_t::template Merge<Payload>(left_node, right_node, merged_node);
+    merged_node->template Merge<Payload>(left_node, right_node);
 
     node_.reset(merged_node);
     for (size_t i = 0; i < 2 * kMaxUnsortedRecNum; ++i) {
@@ -293,7 +293,7 @@ class NodeFixture : public testing::Test  // NOLINT
 
     auto *left_node = new Node_t{kLeafFlag, kPayloadBlock};
     auto *right_node = new Node_t{kLeafFlag, kPayloadBlock};
-    Node_t::template Split<Payload>(node_.get(), left_node, right_node);
+    node_->template Split<Payload>(left_node, right_node);
     auto *root = new Node_t{!kLeafFlag, kNodeBlock};
     root->InitAsRoot(left_node, right_node);
 
@@ -312,12 +312,12 @@ class NodeFixture : public testing::Test  // NOLINT
 
     auto *l_node = new Node_t{kLeafFlag, kPayloadBlock};
     auto *r_node = new Node_t{kLeafFlag, kPayloadBlock};
-    Node_t::template Split<Payload>(node_.get(), l_node, r_node);
+    node_->template Split<Payload>(l_node, r_node);
     auto *old_parent = new Node_t{!kLeafFlag, kNodeBlock};
     old_parent->InitAsRoot(l_node, r_node);
     auto *r_l_node = new Node_t{kLeafFlag, kPayloadBlock};
     auto *r_r_node = new Node_t{kLeafFlag, kPayloadBlock};
-    Node_t::template Split<Payload>(r_node, r_l_node, r_r_node);
+    r_node->template Split<Payload>(r_l_node, r_r_node);
     auto *new_parent = new Node_t{!kLeafFlag, kNodeBlock};
     new_parent->InitAsSplitParent(old_parent, r_node, r_r_node, 1);
 
@@ -340,11 +340,11 @@ class NodeFixture : public testing::Test  // NOLINT
 
     auto *l_node = new Node_t{kLeafFlag, kPayloadBlock};
     auto *r_node = new Node_t{kLeafFlag, kPayloadBlock};
-    Node_t::template Split<Payload>(node_.get(), l_node, r_node);
+    node_->template Split<Payload>(l_node, r_node);
     auto *old_parent = new Node_t{!kLeafFlag, kNodeBlock};
     old_parent->InitAsRoot(l_node, r_node);
     Node_t *merged_node = l_node;
-    Node_t::template Merge<Payload>(l_node, r_node, merged_node);
+    merged_node->template Merge<Payload>(l_node, r_node);
     auto *new_parent = new Node_t{!kLeafFlag, kNodeBlock};
     new_parent->InitAsMergeParent(old_parent, merged_node, 0);
 
