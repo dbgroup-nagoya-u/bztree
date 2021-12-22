@@ -202,7 +202,7 @@ using KeyPayloadPairs = ::testing::Types<  //
     KeyPayload<Var, Var>,                  // variable-variable
     KeyPayload<UInt4, UInt8>,              // fixed but different alignment (key < payload)
     KeyPayload<UInt8, UInt4>,              // fixed but different alignment (key > payload)
-    KeyPayload<UInt8, Ptr>,                // pointer payload
+    KeyPayload<Ptr, Ptr>,                  // pointer key/payload
     KeyPayload<UInt8, Original>,           // original class payload
     KeyPayload<UInt8, Int8>                // payload that cannot use CAS
     >;

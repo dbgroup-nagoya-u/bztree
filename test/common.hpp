@@ -146,8 +146,16 @@ struct UInt4 {
 };
 
 struct Ptr {
+  struct PtrComp {
+    constexpr bool
+    operator()(const uint64_t *a, const uint64_t *b) const noexcept
+    {
+      return *a < *b;
+    }
+  };
+
   using Data = uint64_t *;
-  using Comp = std::less<uint64_t *>;
+  using Comp = PtrComp;
 };
 
 struct Var {
