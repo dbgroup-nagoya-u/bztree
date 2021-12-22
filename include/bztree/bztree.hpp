@@ -196,11 +196,12 @@ class BzTree
    *
    * @param gc_interval_microsec GC internal [us]
    */
-  explicit BzTree(const size_t gc_interval_microsec = 100000)
+  explicit BzTree(  //
+      const size_t gc_interval_microsec = 100000,
+      const size_t gc_thread_num = 1)
   {
-    // start GC for nodes
-    gc_ = std::make_unique<NodeGC_t>(gc_interval_microsec);
-    gc_->StartGC();
+    // create a GC instance for deleted nodes
+    gc_ = std::make_unique<NodeGC_t>(gc_interval_microsec, gc_thread_num, true);
 
     // create an initial root node
     Node_t *leaf = CreateNewNode<Payload>();
