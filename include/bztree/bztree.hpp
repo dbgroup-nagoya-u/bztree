@@ -92,7 +92,7 @@ class BzTree
      * Public destructors
      *############################################################################################*/
 
-    ~RecordIterator() { delete node_; }
+    ~RecordIterator() = default;
 
     /*##############################################################################################
      * Public operators for iterators
@@ -137,30 +137,33 @@ class BzTree
       if (current_pos_ < record_count_) return true;
       if (node_->IsRightEnd()) return false;
 
+      // keep the end key to use as the next begin key
       current_meta_ = node_->GetMetadata(record_count_ - 1);
-      *this = bztree_->Scan(GetKey(), false, node_);
+      const auto begin_key = GetKey();
 
+      // update this iterator with the next scan results
+      *this = bztree_->Scan(begin_key, false, node_.release());
       return HasNext();
     }
 
     /**
      * @return Key: a key of a current record
      */
-    constexpr auto
+    [[nodiscard]] constexpr auto
     GetKey() const  //
         -> Key
     {
-      return node_->GetKey(current_pos_);
+      return node_->GetKey(current_meta_);
     }
 
     /**
      * @return Payload: a payload of a current record
      */
-    constexpr auto
+    [[nodiscard]] constexpr auto
     GetPayload() const  //
         -> Payload
     {
-      return node_->template GetPayload<Payload>(current_pos_);
+      return node_->template GetPayload<Payload>(current_meta_);
     }
 
    private:
@@ -169,19 +172,19 @@ class BzTree
      *############################################################################################*/
 
     /// a pointer to BwTree to perform continuous scan
-    BzTree_t *bztree_;
+    BzTree_t *bztree_{nullptr};
 
     /// the pointer to a node that includes partial scan results
-    Node_t *node_;
+    std::unique_ptr<Node_t> node_{nullptr};
 
     /// the number of records in this node
-    size_t record_count_;
+    size_t record_count_{0};
 
     /// the position of a current record
-    size_t current_pos_;
+    size_t current_pos_{0};
 
     /// the metadata of a current record
-    Metadata current_meta_;
+    Metadata current_meta_{};
   };
 
   /*################################################################################################
@@ -278,11 +281,13 @@ class BzTree
   {
     const auto guard = gc_->CreateEpochGuard();
 
-    const Node_t *node = SearchLeafNode(begin_key, begin_closed);
-    if (page == nullptr) {
-      page = CreateNewNode<Payload>();
+    if (page != nullptr) {
+      gc_->AddGarbage(page);
     }
-    page->Consolidate(node);
+
+    const Node_t *node = SearchLeafNode(begin_key, begin_closed);
+    page = CreateNewNode<Payload>();
+    page->template Consolidate<Payload>(node);
 
     return RecordIterator{this, page, page->Search(begin_key, begin_closed)};
   }
@@ -462,12 +467,6 @@ class BzTree
   }
 
  private:
-  /*################################################################################################
-   * Internal constants
-   *##############################################################################################*/
-
-  static constexpr bool kLeafFlag = true;
-
   /*################################################################################################
    * Internal utility functions
    *##############################################################################################*/
@@ -819,10 +818,10 @@ class BzTree
    *##############################################################################################*/
 
   /// a root node of BzTree
-  std::atomic<Node_t *> root_ = nullptr;
+  std::atomic<Node_t *> root_{nullptr};
 
   /// garbage collector
-  std::unique_ptr<NodeGC_t> gc_ = nullptr;
+  std::unique_ptr<NodeGC_t> gc_{nullptr};
 };
 
 }  // namespace dbgroup::index::bztree

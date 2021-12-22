@@ -36,6 +36,8 @@ constexpr size_t kTestMaxRecNum = (kPageSize - kHeaderLength - kMinFreeSpaceSize
 constexpr size_t kKeyNumForTest = 2 * kTestMaxRecNum * kTestMaxRecNum + 2;
 constexpr bool kExpectSuccess = true;
 constexpr bool kExpectFailed = false;
+constexpr bool kRangeClosed = true;
+constexpr bool kRangeOpened = false;
 
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType>
@@ -113,35 +115,20 @@ class BzTreeFixture : public testing::Test  // NOLINT
     }
   }
 
-  // void
-  // VerifyScan(  //
-  //     const size_t begin_key_id,
-  //     const bool begin_null,
-  //     bool begin_closed,
-  //     const size_t end_key_id,
-  //     const bool end_null,
-  //     const bool end_closed,
-  //     const std::vector<size_t> &expected_keys,
-  //     const std::vector<size_t> &expected_payloads)
-  // {
-  //   Key begin_key{};
-  //   Key *begin_ptr = nullptr, *end_ptr = nullptr;
-  //   if (!begin_null) {
-  //     begin_key = keys[begin_key_id];
-  //     begin_ptr = &begin_key;
-  //   }
-  //   if (!end_null) end_ptr = &keys[end_key_id];
+  void
+  VerifyScan(  //
+      const size_t begin_key_id,
+      const bool begin_closed)
+  {
+    auto iter = bztree_->Scan(keys_[begin_key_id], begin_closed);
 
-  //   size_t count = 0;
-  //   auto iter = bztree->Scan(begin_ptr, begin_closed, end_ptr, end_closed);
-  //   for (; iter.HasNext(); ++iter, ++count) {
-  //     auto [key, payload] = *iter;
-  //     EXPECT_TRUE(component::IsEqual<KeyComp>(keys[expected_keys[count]], key));
-  //     EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads[expected_payloads[count]], payload));
-  //   }
-
-  //   EXPECT_EQ(expected_keys.size(), count);
-  // }
+    size_t pos = (begin_closed) ? begin_key_id : begin_key_id + 1;
+    for (; iter.HasNext(); ++iter, ++pos) {
+      auto [key, payload] = *iter;
+      EXPECT_TRUE(component::IsEqual<KeyComp>(keys_[pos], key));
+      EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads_[pos], payload));
+    }
+  }
 
   void
   VerifyWrite(  //
@@ -331,55 +318,31 @@ TYPED_TEST(BzTreeFixture, ReadWithNotPresentKeyFail)
   TestFixture::VerifyRead(0, 0, kExpectFailed);
 }
 
-// /*--------------------------------------------------------------------------------------------------
-//  * Scan operation
-//  *------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------
+ * Scan operation
+ *------------------------------------------------------------------------------------------------*/
 
-// TYPED_TEST(BzTreeFixture, Scan_EmptyNode_ScanEmptyPage)
-// {  //
-//   std::vector<size_t> expected_ids;
-//   TestFixture::VerifyScan(0, true, true, 0, true, true, expected_ids, expected_ids);
-// }
+TYPED_TEST(BzTreeFixture, ScanWithClosedRangeIncludeBeginKey)
+{
+  const size_t rec_num = 2 * TestFixture::max_rec_num_ * TestFixture::max_rec_num_;
 
-// TYPED_TEST(BzTreeFixture, Scan_UniqueKeys_ScanInsertedRecords)
-// {  //
-//   std::vector<size_t> expected_ids;
-//   for (size_t i = 0; i < TestFixture::kKeyNumForTest; ++i) {
-//     TestFixture::VerifyInsert(i, i);
-//     expected_ids.emplace_back(i);
-//   }
+  for (size_t i = 0; i < rec_num; ++i) {
+    TestFixture::VerifyWrite(i, i);
+  }
 
-//   TestFixture::VerifyScan(0, true, true, 0, true, true, expected_ids, expected_ids);
-// }
+  TestFixture::VerifyScan(0, kRangeClosed);
+}
 
-// TYPED_TEST(BzTreeFixture, Scan_DuplicateKeys_ScanUpdatedRecords)
-// {  //
-//   std::vector<size_t> expected_keys;
-//   std::vector<size_t> expected_payloads;
-//   for (size_t i = 0; i < TestFixture::kKeyNumForTest - 1; ++i) {
-//     TestFixture::VerifyInsert(i, i);
-//   }
-//   for (size_t i = 0; i < TestFixture::kKeyNumForTest - 1; ++i) {
-//     TestFixture::VerifyUpdate(i, i + 1);
-//     expected_keys.emplace_back(i);
-//     expected_payloads.emplace_back(i + 1);
-//   }
+TYPED_TEST(BzTreeFixture, ScanWithOpenedRangeExcludeBeginKey)
+{
+  const size_t rec_num = 2 * TestFixture::max_rec_num_ * TestFixture::max_rec_num_;
 
-//   TestFixture::VerifyScan(0, true, true, 0, true, true, expected_keys, expected_payloads);
-// }
+  for (size_t i = 0; i < rec_num; ++i) {
+    TestFixture::VerifyWrite(i, i);
+  }
 
-// TYPED_TEST(BzTreeFixture, Scan_DeletedKeys_ScanEmptyPage)
-// {  //
-//   std::vector<size_t> expected_ids;
-//   for (size_t i = 0; i < TestFixture::kKeyNumForTest; ++i) {
-//     TestFixture::VerifyInsert(i, i);
-//   }
-//   for (size_t i = 0; i < TestFixture::kKeyNumForTest; ++i) {
-//     TestFixture::VerifyDelete(i);
-//   }
-
-//   TestFixture::VerifyScan(0, true, true, 0, true, true, expected_ids, expected_ids);
-// }
+  TestFixture::VerifyScan(0, kRangeOpened);
+}
 
 /*--------------------------------------------------------------------------------------------------
  * Write operation

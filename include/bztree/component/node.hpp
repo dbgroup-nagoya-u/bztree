@@ -198,7 +198,7 @@ class alignas(kMaxAlignment) Node
   GetKey(const Metadata meta) const  //
       -> Key
   {
-    if constexpr (std::is_pointer_v<Key>) {
+    if constexpr (IsVariableLengthData<Key>()) {
       return reinterpret_cast<Key>(GetKeyAddr(meta));
     } else {
       return *reinterpret_cast<Key *>(GetKeyAddr(meta));
@@ -211,11 +211,11 @@ class alignas(kMaxAlignment) Node
    * @return a payload in a target record.
    */
   template <class Payload>
-  constexpr auto
+  [[nodiscard]] constexpr auto
   GetPayload(const Metadata meta) const  //
       -> Payload
   {
-    if constexpr (std::is_pointer_v<Payload>) {
+    if constexpr (IsVariableLengthData<Payload>()) {
       return reinterpret_cast<Payload>(GetPayloadAddr(meta));
     } else {
       return *reinterpret_cast<Payload *>(GetPayloadAddr(meta));
