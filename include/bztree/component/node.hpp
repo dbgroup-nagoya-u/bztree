@@ -174,7 +174,6 @@ class alignas(kMaxAlignment) Node
       -> StatusWord
   {
     auto &&stat = MwCASDescriptor::Read<StatusWord>(&status_);
-    std::atomic_thread_fence(std::memory_order_acquire);
     return stat;
   }
 
@@ -431,6 +430,7 @@ class alignas(kMaxAlignment) Node
 
       if constexpr (CanCASUpdate<Payload>()) {
         // check whether a node includes a target key
+        std::atomic_thread_fence(std::memory_order_acquire);
         const auto &[rc, target_pos] = SearchSortedRecord(key);
         if (rc == kExist) {
           const auto &target_meta = GetMetadataProtected(target_pos);
@@ -465,6 +465,7 @@ class alignas(kMaxAlignment) Node
     auto &&offset = kPageSize - cur_status.GetBlockSize();
     offset = SetPayload<Payload>(offset, payload, pay_len);
     offset = SetKey(offset, key, key_len);
+    std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
     const auto &inserted_meta = in_progress_meta.Commit(offset);
@@ -480,7 +481,6 @@ class alignas(kMaxAlignment) Node
       SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
     }
-    std::atomic_thread_fence(std::memory_order_release);
 
     return kSuccess;
   }
@@ -535,6 +535,7 @@ class alignas(kMaxAlignment) Node
 
       // check uniqueness
       target_pos = cur_status.GetRecordCount();
+      std::atomic_thread_fence(std::memory_order_acquire);
       rc = CheckUniqueness<Payload>(key, target_pos).first;
       if (rc == kExist) return kKeyExist;
 
@@ -553,6 +554,7 @@ class alignas(kMaxAlignment) Node
     auto &&offset = kPageSize - cur_status.GetBlockSize();
     offset = SetPayload<Payload>(offset, payload, pay_len);
     offset = SetKey(offset, key, key_len);
+    std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
     const auto &inserted_meta = in_progress_meta.Commit(offset);
@@ -564,6 +566,7 @@ class alignas(kMaxAlignment) Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
+        std::atomic_thread_fence(std::memory_order_acquire);
         rc = CheckUniqueness<Payload>(key, target_pos).first;
         if (rc == kUncertain) continue;
         if (rc == kExist) {
@@ -579,7 +582,6 @@ class alignas(kMaxAlignment) Node
       SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
     }
-    std::atomic_thread_fence(std::memory_order_release);
 
     return kSuccess;
   }
@@ -631,6 +633,7 @@ class alignas(kMaxAlignment) Node
       // check whether a node includes a target key
       target_pos = cur_status.GetRecordCount();
       size_t exist_pos{};
+      std::atomic_thread_fence(std::memory_order_acquire);
       std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
@@ -669,6 +672,7 @@ class alignas(kMaxAlignment) Node
     auto &&offset = kPageSize - cur_status.GetBlockSize();
     offset = SetPayload<Payload>(offset, payload, pay_len);
     offset = SetKey(offset, key, key_len);
+    std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
     const auto &inserted_meta = in_progress_meta.Commit(offset);
@@ -680,6 +684,7 @@ class alignas(kMaxAlignment) Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
+        std::atomic_thread_fence(std::memory_order_acquire);
         rc = CheckUniqueness<Payload>(key, target_pos).first;
         if (rc == kUncertain) continue;
         if (rc == kNotExist || rc == kDeleted) {
@@ -695,7 +700,6 @@ class alignas(kMaxAlignment) Node
       SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
     }
-    std::atomic_thread_fence(std::memory_order_release);
 
     return kSuccess;
   }
@@ -742,6 +746,7 @@ class alignas(kMaxAlignment) Node
       // check whether a node includes a target key
       target_pos = cur_status.GetRecordCount();
       size_t exist_pos{};
+      std::atomic_thread_fence(std::memory_order_acquire);
       std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
@@ -781,6 +786,7 @@ class alignas(kMaxAlignment) Node
     // insert a null record
     auto &&offset = kPageSize - cur_status.GetBlockSize();
     offset = SetKey(offset, key, key_len);
+    std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
     const auto &deleted_meta = in_progress_meta.Delete(offset);
@@ -792,6 +798,7 @@ class alignas(kMaxAlignment) Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
+        std::atomic_thread_fence(std::memory_order_acquire);
         rc = CheckUniqueness<Payload>(key, target_pos).first;
         if (rc == kUncertain) continue;
         if (rc == kNotExist || rc == kDeleted) {
@@ -807,7 +814,6 @@ class alignas(kMaxAlignment) Node
       SetMetadataForMwCAS(desc, target_pos, in_progress_meta, deleted_meta);
       if (desc.MwCAS()) break;
     }
-    std::atomic_thread_fence(std::memory_order_release);
 
     return kSuccess;
   }
@@ -1507,6 +1513,7 @@ class alignas(kMaxAlignment) Node
       -> std::pair<size_t, std::array<MetaKeyPair, kMaxUnsortedRecNum>>
   {
     const int64_t rec_count = GetStatusWordProtected().GetRecordCount();
+    std::atomic_thread_fence(std::memory_order_acquire);
 
     std::array<MetaKeyPair, kMaxUnsortedRecNum> arr;
     size_t count = 0;
