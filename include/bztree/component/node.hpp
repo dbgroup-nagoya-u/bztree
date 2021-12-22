@@ -365,7 +365,7 @@ class alignas(kMaxAlignment) Node
   {
     // check whether there is a given key in this node
     const auto &status = GetStatusWordProtected();
-    const auto &[rc, pos] = CheckUniqueness<Payload>(key, status.GetRecordCount());
+    const auto &[rc, pos] = CheckUniqueness<Payload>(key, status.GetRecordCount() - 1);
     if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
     // copy a written payload to a given address
@@ -520,6 +520,7 @@ class alignas(kMaxAlignment) Node
     const auto &in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos{};
+    size_t recheck_pos{};
     KeyExistence rc{};
 
     /*----------------------------------------------------------------------------------------------
@@ -536,7 +537,7 @@ class alignas(kMaxAlignment) Node
       // check uniqueness
       target_pos = cur_status.GetRecordCount();
       std::atomic_thread_fence(std::memory_order_acquire);
-      rc = CheckUniqueness<Payload>(key, target_pos).first;
+      std::tie(rc, recheck_pos) = CheckUniqueness<Payload>(key, target_pos - 1);
       if (rc == kExist) return kKeyExist;
 
       // perform MwCAS to reserve space
@@ -567,7 +568,7 @@ class alignas(kMaxAlignment) Node
       // recheck uniqueness if required
       if (rc == kUncertain) {
         std::atomic_thread_fence(std::memory_order_acquire);
-        rc = CheckUniqueness<Payload>(key, target_pos).first;
+        std::tie(rc, recheck_pos) = CheckUniqueness<Payload>(key, recheck_pos);
         if (rc == kUncertain) continue;
         if (rc == kExist) {
           // delete an inserted record
@@ -618,9 +619,11 @@ class alignas(kMaxAlignment) Node
   {
     // variables and constants shared in Phase 1 & 2
     const auto &[key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, payload_length);
+    const auto &deleted_size = kWordLength + rec_len;
     const auto &in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos{};
+    size_t exist_pos{};
     KeyExistence rc{};
 
     /*----------------------------------------------------------------------------------------------
@@ -632,28 +635,25 @@ class alignas(kMaxAlignment) Node
 
       // check whether a node includes a target key
       target_pos = cur_status.GetRecordCount();
-      size_t exist_pos{};
       std::atomic_thread_fence(std::memory_order_acquire);
-      std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos);
+      std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos - 1);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
       if constexpr (CanCASUpdate<Payload>()) {
         if (rc == kExist && exist_pos < sorted_count_) {
-          const auto &target_meta = GetMetadataProtected(exist_pos);
+          const auto &meta = GetMetadataProtected(exist_pos);
 
           // update a record directly
           MwCASDescriptor desc{};
           SetStatusForMwCAS(desc, cur_status, cur_status);
-          SetMetadataForMwCAS(desc, exist_pos, target_meta, target_meta);
-          SetPayloadForMwCAS(desc, target_meta, payload);
+          SetMetadataForMwCAS(desc, exist_pos, meta, meta);
+          SetPayloadForMwCAS(desc, meta, payload);
           if (desc.MwCAS()) return kSuccess;
           continue;
         }
       }
 
       // prepare new status for MwCAS
-      const auto &target_meta = GetMetadataProtected(exist_pos);
-      const auto &deleted_size = kWordLength + target_meta.GetTotalLength();
       const auto &new_status = cur_status.Add(rec_len).Delete(deleted_size);
       if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
@@ -685,7 +685,7 @@ class alignas(kMaxAlignment) Node
       // recheck uniqueness if required
       if (rc == kUncertain) {
         std::atomic_thread_fence(std::memory_order_acquire);
-        rc = CheckUniqueness<Payload>(key, target_pos).first;
+        std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, exist_pos);
         if (rc == kUncertain) continue;
         if (rc == kNotExist || rc == kDeleted) {
           // delete an inserted record
@@ -734,6 +734,7 @@ class alignas(kMaxAlignment) Node
     const auto &in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos{};
+    size_t exist_pos{};
     KeyExistence rc{};
 
     /*----------------------------------------------------------------------------------------------
@@ -745,30 +746,28 @@ class alignas(kMaxAlignment) Node
 
       // check whether a node includes a target key
       target_pos = cur_status.GetRecordCount();
-      size_t exist_pos{};
       std::atomic_thread_fence(std::memory_order_acquire);
-      std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos);
+      std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos - 1);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
-      const auto &target_meta = GetMetadataProtected(exist_pos);
+      const auto &meta = GetMetadataProtected(exist_pos);
       if constexpr (CanCASUpdate<Payload>()) {
         if (rc == kExist && exist_pos < sorted_count_) {
-          const auto &deleted_meta = target_meta.Delete();
-          const auto &deleted_size = kWordLength + target_meta.GetTotalLength();
-          const auto &new_status = cur_status.Delete(deleted_size);
+          const auto &deleted_meta = meta.Delete();
+          const auto &new_status = cur_status.Delete(kWordLength + meta.GetTotalLength());
           if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
           // delete a record directly
           MwCASDescriptor desc{};
           SetStatusForMwCAS(desc, cur_status, new_status);
-          SetMetadataForMwCAS(desc, exist_pos, target_meta, deleted_meta);
+          SetMetadataForMwCAS(desc, exist_pos, meta, deleted_meta);
           if (desc.MwCAS()) return kSuccess;
           continue;
         }
       }
 
       // prepare new status for MwCAS
-      const auto &deleted_size = (2 * kWordLength) + target_meta.GetTotalLength() + rec_len;
+      const auto &deleted_size = (2 * kWordLength) + meta.GetTotalLength() + rec_len;
       const auto &new_status = cur_status.Add(rec_len).Delete(deleted_size);
       if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
@@ -799,7 +798,7 @@ class alignas(kMaxAlignment) Node
       // recheck uniqueness if required
       if (rc == kUncertain) {
         std::atomic_thread_fence(std::memory_order_acquire);
-        rc = CheckUniqueness<Payload>(key, target_pos).first;
+        std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, exist_pos);
         if (rc == kUncertain) continue;
         if (rc == kNotExist || rc == kDeleted) {
           // delete an inserted record
@@ -1357,7 +1356,7 @@ class alignas(kMaxAlignment) Node
   [[nodiscard]] auto
   CheckUniqueness(  //
       const Key &key,
-      const int64_t rec_count) const  //
+      const int64_t begin_pos) const  //
       -> std::pair<KeyExistence, size_t>
   {
     KeyExistence rc{};
@@ -1367,10 +1366,10 @@ class alignas(kMaxAlignment) Node
       std::tie(rc, pos) = SearchSortedRecord(key);
       if (rc == kNotExist || rc == kDeleted) {
         // a new record may be inserted in an unsorted region
-        std::tie(rc, pos) = SearchUnsortedRecord(key, rec_count - 1);
+        std::tie(rc, pos) = SearchUnsortedRecord(key, begin_pos);
       }
     } else {
-      std::tie(rc, pos) = SearchUnsortedRecord(key, rec_count - 1);
+      std::tie(rc, pos) = SearchUnsortedRecord(key, begin_pos);
       if (rc == kNotExist) {
         // a record may be in a sorted region
         std::tie(rc, pos) = SearchSortedRecord(key);
