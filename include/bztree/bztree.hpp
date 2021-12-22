@@ -139,7 +139,7 @@ class BzTree
 
       // keep the end key to use as the next begin key
       current_meta_ = node_->GetMetadata(record_count_ - 1);
-      const auto begin_key = GetKey();
+      const auto &begin_key = GetKey();
 
       // update this iterator with the next scan results
       *this = bztree_->Scan(begin_key, false, node_.release());
@@ -243,12 +243,12 @@ class BzTree
   auto
   Read(const Key &key)
   {
-    const auto guard = gc_->CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_->CreateEpochGuard();
 
     const Node_t *node = SearchLeafNode(key, true);
 
     Payload payload{};
-    const auto rc = node->Read(key, payload);
+    const auto &rc = node->Read(key, payload);
     if constexpr (IsVariableLengthData<Payload>()) {
       if (rc == NodeRC::kSuccess) {
         return std::make_pair(ReturnCode::kSuccess, Binary_p{payload});
@@ -271,7 +271,7 @@ class BzTree
   Begin()  //
       -> RecordIterator
   {
-    const auto guard = gc_->CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_->CreateEpochGuard();
 
     const Node_t *node = SearchLeftEdgeLeaf();
     auto *page = CreateNewNode<Payload>();
@@ -295,7 +295,7 @@ class BzTree
       Node_t *page = nullptr)  //
       -> RecordIterator
   {
-    const auto guard = gc_->CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_->CreateEpochGuard();
 
     if (page != nullptr) {
       gc_->AddGarbage(page);
@@ -336,11 +336,11 @@ class BzTree
       const size_t payload_length = sizeof(Payload))  //
       -> ReturnCode
   {
-    const auto guard = gc_->CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_->CreateEpochGuard();
 
     while (true) {
       Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->Write(key, key_length, payload, payload_length);
+      const auto &rc = node->Write(key, key_length, payload, payload_length);
 
       switch (rc) {
         case NodeRC::kSuccess:
@@ -379,11 +379,11 @@ class BzTree
       const size_t payload_length = sizeof(Payload))  //
       -> ReturnCode
   {
-    const auto guard = gc_->CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_->CreateEpochGuard();
 
     while (true) {
       Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->Insert(key, key_length, payload, payload_length);
+      const auto &rc = node->Insert(key, key_length, payload, payload_length);
 
       switch (rc) {
         case NodeRC::kSuccess:
@@ -423,11 +423,11 @@ class BzTree
       const size_t payload_length = sizeof(Payload))  //
       -> ReturnCode
   {
-    const auto guard = gc_->CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_->CreateEpochGuard();
 
     while (true) {
       Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->Update(key, key_length, payload, payload_length);
+      const auto &rc = node->Update(key, key_length, payload, payload_length);
 
       switch (rc) {
         case NodeRC::kSuccess:
@@ -463,11 +463,11 @@ class BzTree
       const size_t key_length = sizeof(Key))  //
       -> ReturnCode
   {
-    const auto guard = gc_->CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_->CreateEpochGuard();
 
     while (true) {
       Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->template Delete<Payload>(key, key_length);
+      const auto &rc = node->template Delete<Payload>(key, key_length);
 
       switch (rc) {
         case NodeRC::kSuccess:
@@ -525,7 +525,7 @@ class BzTree
   {
     Node_t *current_node = GetRoot();
     while (!current_node->IsLeaf()) {
-      const auto pos = current_node->Search(key, range_is_closed);
+      const auto &pos = current_node->Search(key, range_is_closed);
       current_node = current_node->GetChild(pos);
     }
 
@@ -601,13 +601,13 @@ class BzTree
     consol_node->template Consolidate<Payload>(node);
 
     // check whether splitting/merging is needed
-    const auto stat = consol_node->GetStatusWord();
+    const auto &stat = consol_node->GetStatusWord();
     if (stat.NeedSplit()) {
       // invoke splitting
       Split<Payload>(consol_node, key);
     } else if (!stat.NeedMerge() || !Merge<Payload>(consol_node, key)) {  // try merging
       // install the consolidated node
-      auto trace = TraceTargetNode(key, node);
+      auto &&trace = TraceTargetNode(key, node);
       InstallNewNode(trace, consol_node, key, node);
     }
 
@@ -699,7 +699,7 @@ class BzTree
       const Key &key)  //
       -> bool
   {
-    const auto r_stat = right_node->GetStatusWord();
+    const auto &r_stat = right_node->GetStatusWord();
 
     /*----------------------------------------------------------------------------------------------
      * Phase 1: preparation
@@ -718,12 +718,12 @@ class BzTree
       // check a parent node is live
       trace.pop_back();
       old_parent = trace.back().first;
-      const auto p_status = old_parent->GetStatusWord();
+      const auto &p_status = old_parent->GetStatusWord();
       if (p_status.IsFrozen()) continue;
 
       // check a right sibling node is live and has sufficent capacity
       left_node = old_parent->GetChild(target_pos - 1);
-      const auto l_stat = left_node->GetStatusWord();
+      const auto &l_stat = left_node->GetStatusWord();
       if (!l_stat.CanMergeWith(r_stat)) return false;
       if (l_stat.IsFrozen()) continue;
 
@@ -742,7 +742,7 @@ class BzTree
     Node_t *merged_node = CreateNewNode<T>();
     merged_node->template Merge<T>(left_node, right_node);
     Node_t *new_parent = CreateNewNode<Node_t *>();
-    auto recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos - 1);
+    bool recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos - 1);
     if (trace.size() <= 1 && new_parent->GetSortedCount() == 1) {
       // the new root node has only one child, use the merged child as a new root
       gc_->AddGarbage(new_parent);
@@ -789,12 +789,12 @@ class BzTree
 
     while (true) {
       // prepare installing nodes
-      auto [old_node, target_pos] = trace.back();
+      auto &&[old_node, target_pos] = trace.back();
       trace.pop_back();
       Node_t *parent = trace.back().first;
 
       // check wether related nodes are frozen
-      const auto parent_status = parent->GetStatusWordProtected();
+      const auto &parent_status = parent->GetStatusWordProtected();
       if (!parent_status.IsFrozen()) {
         // install a new internal node by MwCAS
         MwCASDescriptor desc{};
