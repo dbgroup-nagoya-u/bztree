@@ -47,8 +47,9 @@ enum ReturnCode
  *
  */
 struct CompareAsCString {
-  constexpr bool
-  operator()(const void *a, const void *b) const noexcept
+  constexpr auto
+  operator()(const void *a, const void *b) const noexcept  //
+      -> bool
   {
     if (a == nullptr) return false;
     if (b == nullptr) return true;
@@ -62,8 +63,9 @@ struct CompareAsCString {
  * @retval false if a target class is static-length data.
  */
 template <class T>
-constexpr bool
-IsVariableLengthData()
+constexpr auto
+IsVariableLengthData()  //
+    -> bool
 {
   static_assert(std::is_trivially_copyable_v<T>);
   return false;
@@ -97,7 +99,7 @@ static_assert(kPageSize % kWordLength == 0);
 constexpr size_t kMaxUnsortedRecNum = BZTREE_MAX_UNSORTED_REC_NUM;
 #else
 /// Invoking consolidation if the number of unsorted records exceeds this threshold
-constexpr size_t kMaxUnsortedRecNum = 64;
+constexpr size_t kMaxUnsortedRecNum = kPageSize >> 7;
 #endif
 
 #ifdef BZTREE_MAX_DELETED_SPACE_SIZE
