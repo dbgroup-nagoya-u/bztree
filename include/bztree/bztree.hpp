@@ -263,19 +263,35 @@ class BzTree
   }
 
   /**
+   * @brief Perform a full scan.
+   *
+   * @return an iterator to access target records.
+   */
+  auto
+  Begin()  //
+      -> RecordIterator
+  {
+    const auto guard = gc_->CreateEpochGuard();
+
+    const Node_t *node = SearchLeftEdgeLeaf();
+    auto *page = CreateNewNode<Payload>();
+    page->template Consolidate<Payload>(node);
+
+    return RecordIterator{this, page, 0};
+  }
+
+  /**
    * @brief Perform a range scan with specified keys.
    *
-   * If a begin/end key is nullptr, it is treated as negative or positive infinite.
-   *
-   * @param begin_key the pointer of a begin key of a range scan.
+   * @param begin_key a begin key of a range scan.
    * @param begin_closed a flag to indicate whether the begin side of a range is closed.
-   * @param page a page to copy target keys/payloads. This argument is used internally.
+   * @param page a page that contains old keys/payloads. This argument is used internally.
    * @return an iterator to access target records.
    */
   auto
   Scan(  //
       const Key &begin_key,
-      const bool begin_closed = false,
+      const bool begin_closed = true,
       Node_t *page = nullptr)  //
       -> RecordIterator
   {

@@ -116,6 +116,18 @@ class BzTreeFixture : public testing::Test  // NOLINT
   }
 
   void
+  VerifyBegin()
+  {
+    auto iter = bztree_->Begin();
+
+    for (size_t pos = 0; iter.HasNext(); ++iter, ++pos) {
+      auto [key, payload] = *iter;
+      EXPECT_TRUE(component::IsEqual<KeyComp>(keys_[pos], key));
+      EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads_[pos], payload));
+    }
+  }
+
+  void
   VerifyScan(  //
       const size_t begin_key_id,
       const bool begin_closed)
@@ -321,6 +333,17 @@ TYPED_TEST(BzTreeFixture, ReadWithNotPresentKeyFail)
 /*--------------------------------------------------------------------------------------------------
  * Scan operation
  *------------------------------------------------------------------------------------------------*/
+
+TYPED_TEST(BzTreeFixture, BeginPerformFullScan)
+{
+  const size_t rec_num = 2 * TestFixture::max_rec_num_ * TestFixture::max_rec_num_;
+
+  for (size_t i = 0; i < rec_num; ++i) {
+    TestFixture::VerifyWrite(i, i);
+  }
+
+  TestFixture::VerifyBegin();
+}
 
 TYPED_TEST(BzTreeFixture, ScanWithClosedRangeIncludeBeginKey)
 {
