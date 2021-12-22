@@ -56,9 +56,10 @@ class alignas(kMaxAlignment) Node
       : node_size_{kPageSize},
         sorted_count_{0},
         is_leaf_{static_cast<uint64_t>(is_leaf)},
-        is_right_end_{1},
-        status_{0, block_size}
+        is_right_end_{1}
   {
+    auto *atomic_stat = reinterpret_cast<std::atomic<StatusWord> *>(&status_);
+    atomic_stat->exchange(StatusWord{0, block_size}, std::memory_order_acquire);
   }
 
   Node(const Node &) = delete;
@@ -76,6 +77,9 @@ class alignas(kMaxAlignment) Node
    */
   ~Node()
   {
+    auto *atomic_stat = reinterpret_cast<std::atomic<StatusWord> *>(&status_);
+    atomic_stat->load(std::memory_order_acquire);
+
     // fill a metadata region with zeros
     for (size_t i = 0; i < GetMaxRecordNum(); ++i) {
       auto *dummy_p = reinterpret_cast<size_t *>(&meta_array_[i]);
@@ -83,7 +87,7 @@ class alignas(kMaxAlignment) Node
     }
 
     // set a status word to release memory brrier
-    SetStatus(StatusWord{});
+    atomic_stat->store(StatusWord{}, std::memory_order_release);
   }
 
   /*################################################################################################
@@ -231,7 +235,10 @@ class alignas(kMaxAlignment) Node
   GetChild(const size_t position) const  //
       -> Node *
   {
-    return MwCASDescriptor::Read<Node *>(GetPayloadAddr(meta_array_[position]));
+    auto &&child = MwCASDescriptor::Read<Node *>(GetPayloadAddr(meta_array_[position]));
+    std::atomic_thread_fence(std::memory_order_acquire);
+
+    return child;
   }
 
   /**
@@ -287,9 +294,6 @@ class alignas(kMaxAlignment) Node
       const bool range_is_closed) const  //
       -> size_t
   {
-    const auto *atomic_stat = reinterpret_cast<const std::atomic<StatusWord> *>(&status_);
-    [[maybe_unused]] const auto &stat = atomic_stat->load(std::memory_order_acquire);
-
     int64_t begin_pos = 0;
     int64_t end_pos = sorted_count_ - 2;
     while (begin_pos <= end_pos) {
@@ -340,7 +344,8 @@ class alignas(kMaxAlignment) Node
   void
   Unfreeze()
   {
-    SetStatus(status_.Unfreeze());
+    auto *atomic_stat = reinterpret_cast<std::atomic<StatusWord> *>(&status_);
+    atomic_stat->store(status_.Unfreeze(), std::memory_order_relaxed);
   }
 
   /*################################################################################################
@@ -430,7 +435,6 @@ class alignas(kMaxAlignment) Node
 
       if constexpr (CanCASUpdate<Payload>()) {
         // check whether a node includes a target key
-        std::atomic_thread_fence(std::memory_order_acquire);
         const auto &[rc, target_pos] = SearchSortedRecord(key);
         if (rc == kExist) {
           const auto &target_meta = GetMetadataProtected(target_pos);
@@ -536,7 +540,6 @@ class alignas(kMaxAlignment) Node
 
       // check uniqueness
       target_pos = cur_status.GetRecordCount();
-      std::atomic_thread_fence(std::memory_order_acquire);
       std::tie(rc, recheck_pos) = CheckUniqueness<Payload>(key, target_pos - 1);
       if (rc == kExist) return kKeyExist;
 
@@ -567,7 +570,6 @@ class alignas(kMaxAlignment) Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
-        std::atomic_thread_fence(std::memory_order_acquire);
         std::tie(rc, recheck_pos) = CheckUniqueness<Payload>(key, recheck_pos);
         if (rc == kUncertain) continue;
         if (rc == kExist) {
@@ -635,7 +637,6 @@ class alignas(kMaxAlignment) Node
 
       // check whether a node includes a target key
       target_pos = cur_status.GetRecordCount();
-      std::atomic_thread_fence(std::memory_order_acquire);
       std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos - 1);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
@@ -684,7 +685,6 @@ class alignas(kMaxAlignment) Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
-        std::atomic_thread_fence(std::memory_order_acquire);
         std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, exist_pos);
         if (rc == kUncertain) continue;
         if (rc == kNotExist || rc == kDeleted) {
@@ -746,7 +746,6 @@ class alignas(kMaxAlignment) Node
 
       // check whether a node includes a target key
       target_pos = cur_status.GetRecordCount();
-      std::atomic_thread_fence(std::memory_order_acquire);
       std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos - 1);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
@@ -797,7 +796,6 @@ class alignas(kMaxAlignment) Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
-        std::atomic_thread_fence(std::memory_order_acquire);
         std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, exist_pos);
         if (rc == kUncertain) continue;
         if (rc == kNotExist || rc == kDeleted) {
@@ -879,7 +877,7 @@ class alignas(kMaxAlignment) Node
 
     // set header information
     sorted_count_ = rec_count;
-    SetStatus(StatusWord{rec_count, kPageSize - offset});
+    status_ = StatusWord{rec_count, kPageSize - offset};
   }
 
   /**
@@ -905,14 +903,14 @@ class alignas(kMaxAlignment) Node
     auto &&l_offset = GetInitialOffset<Key, Payload>();
     l_offset = l_node->CopyRecordsFrom<Payload>(this, 0, l_count, 0, l_offset);
     l_node->sorted_count_ = l_count;
-    l_node->SetStatus(StatusWord{l_count, kPageSize - l_offset});
+    l_node->status_ = StatusWord{l_count, kPageSize - l_offset};
 
     // copy records to a right node
     auto &&r_offset = GetInitialOffset<Key, Payload>();
     r_offset = r_node->CopyRecordsFrom<Payload>(this, l_count, rec_count, 0, r_offset);
     const auto &r_count = rec_count - l_count;
     r_node->sorted_count_ = r_count;
-    r_node->SetStatus(StatusWord{r_count, kPageSize - r_offset});
+    r_node->status_ = StatusWord{r_count, kPageSize - r_offset};
   }
 
   /**
@@ -955,10 +953,10 @@ class alignas(kMaxAlignment) Node
     sorted_count_ = rec_count + 1;
     StatusWord stat{sorted_count_, kPageSize - offset};
     if (stat.NeedSplit()) {
-      SetStatus(stat.Freeze());
+      status_ = stat.Freeze();
       return true;
     }
-    SetStatus(stat);
+    status_ = stat;
     return false;
   }
 
@@ -985,7 +983,7 @@ class alignas(kMaxAlignment) Node
 
     // set an updated header
     sorted_count_ = 2;
-    SetStatus(StatusWord{2, kPageSize - offset});
+    status_ = StatusWord{2, kPageSize - offset};
   }
 
   /**
@@ -1025,7 +1023,7 @@ class alignas(kMaxAlignment) Node
     // create a merged node
     const auto &rec_count = l_count + r_count;
     sorted_count_ = rec_count;
-    SetStatus(StatusWord{rec_count, kPageSize - offset});
+    status_ = StatusWord{rec_count, kPageSize - offset};
   }
 
   /**
@@ -1062,10 +1060,10 @@ class alignas(kMaxAlignment) Node
     sorted_count_ = rec_count - 1;
     StatusWord stat{sorted_count_, kPageSize - offset};
     if (stat.NeedMerge()) {
-      SetStatus(stat.Freeze());
+      status_ = stat.Freeze();
       return true;
     }
-    SetStatus(stat);
+    status_ = stat;
     return false;
   }
 
@@ -1127,18 +1125,6 @@ class alignas(kMaxAlignment) Node
   /*################################################################################################
    * Internal setters
    *##############################################################################################*/
-
-  /**
-   * @brief Set a status word atomically.
-   *
-   * @param status a status word.
-   */
-  void
-  SetStatus(const StatusWord status)
-  {
-    auto *atomic_stat = reinterpret_cast<std::atomic<StatusWord> *>(&status_);
-    atomic_stat->store(status, std::memory_order_release);
-  }
 
   /**
    * @brief Set metadata atomically.
@@ -1326,6 +1312,8 @@ class alignas(kMaxAlignment) Node
       const size_t begin_pos) const  //
       -> std::pair<KeyExistence, size_t>
   {
+    std::atomic_thread_fence(std::memory_order_acquire);
+
     // perform a linear search in revese order
     for (int64_t pos = begin_pos; pos >= sorted_count_; --pos) {
       const auto &meta = GetMetadataProtected(pos);

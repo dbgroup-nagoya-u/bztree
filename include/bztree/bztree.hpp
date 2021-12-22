@@ -205,7 +205,7 @@ class BzTree
 
     // create an initial root node
     Node_t *leaf = CreateNewNode<Payload>();
-    root_.store(leaf, std::memory_order_relaxed);
+    root_.store(leaf, std::memory_order_release);
   }
 
   BzTree(const BzTree &) = delete;
@@ -508,7 +508,10 @@ class BzTree
   GetRoot() const  //
       -> Node_t *
   {
-    return MwCASDescriptor::Read<Node_t *>(&root_);
+    auto &&root = MwCASDescriptor::Read<Node_t *>(&root_);
+    std::atomic_thread_fence(std::memory_order_acquire);
+
+    return root;
   }
 
   /**
@@ -784,10 +787,11 @@ class BzTree
   {
     if (trace.size() <= 1) {
       // root swapping
-      root_.store(new_node, std::memory_order_relaxed);
+      root_.store(new_node, std::memory_order_release);
       return;
     }
 
+    std::atomic_thread_fence(std::memory_order_release);
     while (true) {
       // prepare installing nodes
       auto &&[old_node, target_pos] = trace.back();

@@ -99,7 +99,7 @@ static_assert(kPageSize % kWordLength == 0);
 constexpr size_t kMaxUnsortedRecNum = BZTREE_MAX_UNSORTED_REC_NUM;
 #else
 /// Invoking consolidation if the number of unsorted records exceeds this threshold
-constexpr size_t kMaxUnsortedRecNum = kPageSize >> 7;
+constexpr size_t kMaxUnsortedRecNum = kPageSize >> 7UL;
 #endif
 
 #ifdef BZTREE_MAX_DELETED_SPACE_SIZE
