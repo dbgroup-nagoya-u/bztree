@@ -22,6 +22,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "mwcas/utility.hpp"
+
 namespace dbgroup::index::bztree
 {
 /*##################################################################################################

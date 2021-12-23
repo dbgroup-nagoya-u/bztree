@@ -66,6 +66,7 @@ class LeafNodeFixture : public testing::Test
   };
 
   // constant values for testing
+  static constexpr bool kLeafFlag = true;
   static constexpr size_t kIndexEpoch = 1;
   static constexpr size_t kKeyNumForTest = 1024;
   static constexpr size_t kKeyLength = kWordLength;

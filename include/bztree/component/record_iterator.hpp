@@ -49,19 +49,19 @@ class RecordIterator
    *##############################################################################################*/
 
   /// a pointer to BzTree to perform continuous scan
-  BzTree_t* bztree_;
+  BzTree_t *bztree_;
 
   /// the end of range scan
-  const Key* end_key_;
+  const Key *end_key_;
 
   /// a flag to specify whether the end of range is closed
   bool end_is_closed_;
 
   /// an address of a current record
-  std::byte* current_addr_;
+  std::byte *current_addr_;
 
   /// an address of the end of this page
-  const std::byte* end_addr_;
+  const std::byte *end_addr_;
 
   /// the length of a current key
   uint32_t key_length_;
@@ -90,10 +90,10 @@ class RecordIterator
    * @param scan_finished a flag to indicate the end of range scan
    */
   RecordIterator(  //
-      BzTree_t* bztree,
-      const Key* end_key,
+      BzTree_t *bztree,
+      const Key *end_key,
       const bool end_is_closed,
-      RecordPage_t* page,
+      RecordPage_t *page,
       const bool scan_finished)
       : bztree_{bztree},
         end_key_{end_key},
@@ -109,10 +109,10 @@ class RecordIterator
 
   ~RecordIterator() = default;
 
-  RecordIterator(const RecordIterator&) = delete;
-  RecordIterator& operator=(const RecordIterator&) = delete;
-  constexpr RecordIterator(RecordIterator&&) = default;
-  constexpr RecordIterator& operator=(RecordIterator&&) = default;
+  RecordIterator(const RecordIterator &) = delete;
+  RecordIterator &operator=(const RecordIterator &) = delete;
+  constexpr RecordIterator(RecordIterator &&) = default;
+  constexpr RecordIterator &operator=(RecordIterator &&) = default;
 
   /*################################################################################################
    * Public operators for iterators
@@ -187,7 +187,7 @@ class RecordIterator
     if constexpr (IsVariableLengthData<Key>()) {
       return Cast<Key>(current_addr_);
     } else {
-      return *Cast<Key*>(current_addr_);
+      return *Cast<Key *>(current_addr_);
     }
   }
 
@@ -200,7 +200,7 @@ class RecordIterator
     if constexpr (IsVariableLengthData<Payload>()) {
       return Cast<Payload>(current_addr_ + GetKeyLength());
     } else {
-      return *Cast<Payload*>(current_addr_ + GetKeyLength());
+      return *Cast<Payload *>(current_addr_ + GetKeyLength());
     }
   }
 
