@@ -46,8 +46,8 @@ class BzTreeFixture : public testing::Test
   using Node_t = component::Node<Key, Payload, KeyComp>;
   using BzTree_t = BzTree<Key, Payload, KeyComp>;
   using RecordPage_t = component::RecordPage<Key, Payload>;
-  using Entry = std::tuple<Key, Payload, size_t, size_t>;
-  using EntryArray = std::vector<Entry>;
+  using BulkloadEntry_t = BulkloadEntry<Key, Payload>;
+  using EntryArray = std::vector<BulkloadEntry_t>;
 
  protected:
   /*################################################################################################
@@ -83,11 +83,11 @@ class BzTreeFixture : public testing::Test
   SetUp()
   {
     // prepare keys
-    key_length = (IsVariableLengthData<Key>()) ? 11 : sizeof(Key);
+    key_length = (IsVariableLengthData<Key>()) ? 7 : sizeof(Key);
     PrepareTestData(keys, kLargeKeyNum, key_length);
 
     // prepare payloads
-    payload_length = (IsVariableLengthData<Payload>()) ? 11 : sizeof(Payload);
+    payload_length = (IsVariableLengthData<Payload>()) ? 7 : sizeof(Payload);
     PrepareTestData(payloads, kLargeKeyNum, payload_length);
   }
 
@@ -139,7 +139,7 @@ class BzTreeFixture : public testing::Test
   {
     EntryArray entries;
     for (size_t i = begin_key_id; i < end_key_id; ++i) {
-      entries.push_back(std::make_tuple(keys[i], payloads[i], key_length, payload_length));
+      entries.emplace_back(BulkloadEntry_t{keys[i], payloads[i]});
     }
 
     auto rc = bztree.BulkLoadForSingleThread(entries);

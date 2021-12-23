@@ -222,7 +222,7 @@ using Value = uint64_t;
 using BzTree_t = ::dbgroup::index::bztree::BzTree<Key, Value>;
 using ::dbgroup::index::bztree::ReturnCode;
 
-using Entry = std::tuple<Key, Value, size_t, size_t>;
+using Entry = ::dbgroup::index::bztree::BulkloadEntry<Key, Value>;
 using EntryArray = std::vector<Entry>;
 
 int
@@ -234,7 +234,7 @@ main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
   // create entries
   EntryArray entries;
   for (Key i = 0; i <= 4096; ++i) {
-    entries.push_back(std::make_tuple(i, i, sizeof(i), sizeof(i)));
+    entries.emplace_back(Entry{i, i});
   }
 
   // bulk-load entries
@@ -401,6 +401,146 @@ Return code: 0
 Read value : value
 ```
 
+If you use bulk-load api with variable-length keys/values, it is also required to implement a specialized class `BulkloadEntry` in dbgroup::index::bztree namespace. The following snippet is an example to use bulk-load api with char* as variable-length keys/values.
+
+```cpp
+#include <iostream>
+
+#include "bztree/bztree.hpp"
+
+using Key = char *;
+using Value = char *;
+
+// we prepare a comparator for CString as an example one
+using ::dbgroup::index::bztree::CompareAsCString;
+
+using BzTree_t = ::dbgroup::index::bztree::BzTree<Key, Value, CompareAsCString>;
+using ::dbgroup::index::bztree::ReturnCode;
+
+using Entry = ::dbgroup::index::bztree::BulkloadEntry<Key, Value>;
+using EntryArray = std::vector<Entry>;
+
+namespace dbgroup::index::bztree
+{
+/**
+ * @brief Use CString as variable-length data.
+ *
+ */
+template <>
+constexpr bool
+IsVariableLengthData<char *>()
+{
+  return true;
+}
+
+/**
+ * @brief An example specialization of BulkloadEntry.
+ *
+ */
+template <>
+class BulkloadEntry<char *, char *>
+{
+ private:
+  char *key_{};
+  char *payload_{};
+
+ public:
+  constexpr BulkloadEntry(  //
+      const char *key,
+      const char *payload)
+      : key_{const_cast<char *>(key)}, payload_{const_cast<char *>(payload)}
+  {
+  }
+
+  ~BulkloadEntry() = default;
+
+  constexpr auto
+  GetKey() const  //
+      -> char *const &
+  {
+    return key_;
+  }
+
+  constexpr auto
+  GetPayload() const  //
+      -> char *const &
+  {
+    return payload_;
+  }
+
+  constexpr auto
+  GetKeyLength() const  //
+      -> size_t
+  {
+    return 7;
+  }
+
+  constexpr auto
+  GetPayloadLength() const  //
+      -> size_t
+  {
+    return 7;
+  }
+};
+
+}  // namespace dbgroup::index::bztree
+
+void
+PrepareSampleData(  //
+    char **data_array,
+    const size_t data_num,
+    [[maybe_unused]] const size_t data_length)
+{
+  for (size_t i = 0; i < data_num; ++i) {
+    auto data = reinterpret_cast<char *>(::operator new(data_length));
+    snprintf(data, data_length, "%06lu", i);
+    data_array[i] = reinterpret_cast<char *>(data);
+  }
+}
+
+int
+main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
+{
+  static constexpr size_t kKeyNum = 4096;
+
+  // create a BzTree instance
+  BzTree_t bztree{};
+
+  // create sample data
+  Key keys[kKeyNum];
+  Value values[kKeyNum];
+  PrepareSampleData(keys, kKeyNum, 7);
+  PrepareSampleData(values, kKeyNum, 7);
+
+  // create entries
+  EntryArray entries;
+  for (size_t i = 0; i < kKeyNum - 1; ++i) {
+    entries.emplace_back(Entry{keys[i], values[i]});
+  }
+
+  // bulk-load entries
+  bztree.BulkLoadForSingleThread(entries);
+
+  // read bulk-loaded key and one key that has not been inserted
+  for (size_t i = 0; i < kKeyNum; ++i) {
+    auto [rc, value] = bztree.Read(keys[i]);
+
+    if (rc != ReturnCode::kSuccess) {
+      std::cout << "Search key: " << i << std::endl;
+      std::cout << "Return code: " << rc << std::endl;
+    }
+  }
+
+  return 0;
+}
+```
+
+This code will output the following results.
+
+```txt
+Search key: 4095
+Return code: 1
+```
 ### Updating Payloads by Using MwCAS
 
 Although our BzTree can update payloads directly by using MwCAS operations (for details, please refer to Section 4.2 in [1]), it is restricted to unsigned integers and pointer types as default. To enable this feature for your own type, it must satisfy the following conditions:

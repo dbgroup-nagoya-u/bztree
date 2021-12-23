@@ -74,6 +74,148 @@ CanCASUpdate<MyClass>()
   return true;
 }
 
+/**
+ * @brief An example specialization of BulkloadEntry.
+ *
+ */
+template <>
+class BulkloadEntry<char *, char *>
+{
+ private:
+  char *key_{};
+  char *payload_{};
+
+ public:
+  constexpr BulkloadEntry(  //
+      const char *key,
+      const char *payload)
+      : key_{const_cast<char *>(key)}, payload_{const_cast<char *>(payload)}
+  {
+  }
+
+  ~BulkloadEntry() = default;
+
+  constexpr auto
+  GetKey() const  //
+      -> char *const &
+  {
+    return key_;
+  }
+
+  constexpr auto
+  GetPayload() const  //
+      -> char *const &
+  {
+    return payload_;
+  }
+
+  constexpr auto
+  GetKeyLength() const  //
+      -> size_t
+  {
+    return 7;
+  }
+
+  constexpr auto
+  GetPayloadLength() const  //
+      -> size_t
+  {
+    return 7;
+  }
+};
+
+template <class Payload>
+class BulkloadEntry<char *, Payload>
+{
+ private:
+  char *key_{};
+  Payload payload_{};
+
+ public:
+  constexpr BulkloadEntry(  //
+      const char *key,
+      const Payload payload)
+      : key_{const_cast<char *>(key)}, payload_{payload}
+  {
+  }
+
+  ~BulkloadEntry() = default;
+
+  constexpr auto
+  GetKey() const  //
+      -> char *const &
+  {
+    return key_;
+  }
+
+  constexpr auto
+  GetPayload() const  //
+      -> const Payload &
+  {
+    return payload_;
+  }
+
+  constexpr auto
+  GetKeyLength() const  //
+      -> size_t
+  {
+    return 7;
+  }
+
+  constexpr auto
+  GetPayloadLength() const  //
+      -> size_t
+  {
+    return sizeof(Payload);
+  }
+};
+
+template <class Key>
+class BulkloadEntry<Key, char *>
+{
+ private:
+  Key key_{};
+  char *payload_{};
+
+ public:
+  constexpr BulkloadEntry(  //
+      const Key key,
+      const char *payload)
+      : key_{key}, payload_{const_cast<char *>(payload)}
+  {
+  }
+
+  ~BulkloadEntry() = default;
+
+  constexpr auto
+  GetKey() const  //
+      -> const Key &
+  {
+    return key_;
+  }
+
+  constexpr auto
+  GetPayload() const  //
+      -> char *const &
+  {
+    return payload_;
+  }
+
+  constexpr auto
+  GetKeyLength() const  //
+      -> size_t
+  {
+    return sizeof(Key);
+  }
+
+  constexpr auto
+  GetPayloadLength() const  //
+      -> size_t
+  {
+    return 7;
+  }
+};
+
 template <class T>
 void
 PrepareTestData(  //

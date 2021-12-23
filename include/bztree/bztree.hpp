@@ -52,8 +52,8 @@ class BzTree
   using MwCASDescriptor = component::MwCASDescriptor;
   using Binary_t = std::remove_pointer_t<Payload>;
   using Binary_p = std::unique_ptr<Binary_t, component::PayloadDeleter<Binary_t>>;
-  using Entry = std::tuple<Key, Payload, size_t, size_t>;
-  using EntryArray = std::vector<Entry>;
+  using BulkloadEntry_t = BulkloadEntry<Key, Payload>;
+  using EntryArray = std::vector<BulkloadEntry_t>;
   using RightmostNodeStack = std::vector<Node_t *>;
 
  private:
@@ -466,8 +466,8 @@ class BzTree
     InstallNewNodeForSingleThread(rightmost_trace, new_parent);
 
     // update rightmost node stack
-    rightmost_trace.push_back(new_parent);
-    rightmost_trace.push_back(right_node);
+    rightmost_trace.emplace_back(new_parent);
+    rightmost_trace.emplace_back(right_node);
   }
 
   /**
@@ -1036,12 +1036,12 @@ class BzTree
       return ReturnCode::kSuccess;
     }
 
-    std::sort(entries.begin(), entries.end(), [](Entry e1, Entry e2) -> bool {
-      return Compare()(std::get<0>(e1), std::get<0>(e2));
+    std::sort(entries.begin(), entries.end(), [](BulkloadEntry_t e1, BulkloadEntry_t e2) -> bool {
+      return Compare()(e1.GetKey(), e2.GetKey());
     });
 
     RightmostNodeStack rightmost_trace;
-    rightmost_trace.push_back(root_);
+    rightmost_trace.emplace_back(root_);
 
     typename EntryArray::const_iterator itr = entries.cbegin();
 
@@ -1054,8 +1054,8 @@ class BzTree
 
       // Check whether a parent node should be split.
       if (itr < entries.cend()) {  // if there are still unloaded entries
-        const Key next_key = std::get<KEY_POS>(*itr);
-        const size_t next_key_length = std::get<kEY_LEN_POS>(*itr);
+        const Key next_key = (*itr).GetKey();
+        const size_t next_key_length = (*itr).GetKeyLength();
 
         if (NeedSplitForSingleThread(parent, next_key_length)) {
           SplitInternalNodeForSingleThread(parent, next_key, rightmost_trace);

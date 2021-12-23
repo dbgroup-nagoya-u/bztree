@@ -88,6 +88,70 @@ CanCASUpdate()
   else
     return false;
 }
+/**
+ * @brief A class to represent an entry for Bulk-load.
+ *
+ * Note that if you use bulk-load api with variable-length keys/values, you need to implement
+ * specialized GetKeyLength() and GetPayloadLength().
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ */
+template <class Key, class Payload>
+class BulkloadEntry
+{
+ private:
+  /*################################################################################################
+   * Internal member variables
+   *##############################################################################################*/
+  Key key_{};
+  Payload payload_{};
+
+ public:
+  /*################################################################################################
+   * Public constructors/destructors
+   *##############################################################################################*/
+  constexpr BulkloadEntry(  //
+      const Key key,
+      const Payload payload)
+      : key_{key}, payload_{payload}
+  {
+  }
+
+  ~BulkloadEntry() = default;
+
+  /*################################################################################################
+   * Public getters
+   *##############################################################################################*/
+
+  constexpr auto
+  GetKey() const  //
+      -> const Key &
+  {
+    return key_;
+  }
+
+  constexpr auto
+  GetPayload() const  //
+      -> const Payload &
+  {
+    return payload_;
+  }
+
+  constexpr auto
+  GetKeyLength() const  //
+      -> size_t
+  {
+    return sizeof(Key);
+  }
+
+  constexpr auto
+  GetPayloadLength() const  //
+      -> size_t
+  {
+    return sizeof(Payload);
+  }
+};
 
 /*##################################################################################################
  * Tuning parameters for BzTree

@@ -24,11 +24,6 @@
 #include "node.hpp"
 #include "record_page.hpp"
 
-#define KEY_POS 0
-#define PAYLOAD_POS 1
-#define kEY_LEN_POS 2
-#define PAYLOAD_LEN_POS 3
-
 namespace dbgroup::index::bztree::leaf
 {
 using component::AlignOffset;
@@ -55,10 +50,7 @@ template <class Key, class Payload, class Compare>
 using NewSortedMeta = std::array<MetaRecord<Key, Payload, Compare>, kMaxUnsortedRecNum>;
 
 template <class Key, class Payload>
-using Entry = std::tuple<Key, Payload, size_t, size_t>;
-
-template <class Key, class Payload>
-using EntryArray = std::vector<Entry<Key, Payload>>;
+using EntryArray = std::vector<BulkloadEntry<Key, Payload>>;
 
 /// a flag to indicate leaf nodes.
 constexpr bool kLeafFlag = true;
@@ -1294,12 +1286,11 @@ CreateFullLeafNode(  //
   // extract and insert entries for the leaf node
   while (itr < entries.cend()) {
     // extract an entry
-    const Entry<Key, Payload> target_entry = *itr;
-    const Key key = std::get<KEY_POS>(target_entry);
-    const Payload payload = std::get<PAYLOAD_POS>(target_entry);
-
-    const size_t key_length = std::get<kEY_LEN_POS>(target_entry);
-    const size_t payload_length = std::get<PAYLOAD_LEN_POS>(target_entry);
+    const BulkloadEntry<Key, Payload> target_entry = *itr;
+    const Key key = target_entry.GetKey();
+    const Payload payload = target_entry.GetPayload();
+    const size_t key_length = target_entry.GetKeyLength();
+    const size_t payload_length = target_entry.GetPayloadLength();
     const size_t total_length = key_length + payload_length;
     const size_t block_size = _GetAlignedSize<Key, Payload>(total_length);
 
