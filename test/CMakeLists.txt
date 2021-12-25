@@ -32,31 +32,26 @@ add_subdirectory(${CMAKE_CURRENT_BINARY_DIR}/googletest-src
 
 # define function to add unit tests in the same format
 function(ADD_BZTREE_TEST BZTREE_TEST_TARGET)
-  add_executable(
-    ${BZTREE_TEST_TARGET}
+  add_executable(${BZTREE_TEST_TARGET}
     "${CMAKE_CURRENT_SOURCE_DIR}/${BZTREE_TEST_TARGET}.cpp"
   )
-  target_compile_features(
-    ${BZTREE_TEST_TARGET} PRIVATE
+  target_compile_features(${BZTREE_TEST_TARGET} PRIVATE
     "cxx_std_17"
   )
-  target_compile_options(
-    ${BZTREE_TEST_TARGET} PRIVATE
+  target_compile_options(${BZTREE_TEST_TARGET} PRIVATE
     -Wall
     -Wextra
     $<$<STREQUAL:${CMAKE_BUILD_TYPE},"Release">:"-O2 -march=native">
     $<$<STREQUAL:${CMAKE_BUILD_TYPE},"RelWithDebInfo">:"-g3 -Og -pg">
     $<$<STREQUAL:${CMAKE_BUILD_TYPE},"Debug">:"-g3 -O0 -pg">
   )
-  target_link_libraries(
-    ${BZTREE_TEST_TARGET} PRIVATE
+  target_link_libraries(${BZTREE_TEST_TARGET} PRIVATE
     bztree
     gtest_main
   )
 
   if(DEFINED BZTREE_TEST_THREAD_NUM)
-    target_compile_definitions(
-      ${BZTREE_TEST_TARGET} PRIVATE
+    target_compile_definitions(${BZTREE_TEST_TARGET} PRIVATE
       BZTREE_TEST_THREAD_NUM=${BZTREE_TEST_THREAD_NUM}
     )
   endif()
@@ -71,7 +66,5 @@ endfunction()
 ADD_BZTREE_TEST(status_word_test)
 ADD_BZTREE_TEST(metadata_test)
 ADD_BZTREE_TEST(node_test)
-# ADD_BZTREE_TEST(leaf_node_api_test)
-# ADD_BZTREE_TEST(leaf_node_api_multi_thread_test)
 ADD_BZTREE_TEST(bztree_test)
 ADD_BZTREE_TEST(bztree_multi_thread_test)
