@@ -40,9 +40,9 @@ template <class Key, class Compare>
 class alignas(kMaxAlignment) Node
 {
  public:
-  /*################################################################################################
+  /*####################################################################################
    * Public constructors and assignment operators
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Construct a new node object.
@@ -66,9 +66,9 @@ class alignas(kMaxAlignment) Node
   Node(Node &&) = delete;
   Node &operator=(Node &&) = delete;
 
-  /*################################################################################################
+  /*####################################################################################
    * Public destructors
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Destroy the node object.
@@ -83,9 +83,9 @@ class alignas(kMaxAlignment) Node
     }
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * new/delete operators
-   *##############################################################################################*/
+   *##################################################################################*/
 
   static auto
   operator new([[maybe_unused]] std::size_t n)  //
@@ -107,9 +107,9 @@ class alignas(kMaxAlignment) Node
     free(p);
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Public getters/setters
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @retval true if this is a leaf node.
@@ -170,8 +170,7 @@ class alignas(kMaxAlignment) Node
   GetStatusWordProtected() const  //
       -> StatusWord
   {
-    auto &&stat = MwCASDescriptor::Read<StatusWord>(&status_);
-    return stat;
+    return MwCASDescriptor::Read<StatusWord>(&status_);
   }
 
   /**
@@ -228,7 +227,7 @@ class alignas(kMaxAlignment) Node
   GetChild(const size_t position) const  //
       -> Node *
   {
-    auto &&child = MwCASDescriptor::Read<Node *>(GetPayloadAddr(meta_array_[position]));
+    auto *child = MwCASDescriptor::Read<Node *>(GetPayloadAddr(meta_array_[position]));
     std::atomic_thread_fence(std::memory_order_acquire);
 
     return child;
@@ -268,9 +267,9 @@ class alignas(kMaxAlignment) Node
     desc.AddMwCASTarget(GetPayloadAddr(meta_array_[pos]), old_child, new_child);
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Public utility functions
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Get the position of a specified key by using binary search. If there is no
@@ -319,7 +318,7 @@ class alignas(kMaxAlignment) Node
       -> NodeRC
   {
     while (true) {
-      const auto &current_status = GetStatusWordProtected();
+      const auto current_status = GetStatusWordProtected();
       if (current_status.IsFrozen()) return kFrozen;
 
       MwCASDescriptor desc;
@@ -341,9 +340,9 @@ class alignas(kMaxAlignment) Node
     atomic_stat->store(status_.Unfreeze(), std::memory_order_relaxed);
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Leaf read operations
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Read a payload of a specified key if it exists.
@@ -362,14 +361,14 @@ class alignas(kMaxAlignment) Node
       -> NodeRC
   {
     // check whether there is a given key in this node
-    const auto &status = GetStatusWordProtected();
-    const auto &[rc, pos] = CheckUniqueness<Payload>(key, status.GetRecordCount() - 1);
+    const auto status = GetStatusWordProtected();
+    const auto [rc, pos] = CheckUniqueness<Payload>(key, status.GetRecordCount() - 1);
     if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
     // copy a written payload to a given address
-    const auto &meta = GetMetadataProtected(pos);
+    const auto meta = GetMetadataProtected(pos);
     if constexpr (IsVariableLengthData<Payload>()) {
-      const auto &payload_length = meta.GetPayloadLength();
+      const auto payload_length = meta.GetPayloadLength();
       out_payload = reinterpret_cast<Payload>(::operator new(payload_length));
       memcpy(out_payload, GetPayloadAddr(meta), payload_length);
     } else if constexpr (CanCASUpdate<Payload>()) {
@@ -381,9 +380,9 @@ class alignas(kMaxAlignment) Node
     return kSuccess;
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Leaf write operations
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Write (i.e., upsert) a specified kay/payload pair.
@@ -414,23 +413,23 @@ class alignas(kMaxAlignment) Node
       -> NodeRC
   {
     // variables and constants shared in Phase 1 & 2
-    const auto &[key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, payload_length);
-    const auto &in_progress_meta = Metadata{key_len, rec_len};
+    const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, payload_length);
+    const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos{};
 
-    /*----------------------------------------------------------------------------------------------
+    /*----------------------------------------------------------------------------------
      * Phase 1: reserve free space to write a record
-     *--------------------------------------------------------------------------------------------*/
+     *--------------------------------------------------------------------------------*/
     while (true) {
       cur_status = GetStatusWordProtected();
       if (cur_status.IsFrozen()) return kFrozen;
 
       if constexpr (CanCASUpdate<Payload>()) {
         // check whether a node includes a target key
-        const auto &[rc, target_pos] = SearchSortedRecord(key);
+        const auto [rc, target_pos] = SearchSortedRecord(key);
         if (rc == kExist) {
-          const auto &target_meta = GetMetadataProtected(target_pos);
+          const auto target_meta = GetMetadataProtected(target_pos);
 
           // update a record directly
           MwCASDescriptor desc{};
@@ -443,7 +442,7 @@ class alignas(kMaxAlignment) Node
       }
 
       // prepare new status for MwCAS
-      const auto &new_status = cur_status.Add(rec_len);
+      const auto new_status = cur_status.Add(rec_len);
       if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
       target_pos = cur_status.GetRecordCount();
 
@@ -454,22 +453,22 @@ class alignas(kMaxAlignment) Node
       if (desc.MwCAS()) break;
     }
 
-    /*----------------------------------------------------------------------------------------------
-     * Phase 2: write a record and check conflicts
-     *--------------------------------------------------------------------------------------------*/
+    /*----------------------------------------------------------------------------------
+     * Phase 2: insert a record and check conflicts
+     *--------------------------------------------------------------------------------*/
 
     // insert a record
-    auto &&offset = kPageSize - cur_status.GetBlockSize();
+    auto offset = kPageSize - cur_status.GetBlockSize();
     offset = SetPayload<Payload>(offset, payload, pay_len);
     offset = SetKey(offset, key, key_len);
     std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
-    const auto &inserted_meta = in_progress_meta.Commit(offset);
+    const auto inserted_meta = in_progress_meta.Commit(offset);
 
     // check conflicts (concurrent SMOs)
     while (true) {
-      const auto &status = GetStatusWordProtected();
+      const auto status = GetStatusWordProtected();
       if (status.IsFrozen()) return kFrozen;
 
       // perform MwCAS to complete a write
@@ -513,22 +512,22 @@ class alignas(kMaxAlignment) Node
       -> NodeRC
   {
     // variables and constants shared in Phase 1 & 2
-    const auto &[key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, payload_length);
-    const auto &in_progress_meta = Metadata{key_len, rec_len};
+    const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, payload_length);
+    const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos{};
     size_t recheck_pos{};
     KeyExistence rc{};
 
-    /*----------------------------------------------------------------------------------------------
-     * Phase 1: reserve free space to insert a record
-     *--------------------------------------------------------------------------------------------*/
+    /*----------------------------------------------------------------------------------
+     * Phase 1: reserve free space to write a record
+     *--------------------------------------------------------------------------------*/
     while (true) {
       cur_status = GetStatusWordProtected();
       if (cur_status.IsFrozen()) return kFrozen;
 
       // prepare new status for MwCAS
-      const auto &new_status = cur_status.Add(rec_len);
+      const auto new_status = cur_status.Add(rec_len);
       if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
       // check uniqueness
@@ -543,22 +542,22 @@ class alignas(kMaxAlignment) Node
       if (desc.MwCAS()) break;
     }
 
-    /*----------------------------------------------------------------------------------------------
+    /*----------------------------------------------------------------------------------
      * Phase 2: insert a record and check conflicts
-     *--------------------------------------------------------------------------------------------*/
+     *--------------------------------------------------------------------------------*/
 
     // insert a record
-    auto &&offset = kPageSize - cur_status.GetBlockSize();
+    auto offset = kPageSize - cur_status.GetBlockSize();
     offset = SetPayload<Payload>(offset, payload, pay_len);
     offset = SetKey(offset, key, key_len);
     std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
-    const auto &inserted_meta = in_progress_meta.Commit(offset);
+    const auto inserted_meta = in_progress_meta.Commit(offset);
 
     // check concurrent SMOs
     while (true) {
-      const auto &status = GetStatusWordProtected();
+      const auto status = GetStatusWordProtected();
       if (status.IsFrozen()) return kFrozen;
 
       // recheck uniqueness if required
@@ -613,17 +612,17 @@ class alignas(kMaxAlignment) Node
       -> NodeRC
   {
     // variables and constants shared in Phase 1 & 2
-    const auto &[key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, payload_length);
-    const auto &deleted_size = kWordLength + rec_len;
-    const auto &in_progress_meta = Metadata{key_len, rec_len};
+    const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, payload_length);
+    const auto deleted_size = kWordLength + rec_len;
+    const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos{};
     size_t exist_pos{};
     KeyExistence rc{};
 
-    /*----------------------------------------------------------------------------------------------
-     * Phase 1: reserve free space to insert a record
-     *--------------------------------------------------------------------------------------------*/
+    /*----------------------------------------------------------------------------------
+     * Phase 1: reserve free space to write a record
+     *--------------------------------------------------------------------------------*/
     while (true) {
       cur_status = GetStatusWordProtected();
       if (cur_status.IsFrozen()) return kFrozen;
@@ -635,7 +634,7 @@ class alignas(kMaxAlignment) Node
 
       if constexpr (CanCASUpdate<Payload>()) {
         if (rc == kExist && exist_pos < sorted_count_) {
-          const auto &meta = GetMetadataProtected(exist_pos);
+          const auto meta = GetMetadataProtected(exist_pos);
 
           // update a record directly
           MwCASDescriptor desc{};
@@ -648,7 +647,7 @@ class alignas(kMaxAlignment) Node
       }
 
       // prepare new status for MwCAS
-      const auto &new_status = cur_status.Add(rec_len).Delete(deleted_size);
+      const auto new_status = cur_status.Add(rec_len).Delete(deleted_size);
       if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
       // perform MwCAS to reserve space
@@ -658,22 +657,22 @@ class alignas(kMaxAlignment) Node
       if (desc.MwCAS()) break;
     }
 
-    /*----------------------------------------------------------------------------------------------
+    /*----------------------------------------------------------------------------------
      * Phase 2: insert a record and check conflicts
-     *--------------------------------------------------------------------------------------------*/
+     *--------------------------------------------------------------------------------*/
 
     // insert a record
-    auto &&offset = kPageSize - cur_status.GetBlockSize();
+    auto offset = kPageSize - cur_status.GetBlockSize();
     offset = SetPayload<Payload>(offset, payload, pay_len);
     offset = SetKey(offset, key, key_len);
     std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
-    const auto &inserted_meta = in_progress_meta.Commit(offset);
+    const auto inserted_meta = in_progress_meta.Commit(offset);
 
     // check conflicts (concurrent SMOs)
     while (true) {
-      const auto &status = GetStatusWordProtected();
+      const auto status = GetStatusWordProtected();
       if (status.IsFrozen()) return kFrozen;
 
       // recheck uniqueness if required
@@ -723,16 +722,16 @@ class alignas(kMaxAlignment) Node
       -> NodeRC
   {
     // variables and constants
-    const auto &[key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, 0);
-    const auto &in_progress_meta = Metadata{key_len, rec_len};
+    const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, 0);
+    const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos{};
     size_t exist_pos{};
     KeyExistence rc{};
 
-    /*----------------------------------------------------------------------------------------------
-     * Phase 1: reserve free space to insert a null record
-     *--------------------------------------------------------------------------------------------*/
+    /*----------------------------------------------------------------------------------
+     * Phase 1: reserve free space to write a record
+     *--------------------------------------------------------------------------------*/
     while (true) {
       cur_status = GetStatusWordProtected();
       if (cur_status.IsFrozen()) return kFrozen;
@@ -742,11 +741,11 @@ class alignas(kMaxAlignment) Node
       std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos - 1);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
-      const auto &meta = GetMetadataProtected(exist_pos);
+      const auto meta = GetMetadataProtected(exist_pos);
       if constexpr (CanCASUpdate<Payload>()) {
         if (rc == kExist && exist_pos < sorted_count_) {
-          const auto &deleted_meta = meta.Delete();
-          const auto &new_status = cur_status.Delete(kWordLength + meta.GetTotalLength());
+          const auto deleted_meta = meta.Delete();
+          const auto new_status = cur_status.Delete(kWordLength + meta.GetTotalLength());
           if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
           // delete a record directly
@@ -759,8 +758,8 @@ class alignas(kMaxAlignment) Node
       }
 
       // prepare new status for MwCAS
-      const auto &deleted_size = (2 * kWordLength) + meta.GetTotalLength() + rec_len;
-      const auto &new_status = cur_status.Add(rec_len).Delete(deleted_size);
+      const auto deleted_size = (2 * kWordLength) + meta.GetTotalLength() + rec_len;
+      const auto new_status = cur_status.Add(rec_len).Delete(deleted_size);
       if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
       // perform MwCAS to reserve space
@@ -770,21 +769,21 @@ class alignas(kMaxAlignment) Node
       if (desc.MwCAS()) break;
     }
 
-    /*----------------------------------------------------------------------------------------------
+    /*----------------------------------------------------------------------------------
      * Phase 2: insert a record and check conflicts
-     *--------------------------------------------------------------------------------------------*/
+     *--------------------------------------------------------------------------------*/
 
     // insert a null record
-    auto &&offset = kPageSize - cur_status.GetBlockSize();
+    auto offset = kPageSize - cur_status.GetBlockSize();
     offset = SetKey(offset, key, key_len);
     std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
-    const auto &deleted_meta = in_progress_meta.Delete(offset);
+    const auto deleted_meta = in_progress_meta.Delete(offset);
 
     // check concurrent SMOs
     while (true) {
-      const auto &status = GetStatusWordProtected();
+      const auto status = GetStatusWordProtected();
       if (status.IsFrozen()) return kFrozen;
 
       // recheck uniqueness if required
@@ -808,9 +807,9 @@ class alignas(kMaxAlignment) Node
     return kSuccess;
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Public structure modification operations
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Consolidate a target leaf node.
@@ -826,16 +825,16 @@ class alignas(kMaxAlignment) Node
     is_right_end_ = old_node->is_right_end_;
 
     // sort records in an unsorted region
-    const auto &[new_rec_num, records] = old_node->SortNewRecords();
+    const auto [new_rec_num, records] = old_node->SortNewRecords();
 
     // perform merge-sort to consolidate a node
     const auto sorted_count = old_node->sorted_count_;
-    auto &&offset = GetInitialOffset<Key, Payload>();
+    auto offset = GetInitialOffset<Key, Payload>();
     size_t rec_count = 0;
 
     size_t j = 0;
     for (size_t i = 0; i < sorted_count; ++i) {
-      const auto &meta = old_node->GetMetadataProtected(i);
+      const auto meta = old_node->GetMetadataProtected(i);
       const auto &key = old_node->GetKey(meta);
 
       // copy new records
@@ -893,15 +892,15 @@ class alignas(kMaxAlignment) Node
     // copy records to a left node
     const auto rec_count = sorted_count_;
     const size_t l_count = rec_count / 2;
-    auto &&l_offset = GetInitialOffset<Key, Payload>();
+    auto l_offset = GetInitialOffset<Key, Payload>();
     l_offset = l_node->CopyRecordsFrom<Payload>(this, 0, l_count, 0, l_offset);
     l_node->sorted_count_ = l_count;
     l_node->status_ = StatusWord{l_count, kPageSize - l_offset};
 
     // copy records to a right node
-    auto &&r_offset = GetInitialOffset<Key, Payload>();
+    auto r_offset = GetInitialOffset<Key, Payload>();
     r_offset = r_node->CopyRecordsFrom<Payload>(this, l_count, rec_count, 0, r_offset);
-    const auto &r_count = rec_count - l_count;
+    const auto r_count = rec_count - l_count;
     r_node->sorted_count_ = r_count;
     r_node->status_ = StatusWord{r_count, kPageSize - r_offset};
   }
@@ -928,18 +927,18 @@ class alignas(kMaxAlignment) Node
     is_right_end_ = old_node->is_right_end_;
 
     // copy lower records
-    auto &&offset = GetInitialOffset<Key, Node *>();
+    auto offset = GetInitialOffset<Key, Node *>();
     offset = CopyRecordsFrom<Node *>(old_node, 0, l_pos, 0, offset);
 
     // insert split nodes
     const auto l_meta = l_child->meta_array_[l_child->sorted_count_ - 1];
     offset = InsertChild(l_child, l_meta, l_child, l_pos, offset);
     const auto r_meta = r_child->meta_array_[r_child->sorted_count_ - 1];
-    const auto &r_pos = l_pos + 1;
+    const auto r_pos = l_pos + 1;
     offset = InsertChild(r_child, r_meta, r_child, r_pos, offset);
 
     // copy upper records
-    auto &&rec_count = old_node->sorted_count_;
+    auto rec_count = old_node->sorted_count_;
     offset = CopyRecordsFrom<Node *>(old_node, r_pos, rec_count, r_pos + 1, offset);
 
     // set an updated header
@@ -969,7 +968,7 @@ class alignas(kMaxAlignment) Node
 
     // insert initial children
     const auto l_meta = l_child->meta_array_[l_child->sorted_count_ - 1];
-    auto &&offset = GetInitialOffset<Key, Node *>();
+    auto offset = GetInitialOffset<Key, Node *>();
     offset = InsertChild(l_child, l_meta, l_child, 0, offset);
     const auto r_meta = r_child->meta_array_[r_child->sorted_count_ - 1];
     offset = InsertChild(r_child, r_meta, r_child, 1, offset);
@@ -996,7 +995,7 @@ class alignas(kMaxAlignment) Node
   {
     // copy records in left/right nodes
     size_t l_count{};
-    auto &&offset = GetInitialOffset<Key, Payload>();
+    auto offset = GetInitialOffset<Key, Payload>();
     if constexpr (std::is_same_v<Payload, Node *>) {
       // copy records from a merged left node
       l_count = l_node->sorted_count_;
@@ -1014,7 +1013,7 @@ class alignas(kMaxAlignment) Node
     is_right_end_ = r_node->is_right_end_;
 
     // create a merged node
-    const auto &rec_count = l_count + r_count;
+    const auto rec_count = l_count + r_count;
     sorted_count_ = rec_count;
     status_ = StatusWord{rec_count, kPageSize - offset};
   }
@@ -1037,7 +1036,7 @@ class alignas(kMaxAlignment) Node
     is_right_end_ = old_node->is_right_end_;
 
     // copy lower records
-    auto &&offset = GetInitialOffset<Key, Node *>();
+    auto offset = GetInitialOffset<Key, Node *>();
     offset = CopyRecordsFrom<Node *>(old_node, 0, position, 0, offset);
 
     // insert a merged node
@@ -1045,8 +1044,8 @@ class alignas(kMaxAlignment) Node
     offset = InsertChild(merged_child, meta, merged_child, position, offset);
 
     // copy upper records
-    const auto &r_pos = position + 1;
-    auto &&rec_count = old_node->sorted_count_;
+    const auto r_pos = position + 1;
+    auto rec_count = old_node->sorted_count_;
     offset = CopyRecordsFrom<Node *>(old_node, r_pos + 1, rec_count, r_pos, offset);
 
     // set an updated header
@@ -1061,9 +1060,9 @@ class alignas(kMaxAlignment) Node
   }
 
  private:
-  /*################################################################################################
+  /*####################################################################################
    * Internal classes
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief A class to sort metadata.
@@ -1074,9 +1073,9 @@ class alignas(kMaxAlignment) Node
     Key key{};
   };
 
-  /*################################################################################################
+  /*####################################################################################
    * Internal getters
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Read metadata with MwCAS read protection.
@@ -1115,9 +1114,9 @@ class alignas(kMaxAlignment) Node
     return ShiftAddr(this, meta.GetOffset() + meta.GetKeyLength());
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Internal setters
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Set metadata atomically.
@@ -1221,13 +1220,13 @@ class alignas(kMaxAlignment) Node
   {
     static_assert(CanCASUpdate<Payload>());
 
-    const auto &old_payload = MwCASDescriptor::Read<Payload>(GetPayloadAddr(meta));  // NOLINT
+    auto &&old_payload = MwCASDescriptor::Read<Payload>(GetPayloadAddr(meta));
     desc.AddMwCASTarget(GetPayloadAddr(meta), old_payload, new_payload);
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Internal functions for destruction
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Compute the maximum number of records in a node.
@@ -1239,7 +1238,7 @@ class alignas(kMaxAlignment) Node
       -> size_t
   {
     // the length of metadata
-    auto &&record_min_length = sizeof(Metadata);
+    auto record_min_length = sizeof(Metadata);
 
     // the length of keys
     if constexpr (IsVariableLengthData<Key>()) {
@@ -1254,9 +1253,9 @@ class alignas(kMaxAlignment) Node
     return (kPageSize - kHeaderLength) / record_min_length;
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Internal utility functions
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Get the position of a specified key by using binary search. If there is no
@@ -1275,7 +1274,7 @@ class alignas(kMaxAlignment) Node
     while (begin_pos <= end_pos) {
       size_t pos = (begin_pos + end_pos) >> 1UL;  // NOLINT
 
-      const auto &meta = GetMetadataProtected(pos);
+      const auto meta = GetMetadataProtected(pos);
       const auto &index_key = GetKey(meta);
 
       if (Compare{}(key, index_key)) {  // a target key is in a left side
@@ -1309,7 +1308,7 @@ class alignas(kMaxAlignment) Node
 
     // perform a linear search in revese order
     for (int64_t pos = begin_pos; pos >= sorted_count_; --pos) {
-      const auto &meta = GetMetadataProtected(pos);
+      const auto meta = GetMetadataProtected(pos);
       if (meta.IsInProgress()) {
         if (meta.IsVisible()) return {kUncertain, pos};
         continue;
@@ -1385,13 +1384,13 @@ class alignas(kMaxAlignment) Node
 
     const auto &key = orig_node->GetKey(orig_meta);
     if constexpr (IsVariableLengthData<Key>()) {
-      const auto &key_length = orig_meta.GetKeyLength();
+      const auto key_length = orig_meta.GetKeyLength();
       std::tie(key_len, pay_len, rec_len) = AlignRecord<Key, Node *>(key_length, sizeof(Node *));
     } else {
       std::tie(key_len, pay_len, rec_len) = AlignRecord<Key, Node *>(sizeof(Key), sizeof(Node *));
     }
 
-    auto &&tmp_offset = SetPayload<const Node *>(offset, child_node, pay_len);
+    auto tmp_offset = SetPayload<const Node *>(offset, child_node, pay_len);
     tmp_offset = SetKey(tmp_offset, key, key_len);
     meta_array_[rec_count] = Metadata{tmp_offset, key_len, rec_len};
 
@@ -1419,12 +1418,12 @@ class alignas(kMaxAlignment) Node
   {
     if constexpr (CanCASUpdate<Payload>()) {
       // copy a payload with MwCAS read protection
-      auto &&tmp_offset = offset - sizeof(Payload);
-      const auto &payload = MwCASDescriptor::Read<Payload>(node->GetPayloadAddr(meta));  // NOLINT
+      auto tmp_offset = offset - sizeof(Payload);
+      auto &&payload = MwCASDescriptor::Read<Payload>(node->GetPayloadAddr(meta));
       memcpy(ShiftAddr(this, tmp_offset), &payload, sizeof(Payload));
 
       // copy a correspondng key
-      const auto &key_len = meta.GetKeyLength();
+      const auto key_len = meta.GetKeyLength();
       tmp_offset -= key_len;
       memcpy(ShiftAddr(this, tmp_offset), node->GetKeyAddr(meta), key_len);
 
@@ -1433,8 +1432,8 @@ class alignas(kMaxAlignment) Node
       offset -= meta.GetTotalLength();
     } else if constexpr (IsVariableLengthData<Key>() && !IsVariableLengthData<Payload>()) {
       // record's offset is different its aligned position
-      const auto &rec_len = meta.GetKeyLength() + sizeof(Payload);
-      auto &&tmp_offset = offset - rec_len;
+      const auto rec_len = meta.GetKeyLength() + sizeof(Payload);
+      auto tmp_offset = offset - rec_len;
       memcpy(ShiftAddr(this, tmp_offset), node->GetKeyAddr(meta), rec_len);
 
       // set new metadata and update current offset
@@ -1442,7 +1441,7 @@ class alignas(kMaxAlignment) Node
       offset -= meta.GetTotalLength();
     } else {
       // copy a record from the given node
-      const auto &rec_len = meta.GetTotalLength();
+      const auto rec_len = meta.GetTotalLength();
       offset -= rec_len;
       memcpy(ShiftAddr(this, offset), node->GetKeyAddr(meta), rec_len);
 
@@ -1526,9 +1525,9 @@ class alignas(kMaxAlignment) Node
     return {count, arr};
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Internal variables
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /// the byte length of a node page.
   uint64_t node_size_ : 32;

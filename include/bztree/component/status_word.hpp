@@ -28,9 +28,9 @@ namespace dbgroup::index::bztree::component
 class StatusWord
 {
  public:
-  /*################################################################################################
+  /*####################################################################################
    * Public constructors and assignment operators
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Create a zero-filled status word.
@@ -61,9 +61,9 @@ class StatusWord
   constexpr StatusWord(StatusWord &&) = default;
   constexpr StatusWord &operator=(StatusWord &&) = default;
 
-  /*################################################################################################
+  /*####################################################################################
    * Public destructors
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Destroy the status word object.
@@ -71,9 +71,9 @@ class StatusWord
    */
   ~StatusWord() = default;
 
-  /*################################################################################################
+  /*####################################################################################
    * Public operators
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief An operator to check equality.
@@ -101,9 +101,9 @@ class StatusWord
            || frozen_ != comp.frozen_;
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Public getters/setters
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @retval true if a node is frozen (i.e., immutable).
@@ -136,9 +136,9 @@ class StatusWord
     return block_size_;
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Public utility functions
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @param sorted_count the number of sorted records in this node.
@@ -149,7 +149,7 @@ class StatusWord
   NeedConsolidation(const size_t sorted_count) const  //
       -> bool
   {
-    const auto &total_size = (kWordLength * record_count_) + block_size_;
+    const auto total_size = (kWordLength * record_count_) + block_size_;
 
     return record_count_ - sorted_count > kMaxUnsortedRecNum
            || total_size > kPageSize - kHeaderLength  //
@@ -165,7 +165,7 @@ class StatusWord
       -> bool
   {
     constexpr size_t kMaxUsedSize = kPageSize - (kHeaderLength + kMinFreeSpaceSize);
-    const auto &this_size = (kWordLength * record_count_) + block_size_;
+    const auto this_size = (kWordLength * record_count_) + block_size_;
 
     return this_size > kMaxUsedSize;
   }
@@ -178,7 +178,7 @@ class StatusWord
   NeedMerge() const  //
       -> bool
   {
-    const auto &this_size = (kWordLength * record_count_) + block_size_;
+    const auto this_size = (kWordLength * record_count_) + block_size_;
 
     return this_size < kMinConsolidatedSize - kHeaderLength;
   }
@@ -192,8 +192,8 @@ class StatusWord
   CanMergeWith(const StatusWord stat) const  //
       -> bool
   {
-    const auto &this_size = (kWordLength * record_count_) + block_size_;
-    const auto &sib_size = (kWordLength * stat.record_count_) + stat.block_size_;
+    const auto this_size = (kWordLength * record_count_) + block_size_;
+    const auto sib_size = (kWordLength * stat.record_count_) + stat.block_size_;
 
     return this_size + sib_size < kMaxMergedSize - kHeaderLength;
   }
@@ -250,9 +250,9 @@ class StatusWord
   }
 
  private:
-  /*################################################################################################
+  /*####################################################################################
    * Internal member variables
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /// the total number of records in a node.
   uint64_t record_count_ : 16;

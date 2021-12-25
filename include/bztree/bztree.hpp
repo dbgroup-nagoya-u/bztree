@@ -51,9 +51,9 @@ class BzTree
   using Binary_p = std::unique_ptr<Binary_t, component::PayloadDeleter<Binary_t>>;
 
  public:
-  /*################################################################################################
+  /*####################################################################################
    * Public classes
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief A class to represent a iterator for scan results.
@@ -67,9 +67,9 @@ class BzTree
     using BzTree_t = BzTree<Key, Payload, Compare>;
 
    public:
-    /*##############################################################################################
+    /*##################################################################################
      * Public constructors and assignment operators
-     *############################################################################################*/
+     *################################################################################*/
 
     RecordIterator(  //
         BzTree_t *bztree,
@@ -88,15 +88,15 @@ class BzTree
     constexpr RecordIterator(RecordIterator &&) noexcept = default;
     constexpr RecordIterator &operator=(RecordIterator &&) noexcept = default;
 
-    /*##############################################################################################
+    /*##################################################################################
      * Public destructors
-     *############################################################################################*/
+     *################################################################################*/
 
     ~RecordIterator() = default;
 
-    /*##############################################################################################
+    /*##################################################################################
      * Public operators for iterators
-     *############################################################################################*/
+     *################################################################################*/
 
     /**
      * @return std::pair<Key, Payload>: a current key and payload pair
@@ -119,9 +119,9 @@ class BzTree
       current_meta_ = node_->GetMetadata(current_pos_);
     }
 
-    /*##############################################################################################
+    /*##################################################################################
      * Public getters/setters
-     *############################################################################################*/
+     *################################################################################*/
 
     /**
      * @brief Check if there are any records left.
@@ -167,9 +167,9 @@ class BzTree
     }
 
    private:
-    /*##############################################################################################
+    /*##################################################################################
      * Internal member variables
-     *############################################################################################*/
+     *################################################################################*/
 
     /// a pointer to BwTree to perform continuous scan
     BzTree_t *bztree_{nullptr};
@@ -187,9 +187,9 @@ class BzTree
     Metadata current_meta_{};
   };
 
-  /*################################################################################################
+  /*####################################################################################
    * Public constructors and assignment operators
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Construct a new BzTree object.
@@ -213,9 +213,9 @@ class BzTree
   BzTree(BzTree &&) = delete;
   BzTree &operator=(BzTree &&) = delete;
 
-  /*################################################################################################
+  /*####################################################################################
    * Public destructors
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Destroy the BzTree object.
@@ -227,9 +227,9 @@ class BzTree
     DeleteChildren(GetRoot());
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Public read APIs
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Read a payload of a specified key if it exists.
@@ -244,12 +244,12 @@ class BzTree
   auto
   Read(const Key &key)
   {
-    [[maybe_unused]] const auto &guard = gc_->CreateEpochGuard();
+    [[maybe_unused]] auto &&guard = gc_->CreateEpochGuard();
 
     const Node_t *node = SearchLeafNode(key, true);
 
     Payload payload{};
-    const auto &rc = node->Read(key, payload);
+    const auto rc = node->Read(key, payload);
     if constexpr (IsVariableLengthData<Payload>()) {
       if (rc == NodeRC::kSuccess) {
         return std::make_pair(ReturnCode::kSuccess, Binary_p{payload});
@@ -272,7 +272,7 @@ class BzTree
   Begin()  //
       -> RecordIterator
   {
-    [[maybe_unused]] const auto &guard = gc_->CreateEpochGuard();
+    [[maybe_unused]] auto &&guard = gc_->CreateEpochGuard();
 
     const Node_t *node = SearchLeftEdgeLeaf();
     auto *page = CreateNewNode<Payload>();
@@ -296,7 +296,7 @@ class BzTree
       Node_t *page = nullptr)  //
       -> RecordIterator
   {
-    [[maybe_unused]] const auto &guard = gc_->CreateEpochGuard();
+    [[maybe_unused]] auto &&guard = gc_->CreateEpochGuard();
 
     if (page != nullptr) {
       gc_->AddGarbage(page);
@@ -309,9 +309,9 @@ class BzTree
     return RecordIterator{this, page, page->Search(begin_key, begin_closed)};
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Public write APIs
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Write (i.e., upsert) a specified kay/payload pair.
@@ -337,11 +337,11 @@ class BzTree
       const size_t payload_length = sizeof(Payload))  //
       -> ReturnCode
   {
-    [[maybe_unused]] const auto &guard = gc_->CreateEpochGuard();
+    [[maybe_unused]] auto &&guard = gc_->CreateEpochGuard();
 
     while (true) {
       Node_t *node = SearchLeafNode(key, true);
-      const auto &rc = node->Write(key, key_length, payload, payload_length);
+      const auto rc = node->Write(key, key_length, payload, payload_length);
 
       switch (rc) {
         case NodeRC::kSuccess:
@@ -380,11 +380,11 @@ class BzTree
       const size_t payload_length = sizeof(Payload))  //
       -> ReturnCode
   {
-    [[maybe_unused]] const auto &guard = gc_->CreateEpochGuard();
+    [[maybe_unused]] auto &&guard = gc_->CreateEpochGuard();
 
     while (true) {
       Node_t *node = SearchLeafNode(key, true);
-      const auto &rc = node->Insert(key, key_length, payload, payload_length);
+      const auto rc = node->Insert(key, key_length, payload, payload_length);
 
       switch (rc) {
         case NodeRC::kSuccess:
@@ -424,11 +424,11 @@ class BzTree
       const size_t payload_length = sizeof(Payload))  //
       -> ReturnCode
   {
-    [[maybe_unused]] const auto &guard = gc_->CreateEpochGuard();
+    [[maybe_unused]] auto &&guard = gc_->CreateEpochGuard();
 
     while (true) {
       Node_t *node = SearchLeafNode(key, true);
-      const auto &rc = node->Update(key, key_length, payload, payload_length);
+      const auto rc = node->Update(key, key_length, payload, payload_length);
 
       switch (rc) {
         case NodeRC::kSuccess:
@@ -464,11 +464,11 @@ class BzTree
       const size_t key_length = sizeof(Key))  //
       -> ReturnCode
   {
-    [[maybe_unused]] const auto &guard = gc_->CreateEpochGuard();
+    [[maybe_unused]] auto &&guard = gc_->CreateEpochGuard();
 
     while (true) {
       Node_t *node = SearchLeafNode(key, true);
-      const auto &rc = node->template Delete<Payload>(key, key_length);
+      const auto rc = node->template Delete<Payload>(key, key_length);
 
       switch (rc) {
         case NodeRC::kSuccess:
@@ -484,9 +484,9 @@ class BzTree
   }
 
  private:
-  /*################################################################################################
+  /*####################################################################################
    * Internal utility functions
-   *##############################################################################################*/
+   *##################################################################################*/
 
   template <class T>
   [[nodiscard]] auto
@@ -508,7 +508,7 @@ class BzTree
   GetRoot() const  //
       -> Node_t *
   {
-    auto &&root = MwCASDescriptor::Read<Node_t *>(&root_);
+    auto *root = MwCASDescriptor::Read<Node_t *>(&root_);
     std::atomic_thread_fence(std::memory_order_acquire);
 
     return root;
@@ -529,7 +529,7 @@ class BzTree
   {
     Node_t *current_node = GetRoot();
     while (!current_node->IsLeaf()) {
-      const auto &pos = current_node->Search(key, range_is_closed);
+      const auto pos = current_node->Search(key, range_is_closed);
       current_node = current_node->GetChild(pos);
     }
 
@@ -554,7 +554,8 @@ class BzTree
   /**
    * @brief Trace a target node and extract intermidiate nodes.
    *
-   * Note that traced nodes may not have a target node because concurrent SMOs may remove it.
+   * Note that traced nodes may not have a target node because concurrent SMOs may
+   * remove it.
    *
    * @param key a target key.
    * @param target_node a target node.
@@ -580,9 +581,9 @@ class BzTree
     return trace;
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Internal structure modification functoins
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Consolidate a target leaf node.
@@ -605,7 +606,7 @@ class BzTree
     consol_node->template Consolidate<Payload>(node);
 
     // check whether splitting/merging is needed
-    const auto &stat = consol_node->GetStatusWord();
+    const auto stat = consol_node->GetStatusWord();
     if (stat.NeedSplit()) {
       // invoke splitting
       Split<Payload>(consol_node, key);
@@ -632,9 +633,9 @@ class BzTree
       Node_t *node,
       const Key &key)
   {
-    /*----------------------------------------------------------------------------------------------
+    /*----------------------------------------------------------------------------------
      * Phase 1: preparation
-     *--------------------------------------------------------------------------------------------*/
+     *--------------------------------------------------------------------------------*/
 
     NodeStack trace;
     Node_t *old_parent = nullptr;
@@ -655,9 +656,9 @@ class BzTree
       if (old_parent->Freeze() == NodeRC::kSuccess) break;
     }
 
-    /*----------------------------------------------------------------------------------------------
+    /*----------------------------------------------------------------------------------
      * Phase 2: installation
-     *--------------------------------------------------------------------------------------------*/
+     *--------------------------------------------------------------------------------*/
 
     // create split nodes and its parent node
     Node_t *l_node = CreateNewNode<T>();
@@ -703,11 +704,11 @@ class BzTree
       const Key &key)  //
       -> bool
   {
-    const auto &r_stat = right_node->GetStatusWord();
+    const auto r_stat = right_node->GetStatusWord();
 
-    /*----------------------------------------------------------------------------------------------
+    /*----------------------------------------------------------------------------------
      * Phase 1: preparation
-     *--------------------------------------------------------------------------------------------*/
+     *--------------------------------------------------------------------------------*/
 
     NodeStack trace;
     Node_t *old_parent{};
@@ -722,12 +723,12 @@ class BzTree
       // check a parent node is live
       trace.pop_back();
       old_parent = trace.back().first;
-      const auto &p_status = old_parent->GetStatusWord();
+      const auto p_status = old_parent->GetStatusWord();
       if (p_status.IsFrozen()) continue;
 
       // check a right sibling node is live and has sufficent capacity
       left_node = old_parent->GetChild(target_pos - 1);
-      const auto &l_stat = left_node->GetStatusWord();
+      const auto l_stat = left_node->GetStatusWord();
       if (!l_stat.CanMergeWith(r_stat)) return false;
       if (l_stat.IsFrozen()) continue;
 
@@ -738,9 +739,9 @@ class BzTree
       if (desc.MwCAS()) break;
     }
 
-    /*----------------------------------------------------------------------------------------------
+    /*----------------------------------------------------------------------------------
      * Phase 2: installation
-     *--------------------------------------------------------------------------------------------*/
+     *--------------------------------------------------------------------------------*/
 
     // create new nodes
     Node_t *merged_node = CreateNewNode<T>();
@@ -794,12 +795,12 @@ class BzTree
     std::atomic_thread_fence(std::memory_order_release);
     while (true) {
       // prepare installing nodes
-      auto &&[old_node, target_pos] = trace.back();
+      auto [old_node, target_pos] = trace.back();
       trace.pop_back();
       Node_t *parent = trace.back().first;
 
       // check wether related nodes are frozen
-      const auto &parent_status = parent->GetStatusWordProtected();
+      const auto parent_status = parent->GetStatusWordProtected();
       if (!parent_status.IsFrozen()) {
         // install a new internal node by MwCAS
         MwCASDescriptor desc{};
@@ -834,9 +835,9 @@ class BzTree
     delete node;
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Internal member variables
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /// a root node of BzTree
   std::atomic<Node_t *> root_{nullptr};
