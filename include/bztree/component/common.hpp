@@ -200,30 +200,6 @@ GetInitialOffset()  //
   }
 }
 
-/**
- * @brief A wrapper of a deleter class for unique_ptr/shared_ptr.
- *
- * @tparam Payload a class to be deleted by this deleter.
- */
-template <class Payload>
-struct PayloadDeleter {
-  constexpr PayloadDeleter() noexcept = default;
-
-  template <class Up, typename = typename std::enable_if_t<std::is_convertible_v<Up *, Payload *>>>
-  explicit PayloadDeleter([[maybe_unused]] const PayloadDeleter<Up> &del) noexcept
-  {
-  }
-
-  void
-  operator()(Payload *ptr) const
-  {
-    static_assert(!std::is_void_v<Payload>, "can't delete pointer to incomplete type");
-    static_assert(sizeof(Payload) > 0, "can't delete pointer to incomplete type");
-
-    ::operator delete(ptr);
-  }
-};
-
 }  // namespace dbgroup::index::bztree::component
 
 #endif  // BZTREE_COMPONENT_COMMON_HPP

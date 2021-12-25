@@ -21,6 +21,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -47,8 +48,6 @@ class BzTree
   using NodeGC_t = ::dbgroup::memory::EpochBasedGC<Node_t>;
   using NodeStack = std::vector<std::pair<Node_t *, size_t>>;
   using MwCASDescriptor = component::MwCASDescriptor;
-  using Binary_t = std::remove_pointer_t<Payload>;
-  using Binary_p = std::unique_ptr<Binary_t, component::PayloadDeleter<Binary_t>>;
 
  public:
   /*####################################################################################
@@ -242,7 +241,8 @@ class BzTree
    * @return std::pair<ReturnCode, Payload>: a return code and payload pair.
    */
   auto
-  Read(const Key &key)
+  Read(const Key &key)  //
+      -> std::optional<Payload>
   {
     [[maybe_unused]] auto &&guard = gc_->CreateEpochGuard();
 
@@ -250,17 +250,8 @@ class BzTree
 
     Payload payload{};
     const auto rc = node->Read(key, payload);
-    if constexpr (IsVariableLengthData<Payload>()) {
-      if (rc == NodeRC::kSuccess) {
-        return std::make_pair(ReturnCode::kSuccess, Binary_p{payload});
-      }
-      return std::make_pair(ReturnCode::kKeyNotExist, Binary_p{});
-    } else {
-      if (rc == NodeRC::kSuccess) {
-        return std::make_pair(ReturnCode::kSuccess, std::move(payload));
-      }
-      return std::make_pair(ReturnCode::kKeyNotExist, Payload{});
-    }
+    if (rc == NodeRC::kSuccess) return std::make_optional(payload);
+    return std::nullopt;
   }
 
   /**

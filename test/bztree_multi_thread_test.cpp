@@ -227,19 +227,20 @@ class BzTreeFixture : public testing::Test  // NOLINT
   VerifyRead(  //
       const size_t key_id,
       const size_t expected_id,
-      const bool expect_fail = false)
+      const bool expect_success = true)
   {
-    const auto [rc, actual] = bztree_.Read(keys_[key_id]);
+    const auto read_val = bztree_.Read(keys_[key_id]);
+    if (expect_success) {
+      EXPECT_TRUE(read_val);
 
-    if (expect_fail) {
-      EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
-    } else {
-      EXPECT_EQ(ReturnCode::kSuccess, rc);
+      const auto expected_val = payloads_[expected_id];
+      const auto actual_val = read_val.value();
+      EXPECT_TRUE(component::IsEqual<PayloadComp>(expected_val, actual_val));
       if constexpr (IsVariableLengthData<Payload>()) {
-        EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads_[expected_id], actual.get()));
-      } else {
-        EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads_[expected_id], actual));
+        delete actual_val;
       }
+    } else {
+      EXPECT_FALSE(read_val);
     }
   }
 
@@ -301,7 +302,7 @@ class BzTreeFixture : public testing::Test  // NOLINT
 
     EXPECT_EQ(written_ids.size(), deleted_ids.size());
     for (auto &&id : deleted_ids) {
-      VerifyRead(id, id, true);
+      VerifyRead(id, id, false);
     }
   }
 

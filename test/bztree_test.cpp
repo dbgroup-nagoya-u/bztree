@@ -100,18 +100,18 @@ class BzTreeFixture : public testing::Test  // NOLINT
       const size_t expected_id,
       const bool expect_success)
   {
-    ReturnCode expected_rc = (expect_success) ? kSuccess : kKeyNotExist;
-
-    const auto [rc, actual] = bztree_->Read(keys_[key_id]);
-    EXPECT_EQ(expected_rc, rc);
+    const auto read_val = bztree_->Read(keys_[key_id]);
     if (expect_success) {
+      EXPECT_TRUE(read_val);
+
       const auto expected_val = payloads_[expected_id];
+      const auto actual_val = read_val.value();
+      EXPECT_TRUE(component::IsEqual<PayloadComp>(expected_val, actual_val));
       if constexpr (IsVariableLengthData<Payload>()) {
-        auto *value = actual.get();
-        EXPECT_TRUE(component::IsEqual<PayloadComp>(expected_val, value));
-      } else {
-        EXPECT_TRUE(component::IsEqual<PayloadComp>(expected_val, actual));
+        delete actual_val;
       }
+    } else {
+      EXPECT_FALSE(read_val);
     }
   }
 
