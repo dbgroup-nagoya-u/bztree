@@ -1492,16 +1492,16 @@ class alignas(kMaxAlignment) Node
   SortNewRecords() const  //
       -> std::pair<size_t, std::array<MetaKeyPair, kMaxUnsortedRecNum>>
   {
-    const int64_t rec_count = GetStatusWordProtected().GetRecordCount();
+    const auto rec_count = GetStatusWordProtected().GetRecordCount();
     std::atomic_thread_fence(std::memory_order_acquire);
 
     std::array<MetaKeyPair, kMaxUnsortedRecNum> arr;
     size_t count = 0;
 
     // sort unsorted records by insertion sort
-    for (int64_t index = rec_count - 1; index >= sorted_count_; --index) {
+    for (size_t pos = sorted_count_; pos < rec_count; ++pos) {
       // check whether a record has been inserted
-      const auto &meta = GetMetadataProtected(index);
+      const auto meta = GetMetadataProtected(pos);
       if (meta.IsInProgress()) continue;
 
       // search an inserting position
@@ -1512,14 +1512,15 @@ class alignas(kMaxAlignment) Node
       }
 
       // shift upper records if needed
-      if (i < count) {
-        if (!Compare{}(cur_key, arr[i].key)) continue;  // there is a duplicate key
+      if (i >= count) {
+        ++count;
+      } else if (Compare{}(cur_key, arr[i].key)) {
         memmove(&(arr[i + 1]), &(arr[i]), sizeof(MetaKeyPair) * (count - i));
+        ++count;
       }
 
       // insert a new record
       arr[i] = MetaKeyPair{meta, cur_key};
-      ++count;
     }
 
     return {count, arr};
