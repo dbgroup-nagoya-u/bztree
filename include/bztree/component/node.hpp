@@ -56,10 +56,9 @@ class alignas(kMaxAlignment) Node
       : node_size_{kPageSize},
         sorted_count_{0},
         is_leaf_{static_cast<uint64_t>(is_leaf)},
-        is_right_end_{1}
+        is_right_end_{1},
+        status_{0, block_size}
   {
-    auto *atomic_stat = reinterpret_cast<std::atomic<StatusWord> *>(&status_);
-    atomic_stat->exchange(StatusWord{0, block_size}, std::memory_order_acquire);
   }
 
   Node(const Node &) = delete;
@@ -77,17 +76,11 @@ class alignas(kMaxAlignment) Node
    */
   ~Node()
   {
-    auto *atomic_stat = reinterpret_cast<std::atomic<StatusWord> *>(&status_);
-    atomic_stat->load(std::memory_order_acquire);
-
     // fill a metadata region with zeros
     for (size_t i = 0; i < GetMaxRecordNum(); ++i) {
       auto *dummy_p = reinterpret_cast<size_t *>(&meta_array_[i]);
       *dummy_p = 0UL;
     }
-
-    // set a status word to release memory brrier
-    atomic_stat->store(StatusWord{}, std::memory_order_release);
   }
 
   /*################################################################################################
