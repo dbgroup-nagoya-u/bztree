@@ -42,7 +42,7 @@ using ::dbgroup::atomic::mwcas::MwCASDescriptor;
 enum NodeRC
 {
   kSuccess = 0,
-  kKeyNotExist,
+  kKeyNotExist = -4,
   kKeyExist,
   kFrozen,
   kNeedConsolidation
@@ -55,7 +55,7 @@ enum NodeRC
 enum KeyExistence
 {
   kExist = 0,
-  kNotExist,
+  kNotExist = -3,
   kDeleted,
   kUncertain
 };

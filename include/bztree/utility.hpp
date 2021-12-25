@@ -38,7 +38,7 @@ namespace dbgroup::index::bztree
 enum ReturnCode
 {
   kSuccess = 0,
-  kKeyNotExist,
+  kKeyNotExist = -2,
   kKeyExist
 };
 
