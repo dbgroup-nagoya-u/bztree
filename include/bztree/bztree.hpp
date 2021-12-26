@@ -141,7 +141,7 @@ class BzTree
       const auto &begin_key = GetKey();
 
       // update this iterator with the next scan results
-      *this = bztree_->Scan(begin_key, false, node_.release());
+      *this = bztree_->Scan(std::make_pair(begin_key, false), node_.release());
       return HasNext();
     }
 
@@ -255,24 +255,6 @@ class BzTree
   }
 
   /**
-   * @brief Perform a full scan.
-   *
-   * @return an iterator to access target records.
-   */
-  auto
-  Begin()  //
-      -> RecordIterator
-  {
-    [[maybe_unused]] auto &&guard = gc_->CreateEpochGuard();
-
-    const Node_t *node = SearchLeftEdgeLeaf();
-    auto *page = CreateNewNode<Payload>();
-    page->template Consolidate<Payload>(node);
-
-    return RecordIterator{this, page, 0};
-  }
-
-  /**
    * @brief Perform a range scan with specified keys.
    *
    * @param begin_key a begin key of a range scan.
@@ -282,8 +264,7 @@ class BzTree
    */
   auto
   Scan(  //
-      const Key &begin_key,
-      const bool begin_closed = true,
+      const std::optional<std::pair<const Key &, bool>> begin_key = std::nullopt,
       Node_t *page = nullptr)  //
       -> RecordIterator
   {
@@ -293,11 +274,16 @@ class BzTree
       gc_->AddGarbage(page);
     }
 
-    const Node_t *node = SearchLeafNode(begin_key, begin_closed);
+    // extract begin/end keys
+    auto &&[key, begin_closed] = begin_key.value_or(std::make_pair(Key{}, true));
+
+    // sort records in a target node
+    Node_t *node = (begin_key) ? SearchLeafNode(key, begin_closed) : SearchLeftEdgeLeaf();
     page = CreateNewNode<Payload>();
     page->template Consolidate<Payload>(node);
 
-    return RecordIterator{this, page, page->Search(begin_key, begin_closed)};
+    auto begin_pos = (begin_key) ? page->Search(key, begin_closed) : 0;
+    return RecordIterator{this, page, begin_pos};
   }
 
   /*####################################################################################

@@ -116,25 +116,17 @@ class BzTreeFixture : public testing::Test  // NOLINT
   }
 
   void
-  VerifyBegin()
+  VerifyScan(const std::optional<std::pair<size_t, bool>> begin_ref)
   {
-    auto iter = bztree_->Begin();
-
-    for (size_t pos = 0; iter.HasNext(); ++iter, ++pos) {
-      auto [key, payload] = *iter;
-      EXPECT_TRUE(component::IsEqual<KeyComp>(keys_[pos], key));
-      EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads_[pos], payload));
+    std::optional<std::pair<const Key &, bool>> begin_key = std::nullopt;
+    size_t pos = 0;
+    if (begin_ref) {
+      auto &&[begin_id, begin_closed] = *begin_ref;
+      begin_key.emplace(keys_[begin_id], begin_closed);
+      pos = (begin_closed) ? begin_id : begin_id + 1;
     }
-  }
+    auto iter = bztree_->Scan(begin_key);
 
-  void
-  VerifyScan(  //
-      const size_t begin_key_id,
-      const bool begin_closed)
-  {
-    auto iter = bztree_->Scan(keys_[begin_key_id], begin_closed);
-
-    size_t pos = (begin_closed) ? begin_key_id : begin_key_id + 1;
     for (; iter.HasNext(); ++iter, ++pos) {
       auto [key, payload] = *iter;
       EXPECT_TRUE(component::IsEqual<KeyComp>(keys_[pos], key));
@@ -334,7 +326,7 @@ TYPED_TEST(BzTreeFixture, ReadWithNotPresentKeyFail)
  * Scan operation
  *------------------------------------------------------------------------------------*/
 
-TYPED_TEST(BzTreeFixture, BeginPerformFullScan)
+TYPED_TEST(BzTreeFixture, ScanWithoutKeysPerformFullScan)
 {
   const size_t rec_num = 2 * TestFixture::max_rec_num_ * TestFixture::max_rec_num_;
 
@@ -342,7 +334,7 @@ TYPED_TEST(BzTreeFixture, BeginPerformFullScan)
     TestFixture::VerifyWrite(i, i);
   }
 
-  TestFixture::VerifyBegin();
+  TestFixture::VerifyScan(std::nullopt);
 }
 
 TYPED_TEST(BzTreeFixture, ScanWithClosedRangeIncludeBeginKey)
@@ -353,7 +345,7 @@ TYPED_TEST(BzTreeFixture, ScanWithClosedRangeIncludeBeginKey)
     TestFixture::VerifyWrite(i, i);
   }
 
-  TestFixture::VerifyScan(0, kRangeClosed);
+  TestFixture::VerifyScan(std::make_pair(0, kRangeClosed));
 }
 
 TYPED_TEST(BzTreeFixture, ScanWithOpenedRangeExcludeBeginKey)
@@ -364,7 +356,7 @@ TYPED_TEST(BzTreeFixture, ScanWithOpenedRangeExcludeBeginKey)
     TestFixture::VerifyWrite(i, i);
   }
 
-  TestFixture::VerifyScan(0, kRangeOpened);
+  TestFixture::VerifyScan(std::make_pair(0, kRangeOpened));
 }
 
 /*--------------------------------------------------------------------------------------
