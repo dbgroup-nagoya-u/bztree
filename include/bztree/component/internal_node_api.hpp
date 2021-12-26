@@ -231,6 +231,40 @@ GetChildNode(  //
   return MwCASDescriptor::Read<Node<Key, Payload, Compare> *>(node->GetPayloadAddr(meta));
 }
 
+/**
+ * @brief Insert the leaf node into the parent node for bulkload.
+ *
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @tparam Compare a comparetor class for keys.
+ * @param node a parent node.
+ * @param key a leaf node to be inserted into the parent node.
+ */
+template <class Key, class Payload, class Compare>
+void
+InsertFullLeafNode(  //
+    Node<Key, Payload, Compare> *parent,
+    const Node<Key, Payload, Compare> *leaf_node)
+{
+  StatusWord status = parent->GetStatusWord();
+  size_t rec_count = status.GetRecordCount();
+  size_t offset = kPageSize - (status.GetBlockSize() - kWordLength);  //kWordLength = the size of rightmost pointer
+
+  //insert the leaf node
+  _InsertChild(parent, leaf_node, rec_count - 1, offset);  //- 1 = - rightmost pointer
+
+  //insert rightmost pointer
+  const auto rightmost_pointer = new Node<Key, Payload, Compare>{kLeafFlag};
+
+  _InsertChild(parent, rightmost_pointer, rec_count, offset);
+
+  ++rec_count;
+
+  //update the header of the parent node
+  parent->SetSortedCount(rec_count);
+  parent->SetStatus(StatusWord{rec_count, kPageSize - offset});
+}
+
 /*################################################################################################
  * Public structure modification operations
  *##############################################################################################*/

@@ -49,6 +49,12 @@ using MetaArray = std::array<Metadata, Node<Key, Payload, Compare>::kMaxRecordNu
 template <class Key, class Payload, class Compare>
 using NewSortedMeta = std::array<MetaRecord<Key, Payload, Compare>, kMaxUnsortedRecNum>;
 
+template <class Key, class Payload>
+using EntryArray = std::vector<BulkloadEntry<Key, Payload>>;
+
+/// a flag to indicate leaf nodes.
+constexpr bool kLeafFlag = true;
+
 /*################################################################################################
  * Internal utility functions
  *##############################################################################################*/
@@ -1249,6 +1255,66 @@ GatherSortedLiveMetadata(const Node<Key, Payload, Compare> *node)
   _MergeSortedRecords(node, new_records, new_rec_num, results, count);
 
   return {std::move(results), std::move(count)};
+}
+
+/**
+ * @brief Create a leaf node with the maximum number of records for bulkload.
+ *
+ * @tparam Compare a comparetor class for keys.
+ * @tparam Key a target key class.
+ * @tparam Payload a target payload class.
+ * @param entries vector of entries to be bulk-loaded
+ * @return Node_t*: a created full leaf node.
+ */
+template <class Compare, class Key, class Payload>
+Node<Key, Payload, Compare> *
+CreateFullLeafNode(  //
+    const EntryArray<Key, Payload> &entries,
+    typename EntryArray<Key, Payload>::const_iterator &itr)
+{
+  auto leaf_node = new Node<Key, Payload, Compare>{kLeafFlag};
+  size_t sum_block_size = 0;  // used to determine if the entry can be inserted or not
+  size_t offset = kPageSize;
+  size_t rec_count = 0;
+
+  // extract and insert entries for the leaf node
+  while (itr < entries.cend()) {
+    // extract an entry
+    const BulkloadEntry<Key, Payload> target_entry = *itr;
+    const Key key = target_entry.GetKey();
+    const Payload payload = target_entry.GetPayload();
+    const size_t key_length = target_entry.GetKeyLength();
+    const size_t payload_length = target_entry.GetPayloadLength();
+    const size_t total_length = key_length + payload_length;
+    const size_t block_size = _GetAlignedSize<Key, Payload>(total_length);
+
+    const size_t target_size =
+        component::kHeaderLength + sum_block_size + block_size + (rec_count + 1) * kWordLength;
+
+    if (target_size > kPageSize - kMinFreeSpaceSize) {
+      break;
+    }
+
+    sum_block_size += block_size;
+
+    // insert an entry to the leaf node
+    leaf_node->SetPayload(offset, payload, payload_length);
+    leaf_node->SetKey(offset, key, key_length);
+    leaf_node->SetMetadata(rec_count, Metadata(offset, key_length, total_length));
+
+    // offset = kPageSize - sum_block_size;
+    if constexpr (CanCASUpdate<Payload>()) {
+      AlignOffset<Key>(offset);
+    }
+    ++rec_count;
+    ++itr;
+  }
+
+  // create the header of the leaf node
+  leaf_node->SetSortedCount(rec_count);
+  leaf_node->SetStatus(StatusWord{rec_count, kPageSize - offset});
+
+  return leaf_node;
 }
 
 }  // namespace dbgroup::index::bztree::leaf
