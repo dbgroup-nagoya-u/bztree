@@ -115,7 +115,7 @@ class BzTree
      *################################################################################*/
 
     /**
-     * @return std::pair<Key, Payload>: a current key and payload pair
+     * @return a current key and payload pair
      */
     constexpr auto
     operator*() const  //
@@ -163,7 +163,7 @@ class BzTree
     }
 
     /**
-     * @return Key: a key of a current record
+     * @return a key of a current record
      */
     [[nodiscard]] constexpr auto
     GetKey() const  //
@@ -173,7 +173,7 @@ class BzTree
     }
 
     /**
-     * @return Payload: a payload of a current record
+     * @return a payload of a current record
      */
     [[nodiscard]] constexpr auto
     GetPayload() const  //
@@ -256,12 +256,8 @@ class BzTree
   /**
    * @brief Read a payload of a specified key if it exists.
    *
-   * This function returns two return codes: kSuccess and kKeyNotExist. If a return code
-   * is kSuccess, a returned pair contains a target payload. If a return code is
-   * kKeyNotExist, the value of a returned payload is undefined.
-   *
    * @param key a target key.
-   * @return std::pair<ReturnCode, Payload>: a return code and payload pair.
+   * @returnnullopt.
    */
   auto
   Read(const Key &key)  //
@@ -280,8 +276,8 @@ class BzTree
   /**
    * @brief Perform a range scan with specified keys.
    *
-   * @param begin_key a begin key of a range scan.
-   * @param begin_closed a flag to indicate whether the begin side of a range is closed.
+   * @param begin_key a pair of a begin key and its openness (true=closed).
+   * @param end_key a pair of an end key and its openness (true=closed).
    * @param page a page that contains old keys/payloads (used internally).
    * @return an iterator to access target records.
    */
@@ -342,7 +338,7 @@ class BzTree
    * @param payload a target payload to be written.
    * @param key_length the length of a target key.
    * @param payload_length the length of a target payload.
-   * @return ReturnCode: kSuccess.
+   * @return kSuccess.
    */
   auto
   Write(  //
@@ -503,6 +499,13 @@ class BzTree
    * Internal utility functions
    *##################################################################################*/
 
+  /**
+   * @brief Create a New Node accordint to a given template paramter.
+   *
+   * @tparam T a template paramter for indicating whether a new node is a leaf.
+   * @retval an empty leaf node if Payload is given as a template.
+   * @retval an empty internal node otherwise.
+   */
   template <class T>
   [[nodiscard]] auto
   CreateNewNode()  //
@@ -517,7 +520,7 @@ class BzTree
   }
 
   /**
-   * @return Node_t*: a current root node.
+   * @return a current root node.
    */
   [[nodiscard]] auto
   GetRoot() const  //
@@ -534,7 +537,7 @@ class BzTree
    *
    * @param key a target key.
    * @param range_is_closed a flag to indicate whether a key is included.
-   * @return Node_t*: a leaf node that may contain a target key.
+   * @return a leaf node that may contain a target key.
    */
   [[nodiscard]] auto
   SearchLeafNode(  //
@@ -552,7 +555,7 @@ class BzTree
   }
 
   /**
-   * @return Node_t*: a leaf node on the far left.
+   * @return a leaf node on the far left.
    */
   [[nodiscard]] auto
   SearchLeftEdgeLeaf() const  //
@@ -574,7 +577,7 @@ class BzTree
    *
    * @param key a target key.
    * @param target_node a target node.
-   * @return NodeStack: a stack of nodes.
+   * @return a stack of nodes.
    */
   auto
   TraceTargetNode(  //
