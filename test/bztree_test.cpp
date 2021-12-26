@@ -116,21 +116,37 @@ class BzTreeFixture : public testing::Test  // NOLINT
   }
 
   void
-  VerifyScan(const std::optional<std::pair<size_t, bool>> begin_ref)
+  VerifyScan(  //
+      const std::optional<std::pair<size_t, bool>> begin_ref,
+      const std::optional<std::pair<size_t, bool>> end_ref)
   {
     std::optional<std::pair<const Key &, bool>> begin_key = std::nullopt;
-    size_t pos = 0;
+    size_t begin_pos = 0;
     if (begin_ref) {
       auto &&[begin_id, begin_closed] = *begin_ref;
       begin_key.emplace(keys_[begin_id], begin_closed);
-      pos = (begin_closed) ? begin_id : begin_id + 1;
+      begin_pos = (begin_closed) ? begin_id : begin_id + 1;
     }
-    auto iter = bztree_->Scan(begin_key);
 
-    for (; iter.HasNext(); ++iter, ++pos) {
+    std::optional<std::pair<const Key &, bool>> end_key = std::nullopt;
+    size_t end_pos = 0;
+    if (end_ref) {
+      auto &&[end_id, end_closed] = *end_ref;
+      end_key.emplace(keys_[end_id], end_closed);
+      end_pos = (end_closed) ? end_id : end_id - 1;
+    }
+
+    auto iter = bztree_->Scan(begin_key, end_key);
+
+    for (; iter.HasNext(); ++iter, ++begin_pos) {
       auto [key, payload] = *iter;
-      EXPECT_TRUE(component::IsEqual<KeyComp>(keys_[pos], key));
-      EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads_[pos], payload));
+      EXPECT_TRUE(component::IsEqual<KeyComp>(keys_[begin_pos], key));
+      EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads_[begin_pos], payload));
+    }
+    EXPECT_FALSE(iter.HasNext());
+
+    if (end_ref) {
+      EXPECT_EQ(begin_pos, end_pos);
     }
   }
 
@@ -334,10 +350,10 @@ TYPED_TEST(BzTreeFixture, ScanWithoutKeysPerformFullScan)
     TestFixture::VerifyWrite(i, i);
   }
 
-  TestFixture::VerifyScan(std::nullopt);
+  TestFixture::VerifyScan(std::nullopt, std::nullopt);
 }
 
-TYPED_TEST(BzTreeFixture, ScanWithClosedRangeIncludeBeginKey)
+TYPED_TEST(BzTreeFixture, ScanWithClosedRangeIncludeLeftRightEnd)
 {
   const size_t rec_num = 2 * TestFixture::max_rec_num_ * TestFixture::max_rec_num_;
 
@@ -345,10 +361,11 @@ TYPED_TEST(BzTreeFixture, ScanWithClosedRangeIncludeBeginKey)
     TestFixture::VerifyWrite(i, i);
   }
 
-  TestFixture::VerifyScan(std::make_pair(0, kRangeClosed));
+  TestFixture::VerifyScan(std::make_pair(0, kRangeClosed),
+                          std::make_pair(rec_num - 1, kRangeClosed));
 }
 
-TYPED_TEST(BzTreeFixture, ScanWithOpenedRangeExcludeBeginKey)
+TYPED_TEST(BzTreeFixture, ScanWithOpenedRangeExcludeLeftRightEnd)
 {
   const size_t rec_num = 2 * TestFixture::max_rec_num_ * TestFixture::max_rec_num_;
 
@@ -356,7 +373,8 @@ TYPED_TEST(BzTreeFixture, ScanWithOpenedRangeExcludeBeginKey)
     TestFixture::VerifyWrite(i, i);
   }
 
-  TestFixture::VerifyScan(std::make_pair(0, kRangeOpened));
+  TestFixture::VerifyScan(std::make_pair(0, kRangeOpened),
+                          std::make_pair(rec_num - 1, kRangeOpened));
 }
 
 /*--------------------------------------------------------------------------------------

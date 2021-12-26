@@ -48,6 +48,7 @@ class BzTree
   using NodeGC_t = ::dbgroup::memory::EpochBasedGC<Node_t>;
   using NodeStack = std::vector<std::pair<Node_t *, size_t>>;
   using MwCASDescriptor = component::MwCASDescriptor;
+  using KeyExistence = component::KeyExistence;
 
  public:
   /*####################################################################################
@@ -73,19 +74,35 @@ class BzTree
     RecordIterator(  //
         BzTree_t *bztree,
         Node_t *node,
-        const size_t current_pos)
+        const size_t begin_pos,
+        const size_t end_pos,
+        const std::optional<std::pair<const Key &, bool>> end_key,
+        const bool is_right_end)
         : bztree_{bztree},
           node_{node},
-          record_count_{node->GetSortedCount()},
-          current_pos_{current_pos},
-          current_meta_{node->GetMetadata(current_pos_)}
+          record_count_{end_pos},
+          current_pos_{begin_pos},
+          end_key_{std::move(end_key)},
+          current_meta_{node->GetMetadata(current_pos_)},
+          is_right_end_{is_right_end}
     {
     }
 
     RecordIterator(const RecordIterator &) = delete;
     RecordIterator &operator=(const RecordIterator &) = delete;
     constexpr RecordIterator(RecordIterator &&) noexcept = default;
-    constexpr RecordIterator &operator=(RecordIterator &&) noexcept = default;
+
+    constexpr RecordIterator &
+    operator=(RecordIterator &&obj) noexcept
+    {
+      node_.swap(obj.node_);
+      record_count_ = obj.record_count_;
+      current_pos_ = obj.current_pos_;
+      current_meta_ = obj.current_meta_;
+      is_right_end_ = obj.is_right_end_;
+
+      return *this;
+    }
 
     /*##################################################################################
      * Public destructors
@@ -134,14 +151,14 @@ class BzTree
     HasNext()
     {
       if (current_pos_ < record_count_) return true;
-      if (node_->IsRightEnd()) return false;
+      if (is_right_end_) return false;
 
       // keep the end key to use as the next begin key
       current_meta_ = node_->GetMetadata(record_count_ - 1);
-      const auto &begin_key = GetKey();
+      auto &&begin_key = std::make_pair(GetKey(), false);
 
       // update this iterator with the next scan results
-      *this = bztree_->Scan(std::make_pair(begin_key, false), node_.release());
+      *this = bztree_->Scan(begin_key, end_key_, node_.release());
       return HasNext();
     }
 
@@ -182,8 +199,14 @@ class BzTree
     /// the position of a current record
     size_t current_pos_{0};
 
+    /// the end key given from a user
+    std::optional<std::pair<const Key &, bool>> end_key_{};
+
     /// the metadata of a current record
     Metadata current_meta_{};
+
+    /// a flag for indicating whether scan has finished
+    bool is_right_end_{};
   };
 
   /*####################################################################################
@@ -259,12 +282,13 @@ class BzTree
    *
    * @param begin_key a begin key of a range scan.
    * @param begin_closed a flag to indicate whether the begin side of a range is closed.
-   * @param page a page that contains old keys/payloads. This argument is used internally.
+   * @param page a page that contains old keys/payloads (used internally).
    * @return an iterator to access target records.
    */
   auto
   Scan(  //
-      const std::optional<std::pair<const Key &, bool>> begin_key = std::nullopt,
+      const std::optional<std::pair<const Key &, bool>> &begin_key = std::nullopt,
+      const std::optional<std::pair<const Key &, bool>> &end_key = std::nullopt,
       Node_t *page = nullptr)  //
       -> RecordIterator
   {
@@ -274,16 +298,30 @@ class BzTree
       gc_->AddGarbage(page);
     }
 
-    // extract begin/end keys
-    auto &&[key, begin_closed] = begin_key.value_or(std::make_pair(Key{}, true));
-
     // sort records in a target node
-    Node_t *node = (begin_key) ? SearchLeafNode(key, begin_closed) : SearchLeftEdgeLeaf();
+    auto &&[b_key, b_closed] = begin_key.value_or(std::make_pair(Key{}, true));
+    Node_t *node = (begin_key) ? SearchLeafNode(b_key, b_closed) : SearchLeftEdgeLeaf();
     page = CreateNewNode<Payload>();
     page->template Consolidate<Payload>(node);
 
-    auto begin_pos = (begin_key) ? page->Search(key, begin_closed) : 0;
-    return RecordIterator{this, page, begin_pos};
+    // find begin/end positions in the sorted records
+    auto begin_pos = (begin_key) ? page->Search(b_key, b_closed) : 0;
+    auto end_pos = page->GetSortedCount();
+    auto is_right_end = page->IsRightEnd();
+    if (end_key) {
+      auto &&[e_key, e_closed] = *end_key;
+      if (!Compare{}(page->GetKey(page->GetMetadata(end_pos - 1)), e_key)) {
+        is_right_end = true;
+
+        KeyExistence rc{};
+        std::tie(rc, end_pos) = page->SearchSortedRecord(e_key);
+        if (rc == KeyExistence::kExist && !e_closed) {
+          --end_pos;
+        }
+      }
+    }
+
+    return RecordIterator{this, page, begin_pos, end_pos, end_key, is_right_end};
   }
 
   /*####################################################################################

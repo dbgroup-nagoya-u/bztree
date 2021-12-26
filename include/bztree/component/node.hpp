@@ -308,6 +308,40 @@ class alignas(kMaxAlignment) Node
   }
 
   /**
+   * @brief Get the position of a specified key by using binary search. If there is no
+   * specified key, this returns the minimum metadata index that is greater than the
+   * specified key
+   *
+   * @param key a target key.
+   * @return a pair of key existence and a key position.
+   */
+  [[nodiscard]] auto
+  SearchSortedRecord(const Key &key) const  //
+      -> std::pair<KeyExistence, size_t>
+  {
+    int64_t begin_pos = 0;
+    int64_t end_pos = sorted_count_ - 1;
+    while (begin_pos <= end_pos) {
+      size_t pos = (begin_pos + end_pos) >> 1UL;  // NOLINT
+
+      const auto meta = GetMetadataProtected(pos);
+      const auto &index_key = GetKey(meta);
+
+      if (Compare{}(key, index_key)) {  // a target key is in a left side
+        end_pos = pos - 1;
+      } else if (Compare{}(index_key, key)) {  // a target key is in a right side
+        begin_pos = pos + 1;
+      } else if (meta.IsVisible()) {  // find an equivalent key
+        return {kExist, pos};
+      } else {  // find an equivalent key, but it is deleted
+        return {kDeleted, pos};
+      }
+    }
+
+    return {kNotExist, begin_pos};
+  }
+
+  /**
    * @brief Freeze this node for SMOs.
    *
    * @retval kSuccess if a node has become frozen.
@@ -1256,40 +1290,6 @@ class alignas(kMaxAlignment) Node
   /*####################################################################################
    * Internal utility functions
    *##################################################################################*/
-
-  /**
-   * @brief Get the position of a specified key by using binary search. If there is no
-   * specified key, this returns the minimum metadata index that is greater than the
-   * specified key
-   *
-   * @param key a target key.
-   * @return a pair of key existence and a key position.
-   */
-  [[nodiscard]] auto
-  SearchSortedRecord(const Key &key) const  //
-      -> std::pair<KeyExistence, size_t>
-  {
-    int64_t begin_pos = 0;
-    int64_t end_pos = sorted_count_ - 1;
-    while (begin_pos <= end_pos) {
-      size_t pos = (begin_pos + end_pos) >> 1UL;  // NOLINT
-
-      const auto meta = GetMetadataProtected(pos);
-      const auto &index_key = GetKey(meta);
-
-      if (Compare{}(key, index_key)) {  // a target key is in a left side
-        end_pos = pos - 1;
-      } else if (Compare{}(index_key, key)) {  // a target key is in a right side
-        begin_pos = pos + 1;
-      } else if (meta.IsVisible()) {  // find an equivalent key
-        return {kExist, pos};
-      } else {  // find an equivalent key, but it is deleted
-        return {kDeleted, pos};
-      }
-    }
-
-    return {kNotExist, begin_pos};
-  }
 
   /**
    * @brief Get the position of a specified key by using lenear search.
