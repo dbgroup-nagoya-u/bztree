@@ -218,6 +218,14 @@ constexpr size_t kMaxMergedSize = BZTREE_MAX_MERGED_SIZE;
 constexpr size_t kMaxMergedSize = kPageSize - (2 * kMinFreeSpaceSize);
 #endif
 
+#ifdef BZTREE_MAX_VARIABLE_DATA_SIZE
+/// the maximun size of variable-length data
+constexpr size_t kMaxVariableSize = BZTREE_MAX_VARIABLE_DATA_SIZE;
+#else
+/// the maximun size of variable-length data
+constexpr size_t kMaxVariableSize = 128;
+#endif
+
 }  // namespace dbgroup::index::bztree
 
 #endif  // BZTREE_UTILITY_HPP

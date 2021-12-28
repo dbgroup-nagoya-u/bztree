@@ -978,7 +978,7 @@ class alignas(kMaxAlignment) Node
     // set an updated header
     sorted_count_ = rec_count + 1;
     StatusWord stat{sorted_count_, kPageSize - offset};
-    if (stat.NeedSplit()) {
+    if (stat.NeedInternalSplit<Key>()) {
       status_ = stat.Freeze();
       return true;
     }
@@ -1159,7 +1159,7 @@ class alignas(kMaxAlignment) Node
     ++sorted_count_;
     status_ = StatusWord{sorted_count_, kPageSize - offset};
 
-    return status_.NeedSplit();
+    return status_.NeedInternalSplit<Key>();
   }
 
   /**

@@ -175,6 +175,22 @@ AlignRecord(  //
 }
 
 /**
+ * @tparam Key a class of keys.
+ * @return the maximum size of records in internal nodes.
+ */
+template <class Key>
+[[nodiscard]] constexpr auto
+GetMaxInternalRecordSize()  //
+    -> size_t
+{
+  if constexpr (IsVariableLengthData<Key>()) {
+    return std::get<2>(AlignRecord<Key, void *>(kMaxVariableSize, kWordLength));
+  } else {
+    return std::get<2>(AlignRecord<Key, void *>(sizeof(Key), kWordLength));
+  }
+}
+
+/**
  * @brief Compute an aligned offset for node initialization.
  *
  * @tparam Key a class of keys.

@@ -174,6 +174,22 @@ class StatusWord
    * @retval true if this node does not have sufficient free space.
    * @retval false otherwise.
    */
+  template <class Key>
+  [[nodiscard]] constexpr auto
+  NeedInternalSplit() const  //
+      -> bool
+  {
+    constexpr size_t kRecLen = GetMaxInternalRecordSize<Key>();
+    constexpr size_t kMaxUsedSize = kPageSize - (kHeaderLength + kWordLength + kRecLen);
+    const auto this_size = (kWordLength * record_count_) + block_size_;
+
+    return this_size > kMaxUsedSize;
+  }
+
+  /**
+   * @retval true if this node does not have sufficient free space.
+   * @retval false otherwise.
+   */
   [[nodiscard]] constexpr auto
   NeedMerge() const  //
       -> bool
