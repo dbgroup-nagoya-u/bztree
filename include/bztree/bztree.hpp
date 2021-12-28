@@ -20,10 +20,10 @@
 #include <array>
 #include <atomic>
 #include <functional>
+#include <future>
 #include <memory>
 #include <optional>
 #include <utility>
-#include <vector>
 
 #include "component/node.hpp"
 #include "memory/epoch_based_gc.hpp"
@@ -49,6 +49,7 @@ class BzTree
   using NodeStack = std::vector<std::pair<Node_t *, size_t>>;
   using MwCASDescriptor = component::MwCASDescriptor;
   using KeyExistence = component::KeyExistence;
+  using LoadEntry_t = BulkloadEntry<Key, Payload>;
 
  public:
   /*####################################################################################
@@ -494,6 +495,83 @@ class BzTree
     }
   }
 
+  /*####################################################################################
+   * Public bulkload API
+   *##################################################################################*/
+
+  /**
+   * @brief Bulkload specified kay/payload pairs.
+   *
+   * This function bulkloads the given entries into the BzTree. The entries are assumed
+   * to be given as a vector of tuples of a key, a payload, the length of a key, and the
+   * length of a payload (c.f., BulkloadEntry). Note that the keys in records are
+   * assumed to be unique and sorted.
+   *
+   * @param entries vector of entries to be bulkloaded.
+   * @param thread_num the number of threads to perform bulkloading.
+   * @return kSuccess.
+   */
+  auto
+  Bulkload(  //
+      std::vector<LoadEntry_t> &entries,
+      const size_t thread_num = 1)  //
+      -> ReturnCode
+  {
+    assert(thread_num > 0);
+
+    if (entries.empty()) return ReturnCode::kSuccess;
+
+    Node_t *new_root = CreateNewNode<Node_t *>();
+    auto &&iter = entries.cbegin();
+    if (thread_num == 1) {
+      // bulkloading with a single thread
+      new_root = BulkloadWithSingleThread(new_root, iter, entries.cend());
+    } else {
+      // bulkloading with multi-threads
+      std::vector<std::future<Node_t *>> threads{};
+      threads.reserve(thread_num);
+
+      // prepare a lambda function for bulkloading
+      auto loader = [&](std::promise<Node_t *> p,  //
+                        size_t n,                  //
+                        typename std::vector<LoadEntry_t>::const_iterator iter) {
+        Node_t *partial_root = CreateNewNode<Node_t *>();
+        partial_root = BulkloadWithSingleThread(partial_root, iter, iter + n);
+        p.set_value(partial_root);
+      };
+
+      // create threads to construct partial BzTrees
+      const size_t rec_num = entries.size();
+      for (size_t i = 0; i < thread_num; ++i) {
+        // create a partial BzTree
+        std::promise<Node_t *> p{};
+        threads.emplace_back(p.get_future());
+        const size_t n = (rec_num + i) / thread_num;
+        std::thread{loader, std::move(p), n, iter}.detach();
+
+        // forward the iterator to the next begin position
+        iter += n;
+      }
+
+      // wait for the worker threads to create BzTrees
+      std::vector<Node_t *> partial_trees{};
+      partial_trees.reserve(thread_num);
+      for (auto &&future : threads) {
+        partial_trees.emplace_back(future.get());
+      }
+
+      // --- Not implemented yes -----------------------------------------------------//
+      // ...partial_treesをマージしてnew_rootに入れる処理...
+      // -----------------------------------------------------------------------------//
+    }
+
+    // set a new root
+    Node_t *old_root = root_.exchange(new_root, std::memory_order_release);
+    gc_->AddGarbage(old_root);
+
+    return ReturnCode::kSuccess;
+  }
+
  private:
   /*####################################################################################
    * Internal utility functions
@@ -830,6 +908,84 @@ class BzTree
       // traverse again to get a modified parent
       trace = TraceTargetNode(key, target_node);
     }
+  }
+
+  /*####################################################################################
+   * Internal bulkload utilities
+   *##################################################################################*/
+
+  /**
+   * @brief Bulkload specified kay/payload pairs with a single thread.
+   *
+   * @param root an empty internal node.
+   * @param iter the begin position of target records.
+   * @param iter_end the end position of target records.
+   * @return the root node of a created BzTree.
+   */
+  auto
+  BulkloadWithSingleThread(  //
+      Node_t *root,
+      typename std::vector<LoadEntry_t>::const_iterator &iter,
+      const typename std::vector<LoadEntry_t>::const_iterator &iter_end)  //
+      -> Node_t *
+  {
+    std::vector<Node_t *> rightmost_trace{};
+    rightmost_trace.emplace_back(root);
+
+    while (iter < iter_end) {
+      // load records into a leaf node
+      Node_t *leaf_node = CreateNewNode<Payload>();
+      leaf_node->template Bulkload<Payload>(iter, iter_end);
+
+      // insert the loaded leaf node into the tree
+      Node_t *parent = rightmost_trace.back();
+      const auto need_split = parent->LoadChildNode(leaf_node);
+      if (need_split) {
+        rightmost_trace.pop_back();
+        SplitForBulkload(parent, rightmost_trace);
+      }
+    }
+
+    return rightmost_trace.front();
+  }
+
+  /**
+   * @brief Split an internal node and update a rightmost node stack.
+   *
+   * @param node a target internal node.
+   * @param rightmost_trace the stack of rightmost nodes.
+   */
+  void
+  SplitForBulkload(  //
+      Node_t *node,
+      std::vector<Node_t *> &rightmost_trace)
+  {
+    // create split internal nodes
+    auto *l_node = CreateNewNode<Node_t *>();
+    auto *r_node = CreateNewNode<Node_t *>();
+    node->template Split<Node_t *>(l_node, r_node);
+
+    if (rightmost_trace.empty()) {
+      // the split node is a root
+      Node_t *new_root = CreateNewNode<Node_t *>();
+      new_root->InitAsRoot(l_node, r_node);
+      rightmost_trace.emplace_back(new_root);
+    } else {
+      // insert the new nodes into a parent node
+      Node_t *parent = rightmost_trace.back();
+      parent->RemoveLastNode();
+      parent->LoadChildNode(l_node);
+      const auto need_split = parent->LoadChildNode(r_node);
+      if (need_split) {
+        // split the parent node recursively
+        rightmost_trace.pop_back();
+        SplitForBulkload(parent, rightmost_trace);
+      }
+    }
+
+    // update rightmost node stack
+    rightmost_trace.emplace_back(r_node);
+    gc_->AddGarbage(node);
   }
 
   /**

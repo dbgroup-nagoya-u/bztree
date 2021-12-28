@@ -1093,6 +1093,89 @@ class alignas(kMaxAlignment) Node
     return false;
   }
 
+  /*####################################################################################
+   * Public bulkload API
+   *##################################################################################*/
+
+  /**
+   * @brief Create a leaf node with the maximum number of records for bulkloading.
+   *
+   * @tparam Payload a target payload class.
+   * @param iter the begin position of target records.
+   * @param iter_end the end position of target records.
+   */
+  template <class Payload>
+  void
+  Bulkload(  //
+      typename std::vector<BulkloadEntry<Key, Payload>>::const_iterator &iter,
+      const typename std::vector<BulkloadEntry<Key, Payload>>::const_iterator &iter_end)
+  {
+    size_t offset = kPageSize;
+    size_t node_size = kHeaderLength;
+
+    // extract and insert entries for the leaf node
+    while (iter < iter_end) {
+      const auto key_length = iter->GetKeyLength();
+      const auto pay_length = iter->GetPayloadLength();
+      const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, pay_length);
+
+      // check whether the node has sufficent space
+      node_size += rec_len + kWordLength;
+      if (node_size > kPageSize - kMinFreeSpaceSize) break;
+
+      // insert an entry to the leaf node
+      auto tmp_offset = SetPayload(offset, iter->GetPayload(), pay_len);
+      tmp_offset = SetKey(tmp_offset, iter->GetKey(), key_len);
+      meta_array_[sorted_count_] = Metadata{tmp_offset, key_len, rec_len};
+      offset -= rec_len;
+
+      ++sorted_count_;
+      ++iter;
+    }
+
+    // create the header of the leaf node
+    is_right_end_ = (iter == iter_end);
+    status_ = StatusWord{sorted_count_, kPageSize - offset};
+  }
+
+  /**
+   * @brief Insert a child node directly.
+   *
+   * @param node a target child node.
+   * @retval true if this node should be split.
+   * @retval false otherwise.
+   */
+  auto
+  LoadChildNode(Node *node)  //
+      -> bool
+  {
+    // insert a new node
+    const auto meta = node->meta_array_[node->sorted_count_ - 1];
+    auto offset = kPageSize - status_.GetBlockSize();
+    offset = InsertChild(node, meta, node, sorted_count_, offset);
+
+    // update headers
+    is_right_end_ = node->is_right_end_;
+    ++sorted_count_;
+    status_ = StatusWord{sorted_count_, kPageSize - offset};
+
+    return status_.NeedSplit();
+  }
+
+  /**
+   * @brief Delete the last (i.e., rightmost) child node from this.
+   *
+   */
+  void
+  RemoveLastNode()
+  {
+    // update only a header
+    const auto meta = meta_array_[sorted_count_ - 1];
+    const auto offset = kPageSize - (status_.GetBlockSize() - meta.GetTotalLength());
+    --sorted_count_;
+    status_ = StatusWord{sorted_count_, kPageSize - offset};
+  }
+
  private:
   /*####################################################################################
    * Internal classes

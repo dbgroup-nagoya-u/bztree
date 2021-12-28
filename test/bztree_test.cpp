@@ -59,6 +59,7 @@ class BzTreeFixture : public testing::Test  // NOLINT
   using Metadata = component::Metadata;
   using Node_t = component::Node<Key, KeyComp>;
   using BzTree_t = BzTree<Key, Payload, KeyComp>;
+  using LoadEntry_t = BulkloadEntry<Key, Payload>;
 
  protected:
   /*####################################################################################
@@ -193,6 +194,24 @@ class BzTreeFixture : public testing::Test  // NOLINT
 
     auto rc = bztree_->Delete(keys_[key_id], key_size_);
     EXPECT_EQ(expected_rc, rc);
+  }
+
+  void
+  VerifyBulkload(  //
+      const size_t begin_key_id,
+      const size_t end_key_id,
+      const size_t thread_num)
+  {
+    // prepare bulkload entries
+    std::vector<LoadEntry_t> entries{};
+    entries.reserve(end_key_id - begin_key_id);
+    for (size_t i = begin_key_id; i < end_key_id; ++i) {
+      entries.emplace_back(keys_[i], payloads_[i], key_size_, pay_size_);
+    }
+
+    // bulkload the entries
+    auto rc = bztree_->Bulkload(entries, thread_num);
+    EXPECT_EQ(rc, kSuccess);
   }
 
   /*####################################################################################
@@ -534,6 +553,70 @@ TYPED_TEST(BzTreeFixture, DeleteWithDeletedKeysFail)
   }
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyDelete(i, kExpectFailed);
+  }
+}
+
+/*--------------------------------------------------------------------------------------
+ * Bulkload operation
+ *------------------------------------------------------------------------------------*/
+
+TYPED_TEST(BzTreeFixture, BulkloadWithoutSMOsReadWrittenValues)
+{
+  const size_t rec_num = kMaxUnsortedRecNum;
+  const size_t thread_num = 1;
+
+  TestFixture::VerifyBulkload(0, rec_num, thread_num);
+
+  for (size_t i = 0; i < rec_num; ++i) {
+    TestFixture::VerifyRead(i, i, kExpectSuccess);
+  }
+}
+
+TYPED_TEST(BzTreeFixture, BulkloadWithConsolidationReadWrittenValues)
+{
+  const size_t rec_num = TestFixture::max_rec_num_;
+  const size_t thread_num = 1;
+
+  TestFixture::VerifyBulkload(0, rec_num, thread_num);
+
+  for (size_t i = 0; i < rec_num; ++i) {
+    TestFixture::VerifyRead(i, i, kExpectSuccess);
+  }
+}
+
+TYPED_TEST(BzTreeFixture, BulkloadWithRootLeafSplitReadWrittenValues)
+{
+  const size_t rec_num = TestFixture::max_rec_num_ * 1.5;
+  const size_t thread_num = 1;
+
+  TestFixture::VerifyBulkload(0, rec_num, thread_num);
+
+  for (size_t i = 0; i < rec_num; ++i) {
+    TestFixture::VerifyRead(i, i, kExpectSuccess);
+  }
+}
+
+TYPED_TEST(BzTreeFixture, BulkloadWithRootInternalSplitReadWrittenValues)
+{
+  const size_t rec_num = TestFixture::max_rec_num_ * TestFixture::max_rec_num_;
+  const size_t thread_num = 1;
+
+  TestFixture::VerifyBulkload(0, rec_num, thread_num);
+
+  for (size_t i = 0; i < rec_num; ++i) {
+    TestFixture::VerifyRead(i, i, kExpectSuccess);
+  }
+}
+
+TYPED_TEST(BzTreeFixture, BulkloadWithInternalSplitReadWrittenValues)
+{
+  const size_t rec_num = 2 * TestFixture::max_rec_num_ * TestFixture::max_rec_num_;
+  const size_t thread_num = 1;
+
+  TestFixture::VerifyBulkload(0, rec_num, thread_num);
+
+  for (size_t i = 0; i < rec_num; ++i) {
+    TestFixture::VerifyRead(i, i, kExpectSuccess);
   }
 }
 
