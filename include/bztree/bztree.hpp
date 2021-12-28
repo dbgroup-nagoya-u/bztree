@@ -14,17 +14,18 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef BZTREE_BZTREE_HPP
+#define BZTREE_BZTREE_HPP
 
 #include <array>
 #include <atomic>
 #include <functional>
+#include <future>
 #include <memory>
+#include <optional>
 #include <utility>
 
-#include "component/internal_node_api.hpp"
-#include "component/leaf_node_api.hpp"
-#include "component/record_iterator.hpp"
+#include "component/node.hpp"
 #include "memory/epoch_based_gc.hpp"
 #include "utility.hpp"
 
@@ -42,853 +43,287 @@ class BzTree
 {
   using Metadata = component::Metadata;
   using StatusWord = component::StatusWord;
-  using Node_t = component::Node<Key, Payload, Compare>;
-  using MetaArray = std::array<Metadata, Node_t::kMaxRecordNum>;
-  using NodeReturnCode = component::NodeReturnCode;
-  using RecordPage_t = component::RecordPage<Key, Payload>;
-  using RecordIterator_t = component::RecordIterator<Key, Payload, Compare>;
+  using Node_t = component::Node<Key, Compare>;
+  using NodeRC = component::NodeRC;
   using NodeGC_t = ::dbgroup::memory::EpochBasedGC<Node_t>;
   using NodeStack = std::vector<std::pair<Node_t *, size_t>>;
   using MwCASDescriptor = component::MwCASDescriptor;
-  using Binary_t = std::remove_pointer_t<Payload>;
-  using Binary_p = std::unique_ptr<Binary_t, component::PayloadDeleter<Binary_t>>;
-  using BulkloadEntry_t = BulkloadEntry<Key, Payload>;
-  using EntryArray = std::vector<BulkloadEntry_t>;
-  using RightmostNodeStack = std::vector<Node_t *>;
-
- private:
-  /*################################################################################################
-   * Internal constants
-   *##############################################################################################*/
-
-  static constexpr bool kLeafFlag = true;
-
-  static constexpr bool kInterFlag = false;
-
-  /*################################################################################################
-   * Internal member variables
-   *##############################################################################################*/
-
-  /// an epoch to count the number of failure
-  const size_t index_epoch_;
-
-  /// a root node of BzTree
-  Node_t *root_;
-
-  /// garbage collector
-  NodeGC_t gc_;
-
-  /*################################################################################################
-   * Internal utility functions
-   *##############################################################################################*/
-
-  /**
-   * @return Node_t*: a current root node.
-   */
-  Node_t *
-  GetRoot()
-  {
-    return MwCASDescriptor::Read<Node_t *>(&root_);
-  }
-
-  /**
-   * @brief Search a leaf node with a specified key.
-   *
-   * @param key a target key.
-   * @param range_is_closed a flag to indicate whether a key is included.
-   * @return Node_t*: a leaf node that may contain a target key.
-   */
-  Node_t *
-  SearchLeafNode(  //
-      const Key &key,
-      const bool range_is_closed)
-  {
-    auto current_node = GetRoot();
-    do {
-      const auto index = internal::SearchChildNode(current_node, key, range_is_closed);
-      current_node = internal::GetChildNode(current_node, index);
-    } while (!current_node->IsLeaf());
-
-    return current_node;
-  }
-
-  /**
-   * @return Node_t*: a leaf node on the far left.
-   */
-  Node_t *
-  SearchLeftEdgeLeaf()
-  {
-    auto current_node = GetRoot();
-    do {
-      current_node = internal::GetChildNode(current_node, 0);
-    } while (!current_node->IsLeaf());
-
-    return current_node;
-  }
-
-  /**
-   * @brief Trace a target node and extract intermidiate nodes.
-   *
-   * Note that traced nodes may not have a target node because concurrent SMOs may remove it.
-   *
-   * @param key a target key.
-   * @param target_node a target node.
-   * @return NodeStack: a stack of nodes.
-   */
-  NodeStack
-  TraceTargetNode(  //
-      const Key &key,
-      const Node_t *target_node)
-  {
-    // trace nodes to a target internal node
-    NodeStack trace;
-    size_t index = 0;
-    auto current_node = GetRoot();
-    while (current_node != target_node && !current_node->IsLeaf()) {
-      trace.emplace_back(current_node, index);
-      index = internal::SearchChildNode(current_node, key, true);
-      current_node = internal::GetChildNode(current_node, index);
-    }
-    trace.emplace_back(current_node, index);
-
-    return trace;
-  }
-
-  /**
-   * @brief Check whether a target node should be split.
-   *
-   * @param internal_node a target node.
-   * @param key_length the length of a target key.
-   * @retval true if a target node should be split.
-   * @retval false if a target node do not need to be split.
-   */
-  static constexpr bool
-  NeedSplit(  //
-      const Node_t *internal_node,
-      const size_t key_length)
-  {
-    return internal_node->GetStatusWordProtected().GetOccupiedSize() + key_length
-           > kPageSize - 2 * kWordLength;
-  }
-
-  /**
-   * @brief NeedSplit for single thread
-   *
-   * @param internal_node a target node.
-   * @param key_length the length of a target key.
-   * @retval true if a target node should be split.
-   * @retval false if a target node do not need to be split.
-   */
-  static constexpr bool
-  NeedSplitForSingleThread(  //
-      const Node_t *internal_node,
-      const size_t key_length)
-  {
-    return internal_node->GetStatusWord().GetOccupiedSize() + key_length
-           > kPageSize - 2 * kWordLength;
-  }
-
-  /**
-   * @brief Get a sibling node for merging.
-   *
-   * @param parent a parent node of a target node.
-   * @param target_pos the position of a target node in its parent.
-   * @param target_size the size of target node.
-   * @return std::pair<Node_t *, bool>: a sibling node if it can be merged. Note that a
-   * boolean value indicates that a sibing node is left (true) or right (false) side.
-   */
-  static std::pair<Node_t *, bool>
-  GetSiblingNode(  //
-      Node_t *parent,
-      const size_t target_pos,
-      const size_t target_size)
-  {
-    if (target_pos > 0) {
-      const auto sib_node = internal::GetChildNode(parent, target_pos - 1);
-      const auto sib_size = sib_node->GetStatusWordProtected().GetLiveDataSize();
-      if ((target_size + sib_size) < kPageSize / 2) return {sib_node, true};
-    }
-    if (target_pos < parent->GetSortedCount() - 1) {
-      const auto sib_node = internal::GetChildNode(parent, target_pos + 1);
-      const auto sib_size = sib_node->GetStatusWordProtected().GetLiveDataSize();
-      if ((target_size + sib_size) < kPageSize / 2) return {sib_node, false};
-    }
-    return {nullptr, false};
-  }
-
-  /**
-   * @brief Compute the size of a data block of a consolidated node.
-   *
-   * @param metadata an array of metadata of a consolidated node.
-   * @param rec_count the number of metadata.
-   * @return constexpr size_t: the size of a data block.
-   */
-  static constexpr size_t
-  ComputeOccupiedSize(  //
-      const MetaArray &metadata,
-      const size_t rec_count)
-  {
-    size_t block_size = 0;
-    for (size_t i = 0; i < rec_count; ++i) {
-      block_size += metadata[i].GetTotalLength();
-    }
-    block_size += component::kHeaderLength + (kWordLength * rec_count);
-
-    return block_size;
-  }
-
-  /*################################################################################################
-   * Internal structure modification functoins
-   *##############################################################################################*/
-
-  /**
-   * @brief Consolidate a target leaf node.
-   *
-   * Note that this function may call split/merge functions if needed.
-   *
-   * @param node a target leaf node.
-   * @param key a target key.
-   * @param key_length the length of a target key.
-   */
-  void
-  ConsolidateLeafNode(  //
-      Node_t *node,
-      const Key &key,
-      const size_t key_length)
-  {
-    // freeze a target node and perform consolidation
-    if (node->Freeze() != NodeReturnCode::kSuccess) return;
-
-    // gather sorted live metadata of a targetnode, and check whether split/merge is required
-    const auto [metadata, rec_count] = leaf::GatherSortedLiveMetadata(node);
-    const auto target_size = ComputeOccupiedSize(metadata, rec_count);
-    if (target_size > kPageSize - kMinFreeSpaceSize) {
-      SplitLeafNode(node, key, metadata, rec_count);
-      return;
-    } else if (rec_count < kMinSortedRecNum) {
-      if (MergeLeafNodes(node, key, key_length, target_size, metadata, rec_count)) return;
-    }
-
-    // create a consolidated node
-    auto *page = gc_.template GetPageIfPossible<Node_t>();
-    auto *new_node = (page == nullptr) ? new Node_t{kLeafFlag} : new (page) Node_t{kLeafFlag};
-    leaf::Consolidate(new_node, node, metadata, rec_count);
-
-    // install a new node
-    auto trace = TraceTargetNode(key, node);
-    InstallNewNode(trace, new_node, key, node);
-
-    // register frozen nodes with garbage collection
-    gc_.AddGarbage(node);
-  }
-
-  /**
-   * @brief Split a target leaf node.
-   *
-   * Note that this function may call a split function for internal nodes if needed.
-   *
-   * @param node a target leaf node.
-   * @param key a target key.
-   * @param metadata an array of consolidated metadata.
-   * @param rec_count the number of metadata.
-   */
-  void
-  SplitLeafNode(  //
-      const Node_t *node,
-      const Key &key,
-      const MetaArray &metadata,
-      const size_t rec_count)
-  {
-    const size_t left_rec_count = rec_count / 2;
-    const auto split_key_length = metadata[left_rec_count - 1].GetKeyLength();
-
-    /*----------------------------------------------------------------------------------------------
-     * Phase 1: preparation
-     *--------------------------------------------------------------------------------------------*/
-
-    NodeStack trace;
-    Node_t *parent = nullptr, *tmp_node;
-    size_t target_pos = 0;
-    while (true) {
-      // trace and get the embedded index of a target node
-      trace = TraceTargetNode(key, node);
-      std::tie(tmp_node, target_pos) = trace.back();
-      if (tmp_node != node) return;  // a target node was modified by concurrent merging
-      trace.pop_back();
-
-      // check whether it is required to split a parent node
-      parent = trace.back().first;
-      if (NeedSplit(parent, split_key_length)) {
-        SplitInternalNode(parent, key);
-        continue;
-      }
-
-      // pre-freezing of SMO targets
-      if (parent->Freeze() == NodeReturnCode::kSuccess) break;
-    }
-
-    /*----------------------------------------------------------------------------------------------
-     * Phase 2: installation
-     *--------------------------------------------------------------------------------------------*/
-
-    // create new nodes
-    auto *page = gc_.template GetPageIfPossible<Node_t>();
-    auto *left_node = (page == nullptr) ? new Node_t{kLeafFlag} : new (page) Node_t{kLeafFlag};
-    page = gc_.template GetPageIfPossible<Node_t>();
-    auto *right_node = (page == nullptr) ? new Node_t{kLeafFlag} : new (page) Node_t{kLeafFlag};
-    leaf::Split(left_node, right_node, node, metadata, rec_count, left_rec_count);
-    page = gc_.template GetPageIfPossible<Node_t>();
-    auto *new_parent = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
-    internal::NewParentForSplit(new_parent, parent, left_node, right_node, target_pos);
-
-    // install new nodes
-    InstallNewNode(trace, new_parent, key, parent);
-
-    // register frozen nodes with garbage collection
-    gc_.AddGarbage(node);
-    gc_.AddGarbage(parent);
-  }
-
-  /**
-   * @brief Split a target internal node.
-   *
-   * Note that this function may call itself recursively if needed.
-   *
-   * @param node a target internal node.
-   * @param key a target key.
-   */
-  void
-  SplitInternalNode(  //
-      Node_t *node,
-      const Key &key)
-  {
-    // get a split index and a corresponding key length
-    const auto left_rec_count = (node->GetSortedCount() / 2);
-    const auto split_key_length = node->GetMetadata(left_rec_count - 1).GetKeyLength();
-
-    /*----------------------------------------------------------------------------------------------
-     * Phase 1: preparation
-     *--------------------------------------------------------------------------------------------*/
-
-    NodeStack trace;
-    Node_t *parent = nullptr;
-    size_t target_pos = 0;
-    while (true) {
-      // check a target node is live
-      const auto target_status = node->GetStatusWordProtected();
-      if (target_status.IsFrozen()) return;
-
-      // trace and get the embedded index of a target node
-      trace = TraceTargetNode(key, node);
-      target_pos = trace.back().second;
-
-      MwCASDescriptor desc;
-      if (trace.size() > 1) {  // target is not a root node (i.e., there is a parent node)
-        trace.pop_back();
-        parent = trace.back().first;
-
-        // check whether it is required to split a parent node
-        if (NeedSplit(parent, split_key_length)) {
-          SplitInternalNode(parent, key);
-          continue;
-        }
-
-        // check a parent node is live
-        const auto parent_status = parent->GetStatusWordProtected();
-        if (parent_status.IsFrozen()) continue;
-
-        // pre-freezing of SMO targets
-        parent->SetStatusForMwCAS(desc, parent_status, parent_status.Freeze());
-      }
-
-      // pre-freezing of SMO targets
-      node->SetStatusForMwCAS(desc, target_status, target_status.Freeze());
-      if (desc.MwCAS()) break;
-    }
-
-    /*----------------------------------------------------------------------------------------------
-     * Phase 2: installation
-     *--------------------------------------------------------------------------------------------*/
-
-    // create new nodes
-    auto *page = gc_.template GetPageIfPossible<Node_t>();
-    auto *left_node = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
-    page = gc_.template GetPageIfPossible<Node_t>();
-    auto *right_node = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
-    internal::Split(left_node, right_node, node, left_rec_count);
-    page = gc_.template GetPageIfPossible<Node_t>();
-    auto *new_parent = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
-    if (parent != nullptr) {  // target is not a root node
-      internal::NewParentForSplit(new_parent, parent, left_node, right_node, target_pos);
-    } else {  // target is a root node
-      internal::CreateNewRoot(new_parent, left_node, right_node);
-      parent = node;  // set parent as a target node for installation
-    }
-
-    // install new nodes
-    InstallNewNode(trace, new_parent, key, parent);
-
-    // register frozen nodes with garbage collection
-    gc_.AddGarbage(node);
-    if (parent != node) gc_.AddGarbage(parent);
-  }
-
-  /**
-   * @brief SplitInternalNode for single thread.
-   *
-   * Note that this function may call itself recursively if needed.
-   *
-   * @param node a target internal node.
-   * @param key a target key.
-   * @param rightmost_trace the stack of nodes up to a target node. (the stack of rightmost nodes)
-   */
-  void
-  SplitInternalNodeForSingleThread(  //
-      Node_t *node,
-      const Key &key,
-      RightmostNodeStack &rightmost_trace)
-  {
-    // get a split index and a corresponding key length
-    const auto left_rec_count = (node->GetSortedCount() / 2);
-    const auto split_key_length = node->GetMetadata(left_rec_count - 1).GetKeyLength();
-
-    /*----------------------------------------------------------------------------------------------
-     * Phase 1: preparation
-     *--------------------------------------------------------------------------------------------*/
-
-    Node_t *parent = nullptr;
-    if (rightmost_trace.size() > 1) {  // target is not a root node (i.e., there is a parent node)
-      rightmost_trace.pop_back();
-      parent = rightmost_trace.back();
-
-      // check whether it is required to split a parent node
-      if (NeedSplitForSingleThread(parent, split_key_length)) {
-        SplitInternalNodeForSingleThread(parent, key, rightmost_trace);
-
-        // update the target parent node
-        parent = rightmost_trace.back();
-      }
-    }
-
-    /*----------------------------------------------------------------------------------------------
-     * Phase 2: installation
-     *--------------------------------------------------------------------------------------------*/
-
-    // create new nodes
-    auto *left_node = new Node_t{kInterFlag};
-    auto *right_node = new Node_t{kInterFlag};
-    internal::Split(left_node, right_node, node, left_rec_count);
-    auto *new_parent = new Node_t{kInterFlag};
-    if (parent != nullptr) {  // target is not a root node
-      // get the embedded index of a target node
-      size_t target_pos = parent->GetSortedCount() - 1;
-      internal::NewParentForSplit(new_parent, parent, left_node, right_node, target_pos);
-    } else {  // target is a root node
-      internal::CreateNewRoot(new_parent, left_node, right_node);
-    }
-
-    // install new nodes
-    InstallNewNodeForSingleThread(rightmost_trace, new_parent);
-
-    // update rightmost node stack
-    rightmost_trace.emplace_back(new_parent);
-    rightmost_trace.emplace_back(right_node);
-  }
-
-  /**
-   * @brief Merge a target leaf node.
-   *
-   * Note that this function may call a merge function for internal nodes if needed.
-   *
-   * @param node a target leaf node.
-   * @param key a target key.
-   * @param key_length the length of a target key.
-   * @param target_size the size of a target leaf node.
-   * @param metadata an array of consolidated metadata.
-   * @param rec_count the number of metadata.
-   * @retval true if a target leaf node is merged.
-   * @retval false if a target leaf node is not merged.
-   */
-  bool
-  MergeLeafNodes(  //
-      const Node_t *node,
-      const Key &key,
-      const size_t key_length,
-      const size_t target_size,
-      const MetaArray &metadata,
-      const size_t rec_count)
-  {
-    /*----------------------------------------------------------------------------------------------
-     * Phase 1: preparation
-     *--------------------------------------------------------------------------------------------*/
-
-    NodeStack trace;
-    Node_t *parent = nullptr, *sib_node = nullptr, *tmp_node;
-    bool sib_is_left = true;
-    size_t target_pos = 0;
-    while (true) {
-      // trace and get the embedded index of a target node
-      trace = TraceTargetNode(key, node);
-      std::tie(tmp_node, target_pos) = trace.back();
-      if (tmp_node != node) return true;  // a target node was modified by concurrent merging
-      trace.pop_back();
-
-      // check a parent node is live
-      parent = trace.back().first;
-      const auto parent_status = parent->GetStatusWordProtected();
-      if (parent_status.IsFrozen()) continue;
-
-      // check a left/right sibling node is live
-      std::tie(sib_node, sib_is_left) = GetSiblingNode(parent, target_pos, target_size);
-      if (sib_node == nullptr) return false;  // there is no live sibling node
-      const auto sibling_status = sib_node->GetStatusWordProtected();
-      if (sibling_status.IsFrozen()) {
-        if (sib_is_left) continue;
-        return false;
-      }
-
-      // pre-freezing of SMO targets
-      MwCASDescriptor desc;
-      parent->SetStatusForMwCAS(desc, parent_status, parent_status.Freeze());
-      sib_node->SetStatusForMwCAS(desc, sibling_status, sibling_status.Freeze());
-      if (desc.MwCAS()) break;
-    }
-
-    /*----------------------------------------------------------------------------------------------
-     * Phase 2: installation
-     *--------------------------------------------------------------------------------------------*/
-
-    // create new nodes
-    const auto [sib_meta, sib_rec_count] = leaf::GatherSortedLiveMetadata(sib_node);
-    auto *page = gc_.template GetPageIfPossible<Node_t>();
-    auto *merged_node = (page == nullptr) ? new Node_t{kLeafFlag} : new (page) Node_t{kLeafFlag};
-    size_t deleted_pos;
-    if (sib_is_left) {
-      leaf::Merge(merged_node, sib_node, sib_meta, sib_rec_count, node, metadata, rec_count);
-      deleted_pos = target_pos - 1;
-    } else {
-      leaf::Merge(merged_node, node, metadata, rec_count, sib_node, sib_meta, sib_rec_count);
-      deleted_pos = target_pos;
-    }
-    page = gc_.template GetPageIfPossible<Node_t>();
-    auto *new_parent = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
-    internal::NewParentForMerge(new_parent, parent, merged_node, deleted_pos);
-
-    // install new nodes
-    InstallNewNode(trace, new_parent, key, parent);
-
-    // register frozen nodes with garbage collection
-    gc_.AddGarbage(node);
-    gc_.AddGarbage(parent);
-    gc_.AddGarbage(sib_node);
-
-    // check whether it is required to merge a new parent node
-    if (trace.size() != 0 && new_parent->GetSortedCount() < kMinSortedRecNum) {
-      MergeInternalNodes(new_parent, key, key_length);
-    }
-    return true;
-  }
-
-  /**
-   * @brief Merge a target internal node.
-   *
-   * Note that this function may call itself recursively if needed.
-   *
-   * @param node a target internal node.
-   * @param key a target key.
-   * @param key_length the length of a target key.
-   */
-  void
-  MergeInternalNodes(  //
-      Node_t *node,
-      const Key &key,
-      const size_t key_length)
-  {
-    /*----------------------------------------------------------------------------------------------
-     * Phase 1: preparation
-     *--------------------------------------------------------------------------------------------*/
-
-    NodeStack trace;
-    Node_t *parent = nullptr, *sib_node = nullptr;
-    bool sib_is_left;
-    size_t target_pos = 0;
-    while (true) {
-      // check a target node is not frozen and live
-      const auto target_status = node->GetStatusWordProtected();
-      if (target_status.IsFrozen()) return;
-
-      // trace and get the embedded index of a target node
-      trace = TraceTargetNode(key, node);
-      target_pos = trace.back().second;
-      trace.pop_back();
-
-      // check a parent node is live
-      parent = trace.back().first;
-      const auto parent_status = parent->GetStatusWordProtected();
-      if (parent_status.IsFrozen()) continue;
-
-      // check a left/right sibling node is live
-      const auto target_size = target_status.GetOccupiedSize();
-      std::tie(sib_node, sib_is_left) = GetSiblingNode(parent, target_pos, target_size);
-      if (sib_node == nullptr) return;
-      const auto sibling_status = sib_node->GetStatusWordProtected();
-      if (sibling_status.IsFrozen()) continue;
-
-      // pre-freezing of SMO targets
-      auto desc = MwCASDescriptor{};
-      parent->SetStatusForMwCAS(desc, parent_status, parent_status.Freeze());
-      node->SetStatusForMwCAS(desc, target_status, target_status.Freeze());
-      sib_node->SetStatusForMwCAS(desc, sibling_status, sibling_status.Freeze());
-      if (desc.MwCAS()) break;
-    }
-
-    /*----------------------------------------------------------------------------------------------
-     * Phase 2: installation
-     *--------------------------------------------------------------------------------------------*/
-
-    // create new nodes
-    auto *page = gc_.template GetPageIfPossible<Node_t>();
-    auto *merged_node = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
-    size_t deleted_pos;
-    if (sib_is_left) {
-      internal::Merge(merged_node, sib_node, node);
-      deleted_pos = target_pos - 1;
-    } else {
-      internal::Merge(merged_node, node, sib_node);
-      deleted_pos = target_pos;
-    }
-    page = gc_.template GetPageIfPossible<Node_t>();
-    auto *new_parent = (page == nullptr) ? new Node_t{kInterFlag} : new (page) Node_t{kInterFlag};
-    internal::NewParentForMerge(new_parent, parent, merged_node, deleted_pos);
-
-    // install new nodes
-    InstallNewNode(trace, new_parent, key, parent);
-
-    // register frozen nodes with garbage collection
-    gc_.AddGarbage(node);
-    gc_.AddGarbage(parent);
-    gc_.AddGarbage(sib_node);
-
-    // check whether it is required to merge a parent node
-    if (trace.size() != 0 && new_parent->GetSortedCount() < kMinSortedRecNum) {
-      MergeInternalNodes(new_parent, key, key_length);
-    }
-  }
-
-  /**
-   * @brief Install a new node by using MwCAS.
-   *
-   * Note that this function may do nothing if a target node has been already modified.
-   *
-   * @param trace the stack of nodes up to a target node.
-   * @param new_node a new node to be installed.
-   * @param key a target key.
-   * @param target_node an old node to be swapped.
-   */
-  void
-  InstallNewNode(  //
-      NodeStack &trace,
-      Node_t *new_node,
-      const Key &key,
-      const Node_t *target_node)
-  {
-    while (true) {
-      MwCASDescriptor desc;
-      if (trace.size() > 1) {
-        /*------------------------------------------------------------------------------------------
-         * Swapping a new internal node
-         *----------------------------------------------------------------------------------------*/
-
-        // prepare installing nodes
-        auto [old_node, target_pos] = trace.back();
-        if (old_node != target_node) return;
-        trace.pop_back();
-        auto parent = trace.back().first;
-
-        // check wether related nodes are frozen
-        const auto parent_status = parent->GetStatusWordProtected();
-        if (parent_status.IsFrozen()) {
-          trace = TraceTargetNode(key, target_node);
-          continue;
-        }
-
-        // install a new internal node by PMwCAS
-        parent->SetStatusForMwCAS(desc, parent_status, parent_status);
-        parent->SetPayloadForMwCAS(desc, parent->GetMetadata(target_pos), old_node, new_node);
-      } else {
-        /*------------------------------------------------------------------------------------------
-         * Swapping a new root node
-         *----------------------------------------------------------------------------------------*/
-
-        const auto old_node = trace.back().first;
-        if (old_node != target_node) return;
-        trace.pop_back();
-        desc.AddMwCASTarget(&root_, old_node, new_node);
-      }
-
-      if (desc.MwCAS()) return;
-
-      trace = TraceTargetNode(key, target_node);
-    }
-  }
-
-  /**
-   * @brief InstallNewNode for single thread
-   *
-   * @param rightmost_trace the stack of nodes up to a target node. (the stack of rightmost nodes)
-   * @param new_node a new node to be installed.
-   */
-  void
-  InstallNewNodeForSingleThread(  //
-      RightmostNodeStack &rightmost_trace,
-      Node_t *new_node)
-  {
-    if (rightmost_trace.size() > 1) {
-      /*------------------------------------------------------------------------------------------
-       * Swapping a new internal node
-       *----------------------------------------------------------------------------------------*/
-
-      // prepare installing nodes
-      rightmost_trace.pop_back();
-      auto parent = rightmost_trace.back();
-      const auto target_meta = parent->GetMetadata(parent->GetSortedCount() - 1);
-      auto offset = target_meta.GetOffset() + target_meta.GetTotalLength();
-
-      // install a new internal node
-      parent->SetPayload(offset, new_node, kWordLength);
-    } else {
-      /*------------------------------------------------------------------------------------------
-       * Swapping a new root node
-       *----------------------------------------------------------------------------------------*/
-
-      rightmost_trace.pop_back();
-      root_ = new_node;
-    }
-  }
-
-  /**
-   * @brief Delete children nodes recursively.
-   *
-   * Note that this function assumes that there are no other threads in operation.
-   *
-   * @param node a target node.
-   */
-  static void
-  DeleteChildren(Node_t *node)
-  {
-    if (!node->IsLeaf()) {
-      // delete children nodes recursively
-      for (size_t i = 0; i < node->GetSortedCount(); ++i) {
-        auto child_node = internal::GetChildNode(node, i);
-        DeleteChildren(child_node);
-      }
-    }
-
-    delete node;
-  }
+  using KeyExistence = component::KeyExistence;
+  using LoadEntry_t = BulkloadEntry<Key, Payload>;
 
  public:
-  /*################################################################################################
-   * Public constructor/destructor
-   *##############################################################################################*/
+  /*####################################################################################
+   * Public classes
+   *##################################################################################*/
+
+  /**
+   * @brief A class to represent a iterator for scan results.
+   *
+   * @tparam Key a target key class
+   * @tparam Payload a target payload class
+   * @tparam Compare a key-comparator class
+   */
+  class RecordIterator
+  {
+    using BzTree_t = BzTree<Key, Payload, Compare>;
+
+   public:
+    /*##################################################################################
+     * Public constructors and assignment operators
+     *################################################################################*/
+
+    RecordIterator(  //
+        BzTree_t *bztree,
+        Node_t *node,
+        const size_t begin_pos,
+        const size_t end_pos,
+        const std::optional<std::pair<const Key &, bool>> end_key,
+        const bool is_right_end)
+        : bztree_{bztree},
+          node_{node},
+          record_count_{end_pos},
+          current_pos_{begin_pos},
+          end_key_{std::move(end_key)},
+          current_meta_{node->GetMetadata(current_pos_)},
+          is_right_end_{is_right_end}
+    {
+    }
+
+    RecordIterator(const RecordIterator &) = delete;
+    RecordIterator &operator=(const RecordIterator &) = delete;
+    constexpr RecordIterator(RecordIterator &&) noexcept = default;
+
+    constexpr RecordIterator &
+    operator=(RecordIterator &&obj) noexcept
+    {
+      node_.swap(obj.node_);
+      record_count_ = obj.record_count_;
+      current_pos_ = obj.current_pos_;
+      current_meta_ = obj.current_meta_;
+      is_right_end_ = obj.is_right_end_;
+
+      return *this;
+    }
+
+    /*##################################################################################
+     * Public destructors
+     *################################################################################*/
+
+    ~RecordIterator() = default;
+
+    /*##################################################################################
+     * Public operators for iterators
+     *################################################################################*/
+
+    /**
+     * @return a current key and payload pair
+     */
+    constexpr auto
+    operator*() const  //
+        -> std::pair<Key, Payload>
+    {
+      return {GetKey(), GetPayload()};
+    }
+
+    /**
+     * @brief Forward an iterator.
+     *
+     */
+    constexpr void
+    operator++()
+    {
+      ++current_pos_;
+      current_meta_ = node_->GetMetadata(current_pos_);
+    }
+
+    /*##################################################################################
+     * Public getters/setters
+     *################################################################################*/
+
+    /**
+     * @brief Check if there are any records left.
+     *
+     * function may call a scan function internally to get a next leaf node.
+     *
+     * @retval true if there are any records or next node left.
+     * @retval false if there are no records and node left.
+     */
+    bool
+    HasNext()
+    {
+      if (current_pos_ < record_count_) return true;
+      if (is_right_end_) return false;
+
+      // keep the end key to use as the next begin key
+      current_meta_ = node_->GetMetadata(record_count_ - 1);
+      auto &&begin_key = std::make_pair(GetKey(), false);
+
+      // update this iterator with the next scan results
+      *this = bztree_->Scan(begin_key, end_key_, node_.release());
+      return HasNext();
+    }
+
+    /**
+     * @return a key of a current record
+     */
+    [[nodiscard]] constexpr auto
+    GetKey() const  //
+        -> Key
+    {
+      return node_->GetKey(current_meta_);
+    }
+
+    /**
+     * @return a payload of a current record
+     */
+    [[nodiscard]] constexpr auto
+    GetPayload() const  //
+        -> Payload
+    {
+      return node_->template GetPayload<Payload>(current_meta_);
+    }
+
+   private:
+    /*##################################################################################
+     * Internal member variables
+     *################################################################################*/
+
+    /// a pointer to BwTree to perform continuous scan
+    BzTree_t *bztree_{nullptr};
+
+    /// the pointer to a node that includes partial scan results
+    std::unique_ptr<Node_t> node_{nullptr};
+
+    /// the number of records in this node
+    size_t record_count_{0};
+
+    /// the position of a current record
+    size_t current_pos_{0};
+
+    /// the end key given from a user
+    std::optional<std::pair<const Key &, bool>> end_key_{};
+
+    /// the metadata of a current record
+    Metadata current_meta_{};
+
+    /// a flag for indicating whether scan has finished
+    bool is_right_end_{};
+  };
+
+  /*####################################################################################
+   * Public constructors and assignment operators
+   *##################################################################################*/
 
   /**
    * @brief Construct a new BzTree object.
    *
    * @param gc_interval_microsec GC internal [us]
    */
-  explicit BzTree(const size_t gc_interval_microsec = 100000)
-      : index_epoch_{1},
-        root_{internal::CreateInitialRoot<Key, Payload, Compare>()},
-        gc_{gc_interval_microsec}
+  explicit BzTree(  //
+      const size_t gc_interval_microsec = 100000,
+      const size_t gc_thread_num = 1)
   {
-    gc_.StartGC();
-  }
+    // create a GC instance for deleted nodes
+    gc_ = std::make_unique<NodeGC_t>(gc_interval_microsec, gc_thread_num, true);
 
-  /**
-   * @brief Destroy the BzTree object.
-   *
-   */
-  ~BzTree() { DeleteChildren(GetRoot()); }
+    // create an initial root node
+    Node_t *leaf = CreateNewNode<Payload>();
+    root_.store(leaf, std::memory_order_release);
+  }
 
   BzTree(const BzTree &) = delete;
   BzTree &operator=(const BzTree &) = delete;
   BzTree(BzTree &&) = delete;
   BzTree &operator=(BzTree &&) = delete;
 
-  /*################################################################################################
+  /*####################################################################################
+   * Public destructors
+   *##################################################################################*/
+
+  /**
+   * @brief Destroy the BzTree object.
+   *
+   */
+  ~BzTree()
+  {
+    gc_->StopGC();
+    DeleteChildren(GetRoot());
+  }
+
+  /*####################################################################################
    * Public read APIs
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Read a payload of a specified key if it exists.
    *
-   * This function returns two return codes: kSuccess and kKeyNotExist. If a return code
-   * is kSuccess, a returned pair contains a target payload. If a return code is
-   * kKeyNotExist, the value of a returned payload is undefined.
-   *
    * @param key a target key.
-   * @return std::pair<ReturnCode, Payload>: a return code and payload pair.
+   * @returnnullopt.
    */
   auto
-  Read(const Key &key)
+  Read(const Key &key)  //
+      -> std::optional<Payload>
   {
-    const auto guard = gc_.CreateEpochGuard();
+    [[maybe_unused]] auto &&guard = gc_->CreateEpochGuard();
 
-    const auto node = SearchLeafNode(key, true);
+    const Node_t *node = SearchLeafNode(key, true);
 
     Payload payload{};
-    const auto rc = leaf::Read(node, key, payload);
-    if (rc == NodeReturnCode::kSuccess) {
-      if constexpr (IsVariableLengthData<Payload>()) {
-        return std::make_pair(ReturnCode::kSuccess, Binary_p{payload});
-      } else {
-        return std::make_pair(ReturnCode::kSuccess, std::move(payload));
-      }
-    }
-    if constexpr (IsVariableLengthData<Payload>()) {
-      return std::make_pair(ReturnCode::kKeyNotExist, Binary_p{});
-    } else {
-      return std::make_pair(ReturnCode::kKeyNotExist, Payload{});
-    }
+    const auto rc = node->Read(key, payload);
+    if (rc == NodeRC::kSuccess) return std::make_optional(payload);
+    return std::nullopt;
   }
 
   /**
    * @brief Perform a range scan with specified keys.
    *
-   * If a begin/end key is nullptr, it is treated as negative or positive infinite.
-   *
-   * @param begin_key the pointer of a begin key of a range scan.
-   * @param begin_closed a flag to indicate whether the begin side of a range is closed.
-   * @param end_key the pointer of an end key of a range scan.
-   * @param end_closed a flag to indicate whether the end side of a range is closed.
-   * @param page a page to copy target keys/payloads. This argument is used internally.
-   * @return RecordIterator_t: an iterator to access target records.
+   * @param begin_key a pair of a begin key and its openness (true=closed).
+   * @param end_key a pair of an end key and its openness (true=closed).
+   * @param page a page that contains old keys/payloads (used internally).
+   * @return an iterator to access target records.
    */
-  RecordIterator_t
+  auto
   Scan(  //
-      const Key *begin_key = nullptr,
-      const bool begin_closed = false,
-      const Key *end_key = nullptr,
-      const bool end_closed = false,
-      RecordPage_t *page = nullptr)
+      const std::optional<std::pair<const Key &, bool>> &begin_key = std::nullopt,
+      const std::optional<std::pair<const Key &, bool>> &end_key = std::nullopt,
+      Node_t *page = nullptr)  //
+      -> RecordIterator
   {
-    if (page == nullptr) {
-      page = new RecordPage_t{};
+    [[maybe_unused]] auto &&guard = gc_->CreateEpochGuard();
+
+    if (page != nullptr) {
+      gc_->AddGarbage(page);
     }
 
-    const auto guard = gc_.CreateEpochGuard();
+    // sort records in a target node
+    auto &&[b_key, b_closed] = begin_key.value_or(std::make_pair(Key{}, true));
+    Node_t *node = (begin_key) ? SearchLeafNode(b_key, b_closed) : SearchLeftEdgeLeaf();
+    page = CreateNewNode<Payload>();
+    page->template Consolidate<Payload>(node);
 
-    const auto node =
-        (begin_key == nullptr) ? SearchLeftEdgeLeaf() : SearchLeafNode(*begin_key, begin_closed);
-    const auto scan_finished = leaf::Scan(node, begin_key, begin_closed, end_key, end_closed, page);
+    // find begin/end positions in the sorted records
+    auto begin_pos = (begin_key) ? page->Search(b_key, b_closed) : 0;
+    auto end_pos = page->GetSortedCount();
+    auto is_right_end = page->IsRightEnd();
+    if (end_key) {
+      auto &&[e_key, e_closed] = *end_key;
+      if (!Compare{}(page->GetKey(page->GetMetadata(end_pos - 1)), e_key)) {
+        is_right_end = true;
 
-    return RecordIterator_t{this, end_key, end_closed, page, scan_finished};
+        KeyExistence rc{};
+        std::tie(rc, end_pos) = page->SearchSortedRecord(e_key);
+        if (rc == KeyExistence::kExist && !e_closed) {
+          --end_pos;
+        }
+      }
+    }
+
+    return RecordIterator{this, page, begin_pos, end_pos, end_key, is_right_end};
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Public write APIs
-   *##############################################################################################*/
+   *##################################################################################*/
 
   /**
    * @brief Write (i.e., upsert) a specified kay/payload pair.
@@ -904,28 +339,31 @@ class BzTree
    * @param payload a target payload to be written.
    * @param key_length the length of a target key.
    * @param payload_length the length of a target payload.
-   * @return ReturnCode: kSuccess.
+   * @return kSuccess.
    */
-  ReturnCode
+  auto
   Write(  //
       const Key &key,
       const Payload &payload,
       const size_t key_length = sizeof(Key),
-      const size_t payload_length = sizeof(Payload))
+      const size_t payload_length = sizeof(Payload))  //
+      -> ReturnCode
   {
-    const auto guard = gc_.CreateEpochGuard();
+    [[maybe_unused]] auto &&guard = gc_->CreateEpochGuard();
 
     while (true) {
-      auto node = SearchLeafNode(key, true);
-      const auto rc = leaf::Write(node, key, key_length, payload, payload_length, index_epoch_);
+      Node_t *node = SearchLeafNode(key, true);
+      const auto rc = node->Write(key, key_length, payload, payload_length);
 
-      if (rc == NodeReturnCode::kSuccess) {
-        break;
-      } else if (rc == NodeReturnCode::kNeedConsolidation) {
-        ConsolidateLeafNode(node, key, key_length);
+      switch (rc) {
+        case NodeRC::kSuccess:
+          return ReturnCode::kSuccess;
+        case NodeRC::kNeedConsolidation:
+          Consolidate(node, key);
+        default:
+          break;
       }
     }
-    return ReturnCode::kSuccess;
   }
 
   /**
@@ -946,27 +384,31 @@ class BzTree
    * @retval.kSuccess if inserted.
    * @retval kKeyExist if a specified key exists.
    */
-  ReturnCode
+  auto
   Insert(  //
       const Key &key,
       const Payload &payload,
       const size_t key_length = sizeof(Key),
-      const size_t payload_length = sizeof(Payload))
+      const size_t payload_length = sizeof(Payload))  //
+      -> ReturnCode
   {
-    const auto guard = gc_.CreateEpochGuard();
+    [[maybe_unused]] auto &&guard = gc_->CreateEpochGuard();
 
     while (true) {
-      auto node = SearchLeafNode(key, true);
-      const auto rc = leaf::Insert(node, key, key_length, payload, payload_length, index_epoch_);
+      Node_t *node = SearchLeafNode(key, true);
+      const auto rc = node->Insert(key, key_length, payload, payload_length);
 
-      if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyExist) {
-        if (rc == NodeReturnCode::kKeyExist) return ReturnCode::kKeyExist;
-        break;
-      } else if (rc == NodeReturnCode::kNeedConsolidation) {
-        ConsolidateLeafNode(node, key, key_length);
+      switch (rc) {
+        case NodeRC::kSuccess:
+          return ReturnCode::kSuccess;
+        case NodeRC::kKeyExist:
+          return ReturnCode::kKeyExist;
+        case NodeRC::kNeedConsolidation:
+          Consolidate(node, key);
+        default:
+          break;
       }
     }
-    return ReturnCode::kSuccess;
   }
 
   /**
@@ -986,27 +428,31 @@ class BzTree
    * @retval kSuccess if updated.
    * @retval kKeyNotExist if a specified key does not exist.
    */
-  ReturnCode
+  auto
   Update(  //
       const Key &key,
       const Payload &payload,
       const size_t key_length = sizeof(Key),
-      const size_t payload_length = sizeof(Payload))
+      const size_t payload_length = sizeof(Payload))  //
+      -> ReturnCode
   {
-    const auto guard = gc_.CreateEpochGuard();
+    [[maybe_unused]] auto &&guard = gc_->CreateEpochGuard();
 
     while (true) {
-      auto node = SearchLeafNode(key, true);
-      const auto rc = leaf::Update(node, key, key_length, payload, payload_length, index_epoch_);
+      Node_t *node = SearchLeafNode(key, true);
+      const auto rc = node->Update(key, key_length, payload, payload_length);
 
-      if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
-        if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
-        break;
-      } else if (rc == NodeReturnCode::kNeedConsolidation) {
-        ConsolidateLeafNode(node, key, key_length);
+      switch (rc) {
+        case NodeRC::kSuccess:
+          return ReturnCode::kSuccess;
+        case NodeRC::kKeyNotExist:
+          return ReturnCode::kKeyNotExist;
+        case NodeRC::kNeedConsolidation:
+          Consolidate(node, key);
+        default:
+          break;
       }
     }
-    return ReturnCode::kSuccess;
   }
 
   /**
@@ -1024,111 +470,556 @@ class BzTree
    * @retval kSuccess if deleted.
    * @retval kKeyNotExist if a specified key does not exist.
    */
-  ReturnCode
+  auto
   Delete(  //
       const Key &key,
-      const size_t key_length = sizeof(Key))
+      const size_t key_length = sizeof(Key))  //
+      -> ReturnCode
   {
-    const auto guard = gc_.CreateEpochGuard();
+    [[maybe_unused]] auto &&guard = gc_->CreateEpochGuard();
 
     while (true) {
-      auto node = SearchLeafNode(key, true);
-      const auto rc = leaf::Delete(node, key, key_length);
+      Node_t *node = SearchLeafNode(key, true);
+      const auto rc = node->template Delete<Payload>(key, key_length);
 
-      if (rc == NodeReturnCode::kSuccess || rc == NodeReturnCode::kKeyNotExist) {
-        if (rc == NodeReturnCode::kKeyNotExist) return ReturnCode::kKeyNotExist;
-        break;
-      } else if (rc == NodeReturnCode::kNeedConsolidation) {
-        ConsolidateLeafNode(node, key, key_length);
+      switch (rc) {
+        case NodeRC::kSuccess:
+          return ReturnCode::kSuccess;
+        case NodeRC::kKeyNotExist:
+          return ReturnCode::kKeyNotExist;
+        case NodeRC::kNeedConsolidation:
+          Consolidate(node, key);
+        default:
+          break;
       }
     }
-    return ReturnCode::kSuccess;
   }
 
-  /*################################################################################################
-   * Public bulkload functions
-   *##############################################################################################*/
+  /*####################################################################################
+   * Public bulkload API
+   *##################################################################################*/
 
   /**
-   * @brief bulkload specified kay/payload pairs.
+   * @brief Bulkload specified kay/payload pairs.
    *
-   * This function bulk-loads the given entries into the bztree. The entries are assumed to be given
-   * as a vector of tuples of key, payload, length of key, length of payload. The keys are assumed
-   * to be unique.
+   * This function bulkloads the given entries into the BzTree. The entries are assumed
+   * to be given as a vector of tuples of a key, a payload, the length of a key, and the
+   * length of a payload (c.f., BulkloadEntry). Note that the keys in records are
+   * assumed to be unique and sorted.
    *
-   * @param entries vector of entries to be bulkloaded
-   * @return ReturnCode: kSuccess.
+   * @param entries vector of entries to be bulkloaded.
+   * @param thread_num the number of threads to perform bulkloading.
+   * @return kSuccess.
    */
-  ReturnCode
-  BulkLoadForSingleThread(  //
-      EntryArray &entries)
+  auto
+  Bulkload(  //
+      std::vector<LoadEntry_t> &entries,
+      const size_t thread_num = 1)  //
+      -> ReturnCode
   {
-    if (entries.empty()) {
-      return ReturnCode::kSuccess;
-    }
+    assert(thread_num > 0);
 
-    std::sort(entries.begin(), entries.end(), [](BulkloadEntry_t e1, BulkloadEntry_t e2) -> bool {
-      return Compare()(e1.GetKey(), e2.GetKey());
-    });
+    if (entries.empty()) return ReturnCode::kSuccess;
 
-    RightmostNodeStack rightmost_trace;
-    rightmost_trace.emplace_back(root_);
+    Node_t *new_root = CreateNewNode<Node_t *>();
+    auto &&iter = entries.cbegin();
+    if (thread_num == 1) {
+      // bulkloading with a single thread
+      new_root = BulkloadWithSingleThread(new_root, iter, entries.cend());
+    } else {
+      // bulkloading with multi-threads
+      std::vector<std::future<Node_t *>> threads{};
+      threads.reserve(thread_num);
 
-    typename EntryArray::const_iterator itr = entries.cbegin();
+      // prepare a lambda function for bulkloading
+      auto loader = [&](std::promise<Node_t *> p,  //
+                        size_t n,                  //
+                        typename std::vector<LoadEntry_t>::const_iterator iter) {
+        Node_t *partial_root = CreateNewNode<Node_t *>();
+        partial_root = BulkloadWithSingleThread(partial_root, iter, iter + n);
+        p.set_value(partial_root);
+      };
 
-    while (itr < entries.cend()) {
-      const Node_t *leaf_node = leaf::CreateFullLeafNode<Compare>(entries, itr);
+      // create threads to construct partial BzTrees
+      const size_t rec_num = entries.size();
+      for (size_t i = 0; i < thread_num; ++i) {
+        // create a partial BzTree
+        std::promise<Node_t *> p{};
+        threads.emplace_back(p.get_future());
+        const size_t n = (rec_num + i) / thread_num;
+        std::thread{loader, std::move(p), n, iter}.detach();
 
-      Node_t *parent = rightmost_trace.back();
-
-      internal::InsertFullLeafNode(parent, leaf_node);
-
-      // Check whether a parent node should be split.
-      if (itr < entries.cend()) {  // if there are still unloaded entries
-        const Key next_key = (*itr).GetKey();
-        const size_t next_key_length = (*itr).GetKeyLength();
-
-        if (NeedSplitForSingleThread(parent, next_key_length)) {
-          SplitInternalNodeForSingleThread(parent, next_key, rightmost_trace);
-        }
+        // forward the iterator to the next begin position
+        iter += n;
       }
+
+      // wait for the worker threads to create BzTrees
+      std::vector<Node_t *> partial_trees{};
+      partial_trees.reserve(thread_num);
+      for (auto &&future : threads) {
+        partial_trees.emplace_back(future.get());
+      }
+
+      // --- Not implemented yes -----------------------------------------------------//
+      // ...partial_treesをマージしてnew_rootに入れる処理...
+      // -----------------------------------------------------------------------------//
     }
+
+    // set a new root
+    Node_t *old_root = root_.exchange(new_root, std::memory_order_release);
+    gc_->AddGarbage(old_root);
 
     return ReturnCode::kSuccess;
   }
 
-  /*################################################################################################
-   * Public utility functions
-   *##############################################################################################*/
+ private:
+  /*####################################################################################
+   * Internal utility functions
+   *##################################################################################*/
 
   /**
-   * @brief Count the total number of nodes in the index.
+   * @brief Create a New Node accordint to a given template paramter.
+   *
+   * @tparam T a template paramter for indicating whether a new node is a leaf.
+   * @retval an empty leaf node if Payload is given as a template.
+   * @retval an empty internal node otherwise.
+   */
+  template <class T>
+  [[nodiscard]] auto
+  CreateNewNode()  //
+      -> Node_t *
+  {
+    constexpr size_t kBlockSize = kPageSize - component::GetInitialOffset<Key, T>();
+    constexpr bool kIsLeaf = std::is_same_v<T, Payload>;
+
+    auto *page = gc_->template GetPageIfPossible<Node_t>();
+    return (page == nullptr) ? new Node_t{kIsLeaf, kBlockSize}
+                             : new (page) Node_t{kIsLeaf, kBlockSize};
+  }
+
+  /**
+   * @return a current root node.
+   */
+  [[nodiscard]] auto
+  GetRoot() const  //
+      -> Node_t *
+  {
+    auto *root = MwCASDescriptor::Read<Node_t *>(&root_);
+    std::atomic_thread_fence(std::memory_order_acquire);
+
+    return root;
+  }
+
+  /**
+   * @brief Search a leaf node with a specified key.
+   *
+   * @param key a target key.
+   * @param range_is_closed a flag to indicate whether a key is included.
+   * @return a leaf node that may contain a target key.
+   */
+  [[nodiscard]] auto
+  SearchLeafNode(  //
+      const Key &key,
+      const bool range_is_closed) const  //
+      -> Node_t *
+  {
+    Node_t *current_node = GetRoot();
+    while (!current_node->IsLeaf()) {
+      const auto pos = current_node->Search(key, range_is_closed);
+      current_node = current_node->GetChild(pos);
+    }
+
+    return current_node;
+  }
+
+  /**
+   * @return a leaf node on the far left.
+   */
+  [[nodiscard]] auto
+  SearchLeftEdgeLeaf() const  //
+      -> Node_t *
+  {
+    Node_t *current_node = GetRoot();
+    while (!current_node->IsLeaf()) {
+      current_node = current_node->GetChild(0);
+    }
+
+    return current_node;
+  }
+
+  /**
+   * @brief Trace a target node and extract intermidiate nodes.
+   *
+   * Note that traced nodes may not have a target node because concurrent SMOs may
+   * remove it.
+   *
+   * @param key a target key.
+   * @param target_node a target node.
+   * @return a stack of nodes.
+   */
+  auto
+  TraceTargetNode(  //
+      const Key &key,
+      const Node_t *target_node) const  //
+      -> NodeStack
+  {
+    // trace nodes to a target internal node
+    NodeStack trace;
+    size_t index = 0;
+    Node_t *current_node = GetRoot();
+    while (current_node != target_node && !current_node->IsLeaf()) {
+      trace.emplace_back(current_node, index);
+      index = current_node->Search(key, true);
+      current_node = current_node->GetChild(index);
+    }
+    trace.emplace_back(current_node, index);
+
+    return trace;
+  }
+
+  /*####################################################################################
+   * Internal structure modification functoins
+   *##################################################################################*/
+
+  /**
+   * @brief Consolidate a target leaf node.
+   *
+   * Note that this function may call split/merge functions if needed.
+   *
+   * @param node a target leaf node.
+   * @param key a target key.
+   */
+  void
+  Consolidate(  //
+      Node_t *node,
+      const Key &key)
+  {
+    // freeze a target node and perform consolidation
+    if (node->Freeze() != NodeRC::kSuccess) return;
+
+    // create a consolidated node
+    Node_t *consol_node = CreateNewNode<Payload>();
+    consol_node->template Consolidate<Payload>(node);
+
+    // check whether splitting/merging is needed
+    const auto stat = consol_node->GetStatusWord();
+    if (stat.NeedSplit()) {
+      // invoke splitting
+      Split<Payload>(consol_node, key);
+    } else if (!stat.NeedMerge() || !Merge<Payload>(consol_node, key)) {  // try merging
+      // install the consolidated node
+      auto &&trace = TraceTargetNode(key, node);
+      InstallNewNode(trace, consol_node, key, node);
+    }
+
+    gc_->AddGarbage(node);
+  }
+
+  /**
+   * @brief Split a target node.
+   *
+   * Note that this function may call a split function for internal nodes if needed.
+   *
+   * @param node a target node.
+   * @param key a target key.
+   */
+  template <class T>
+  void
+  Split(  //
+      Node_t *node,
+      const Key &key)
+  {
+    /*----------------------------------------------------------------------------------
+     * Phase 1: preparation
+     *--------------------------------------------------------------------------------*/
+
+    NodeStack trace;
+    Node_t *old_parent = nullptr;
+    size_t target_pos{};
+    bool root_split = false;
+    while (true) {
+      // trace and get the embedded index of a target node
+      trace = TraceTargetNode(key, node);
+      if (trace.size() <= 1) {
+        root_split = true;
+        break;
+      }
+      target_pos = trace.back().second;
+      trace.pop_back();
+
+      // pre-freezing of SMO targets
+      old_parent = trace.back().first;
+      if (old_parent->Freeze() == NodeRC::kSuccess) break;
+    }
+
+    /*----------------------------------------------------------------------------------
+     * Phase 2: installation
+     *--------------------------------------------------------------------------------*/
+
+    // create split nodes and its parent node
+    Node_t *l_node = CreateNewNode<T>();
+    Node_t *r_node = CreateNewNode<T>();
+    node->template Split<T>(l_node, r_node);
+
+    // create a new root/parent node
+    bool recurse_split = false;
+    Node_t *new_parent = CreateNewNode<Node_t *>();
+    if (root_split) {
+      new_parent->InitAsRoot(l_node, r_node);
+    } else {
+      recurse_split = new_parent->InitAsSplitParent(old_parent, l_node, r_node, target_pos);
+    }
+
+    // install new nodes to the index and register garbages
+    InstallNewNode(trace, new_parent, key, old_parent);
+    gc_->AddGarbage(node);
+    if (!root_split) {
+      gc_->AddGarbage(old_parent);
+    }
+
+    // split the new parent node if needed
+    if (recurse_split) {
+      Split<Node_t *>(new_parent, key);
+    }
+  }
+
+  /**
+   * @brief Perform left-merge for a target node.
+   *
+   * Note that this function may call itself recursively if needed.
+   *
+   * @param right_node a target node.
+   * @param key a target key.
+   * @retval true if merging succeeds
+   * @retval false otherwise
+   */
+  template <class T>
+  auto
+  Merge(  //
+      Node_t *right_node,
+      const Key &key)  //
+      -> bool
+  {
+    const auto r_stat = right_node->GetStatusWord();
+
+    /*----------------------------------------------------------------------------------
+     * Phase 1: preparation
+     *--------------------------------------------------------------------------------*/
+
+    NodeStack trace;
+    Node_t *old_parent{};
+    Node_t *left_node{};
+    size_t target_pos{};
+    while (true) {
+      // trace and get the embedded index of a target node
+      trace = TraceTargetNode(key, right_node);
+      target_pos = trace.back().second;
+      if (target_pos <= 0) return false;  // there is no mergeable node
+
+      // check a parent node is live
+      trace.pop_back();
+      old_parent = trace.back().first;
+      const auto p_status = old_parent->GetStatusWord();
+      if (p_status.IsFrozen()) continue;
+
+      // check a right sibling node is live and has sufficent capacity
+      left_node = old_parent->GetChild(target_pos - 1);
+      const auto l_stat = left_node->GetStatusWord();
+      if (!l_stat.CanMergeWith(r_stat)) return false;
+      if (l_stat.IsFrozen()) continue;
+
+      // pre-freezing of SMO targets
+      MwCASDescriptor desc{};
+      old_parent->SetStatusForMwCAS(desc, p_status, p_status.Freeze());
+      left_node->SetStatusForMwCAS(desc, l_stat, l_stat.Freeze());
+      if (desc.MwCAS()) break;
+    }
+
+    /*----------------------------------------------------------------------------------
+     * Phase 2: installation
+     *--------------------------------------------------------------------------------*/
+
+    // create new nodes
+    Node_t *merged_node = CreateNewNode<T>();
+    merged_node->template Merge<T>(left_node, right_node);
+    Node_t *new_parent = CreateNewNode<Node_t *>();
+    bool recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos - 1);
+    if (trace.size() <= 1 && new_parent->GetSortedCount() == 1) {
+      // the new root node has only one child, use the merged child as a new root
+      gc_->AddGarbage(new_parent);
+      new_parent = merged_node;
+    }
+
+    // install new nodes to the index and register garbages
+    InstallNewNode(trace, new_parent, key, old_parent);
+    gc_->AddGarbage(old_parent);
+    gc_->AddGarbage(left_node);
+    gc_->AddGarbage(right_node);
+
+    // merge the new parent node if needed
+    if (recurse_merge && !Merge<Node_t *>(new_parent, key)) {
+      // if the parent node cannot be merged, unfreeze it
+      new_parent->Unfreeze();
+    }
+
+    return true;
+  }
+
+  /**
+   * @brief Install a new node by using MwCAS.
+   *
+   * Note that this function may do nothing if a target node has been already modified.
+   *
+   * @param trace the stack of nodes up to a target node.
+   * @param new_node a new node to be installed.
+   * @param key a target key.
+   * @param target_node an old node to be swapped.
+   */
+  void
+  InstallNewNode(  //
+      NodeStack &trace,
+      Node_t *new_node,
+      const Key &key,
+      const Node_t *target_node)
+  {
+    if (trace.size() <= 1) {
+      // root swapping
+      root_.store(new_node, std::memory_order_release);
+      return;
+    }
+
+    std::atomic_thread_fence(std::memory_order_release);
+    while (true) {
+      // prepare installing nodes
+      auto [old_node, target_pos] = trace.back();
+      trace.pop_back();
+      Node_t *parent = trace.back().first;
+
+      // check wether related nodes are frozen
+      const auto parent_status = parent->GetStatusWordProtected();
+      if (!parent_status.IsFrozen()) {
+        // install a new internal node by MwCAS
+        MwCASDescriptor desc{};
+        parent->SetStatusForMwCAS(desc, parent_status, parent_status);
+        parent->SetChildForMwCAS(desc, target_pos, old_node, new_node);
+        if (desc.MwCAS()) return;
+      }
+
+      // traverse again to get a modified parent
+      trace = TraceTargetNode(key, target_node);
+    }
+  }
+
+  /*####################################################################################
+   * Internal bulkload utilities
+   *##################################################################################*/
+
+  /**
+   * @brief Bulkload specified kay/payload pairs with a single thread.
+   *
+   * @param root an empty internal node.
+   * @param iter the begin position of target records.
+   * @param iter_end the end position of target records.
+   * @return the root node of a created BzTree.
+   */
+  auto
+  BulkloadWithSingleThread(  //
+      Node_t *root,
+      typename std::vector<LoadEntry_t>::const_iterator &iter,
+      const typename std::vector<LoadEntry_t>::const_iterator &iter_end)  //
+      -> Node_t *
+  {
+    std::vector<Node_t *> rightmost_trace{};
+    rightmost_trace.emplace_back(root);
+
+    while (iter < iter_end) {
+      // load records into a leaf node
+      Node_t *leaf_node = CreateNewNode<Payload>();
+      leaf_node->template Bulkload<Payload>(iter, iter_end);
+
+      // insert the loaded leaf node into the tree
+      Node_t *parent = rightmost_trace.back();
+      const auto need_split = parent->LoadChildNode(leaf_node);
+      if (need_split) {
+        rightmost_trace.pop_back();
+        SplitForBulkload(parent, rightmost_trace);
+      }
+    }
+
+    return rightmost_trace.front();
+  }
+
+  /**
+   * @brief Split an internal node and update a rightmost node stack.
+   *
+   * @param node a target internal node.
+   * @param rightmost_trace the stack of rightmost nodes.
+   */
+  void
+  SplitForBulkload(  //
+      Node_t *node,
+      std::vector<Node_t *> &rightmost_trace)
+  {
+    // create split internal nodes
+    auto *l_node = CreateNewNode<Node_t *>();
+    auto *r_node = CreateNewNode<Node_t *>();
+    node->template Split<Node_t *>(l_node, r_node);
+
+    if (rightmost_trace.empty()) {
+      // the split node is a root
+      Node_t *new_root = CreateNewNode<Node_t *>();
+      new_root->InitAsRoot(l_node, r_node);
+      rightmost_trace.emplace_back(new_root);
+    } else {
+      // insert the new nodes into a parent node
+      Node_t *parent = rightmost_trace.back();
+      parent->RemoveLastNode();
+      parent->LoadChildNode(l_node);
+      const auto need_split = parent->LoadChildNode(r_node);
+      if (need_split) {
+        // split the parent node recursively
+        rightmost_trace.pop_back();
+        SplitForBulkload(parent, rightmost_trace);
+      }
+    }
+
+    // update rightmost node stack
+    rightmost_trace.emplace_back(r_node);
+    gc_->AddGarbage(node);
+  }
+
+  /**
+   * @brief Delete children nodes recursively.
    *
    * Note that this function assumes that there are no other threads in operation.
    *
-   * @param node a node to begin counting. If nullptr is set, a root node is used.
-   * @param internal_count the number of internal nodes.
-   * @param leaf_count the number of leaf nodes.
-   * @return std::pair<size_t, size_t>: the number of internal/leaf nodes.
+   * @param node a target node.
    */
-  std::pair<size_t, size_t>
-  CountNodes(  //
-      Node_t *node = nullptr,
-      size_t internal_count = 0,
-      size_t leaf_count = 0)
+  static void
+  DeleteChildren(Node_t *node)
   {
-    if (node == nullptr) node = GetRoot();
-
     if (!node->IsLeaf()) {
       // delete children nodes recursively
       for (size_t i = 0; i < node->GetSortedCount(); ++i) {
-        auto child_node = internal::GetChildNode(node, i);
-        std::tie(internal_count, leaf_count) = CountNodes(child_node, internal_count, leaf_count);
+        Node_t *child_node = node->GetChild(i);
+        DeleteChildren(child_node);
       }
-      return {internal_count + 1, leaf_count};
     }
-    return {internal_count, leaf_count + 1};
+
+    delete node;
   }
+
+  /*####################################################################################
+   * Internal member variables
+   *##################################################################################*/
+
+  /// a root node of BzTree
+  std::atomic<Node_t *> root_{nullptr};
+
+  /// garbage collector
+  std::unique_ptr<NodeGC_t> gc_{nullptr};
 };
 
 }  // namespace dbgroup::index::bztree
+
+#endif  // BZTREE_BZTREE_HPP

@@ -20,6 +20,8 @@
 
 #include "bztree/utility.hpp"
 
+constexpr size_t kVarDataLength = 9;
+
 /**
  * @brief An example class to represent CAS-updatable data.
  *
@@ -36,10 +38,12 @@ struct MyClass {
   constexpr MyClass(MyClass &&) = default;
   constexpr MyClass &operator=(MyClass &&) = default;
 
-  constexpr void
-  operator=(const uint64_t value)
+  constexpr auto
+  operator=(const uint64_t value)  //
+      -> MyClass &
   {
     data = value;
+    return *this;
   }
 
   // enable std::less to compare this class
@@ -78,148 +82,6 @@ IsVariableLengthData<char *>()
   return true;
 }
 
-/**
- * @brief An example specialization of BulkloadEntry.
- *
- */
-template <>
-class BulkloadEntry<char *, char *>
-{
- private:
-  char *key_{};
-  char *payload_{};
-
- public:
-  constexpr BulkloadEntry(  //
-      const char *key,
-      const char *payload)
-      : key_{const_cast<char *>(key)}, payload_{const_cast<char *>(payload)}
-  {
-  }
-
-  ~BulkloadEntry() = default;
-
-  constexpr auto
-  GetKey() const  //
-      -> char *const &
-  {
-    return key_;
-  }
-
-  constexpr auto
-  GetPayload() const  //
-      -> char *const &
-  {
-    return payload_;
-  }
-
-  constexpr auto
-  GetKeyLength() const  //
-      -> size_t
-  {
-    return 7;
-  }
-
-  constexpr auto
-  GetPayloadLength() const  //
-      -> size_t
-  {
-    return 7;
-  }
-};
-
-template <class Payload>
-class BulkloadEntry<char *, Payload>
-{
- private:
-  char *key_{};
-  Payload payload_{};
-
- public:
-  constexpr BulkloadEntry(  //
-      const char *key,
-      const Payload payload)
-      : key_{const_cast<char *>(key)}, payload_{payload}
-  {
-  }
-
-  ~BulkloadEntry() = default;
-
-  constexpr auto
-  GetKey() const  //
-      -> char *const &
-  {
-    return key_;
-  }
-
-  constexpr auto
-  GetPayload() const  //
-      -> const Payload &
-  {
-    return payload_;
-  }
-
-  constexpr auto
-  GetKeyLength() const  //
-      -> size_t
-  {
-    return 7;
-  }
-
-  constexpr auto
-  GetPayloadLength() const  //
-      -> size_t
-  {
-    return sizeof(Payload);
-  }
-};
-
-template <class Key>
-class BulkloadEntry<Key, char *>
-{
- private:
-  Key key_{};
-  char *payload_{};
-
- public:
-  constexpr BulkloadEntry(  //
-      const Key key,
-      const char *payload)
-      : key_{key}, payload_{const_cast<char *>(payload)}
-  {
-  }
-
-  ~BulkloadEntry() = default;
-
-  constexpr auto
-  GetKey() const  //
-      -> const Key &
-  {
-    return key_;
-  }
-
-  constexpr auto
-  GetPayload() const  //
-      -> char *const &
-  {
-    return payload_;
-  }
-
-  constexpr auto
-  GetKeyLength() const  //
-      -> size_t
-  {
-    return sizeof(Key);
-  }
-
-  constexpr auto
-  GetPayloadLength() const  //
-      -> size_t
-  {
-    return 7;
-  }
-};
-
 template <class T>
 void
 PrepareTestData(  //
@@ -230,14 +92,14 @@ PrepareTestData(  //
   if constexpr (IsVariableLengthData<T>()) {
     // variable-length data
     for (size_t i = 0; i < data_num; ++i) {
-      auto data = reinterpret_cast<char *>(::operator new(data_length));
-      snprintf(data, data_length, "%06lu", i);
+      auto *data = reinterpret_cast<char *>(::operator new(data_length));
+      snprintf(data, data_length, "%08lu", i);  // NOLINT
       data_array[i] = reinterpret_cast<T>(data);
     }
   } else if constexpr (std::is_same_v<T, uint64_t *>) {
     // pointer data
     for (size_t i = 0; i < data_num; ++i) {
-      auto data = reinterpret_cast<uint64_t *>(::operator new(data_length));
+      auto *data = reinterpret_cast<uint64_t *>(::operator new(data_length));
       *data = i;
       data_array[i] = data;
     }
@@ -264,9 +126,44 @@ ReleaseTestData(  //
 
 }  // namespace dbgroup::index::bztree
 
-using UInt32Comp = std::less<uint32_t>;
-using UInt64Comp = std::less<uint64_t>;
-using Int64Comp = std::less<int64_t>;
-using CStrComp = dbgroup::index::bztree::CompareAsCString;
-using PtrComp = std::less<uint64_t *>;
-using MyClassComp = std::less<MyClass>;
+/*######################################################################################
+ * Type definitions for templated tests
+ *####################################################################################*/
+
+struct UInt8 {
+  using Data = uint64_t;
+  using Comp = std::less<uint64_t>;
+};
+
+struct Int8 {
+  using Data = int64_t;
+  using Comp = std::less<int64_t>;
+};
+
+struct UInt4 {
+  using Data = uint32_t;
+  using Comp = std::less<uint32_t>;
+};
+
+struct Ptr {
+  struct PtrComp {
+    constexpr bool
+    operator()(const uint64_t *a, const uint64_t *b) const noexcept
+    {
+      return *a < *b;
+    }
+  };
+
+  using Data = uint64_t *;
+  using Comp = PtrComp;
+};
+
+struct Var {
+  using Data = char *;
+  using Comp = dbgroup::index::bztree::CompareAsCString;
+};
+
+struct Original {
+  using Data = MyClass;
+  using Comp = std::less<MyClass>;
+};

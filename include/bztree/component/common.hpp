@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef BZTREE_COMPONENT_COMMON_HPP
+#define BZTREE_COMPONENT_COMMON_HPP
 
 #include <cstring>
 #include <memory>
@@ -24,24 +25,24 @@
 
 namespace dbgroup::index::bztree::component
 {
-/*##################################################################################################
+/*######################################################################################
  * Common aliases for simplicity
- *################################################################################################*/
+ *####################################################################################*/
 
 using ::dbgroup::atomic::mwcas::MwCASDescriptor;
 
-/*##################################################################################################
+/*######################################################################################
  * Internal enum and classes
- *################################################################################################*/
+ *####################################################################################*/
 
 /**
  * @brief Internal return codes to represent results of node modification.
  *
  */
-enum NodeReturnCode
+enum NodeRC
 {
   kSuccess = 0,
-  kKeyNotExist,
+  kKeyNotExist = -4,
   kKeyExist,
   kFrozen,
   kNeedConsolidation
@@ -54,24 +55,14 @@ enum NodeReturnCode
 enum KeyExistence
 {
   kExist = 0,
-  kNotExist,
+  kNotExist = -3,
   kDeleted,
   kUncertain
 };
 
-/*##################################################################################################
- * Internal constants
- *################################################################################################*/
-
-/// alias of memory order for simplicity.
-constexpr auto mo_relax = std::memory_order_relaxed;
-
-/// Header length in bytes.
-constexpr size_t kHeaderLength = 2 * kWordLength;
-
-/*##################################################################################################
+/*######################################################################################
  * Internal utility functions
- *################################################################################################*/
+ *####################################################################################*/
 
 /**
  * @tparam Payload a target payload class.
@@ -82,73 +73,12 @@ template <class Payload>
 constexpr bool
 CanCASUpdate()
 {
-  if constexpr (IsVariableLengthData<Payload>())
-    return false;
-  else if constexpr (::dbgroup::atomic::mwcas::CanMwCAS<Payload>())
-    return true;
-  else
-    return false;
-}
-
-/**
- * @brief Cast a given pointer to a specified pointer type.
- *
- * @tparam T a target pointer type.
- * @param addr a target pointer.
- * @return T: a casted pointer.
- */
-template <class T>
-constexpr T
-Cast(const void *addr)
-{
-  static_assert(std::is_pointer_v<T>);
-
-  return static_cast<T>(const_cast<void *>(addr));
-}
-
-/**
- * @brief Compute the maximum number of records in a node.
- *
- * @tparam Key a target key class.
- * @tparam Payload a target payload class.
- * @return size_t the expected maximum number of records.
- */
-template <class Key, class Payload>
-constexpr size_t
-GetMaxRecordNum()
-{
-  auto record_min_length = kWordLength;
-  if constexpr (IsVariableLengthData<Key>()) {
-    record_min_length += 1;
-  } else {
-    record_min_length += sizeof(Key);
-  }
   if constexpr (IsVariableLengthData<Payload>()) {
-    record_min_length += 1;
+    return false;
+  } else if constexpr (::dbgroup::atomic::mwcas::CanMwCAS<Payload>()) {
+    return true;
   } else {
-    record_min_length += sizeof(Payload);
-  }
-  return (kPageSize - kHeaderLength) / record_min_length;
-}
-
-/**
- * @brief Align a given offset to perform CAS operations.
- *
- * @tparam Key a target key class.
- * @param offset a target offset to be aligned.
- */
-template <class Key>
-constexpr void
-AlignOffset(size_t &offset)
-{
-  if constexpr (IsVariableLengthData<Key>()) {
-    const auto align_size = offset & (kWordLength - 1);
-    if (align_size > 0) {
-      offset -= align_size;
-    }
-  } else if constexpr (sizeof(Key) % kWordLength != 0) {
-    const auto align_size = kWordLength - (sizeof(Key) % kWordLength);
-    offset -= align_size;
+    return false;
   }
 }
 
@@ -170,43 +100,6 @@ IsEqual(  //
 }
 
 /**
- * @tparam Compare a comparator class for target keys.
- * @tparam Key a target key class.
- * @param key a target key.
- * @param begin_key a begin key of a range condition.
- * @param begin_closed a flag to indicate whether the begin side of range is closed.
- * @param end_key an end key of a range condition.
- * @param end_closed a flag to indicate whether the end side of range is closed.
- * @retval true if a target key is in a range.
- * @retval false if a target key is outside of a range.
- */
-template <class Compare, class Key>
-constexpr bool
-IsInRange(  //
-    const Key &key,
-    const Key *begin_key,
-    const bool begin_closed,
-    const Key *end_key,
-    const bool end_closed)
-{
-  if (begin_key == nullptr && end_key == nullptr) {
-    // no range condition
-    return true;
-  } else if (begin_key == nullptr) {
-    // less than or equal to
-    return Compare{}(key, *end_key) || (end_closed && !Compare{}(*end_key, key));
-  } else if (end_key == nullptr) {
-    // greater than or equal to
-    return Compare{}(*begin_key, key) || (begin_closed && !Compare{}(key, *begin_key));
-  } else {
-    // between
-    return !((Compare{}(key, *begin_key) || Compare{}(*end_key, key))
-             || (!begin_closed && IsEqual<Compare>(key, *begin_key))
-             || (!end_closed && IsEqual<Compare>(key, *end_key)));
-  }
-}
-
-/**
  * @brief Shift a memory address by byte offsets.
  *
  * @param addr an original address.
@@ -214,35 +107,115 @@ IsInRange(  //
  * @return void* a shifted address.
  */
 constexpr void *
-ShiftAddress(  //
+ShiftAddr(  //
     const void *addr,
-    const size_t offset)
+    const int64_t offset)
 {
   return static_cast<std::byte *>(const_cast<void *>(addr)) + offset;
 }
 
 /**
- * @brief A wrapper of a deleter class for unique_ptr/shared_ptr.
+ * @brief Compute padded key/payload/total lengths for alignment.
  *
- * @tparam Payload a class to be deleted by this deleter.
+ * @tparam Key a class of keys.
+ * @tparam Payload a class of payloads.
+ * @param key_len the length of a target key.
+ * @param pay_len the length of a target payload.
+ * @return the tuple of key/payload/total lengths.
  */
-template <class Payload>
-struct PayloadDeleter {
-  constexpr PayloadDeleter() noexcept = default;
-
-  template <class Up, typename = typename std::enable_if_t<std::is_convertible_v<Up *, Payload *>>>
-  PayloadDeleter(const PayloadDeleter<Up> &) noexcept
-  {
+template <class Key, class Payload>
+constexpr auto
+AlignRecord(  //
+    size_t key_len,
+    size_t pay_len)  //
+    -> std::tuple<size_t, size_t, size_t>
+{
+  if constexpr (IsVariableLengthData<Key>() && IsVariableLengthData<Payload>()) {
+    // record alignment is not required
+    return {key_len, pay_len, key_len + pay_len};
+  } else if constexpr (IsVariableLengthData<Key>()) {
+    // dynamic alignment is required
+    const size_t align_len = alignof(Payload) - key_len % alignof(Payload);
+    if (align_len == alignof(Payload)) {
+      // alignment is not required
+      return {key_len, pay_len, key_len + pay_len};
+    }
+    return {key_len, pay_len, align_len + key_len + pay_len};
+  } else if constexpr (IsVariableLengthData<Payload>()) {
+    const size_t align_len = alignof(Key) - pay_len % alignof(Key);
+    if (align_len != alignof(Key)) {
+      // dynamic alignment is required
+      key_len += align_len;
+    }
+    return {key_len, pay_len, key_len + pay_len};
+  } else if constexpr (alignof(Key) < alignof(Payload)) {
+    constexpr size_t kAlignLen = alignof(Payload) - sizeof(Key) % alignof(Payload);
+    if constexpr (kAlignLen == alignof(Payload)) {
+      // alignment is not required
+      return {key_len, pay_len, key_len + pay_len};
+    } else {
+      // fixed-length alignment is required
+      constexpr size_t kKeyLen = sizeof(Key) + kAlignLen;
+      return {kKeyLen, pay_len, kKeyLen + pay_len};
+    }
+  } else if constexpr (alignof(Key) > alignof(Payload)) {
+    constexpr size_t kAlignLen = alignof(Key) - sizeof(Payload) % alignof(Key);
+    if constexpr (kAlignLen == alignof(Key)) {
+      // alignment is not required
+      return {key_len, pay_len, key_len + pay_len};
+    } else {
+      // fixed-length alignment is required
+      constexpr size_t kPayLen = sizeof(Payload) + kAlignLen;
+      return {key_len, kPayLen, key_len + kPayLen};
+    }
+  } else {
+    // alignment is not required
+    return {key_len, pay_len, key_len + pay_len};
   }
+}
 
-  void
-  operator()(Payload *ptr) const
-  {
-    static_assert(!std::is_void_v<Payload>, "can't delete pointer to incomplete type");
-    static_assert(sizeof(Payload) > 0, "can't delete pointer to incomplete type");
-
-    ::operator delete(ptr);
+/**
+ * @tparam Key a class of keys.
+ * @return the maximum size of records in internal nodes.
+ */
+template <class Key>
+[[nodiscard]] constexpr auto
+GetMaxInternalRecordSize()  //
+    -> size_t
+{
+  if constexpr (IsVariableLengthData<Key>()) {
+    return std::get<2>(AlignRecord<Key, void *>(kMaxVariableSize, kWordLength));
+  } else {
+    return std::get<2>(AlignRecord<Key, void *>(sizeof(Key), kWordLength));
   }
-};
+}
+
+/**
+ * @brief Compute an aligned offset for node initialization.
+ *
+ * @tparam Key a class of keys.
+ * @tparam Payload a class of payloads.
+ * @return an aligned offset.
+ */
+template <class Key, class Payload>
+constexpr auto
+GetInitialOffset()  //
+    -> size_t
+{
+  if constexpr (IsVariableLengthData<Payload>() || IsVariableLengthData<Key>()) {
+    return kPageSize;
+  } else if constexpr (alignof(Key) <= alignof(Payload)) {
+    return kPageSize;
+  } else {
+    constexpr size_t kAlignLen = alignof(Key) - sizeof(Payload) % alignof(Key);
+    if constexpr (kAlignLen == alignof(Key)) {
+      return kPageSize;
+    } else {
+      return kPageSize - kAlignLen;
+    }
+  }
+}
 
 }  // namespace dbgroup::index::bztree::component
+
+#endif  // BZTREE_COMPONENT_COMMON_HPP

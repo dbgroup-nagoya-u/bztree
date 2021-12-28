@@ -14,21 +14,22 @@
  * limitations under the License.
  */
 
-#pragma once
-
-#include <string.h>
+#ifndef BZTREE_UTILITY_HPP
+#define BZTREE_UTILITY_HPP
 
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <type_traits>
 
 #include "mwcas/utility.hpp"
 
 namespace dbgroup::index::bztree
 {
-/*##################################################################################################
+/*######################################################################################
  * Utility enum and classes
- *################################################################################################*/
+ *####################################################################################*/
 
 /**
  * @brief Return codes for BzTree.
@@ -37,7 +38,7 @@ namespace dbgroup::index::bztree
 enum ReturnCode
 {
   kSuccess = 0,
-  kKeyNotExist,
+  kKeyNotExist = -2,
   kKeyExist
 };
 
@@ -46,16 +47,13 @@ enum ReturnCode
  *
  */
 struct CompareAsCString {
-  constexpr bool
-  operator()(const void *a, const void *b) const noexcept
+  constexpr auto
+  operator()(const void *a, const void *b) const noexcept  //
+      -> bool
   {
-    if (a == nullptr) {
-      return false;
-    } else if (b == nullptr) {
-      return true;
-    } else {
-      return strcmp(static_cast<const char *>(a), static_cast<const char *>(b)) < 0;
-    }
+    if (a == nullptr) return false;
+    if (b == nullptr) return true;
+    return strcmp(static_cast<const char *>(a), static_cast<const char *>(b)) < 0;
   }
 };
 
@@ -65,36 +63,20 @@ struct CompareAsCString {
  * @retval false if a target class is static-length data.
  */
 template <class T>
-constexpr bool
-IsVariableLengthData()
+constexpr auto
+IsVariableLengthData()  //
+    -> bool
 {
   static_assert(std::is_trivially_copyable_v<T>);
   return false;
 }
 
 /**
- * @tparam Payload a target payload class.
- * @retval true if a target payload can be updated by MwCAS.
- * @retval false if a target payload cannot be update by MwCAS.
- */
-template <class Payload>
-constexpr bool
-CanCASUpdate()
-{
-  if constexpr (IsVariableLengthData<Payload>())
-    return false;
-  else if constexpr (std::is_pointer_v<Payload>)
-    return true;
-  else if constexpr (std::is_same_v<Payload, uint64_t>)
-    return true;
-  else
-    return false;
-}
-/**
- * @brief A class to represent an entry for Bulk-load.
+ * @brief A class to represent an entry for bulkloading.
  *
- * Note that if you use bulk-load api with variable-length keys/values, you need to implement
- * specialized GetKeyLength() and GetPayloadLength().
+ * Note that if you use bulk-load API with variable-length keys/values, you may need to
+ * implement a specialized one to embed your class in this. If variable-length data are
+ * given as arguments, this class only retains the references to a given key/payload.
  *
  * @tparam Key a target key class.
  * @tparam Payload a target payload class.
@@ -102,68 +84,89 @@ CanCASUpdate()
 template <class Key, class Payload>
 class BulkloadEntry
 {
- private:
-  /*################################################################################################
-   * Internal member variables
-   *##############################################################################################*/
-  Key key_{};
-  Payload payload_{};
-
  public:
-  /*################################################################################################
-   * Public constructors/destructors
-   *##############################################################################################*/
+  /*####################################################################################
+   * Public constructors and assignment operators
+   *##################################################################################*/
+
   constexpr BulkloadEntry(  //
       const Key key,
-      const Payload payload)
-      : key_{key}, payload_{payload}
+      const Payload payload,
+      const size_t key_length = sizeof(Key),
+      const size_t payload_length = sizeof(Payload))
+      : key_{key}, payload_{payload}, key_length_{key_length}, payload_length_{payload_length}
   {
   }
 
+  constexpr BulkloadEntry(const BulkloadEntry &) = default;
+  constexpr auto operator=(const BulkloadEntry &) -> BulkloadEntry & = default;
+  constexpr BulkloadEntry(BulkloadEntry &&) noexcept = default;
+  constexpr auto operator=(BulkloadEntry &&) noexcept -> BulkloadEntry & = default;
+
+  /*####################################################################################
+   * Public destructors
+   *##################################################################################*/
+
   ~BulkloadEntry() = default;
 
-  /*################################################################################################
+  /*####################################################################################
    * Public getters
-   *##############################################################################################*/
+   *##################################################################################*/
 
-  constexpr auto
+  [[nodiscard]] constexpr auto
   GetKey() const  //
       -> const Key &
   {
     return key_;
   }
 
-  constexpr auto
+  [[nodiscard]] constexpr auto
   GetPayload() const  //
       -> const Payload &
   {
     return payload_;
   }
 
-  constexpr auto
+  [[nodiscard]] constexpr auto
   GetKeyLength() const  //
       -> size_t
   {
-    return sizeof(Key);
+    return key_length_;
   }
 
-  constexpr auto
+  [[nodiscard]] constexpr auto
   GetPayloadLength() const  //
       -> size_t
   {
-    return sizeof(Payload);
+    return payload_length_;
   }
+
+ private:
+  /*####################################################################################
+   * Internal member variables
+   *##################################################################################*/
+
+  Key key_{};
+
+  Payload payload_{};
+
+  size_t key_length_{};
+
+  size_t payload_length_{};
 };
 
-/*##################################################################################################
+/*######################################################################################
  * Tuning parameters for BzTree
- *################################################################################################*/
+ *####################################################################################*/
 
 /// Assumes that one word is represented by 8 bytes
 constexpr size_t kWordLength = 8;
 
-/// Assumes that one word is represented by 8 bytes
-constexpr size_t kCacheLineSize = 64;
+/// Header length in bytes.
+constexpr size_t kHeaderLength = 2 * kWordLength;
+
+/// the maximum alignment of keys/payloads assumed in this library
+constexpr size_t kMaxAlignment = 16;
 
 #ifdef BZTREE_PAGE_SIZE
 /// The page size of each node
@@ -180,7 +183,7 @@ static_assert(kPageSize % kWordLength == 0);
 constexpr size_t kMaxUnsortedRecNum = BZTREE_MAX_UNSORTED_REC_NUM;
 #else
 /// Invoking consolidation if the number of unsorted records exceeds this threshold
-constexpr size_t kMaxUnsortedRecNum = 64;
+constexpr size_t kMaxUnsortedRecNum = kPageSize >> 7UL;
 #endif
 
 #ifdef BZTREE_MAX_DELETED_SPACE_SIZE
@@ -199,12 +202,12 @@ constexpr size_t kMinFreeSpaceSize = BZTREE_MIN_FREE_SPACE_SIZE;
 constexpr size_t kMinFreeSpaceSize = kMaxUnsortedRecNum * (3 * kWordLength);
 #endif
 
-#ifdef BZTREE_MIN_SORTED_REC_NUM
-/// Invoking merging if the number of sorted records falls below this threshold
-constexpr size_t kMinSortedRecNum = BZTREE_MIN_SORTED_REC_NUM;
+#ifdef BZTREE_MIN_CONSOLIDATED_SIZE
+/// Invoking merging if the node size falls below this threshold
+constexpr size_t kMinConsolidatedSize = BZTREE_MIN_CONSOLIDATED_SIZE;
 #else
-/// Invoking merging if the number of sorted records falls below this threshold
-constexpr size_t kMinSortedRecNum = 2 * kMaxUnsortedRecNum;
+/// Invoking merging if the node size falls below this threshold
+constexpr size_t kMinConsolidatedSize = kHeaderLength + kMinFreeSpaceSize;
 #endif
 
 #ifdef BZTREE_MAX_MERGED_SIZE
@@ -215,4 +218,14 @@ constexpr size_t kMaxMergedSize = BZTREE_MAX_MERGED_SIZE;
 constexpr size_t kMaxMergedSize = kPageSize - (2 * kMinFreeSpaceSize);
 #endif
 
+#ifdef BZTREE_MAX_VARIABLE_DATA_SIZE
+/// the maximun size of variable-length data
+constexpr size_t kMaxVariableSize = BZTREE_MAX_VARIABLE_DATA_SIZE;
+#else
+/// the maximun size of variable-length data
+constexpr size_t kMaxVariableSize = 128;
+#endif
+
 }  // namespace dbgroup::index::bztree
+
+#endif  // BZTREE_UTILITY_HPP

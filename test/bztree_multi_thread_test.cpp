@@ -29,28 +29,43 @@
 
 namespace dbgroup::index::bztree::test
 {
+/*######################################################################################
+ * Global constants
+ *####################################################################################*/
+
+constexpr size_t kGCTime = 1000;
+#ifdef BZTREE_TEST_THREAD_NUM
+constexpr size_t kThreadNum = BZTREE_TEST_THREAD_NUM;
+#else
+constexpr size_t kThreadNum = 8;
+#endif
+constexpr size_t kKeyNumForTest = 8 * 8192 * kThreadNum;
+constexpr size_t kRandomSeed = 10;
+
 // use a supper template to define key-payload pair templates
-template <class KeyType, class PayloadType, class KeyComparator, class PayloadComparator>
+template <class KeyType, class PayloadType>
 struct KeyPayload {
   using Key = KeyType;
   using Payload = PayloadType;
-  using KeyComp = KeyComparator;
-  using PayloadComp = PayloadComparator;
 };
 
 template <class KeyPayload>
-class BzTreeFixture : public testing::Test
+class BzTreeFixture : public testing::Test  // NOLINT
 {
- protected:
   // extract key-payload types
-  using Key = typename KeyPayload::Key;
-  using Payload = typename KeyPayload::Payload;
-  using KeyComp = typename KeyPayload::KeyComp;
-  using PayloadComp = typename KeyPayload::PayloadComp;
+  using Key = typename KeyPayload::Key::Data;
+  using Payload = typename KeyPayload::Payload::Data;
+  using KeyComp = typename KeyPayload::Key::Comp;
+  using PayloadComp = typename KeyPayload::Payload::Comp;
 
   // define type aliases for simplicity
-  using Node_t = component::Node<Key, Payload, KeyComp>;
+  using Node_t = component::Node<Key, KeyComp>;
   using BzTree_t = BzTree<Key, Payload, KeyComp>;
+
+ protected:
+  /*####################################################################################
+   * Internal constants
+   *##################################################################################*/
 
   enum WriteType
   {
@@ -66,77 +81,50 @@ class BzTreeFixture : public testing::Test
     size_t payload_id;
   };
 
-  // constant values for testing
-  static constexpr size_t kIndexEpoch = 1;
-#ifdef BZTREE_TEST_THREAD_NUM
-  static constexpr size_t kThreadNum = BZTREE_TEST_THREAD_NUM;
-#else
-  static constexpr size_t kThreadNum = 8;
-#endif
-  static constexpr size_t kKeyNumForTest = 8192 * kThreadNum;
-  static constexpr size_t kKeyLength = kWordLength;
-  static constexpr size_t kPayloadLength = kWordLength;
-  static constexpr size_t kRandomSeed = 10;
-
-  // actual keys and payloads
-  size_t key_length;
-  size_t payload_length;
-  Key keys[kKeyNumForTest];
-  Payload payloads[kKeyNumForTest];
-
-  // a test target BzTree
-  BzTree_t bztree = BzTree_t{10000};
-
-  std::uniform_int_distribution<size_t> id_dist{0, kKeyNumForTest - 2};
-
-  std::shared_mutex main_lock;
-
-  std::shared_mutex worker_lock;
-
-  /*################################################################################################
+  /*####################################################################################
    * Setup/Teardown
-   *##############################################################################################*/
+   *##################################################################################*/
 
   void
-  SetUp()
+  SetUp() override
   {
     // prepare keys
-    key_length = (IsVariableLengthData<Key>()) ? 7 : sizeof(Key);
-    PrepareTestData(keys, kKeyNumForTest, key_length);
+    key_size_ = (IsVariableLengthData<Key>()) ? kVarDataLength : sizeof(Key);
+    PrepareTestData(keys_, kKeyNumForTest, key_size_);
 
     // prepare payloads
-    payload_length = (IsVariableLengthData<Payload>()) ? 7 : sizeof(Payload);
-    PrepareTestData(payloads, kKeyNumForTest, payload_length);
+    pay_size_ = (IsVariableLengthData<Payload>()) ? kVarDataLength : sizeof(Payload);
+    PrepareTestData(payloads_, kKeyNumForTest, pay_size_);
   }
 
   void
-  TearDown()
+  TearDown() override
   {
-    ReleaseTestData(keys, kKeyNumForTest);
-    ReleaseTestData(payloads, kKeyNumForTest);
+    ReleaseTestData(keys_, kKeyNumForTest);
+    ReleaseTestData(payloads_, kKeyNumForTest);
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Utility functions
-   *##############################################################################################*/
+   *##################################################################################*/
 
   ReturnCode
   PerformWriteOperation(const Operation &ops)
   {
-    const auto key = keys[ops.key_id];
-    const auto payload = payloads[ops.payload_id];
+    const auto key = keys_[ops.key_id];
+    const auto payload = payloads_[ops.payload_id];
 
     switch (ops.w_type) {
       case kInsert:
-        return bztree.Insert(key, payload, key_length, payload_length);
+        return bztree_.Insert(key, payload, key_size_, pay_size_);
       case kUpdate:
-        return bztree.Update(key, payload, key_length, payload_length);
+        return bztree_.Update(key, payload, key_size_, pay_size_);
       case kDelete:
-        return bztree.Delete(key, key_length);
+        return bztree_.Delete(key, key_size_);
       case kWrite:
         break;
     }
-    return bztree.Write(key, payload, key_length, payload_length);
+    return bztree_.Write(key, payload, key_size_, pay_size_);
   }
 
   Operation
@@ -144,7 +132,7 @@ class BzTreeFixture : public testing::Test
       const WriteType w_type,
       std::mt19937_64 &rand_engine)
   {
-    const auto id = id_dist(rand_engine);
+    const auto id = id_dist_(rand_engine);
 
     switch (w_type) {
       case kWrite:
@@ -170,7 +158,7 @@ class BzTreeFixture : public testing::Test
     written_ids.reserve(write_num);
 
     {  // create a lock to prevent a main thread
-      const std::shared_lock<std::shared_mutex> guard{main_lock};
+      const std::shared_lock<std::shared_mutex> guard{main_lock_};
 
       // prepare operations to be executed
       std::mt19937_64 rand_engine{rand_seed};
@@ -180,7 +168,7 @@ class BzTreeFixture : public testing::Test
     }
 
     {  // wait for a main thread to release a lock
-      const std::shared_lock<std::shared_mutex> lock{worker_lock};
+      const std::shared_lock<std::shared_mutex> lock{worker_lock_};
 
       // perform and gather results
       for (auto &&ops : operations) {
@@ -203,7 +191,7 @@ class BzTreeFixture : public testing::Test
     std::vector<std::future<std::vector<size_t>>> futures;
 
     {  // create a lock to prevent workers from executing
-      const std::unique_lock<std::shared_mutex> guard{worker_lock};
+      const std::unique_lock<std::shared_mutex> guard{worker_lock_};
 
       // run a function over multi-threads with promise
       std::mt19937_64 rand_engine(kRandomSeed);
@@ -217,7 +205,7 @@ class BzTreeFixture : public testing::Test
       }
 
       // wait for all workers to finish initialization
-      const std::unique_lock<std::shared_mutex> lock{main_lock};
+      const std::unique_lock<std::shared_mutex> lock{main_lock_};
     }
 
     // gather results via promise-future
@@ -231,27 +219,28 @@ class BzTreeFixture : public testing::Test
     return written_ids;
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Functions for verification
-   *##############################################################################################*/
+   *##################################################################################*/
 
   void
   VerifyRead(  //
       const size_t key_id,
       const size_t expected_id,
-      const bool expect_fail = false)
+      const bool expect_success = true)
   {
-    const auto [rc, actual] = bztree.Read(keys[key_id]);
+    const auto read_val = bztree_.Read(keys_[key_id]);
+    if (expect_success) {
+      EXPECT_TRUE(read_val);
 
-    if (expect_fail) {
-      EXPECT_EQ(ReturnCode::kKeyNotExist, rc);
-    } else {
-      EXPECT_EQ(ReturnCode::kSuccess, rc);
+      const auto expected_val = payloads_[expected_id];
+      const auto actual_val = read_val.value();
+      EXPECT_TRUE(component::IsEqual<PayloadComp>(expected_val, actual_val));
       if constexpr (IsVariableLengthData<Payload>()) {
-        EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads[expected_id], actual.get()));
-      } else {
-        EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads[expected_id], actual));
+        delete actual_val;
       }
+    } else {
+      EXPECT_FALSE(read_val);
     }
   }
 
@@ -313,45 +302,67 @@ class BzTreeFixture : public testing::Test
 
     EXPECT_EQ(written_ids.size(), deleted_ids.size());
     for (auto &&id : deleted_ids) {
-      VerifyRead(id, id, true);
+      VerifyRead(id, id, false);
     }
   }
+
+  /*####################################################################################
+   * Internal member variables
+   *##################################################################################*/
+
+  // actual keys and payloads
+  size_t key_size_;
+  size_t pay_size_;
+  Key keys_[kKeyNumForTest];
+  Payload payloads_[kKeyNumForTest];
+
+  // a test target BzTree
+  BzTree_t bztree_ = BzTree_t{kGCTime};
+
+  std::uniform_int_distribution<size_t> id_dist_{0, kKeyNumForTest - 2};
+
+  std::shared_mutex main_lock_;
+
+  std::shared_mutex worker_lock_;
 };
 
-/*##################################################################################################
+/*######################################################################################
  * Preparation for typed testing
- *################################################################################################*/
+ *####################################################################################*/
 
-using KeyPayloadPairs = ::testing::Types<KeyPayload<uint64_t, uint64_t, UInt64Comp, UInt64Comp>,
-                                         KeyPayload<char *, uint64_t, CStrComp, UInt64Comp>,
-                                         KeyPayload<uint64_t, char *, UInt64Comp, CStrComp>,
-                                         KeyPayload<char *, char *, CStrComp, CStrComp>,
-                                         KeyPayload<uint32_t, uint64_t, UInt32Comp, UInt64Comp>,
-                                         KeyPayload<uint64_t, uint64_t *, UInt64Comp, PtrComp>,
-                                         KeyPayload<uint64_t, MyClass, UInt64Comp, MyClassComp>,
-                                         KeyPayload<uint64_t, int64_t, UInt64Comp, Int64Comp>>;
-TYPED_TEST_CASE(BzTreeFixture, KeyPayloadPairs);
+using KeyPayloadPairs = ::testing::Types<  //
+    KeyPayload<UInt8, UInt8>,              // fixed and same alignment
+    KeyPayload<Var, UInt8>,                // variable-fixed
+    KeyPayload<UInt8, Var>,                // fixed-variable
+    KeyPayload<Var, Var>,                  // variable-variable
+    KeyPayload<UInt4, UInt8>,              // fixed but different alignment (key < payload)
+    KeyPayload<UInt8, UInt4>,              // fixed but different alignment (key > payload)
+    KeyPayload<Ptr, Ptr>,                  // pointer key/payload
+    KeyPayload<UInt8, Original>,           // original class payload
+    KeyPayload<UInt8, Int8>                // payload that cannot use CAS
+    >;
+TYPED_TEST_SUITE(BzTreeFixture, KeyPayloadPairs);
 
-/*##################################################################################################
+/*######################################################################################
  * Unit test definitions
- *################################################################################################*/
+ *####################################################################################*/
 
-TYPED_TEST(BzTreeFixture, Write_MultiThreads_ReadWrittenPayloads)
+TYPED_TEST(BzTreeFixture, WriteWithMultiThreadsReadWrittenPayloads)
 {  //
   TestFixture::VerifyWrite();
 }
 
-TYPED_TEST(BzTreeFixture, Insert_MultiThreads_ReadInsertedPayloads)
+TYPED_TEST(BzTreeFixture, InsertWithMultiThreadsReadInsertedPayloads)
 {  //
   TestFixture::VerifyInsert();
 }
 
-TYPED_TEST(BzTreeFixture, Update_MultiThreads_ReadUpdatedPayloads)
+TYPED_TEST(BzTreeFixture, UpdateWithMultiThreadsReadUpdatedPayloads)
 {  //
   TestFixture::VerifyUpdate();
 }
 
-TYPED_TEST(BzTreeFixture, Delete_MultiThreads_ReadFailWithDeletedKeys)
+TYPED_TEST(BzTreeFixture, DeleteWithMultiThreadsReadFailWithDeletedKeys)
 {  //
   TestFixture::VerifyDelete();
 }

@@ -20,23 +20,21 @@
 
 namespace dbgroup::index::bztree::component::test
 {
+/*######################################################################################
+ * Internal constants
+ *####################################################################################*/
+
+constexpr uint64_t kControlBitsMask = 7UL << 61UL;
+constexpr size_t kExpectedOffset = 256;
+constexpr size_t kExpectedKeyLength = 8;
+constexpr size_t kExpectedTotalLength = 16;
+
 class MetadataFixture : public testing::Test
 {
  protected:
-  /*################################################################################################
-   * Internal constants
-   *##############################################################################################*/
-
-  static constexpr uint64_t kControlBitsMask = 7UL << 61;
-  static constexpr size_t kExpectedOffset = 256;
-  static constexpr size_t kExpectedKeyLength = 8;
-  static constexpr size_t kExpectedTotalLength = 16;
-  static constexpr size_t kCurrentEpoch = 1;
-  static constexpr size_t kDummyEpoch = 2;
-
-  /*################################################################################################
+  /*####################################################################################
    * Setup/Teardown
-   *##############################################################################################*/
+   *##################################################################################*/
 
   void
   SetUp() override
@@ -48,28 +46,30 @@ class MetadataFixture : public testing::Test
   {
   }
 
-  /*################################################################################################
+  /*####################################################################################
    * Utility functions
-   *##############################################################################################*/
+   *##################################################################################*/
 
-  Metadata
-  CreateActiveMeta()
+  static auto
+  CreateActiveMeta()  //
+      -> Metadata
   {
-    return Metadata{kExpectedOffset, kExpectedKeyLength, kExpectedTotalLength, false};
+    return Metadata{kExpectedOffset, kExpectedKeyLength, kExpectedTotalLength};
   }
 
-  Metadata
-  CreateInProgressMeta()
+  static auto
+  CreateInProgressMeta()  //
+      -> Metadata
   {
-    return Metadata{kCurrentEpoch, kExpectedKeyLength, kExpectedTotalLength, true};
+    return Metadata{kExpectedKeyLength, kExpectedTotalLength};
   }
 };
 
-/*--------------------------------------------------------------------------------------------------
+/*######################################################################################
  * Constructor tests
- *------------------------------------------------------------------------------------------------*/
+ *####################################################################################*/
 
-TEST_F(MetadataFixture, Construct_NoArguments_CorrectlyInitialized)
+TEST_F(MetadataFixture, ConstructWithNoArgumentsCreateZeroMetadata)
 {
   const Metadata meta{};
 
@@ -77,15 +77,16 @@ TEST_F(MetadataFixture, Construct_NoArguments_CorrectlyInitialized)
   EXPECT_FALSE(meta.IsInProgress());
   EXPECT_EQ(0, meta.GetOffset());
   EXPECT_EQ(0, meta.GetKeyLength());
+  EXPECT_EQ(0, meta.GetPayloadLength());
   EXPECT_EQ(0, meta.GetTotalLength());
 
   // check control bits
-  uint64_t meta_uint;
+  uint64_t meta_uint{};
   memcpy(&meta_uint, &meta, sizeof(Metadata));
   EXPECT_EQ(0, meta_uint & kControlBitsMask);
 }
 
-TEST_F(MetadataFixture, Construct_WithArguments_CorrectlyInitialized)
+TEST_F(MetadataFixture, ConstructWithOffsetCreateActiveMetadata)
 {
   auto meta = CreateActiveMeta();
 
@@ -93,113 +94,69 @@ TEST_F(MetadataFixture, Construct_WithArguments_CorrectlyInitialized)
   EXPECT_FALSE(meta.IsInProgress());
   EXPECT_EQ(kExpectedOffset, meta.GetOffset());
   EXPECT_EQ(kExpectedKeyLength, meta.GetKeyLength());
+  EXPECT_EQ(kExpectedTotalLength - kExpectedKeyLength, meta.GetPayloadLength());
   EXPECT_EQ(kExpectedTotalLength, meta.GetTotalLength());
 
   // check control bits
-  uint64_t meta_uint;
-  memcpy(&meta_uint, &meta, sizeof(Metadata));
-  EXPECT_EQ(0, meta_uint & kControlBitsMask);
-
-  meta = CreateInProgressMeta();
-
-  EXPECT_FALSE(meta.IsVisible());
-  EXPECT_TRUE(meta.IsInProgress());
-  EXPECT_EQ(kCurrentEpoch, meta.GetOffset());
-  EXPECT_EQ(kExpectedKeyLength, meta.GetKeyLength());
-  EXPECT_EQ(kExpectedTotalLength, meta.GetTotalLength());
-
-  // check control bits
+  uint64_t meta_uint{};
   memcpy(&meta_uint, &meta, sizeof(Metadata));
   EXPECT_EQ(0, meta_uint & kControlBitsMask);
 }
 
-/*--------------------------------------------------------------------------------------------------
- * Getter tests
- *------------------------------------------------------------------------------------------------*/
-
-TEST_F(MetadataFixture, IsDeleted_ActiveRecord_ReturnFalse)
+TEST_F(MetadataFixture, ConstructWithoutOffsetCreateInProgressMetadata)
 {
-  EXPECT_FALSE(CreateActiveMeta().IsDeleted());
-}
-
-TEST_F(MetadataFixture, IsDeleted_DeletedRecord_ReturnTrue)
-{
-  EXPECT_TRUE(CreateActiveMeta().Delete().IsDeleted());
-}
-
-TEST_F(MetadataFixture, IsDeleted_InProgressRecord_ReturnFalse)
-{
-  EXPECT_FALSE(CreateInProgressMeta().IsDeleted());
-}
-
-TEST_F(MetadataFixture, IsFailedRecord_ActiveRecord_ReturnFalse)
-{
-  EXPECT_FALSE(CreateActiveMeta().IsFailedRecord(kCurrentEpoch));
-}
-
-TEST_F(MetadataFixture, IsFailedRecord_DeletedRecord_ReturnFalse)
-{
-  EXPECT_FALSE(CreateActiveMeta().Delete().IsFailedRecord(kCurrentEpoch));
-}
-
-TEST_F(MetadataFixture, IsFailedRecord_InProgressRecordWithSameEpoch_ReturnFalse)
-{
-  EXPECT_FALSE(CreateInProgressMeta().IsFailedRecord(kCurrentEpoch));
-}
-
-TEST_F(MetadataFixture, IsFailedRecord_InProgressRecordWithDifferentEpoch_ReturnTrue)
-{
-  EXPECT_TRUE(CreateInProgressMeta().IsFailedRecord(kDummyEpoch));
-}
-
-TEST_F(MetadataFixture, GetPayloadLength_ActiveRecord_ReturnCorrectPayloadLength)
-{
-  EXPECT_EQ(kExpectedTotalLength - kExpectedKeyLength, CreateActiveMeta().GetPayloadLength());
-}
-
-/*--------------------------------------------------------------------------------------------------
- * Utility tests
- *------------------------------------------------------------------------------------------------*/
-
-TEST_F(MetadataFixture, UpdateOffset_ActiveRecord_GetUpdatedOffset)
-{
-  const size_t updated_offset = kExpectedOffset / 2;
-
-  auto meta = CreateActiveMeta().UpdateOffset(updated_offset);
-
-  EXPECT_EQ(updated_offset, meta.GetOffset());
-}
-
-TEST_F(MetadataFixture, MakeVisible_InProgressRecord_RecordBecomeActive)
-{
-  auto meta = CreateInProgressMeta().MakeVisible(kExpectedOffset);
+  auto meta = CreateInProgressMeta();
 
   EXPECT_TRUE(meta.IsVisible());
-  EXPECT_FALSE(meta.IsDeleted());
+  EXPECT_TRUE(meta.IsInProgress());
+  EXPECT_EQ(0, meta.GetOffset());
+  EXPECT_EQ(kExpectedKeyLength, meta.GetKeyLength());
+  EXPECT_EQ(kExpectedTotalLength - kExpectedKeyLength, meta.GetPayloadLength());
+  EXPECT_EQ(kExpectedTotalLength, meta.GetTotalLength());
+
+  // check control bits
+  uint64_t meta_uint{};
+  memcpy(&meta_uint, &meta, sizeof(Metadata));
+  EXPECT_EQ(0, meta_uint & kControlBitsMask);
+}
+
+/*######################################################################################
+ * Utility tests
+ *####################################################################################*/
+
+TEST_F(MetadataFixture, UpdateOffsetWithActiveMetadataGetUpdatedOffset)
+{
+  constexpr size_t kUpdatedOffset = kExpectedOffset / 2;
+
+  auto meta = CreateActiveMeta().UpdateOffset(kUpdatedOffset);
+
+  EXPECT_EQ(kUpdatedOffset, meta.GetOffset());
+}
+
+TEST_F(MetadataFixture, CommitWithInProgressMetadataMakeVisibleRecord)
+{
+  auto meta = CreateInProgressMeta().Commit(kExpectedOffset);
+
+  EXPECT_TRUE(meta.IsVisible());
   EXPECT_FALSE(meta.IsInProgress());
-  EXPECT_FALSE(meta.IsFailedRecord(kCurrentEpoch));
   EXPECT_EQ(kExpectedOffset, meta.GetOffset());
 }
 
-TEST_F(MetadataFixture, MakeInvisible_InProgressRecord_RecordBecomeDeleted)
+TEST_F(MetadataFixture, DeleteWithInProgressMetadataMakeInvisibleRecord)
 {
-  auto meta = CreateInProgressMeta().MakeInvisible(kExpectedOffset);
+  auto meta = CreateInProgressMeta().Delete(kExpectedOffset);
 
   EXPECT_FALSE(meta.IsVisible());
-  EXPECT_TRUE(meta.IsDeleted());
   EXPECT_FALSE(meta.IsInProgress());
-  EXPECT_FALSE(meta.IsFailedRecord(kCurrentEpoch));
   EXPECT_EQ(kExpectedOffset, meta.GetOffset());
 }
 
-TEST_F(MetadataFixture, Delete_ActiveRecord_RecordBecomeDeleted)
+TEST_F(MetadataFixture, DeleteWithActiveMetadataMakeInvisibleRecord)
 {
   auto meta = CreateActiveMeta().Delete();
 
   EXPECT_FALSE(meta.IsVisible());
-  EXPECT_TRUE(meta.IsDeleted());
   EXPECT_FALSE(meta.IsInProgress());
-  EXPECT_FALSE(meta.IsFailedRecord(kCurrentEpoch));
   EXPECT_EQ(kExpectedOffset, meta.GetOffset());
 }
 
