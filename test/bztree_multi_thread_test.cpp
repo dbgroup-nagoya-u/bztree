@@ -34,13 +34,11 @@ namespace dbgroup::index::bztree::test
  *####################################################################################*/
 
 constexpr size_t kGCTime = 1000;
-#ifdef BZTREE_TEST_THREAD_NUM
-constexpr size_t kThreadNum = BZTREE_TEST_THREAD_NUM;
-#else
-constexpr size_t kThreadNum = 8;
-#endif
 constexpr size_t kKeyNumForTest = 8 * 8192 * kThreadNum;
-constexpr size_t kRandomSeed = 10;
+
+/*######################################################################################
+ * Classes for templated testing
+ *####################################################################################*/
 
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType>
@@ -81,6 +79,9 @@ class BzTreeFixture : public testing::Test  // NOLINT
     size_t payload_id;
   };
 
+  static constexpr size_t kKeyLen = GetDataLength<Key>();
+  static constexpr size_t kPayLen = GetDataLength<Payload>();
+
   /*####################################################################################
    * Setup/Teardown
    *##################################################################################*/
@@ -88,13 +89,10 @@ class BzTreeFixture : public testing::Test  // NOLINT
   void
   SetUp() override
   {
-    // prepare keys
-    key_size_ = (IsVariableLengthData<Key>()) ? kVarDataLength : sizeof(Key);
-    PrepareTestData(keys_, kKeyNumForTest, key_size_);
+    PrepareTestData(keys_, kKeyNumForTest);
+    PrepareTestData(payloads_, kKeyNumForTest);
 
-    // prepare payloads
-    pay_size_ = (IsVariableLengthData<Payload>()) ? kVarDataLength : sizeof(Payload);
-    PrepareTestData(payloads_, kKeyNumForTest, pay_size_);
+    index_ = std::make_unique<BzTree_t>(kGCTime);
   }
 
   void
@@ -102,6 +100,8 @@ class BzTreeFixture : public testing::Test  // NOLINT
   {
     ReleaseTestData(keys_, kKeyNumForTest);
     ReleaseTestData(payloads_, kKeyNumForTest);
+
+    index_.reset(nullptr);
   }
 
   /*####################################################################################
@@ -116,15 +116,15 @@ class BzTreeFixture : public testing::Test  // NOLINT
 
     switch (ops.w_type) {
       case kInsert:
-        return bztree_.Insert(key, payload, key_size_, pay_size_);
+        return index_->Insert(key, payload, kKeyLen, kPayLen);
       case kUpdate:
-        return bztree_.Update(key, payload, key_size_, pay_size_);
+        return index_->Update(key, payload, kKeyLen, kPayLen);
       case kDelete:
-        return bztree_.Delete(key, key_size_);
+        return index_->Delete(key, kKeyLen);
       case kWrite:
         break;
     }
-    return bztree_.Write(key, payload, key_size_, pay_size_);
+    return index_->Write(key, payload, kKeyLen, kPayLen);
   }
 
   Operation
@@ -229,7 +229,7 @@ class BzTreeFixture : public testing::Test  // NOLINT
       const size_t expected_id,
       const bool expect_success = true)
   {
-    const auto read_val = bztree_.Read(keys_[key_id]);
+    const auto read_val = index_->Read(keys_[key_id]);
     if (expect_success) {
       EXPECT_TRUE(read_val);
 
@@ -311,13 +311,11 @@ class BzTreeFixture : public testing::Test  // NOLINT
    *##################################################################################*/
 
   // actual keys and payloads
-  size_t key_size_;
-  size_t pay_size_;
   Key keys_[kKeyNumForTest];
   Payload payloads_[kKeyNumForTest];
 
   // a test target BzTree
-  BzTree_t bztree_ = BzTree_t{kGCTime};
+  std::unique_ptr<BzTree_t> index_{nullptr};
 
   std::uniform_int_distribution<size_t> id_dist_{0, kKeyNumForTest - 2};
 
@@ -331,15 +329,13 @@ class BzTreeFixture : public testing::Test  // NOLINT
  *####################################################################################*/
 
 using KeyPayloadPairs = ::testing::Types<  //
-    KeyPayload<UInt8, UInt8>,              // fixed and same alignment
-    KeyPayload<Var, UInt8>,                // variable-fixed
-    KeyPayload<UInt8, Var>,                // fixed-variable
-    KeyPayload<Var, Var>,                  // variable-variable
-    KeyPayload<UInt4, UInt8>,              // fixed but different alignment (key < payload)
-    KeyPayload<UInt8, UInt4>,              // fixed but different alignment (key > payload)
-    KeyPayload<Ptr, Ptr>,                  // pointer key/payload
-    KeyPayload<UInt8, Original>,           // original class payload
-    KeyPayload<UInt8, Int8>                // payload that cannot use CAS
+    KeyPayload<UInt8, UInt8>,              // fixed keys and in-place payloads
+    KeyPayload<Var, UInt8>,                // variable keys and in-place payloads
+    KeyPayload<UInt8, Var>,                // fixed keys and variable payloads
+    KeyPayload<Var, Var>,                  // variable keys/payloads
+    KeyPayload<Ptr, Ptr>,                  // pointer keys/payloads
+    KeyPayload<UInt8, Original>,           // original class payloads
+    KeyPayload<UInt8, Int8>                // fixed keys and appended payloads
     >;
 TYPED_TEST_SUITE(BzTreeFixture, KeyPayloadPairs);
 
