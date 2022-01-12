@@ -136,7 +136,7 @@ class BzTreeFixture : public testing::Test  // NOLINT
     if (end_ref) {
       auto &&[end_id, end_closed] = *end_ref;
       end_key.emplace(keys_[end_id], end_closed);
-      end_pos = (end_closed) ? end_id : end_id - 1;
+      end_pos = (end_closed) ? end_id + 1 : end_id;
     }
 
     auto iter = bztree_->Scan(begin_key, end_key);
