@@ -125,12 +125,12 @@ ShiftAddr(  //
  */
 template <class Key, class Payload>
 constexpr auto
-AlignRecord(  //
-    size_t key_len,
-    size_t pay_len)  //
+Align(  //
+    [[maybe_unused]] size_t key_len,
+    [[maybe_unused]] size_t pay_len)  //
     -> std::tuple<size_t, size_t, size_t>
 {
-  if constexpr (IsVariableLengthData<Key>() && IsVariableLengthData<Payload>()) {
+  if constexpr (!CanCASUpdate<Payload>()) {
     // record alignment is not required
     return {key_len, pay_len, key_len + pay_len};
   } else if constexpr (IsVariableLengthData<Key>()) {
@@ -138,39 +138,19 @@ AlignRecord(  //
     const size_t align_len = alignof(Payload) - key_len % alignof(Payload);
     if (align_len == alignof(Payload)) {
       // alignment is not required
-      return {key_len, pay_len, key_len + pay_len};
+      return {key_len, sizeof(Payload), key_len + sizeof(Payload)};
     }
-    return {key_len, pay_len, align_len + key_len + pay_len};
-  } else if constexpr (IsVariableLengthData<Payload>()) {
-    const size_t align_len = alignof(Key) - pay_len % alignof(Key);
-    if (align_len != alignof(Key)) {
-      // dynamic alignment is required
-      key_len += align_len;
-    }
-    return {key_len, pay_len, key_len + pay_len};
-  } else if constexpr (alignof(Key) < alignof(Payload)) {
+    return {key_len, sizeof(Payload), align_len + key_len + sizeof(Payload)};
+  } else {
     constexpr size_t kAlignLen = alignof(Payload) - sizeof(Key) % alignof(Payload);
     if constexpr (kAlignLen == alignof(Payload)) {
       // alignment is not required
-      return {key_len, pay_len, key_len + pay_len};
+      return {sizeof(Key), sizeof(Payload), sizeof(Key) + sizeof(Payload)};
     } else {
       // fixed-length alignment is required
       constexpr size_t kKeyLen = sizeof(Key) + kAlignLen;
-      return {kKeyLen, pay_len, kKeyLen + pay_len};
+      return {kKeyLen, sizeof(Payload), kKeyLen + sizeof(Payload)};
     }
-  } else if constexpr (alignof(Key) > alignof(Payload)) {
-    constexpr size_t kAlignLen = alignof(Key) - sizeof(Payload) % alignof(Key);
-    if constexpr (kAlignLen == alignof(Key)) {
-      // alignment is not required
-      return {key_len, pay_len, key_len + pay_len};
-    } else {
-      // fixed-length alignment is required
-      constexpr size_t kPayLen = sizeof(Payload) + kAlignLen;
-      return {key_len, kPayLen, key_len + kPayLen};
-    }
-  } else {
-    // alignment is not required
-    return {key_len, pay_len, key_len + pay_len};
   }
 }
 
@@ -184,9 +164,9 @@ GetMaxInternalRecordSize()  //
     -> size_t
 {
   if constexpr (IsVariableLengthData<Key>()) {
-    return std::get<2>(AlignRecord<Key, void *>(kMaxVariableSize, kWordLength));
+    return std::get<2>(Align<Key, void *>(kMaxVariableSize, kWordLength));
   } else {
-    return std::get<2>(AlignRecord<Key, void *>(sizeof(Key), kWordLength));
+    return std::get<2>(Align<Key, void *>(sizeof(Key), kWordLength));
   }
 }
 

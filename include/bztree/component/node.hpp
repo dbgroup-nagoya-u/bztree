@@ -189,14 +189,16 @@ class alignas(kMaxAlignment) Node
    * @param meta metadata of a corresponding record.
    * @return a key in a target record.
    */
-  [[nodiscard]] constexpr auto
+  [[nodiscard]] auto
   GetKey(const Metadata meta) const  //
       -> Key
   {
     if constexpr (IsVariableLengthData<Key>()) {
       return reinterpret_cast<Key>(GetKeyAddr(meta));
     } else {
-      return *reinterpret_cast<Key *>(GetKeyAddr(meta));
+      Key key{};
+      memcpy(&key, GetKeyAddr(meta), sizeof(Key));
+      return key;
     }
   }
 
@@ -206,14 +208,16 @@ class alignas(kMaxAlignment) Node
    * @return a payload in a target record.
    */
   template <class Payload>
-  [[nodiscard]] constexpr auto
+  [[nodiscard]] auto
   GetPayload(const Metadata meta) const  //
       -> Payload
   {
     if constexpr (IsVariableLengthData<Payload>()) {
       return reinterpret_cast<Payload>(GetPayloadAddr(meta));
     } else {
-      return *reinterpret_cast<Payload *>(GetPayloadAddr(meta));
+      Payload payload{};
+      memcpy(&payload, GetPayloadAddr(meta), sizeof(Payload));
+      return payload;
     }
   }
 
@@ -447,7 +451,7 @@ class alignas(kMaxAlignment) Node
       -> NodeRC
   {
     // variables and constants shared in Phase 1 & 2
-    const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, payload_length);
+    const auto [key_len, pay_len, rec_len] = Align<Key, Payload>(key_length, payload_length);
     const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos{};
@@ -493,8 +497,8 @@ class alignas(kMaxAlignment) Node
 
     // insert a record
     auto offset = kPageSize - cur_status.GetBlockSize();
-    offset = SetPayload<Payload>(offset, payload, pay_len);
-    offset = SetKey(offset, key, key_len);
+    offset = SetData(offset, payload, pay_len);
+    offset = SetData(offset, key, key_len);
     std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
@@ -546,7 +550,7 @@ class alignas(kMaxAlignment) Node
       -> NodeRC
   {
     // variables and constants shared in Phase 1 & 2
-    const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, payload_length);
+    const auto [key_len, pay_len, rec_len] = Align<Key, Payload>(key_length, payload_length);
     const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos{};
@@ -582,8 +586,8 @@ class alignas(kMaxAlignment) Node
 
     // insert a record
     auto offset = kPageSize - cur_status.GetBlockSize();
-    offset = SetPayload<Payload>(offset, payload, pay_len);
-    offset = SetKey(offset, key, key_len);
+    offset = SetData(offset, payload, pay_len);
+    offset = SetData(offset, key, key_len);
     std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
@@ -646,7 +650,7 @@ class alignas(kMaxAlignment) Node
       -> NodeRC
   {
     // variables and constants shared in Phase 1 & 2
-    const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, payload_length);
+    const auto [key_len, pay_len, rec_len] = Align<Key, Payload>(key_length, payload_length);
     const auto deleted_size = kWordLength + rec_len;
     const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
@@ -697,8 +701,8 @@ class alignas(kMaxAlignment) Node
 
     // insert a record
     auto offset = kPageSize - cur_status.GetBlockSize();
-    offset = SetPayload<Payload>(offset, payload, pay_len);
-    offset = SetKey(offset, key, key_len);
+    offset = SetData(offset, payload, pay_len);
+    offset = SetData(offset, key, key_len);
     std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
@@ -756,7 +760,7 @@ class alignas(kMaxAlignment) Node
       -> NodeRC
   {
     // variables and constants
-    const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, 0);
+    const auto [key_len, pay_len, rec_len] = Align<Key, Payload>(key_length, 0);
     const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos{};
@@ -809,7 +813,7 @@ class alignas(kMaxAlignment) Node
 
     // insert a null record
     auto offset = kPageSize - cur_status.GetBlockSize();
-    offset = SetKey(offset, key, key_len);
+    offset = SetData(offset, key, key_len);
     std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
@@ -1117,15 +1121,15 @@ class alignas(kMaxAlignment) Node
     while (iter < iter_end) {
       const auto key_length = iter->GetKeyLength();
       const auto pay_length = iter->GetPayloadLength();
-      const auto [key_len, pay_len, rec_len] = AlignRecord<Key, Payload>(key_length, pay_length);
+      const auto [key_len, pay_len, rec_len] = Align<Key, Payload>(key_length, pay_length);
 
       // check whether the node has sufficent space
       node_size += rec_len + kWordLength;
       if (node_size > kPageSize - kMinFreeSpaceSize) break;
 
       // insert an entry to the leaf node
-      auto tmp_offset = SetPayload(offset, iter->GetPayload(), pay_len);
-      tmp_offset = SetKey(tmp_offset, iter->GetKey(), key_len);
+      auto tmp_offset = SetData(offset, iter->GetPayload(), pay_len);
+      tmp_offset = SetData(tmp_offset, iter->GetKey(), key_len);
       meta_array_[sorted_count_] = Metadata{tmp_offset, key_len, rec_len};
       offset -= rec_len;
 
@@ -1251,50 +1255,26 @@ class alignas(kMaxAlignment) Node
   }
 
   /**
-   * @brief Set a target key.
-   *
-   * @param offset an offset to set a target key.
-   * @param key a target key to be set.
-   * @param key_length the length of a target key.
-   */
-  auto
-  SetKey(  //
-      size_t offset,
-      const Key &key,
-      const size_t key_length)  //
-      -> size_t
-  {
-    offset -= key_length;
-    if constexpr (IsVariableLengthData<Key>()) {
-      memcpy(ShiftAddr(this, offset), key, key_length);
-    } else {
-      memcpy(ShiftAddr(this, offset), &key, sizeof(Key));
-    }
-
-    return offset;
-  }
-
-  /**
    * @brief Set a target payload directly.
    *
-   * @tparam Payload a class of payload.
-   * @param offset an offset to set a target payload.
-   * @param payload a target payload to be set.
-   * @param payload_length the length of a target payload.
+   * @tparam Data a class of targets.
+   * @param offset an offset to set a target data.
+   * @param data a target data to be set.
+   * @param data_len the length of a target data.
    */
-  template <class Payload>
+  template <class Data>
   auto
-  SetPayload(  //
+  SetData(  //
       size_t offset,
-      const Payload &payload,
-      const size_t payload_length)  //
+      const Data &data,
+      const size_t data_len)  //
       -> size_t
   {
-    offset -= payload_length;
-    if constexpr (IsVariableLengthData<Payload>()) {
-      memcpy(ShiftAddr(this, offset), payload, payload_length);
+    offset -= data_len;
+    if constexpr (IsVariableLengthData<Data>()) {
+      memcpy(ShiftAddr(this, offset), data, data_len);
     } else {
-      memcpy(ShiftAddr(this, offset), &payload, sizeof(Payload));
+      memcpy(ShiftAddr(this, offset), &data, sizeof(Data));
     }
 
     return offset;
@@ -1468,13 +1448,13 @@ class alignas(kMaxAlignment) Node
     const auto &key = orig_node->GetKey(orig_meta);
     if constexpr (IsVariableLengthData<Key>()) {
       const auto key_length = orig_meta.GetKeyLength();
-      std::tie(key_len, pay_len, rec_len) = AlignRecord<Key, Node *>(key_length, sizeof(Node *));
+      std::tie(key_len, pay_len, rec_len) = Align<Key, Node *>(key_length, sizeof(Node *));
     } else {
-      std::tie(key_len, pay_len, rec_len) = AlignRecord<Key, Node *>(sizeof(Key), sizeof(Node *));
+      std::tie(key_len, pay_len, rec_len) = Align<Key, Node *>(sizeof(Key), sizeof(Node *));
     }
 
-    auto tmp_offset = SetPayload<const Node *>(offset, child_node, pay_len);
-    tmp_offset = SetKey(tmp_offset, key, key_len);
+    auto tmp_offset = SetData<const Node *>(offset, child_node, pay_len);
+    tmp_offset = SetData(tmp_offset, key, key_len);
     meta_array_[rec_count] = Metadata{tmp_offset, key_len, rec_len};
 
     return offset - rec_len;
