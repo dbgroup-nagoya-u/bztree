@@ -74,14 +74,12 @@ class BzTree
 
     RecordIterator(  //
         BzTree_t *bztree,
-        NodeGC_t *gc,
         Node_t *node,
         const size_t begin_pos,
         const size_t end_pos,
         const std::optional<std::pair<const Key &, bool>> end_key,
         const bool is_right_end)
         : bztree_{bztree},
-          gc_{gc},
           node_{node},
           record_count_{end_pos},
           current_pos_{begin_pos},
@@ -95,7 +93,6 @@ class BzTree
     operator=(RecordIterator &&obj) noexcept
     {
       node_ = obj.node_;
-      obj.node_ = nullptr;
       record_count_ = obj.record_count_;
       current_pos_ = obj.current_pos_;
       current_meta_ = obj.current_meta_;
@@ -112,12 +109,7 @@ class BzTree
      * Public destructors
      *################################################################################*/
 
-    ~RecordIterator()
-    {
-      if (node_ != nullptr) {
-        gc_->AddGarbage(node_);
-      }
-    }
+    ~RecordIterator() = default;
 
     /*##################################################################################
      * Public operators for iterators
@@ -174,7 +166,12 @@ class BzTree
       }
 
       // update this iterator with the next scan results
-      *this = bztree_->Scan(std::make_pair(begin_k, false), end_key_, node_);
+      *this = bztree_->Scan(std::make_pair(begin_k, false), end_key_);
+
+      if constexpr (IsVariableLengthData<Key>()) {
+        delete begin_k;
+      }
+
       return HasNext();
     }
 
@@ -205,9 +202,6 @@ class BzTree
 
     /// a pointer to BwTree to perform continuous scan
     BzTree_t *bztree_{nullptr};
-
-    /// garbage collector
-    NodeGC_t *gc_{nullptr};
 
     /// the pointer to a node that includes partial scan results
     Node_t *node_{nullptr};
@@ -309,22 +303,24 @@ class BzTree
   auto
   Scan(  //
       const std::optional<std::pair<const Key &, bool>> &begin_key = std::nullopt,
-      const std::optional<std::pair<const Key &, bool>> &end_key = std::nullopt,
-      Node_t *page = nullptr)  //
+      const std::optional<std::pair<const Key &, bool>> &end_key = std::nullopt)  //
       -> RecordIterator
   {
     [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
 
+    thread_local std::unique_ptr<Node_t> page{CreateNewNode<Payload>()};
+
     // sort records in a target node
     auto &&[b_key, b_closed] = begin_key.value_or(std::make_pair(Key{}, true));
     Node_t *node = (begin_key) ? SearchLeafNode(b_key, b_closed) : SearchLeftEdgeLeaf();
-    if (page == nullptr) {
-      page = CreateNewNode<Payload>();
-    }
     page->template Consolidate<Payload>(node);
 
     // find begin/end positions in the sorted records
-    auto begin_pos = (begin_key) ? page->Search(b_key, b_closed) : 0;
+    size_t begin_pos = 0;
+    if (begin_key) {
+      auto [rc, pos] = page->SearchSortedRecord(b_key);
+      begin_pos = (rc == KeyExistence::kNotExist || b_closed) ? pos : pos + 1;
+    }
     auto end_pos = page->GetSortedCount();
     auto is_right_end = page->IsRightEnd();
     if (end_key) {
@@ -337,7 +333,7 @@ class BzTree
       }
     }
 
-    return RecordIterator{this, &gc_, page, begin_pos, end_pos, end_key, is_right_end};
+    return RecordIterator{this, page.get(), begin_pos, end_pos, end_key, is_right_end};
   }
 
   /*####################################################################################
