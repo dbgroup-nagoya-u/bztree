@@ -170,32 +170,6 @@ GetMaxInternalRecordSize()  //
   }
 }
 
-/**
- * @brief Compute an aligned offset for node initialization.
- *
- * @tparam Key a class of keys.
- * @tparam Payload a class of payloads.
- * @return an aligned offset.
- */
-template <class Key, class Payload>
-constexpr auto
-GetInitialOffset()  //
-    -> size_t
-{
-  if constexpr (IsVariableLengthData<Payload>() || IsVariableLengthData<Key>()) {
-    return kPageSize;
-  } else if constexpr (alignof(Key) <= alignof(Payload)) {
-    return kPageSize;
-  } else {
-    constexpr size_t kAlignLen = alignof(Key) - sizeof(Payload) % alignof(Key);
-    if constexpr (kAlignLen == alignof(Key)) {
-      return kPageSize;
-    } else {
-      return kPageSize - kAlignLen;
-    }
-  }
-}
-
 }  // namespace dbgroup::index::bztree::component
 
 #endif  // BZTREE_COMPONENT_COMMON_HPP

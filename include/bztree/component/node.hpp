@@ -867,7 +867,7 @@ class alignas(kMaxAlignment) Node
 
     // perform merge-sort to consolidate a node
     const auto sorted_count = old_node->sorted_count_;
-    auto offset = GetInitialOffset<Key, Payload>();
+    auto offset = kPageSize;
     size_t rec_count = 0;
 
     size_t j = 0;
@@ -930,13 +930,13 @@ class alignas(kMaxAlignment) Node
     // copy records to a left node
     const auto rec_count = sorted_count_;
     const size_t l_count = rec_count / 2;
-    auto l_offset = GetInitialOffset<Key, Payload>();
+    auto l_offset = kPageSize;
     l_offset = l_node->CopyRecordsFrom<Payload>(this, 0, l_count, 0, l_offset);
     l_node->sorted_count_ = l_count;
     l_node->status_ = StatusWord{l_count, kPageSize - l_offset};
 
     // copy records to a right node
-    auto r_offset = GetInitialOffset<Key, Payload>();
+    auto r_offset = kPageSize;
     r_offset = r_node->CopyRecordsFrom<Payload>(this, l_count, rec_count, 0, r_offset);
     const auto r_count = rec_count - l_count;
     r_node->sorted_count_ = r_count;
@@ -965,7 +965,7 @@ class alignas(kMaxAlignment) Node
     is_right_end_ = old_node->is_right_end_;
 
     // copy lower records
-    auto offset = GetInitialOffset<Key, Node *>();
+    auto offset = kPageSize;
     offset = CopyRecordsFrom<Node *>(old_node, 0, l_pos, 0, offset);
 
     // insert split nodes
@@ -1006,7 +1006,7 @@ class alignas(kMaxAlignment) Node
 
     // insert initial children
     const auto l_meta = l_child->meta_array_[l_child->sorted_count_ - 1];
-    auto offset = GetInitialOffset<Key, Node *>();
+    auto offset = kPageSize;
     offset = InsertChild(l_child, l_meta, l_child, 0, offset);
     const auto r_meta = r_child->meta_array_[r_child->sorted_count_ - 1];
     offset = InsertChild(r_child, r_meta, r_child, 1, offset);
@@ -1033,7 +1033,7 @@ class alignas(kMaxAlignment) Node
   {
     // copy records in left/right nodes
     size_t l_count{};
-    auto offset = GetInitialOffset<Key, Payload>();
+    auto offset = kPageSize;
     if constexpr (std::is_same_v<Payload, Node *>) {
       // copy records from a merged left node
       l_count = l_node->sorted_count_;
@@ -1074,7 +1074,7 @@ class alignas(kMaxAlignment) Node
     is_right_end_ = old_node->is_right_end_;
 
     // copy lower records
-    auto offset = GetInitialOffset<Key, Node *>();
+    auto offset = kPageSize;
     offset = CopyRecordsFrom<Node *>(old_node, 0, position, 0, offset);
 
     // insert a merged node

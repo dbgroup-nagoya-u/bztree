@@ -59,8 +59,6 @@ class NodeFixture : public testing::Test  // NOLINT
    * Internal constants
    *##################################################################################*/
 
-  static constexpr size_t kPayloadBlock = kPageSize - GetInitialOffset<Key, Payload>();
-  static constexpr size_t kNodeBlock = kPageSize - GetInitialOffset<Key, Node_t *>();
   static constexpr size_t kKeyLen = GetDataLength<Key>();
   static constexpr size_t kPayLen = GetDataLength<Payload>();
   static constexpr size_t kRecLen = std::get<2>(Align<Key, Payload>(kKeyLen, kPayLen));
@@ -77,7 +75,7 @@ class NodeFixture : public testing::Test  // NOLINT
     static_assert(kPageSize > kMaxRecSize * kMaxUnsortedRecNum * 2 + kHeaderLength,
                   "The page size is too small to perform unit tests.");
 
-    node_.reset(new Node_t{kLeafFlag, kPayloadBlock});
+    node_.reset(new Node_t{kLeafFlag, 0});
 
     PrepareTestData(keys_, kKeyNumForTest);
     PrepareTestData(payloads_, kKeyNumForTest);
@@ -139,7 +137,7 @@ class NodeFixture : public testing::Test  // NOLINT
   void
   Consolidate()
   {
-    auto *consolidated_node = new Node_t{kLeafFlag, kPayloadBlock};
+    auto *consolidated_node = new Node_t{kLeafFlag, 0};
     consolidated_node->template Consolidate<Payload>(node_.get());
     node_.reset(consolidated_node);
   }
@@ -253,8 +251,8 @@ class NodeFixture : public testing::Test  // NOLINT
   {
     PrepareConsolidatedNode();
 
-    auto *left_node = new Node_t{kLeafFlag, kPayloadBlock};
-    auto *right_node = new Node_t{kLeafFlag, kPayloadBlock};
+    auto *left_node = new Node_t{kLeafFlag, 0};
+    auto *right_node = new Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(left_node, right_node);
 
     node_.reset(left_node);
@@ -273,8 +271,8 @@ class NodeFixture : public testing::Test  // NOLINT
   {
     PrepareConsolidatedNode();
 
-    auto *left_node = new Node_t{kLeafFlag, kPayloadBlock};
-    auto *right_node = new Node_t{kLeafFlag, kPayloadBlock};
+    auto *left_node = new Node_t{kLeafFlag, 0};
+    auto *right_node = new Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(left_node, right_node);
     Node_t *merged_node = left_node;
     merged_node->template Merge<Payload>(left_node, right_node);
@@ -292,10 +290,10 @@ class NodeFixture : public testing::Test  // NOLINT
   {
     PrepareConsolidatedNode();
 
-    auto *left_node = new Node_t{kLeafFlag, kPayloadBlock};
-    auto *right_node = new Node_t{kLeafFlag, kPayloadBlock};
+    auto *left_node = new Node_t{kLeafFlag, 0};
+    auto *right_node = new Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(left_node, right_node);
-    auto *root = new Node_t{!kLeafFlag, kNodeBlock};
+    auto *root = new Node_t{!kLeafFlag, 0};
     root->InitAsRoot(left_node, right_node);
 
     EXPECT_EQ(left_node, root->GetChild(0));
@@ -311,15 +309,15 @@ class NodeFixture : public testing::Test  // NOLINT
   {
     PrepareConsolidatedNode();
 
-    auto *l_node = new Node_t{kLeafFlag, kPayloadBlock};
-    auto *r_node = new Node_t{kLeafFlag, kPayloadBlock};
+    auto *l_node = new Node_t{kLeafFlag, 0};
+    auto *r_node = new Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(l_node, r_node);
-    auto *old_parent = new Node_t{!kLeafFlag, kNodeBlock};
+    auto *old_parent = new Node_t{!kLeafFlag, 0};
     old_parent->InitAsRoot(l_node, r_node);
-    auto *r_l_node = new Node_t{kLeafFlag, kPayloadBlock};
-    auto *r_r_node = new Node_t{kLeafFlag, kPayloadBlock};
+    auto *r_l_node = new Node_t{kLeafFlag, 0};
+    auto *r_r_node = new Node_t{kLeafFlag, 0};
     r_node->template Split<Payload>(r_l_node, r_r_node);
-    auto *new_parent = new Node_t{!kLeafFlag, kNodeBlock};
+    auto *new_parent = new Node_t{!kLeafFlag, 0};
     new_parent->InitAsSplitParent(old_parent, r_node, r_r_node, 1);
 
     EXPECT_EQ(l_node, new_parent->GetChild(0));
@@ -339,14 +337,14 @@ class NodeFixture : public testing::Test  // NOLINT
   {
     PrepareConsolidatedNode();
 
-    auto *l_node = new Node_t{kLeafFlag, kPayloadBlock};
-    auto *r_node = new Node_t{kLeafFlag, kPayloadBlock};
+    auto *l_node = new Node_t{kLeafFlag, 0};
+    auto *r_node = new Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(l_node, r_node);
-    auto *old_parent = new Node_t{!kLeafFlag, kNodeBlock};
+    auto *old_parent = new Node_t{!kLeafFlag, 0};
     old_parent->InitAsRoot(l_node, r_node);
     Node_t *merged_node = l_node;
     merged_node->template Merge<Payload>(l_node, r_node);
-    auto *new_parent = new Node_t{!kLeafFlag, kNodeBlock};
+    auto *new_parent = new Node_t{!kLeafFlag, 0};
     new_parent->InitAsMergeParent(old_parent, merged_node, 0);
 
     EXPECT_EQ(merged_node, new_parent->GetChild(0));

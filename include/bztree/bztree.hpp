@@ -604,12 +604,10 @@ class BzTree
   CreateNewNode()  //
       -> Node_t *
   {
-    constexpr size_t kBlockSize = kPageSize - component::GetInitialOffset<Key, T>();
     constexpr bool kIsLeaf = std::is_same_v<T, Payload>;
 
     auto *page = gc_.template GetPageIfPossible<Node_t>();
-    return (page == nullptr) ? new Node_t{kIsLeaf, kBlockSize}
-                             : new (page) Node_t{kIsLeaf, kBlockSize};
+    return (page == nullptr) ? new Node_t{kIsLeaf, 0} : new (page) Node_t{kIsLeaf, 0};
   }
 
   /**
