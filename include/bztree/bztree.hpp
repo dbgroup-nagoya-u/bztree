@@ -155,7 +155,7 @@ class BzTree
       if (is_right_end_) return false;
 
       // keep the end key to use as the next begin key
-      current_meta_ = node_->GetMetadata(record_count_ - 1);
+      current_meta_ = node_->GetHighMeta();
       Key begin_k{};
       if constexpr (IsVariableLengthData<Key>()) {
         const auto key_len = current_meta_.GetKeyLength();

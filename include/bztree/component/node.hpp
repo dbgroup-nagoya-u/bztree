@@ -173,6 +173,16 @@ class Node
   }
 
   /**
+   * @return the metadata fo a highest key.
+   */
+  [[nodiscard]] constexpr auto
+  GetHighMeta() const  //
+      -> Metadata
+  {
+    return high_meta_;
+  }
+
+  /**
    * @brief Read metadata without MwCAS read protection.
    *
    * @return metadata.
