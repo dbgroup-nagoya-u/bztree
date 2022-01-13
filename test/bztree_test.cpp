@@ -25,19 +25,19 @@
 
 namespace dbgroup::index::bztree::test
 {
-using component::AlignRecord;
-
 /*######################################################################################
  * Global constants
  *####################################################################################*/
 
 constexpr size_t kGCTime = 1000;
-constexpr size_t kTestMaxRecNum = (kPageSize - kHeaderLength - kMinFreeSpaceSize) / 20;
-constexpr size_t kKeyNumForTest = 2 * kTestMaxRecNum * kTestMaxRecNum + 2;
 constexpr bool kExpectSuccess = true;
 constexpr bool kExpectFailed = false;
 constexpr bool kRangeClosed = true;
 constexpr bool kRangeOpened = false;
+
+/*######################################################################################
+ * Classes for templated testing
+ *####################################################################################*/
 
 // use a supper template to define key-payload pair templates
 template <class KeyType, class PayloadType>
@@ -63,27 +63,28 @@ class BzTreeFixture : public testing::Test  // NOLINT
 
  protected:
   /*####################################################################################
+   * Internal constants
+   *##################################################################################*/
+
+  static constexpr size_t kKeyLen = GetDataLength<Key>();
+  static constexpr size_t kPayLen = GetDataLength<Payload>();
+  static constexpr size_t kRecLen = kKeyLen + kPayLen;
+  static constexpr size_t kRecNumInNode =
+      (kPageSize - kHeaderLength) / (kRecLen + sizeof(Metadata));
+  static constexpr size_t kMaxRecNumForTest = 2 * kRecNumInNode * kRecNumInNode;
+  static constexpr size_t kKeyNumForTest = 2 * kRecNumInNode * kRecNumInNode + 2;
+
+  /*####################################################################################
    * Setup/Teardown
    *##################################################################################*/
 
   void
   SetUp() override
   {
-    // prepare keys
-    key_size_ = (IsVariableLengthData<Key>()) ? kVarDataLength : sizeof(Key);
-    PrepareTestData(keys_, kKeyNumForTest, key_size_);
+    PrepareTestData(keys_, kKeyNumForTest);
+    PrepareTestData(payloads_, kKeyNumForTest);
 
-    // prepare payloads
-    pay_size_ = (IsVariableLengthData<Payload>()) ? kVarDataLength : sizeof(Payload);
-    PrepareTestData(payloads_, kKeyNumForTest, pay_size_);
-
-    // set a record length and its maximum number
-    auto rec_size = std::get<2>(AlignRecord<Key, Payload>(key_size_, pay_size_)) + sizeof(Metadata);
-    max_leaf_rec_num_ = (kPageSize - kHeaderLength - kMinFreeSpaceSize) / rec_size;
-    max_internal_rec_num_ = (kPageSize - kHeaderLength) / rec_size;
-    rec_num_for_testing_ = 1.5 * max_leaf_rec_num_ * max_internal_rec_num_;  // NOLINT
-
-    bztree_ = std::make_unique<BzTree_t>(kGCTime);
+    index_ = std::make_unique<BzTree_t>(kGCTime);
   }
 
   void
@@ -103,7 +104,7 @@ class BzTreeFixture : public testing::Test  // NOLINT
       const size_t expected_id,
       const bool expect_success)
   {
-    const auto read_val = bztree_->Read(keys_[key_id]);
+    const auto read_val = index_->Read(keys_[key_id]);
     if (expect_success) {
       EXPECT_TRUE(read_val);
 
@@ -136,10 +137,10 @@ class BzTreeFixture : public testing::Test  // NOLINT
     if (end_ref) {
       auto &&[end_id, end_closed] = *end_ref;
       end_key.emplace(keys_[end_id], end_closed);
-      end_pos = (end_closed) ? end_id : end_id - 1;
+      end_pos = (end_closed) ? end_id + 1 : end_id;
     }
 
-    auto iter = bztree_->Scan(begin_key, end_key);
+    auto iter = index_->Scan(begin_key, end_key);
 
     for (; iter.HasNext(); ++iter, ++begin_pos) {
       auto [key, payload] = *iter;
@@ -158,7 +159,7 @@ class BzTreeFixture : public testing::Test  // NOLINT
       const size_t key_id,
       const size_t payload_id)
   {
-    auto rc = bztree_->Write(keys_[key_id], payloads_[payload_id], key_size_, pay_size_);
+    auto rc = index_->Write(keys_[key_id], payloads_[payload_id], kKeyLen, kPayLen);
 
     EXPECT_EQ(ReturnCode::kSuccess, rc);
   }
@@ -171,7 +172,7 @@ class BzTreeFixture : public testing::Test  // NOLINT
   {
     ReturnCode expected_rc = (expect_success) ? kSuccess : kKeyExist;
 
-    auto rc = bztree_->Insert(keys_[key_id], payloads_[payload_id], key_size_, pay_size_);
+    auto rc = index_->Insert(keys_[key_id], payloads_[payload_id], kKeyLen, kPayLen);
     EXPECT_EQ(expected_rc, rc);
   }
 
@@ -183,7 +184,7 @@ class BzTreeFixture : public testing::Test  // NOLINT
   {
     ReturnCode expected_rc = (expect_success) ? kSuccess : kKeyNotExist;
 
-    auto rc = bztree_->Update(keys_[key_id], payloads_[payload_id], key_size_, pay_size_);
+    auto rc = index_->Update(keys_[key_id], payloads_[payload_id], kKeyLen, kPayLen);
     EXPECT_EQ(expected_rc, rc);
   }
 
@@ -194,7 +195,7 @@ class BzTreeFixture : public testing::Test  // NOLINT
   {
     ReturnCode expected_rc = (expect_success) ? kSuccess : kKeyNotExist;
 
-    auto rc = bztree_->Delete(keys_[key_id], key_size_);
+    auto rc = index_->Delete(keys_[key_id], kKeyLen);
     EXPECT_EQ(expected_rc, rc);
   }
 
@@ -208,11 +209,11 @@ class BzTreeFixture : public testing::Test  // NOLINT
     std::vector<LoadEntry_t> entries{};
     entries.reserve(end_key_id - begin_key_id);
     for (size_t i = begin_key_id; i < end_key_id; ++i) {
-      entries.emplace_back(keys_[i], payloads_[i], key_size_, pay_size_);
+      entries.emplace_back(keys_[i], payloads_[i], kKeyLen, kPayLen);
     }
 
     // bulkload the entries
-    auto rc = bztree_->Bulkload(entries, thread_num);
+    auto rc = index_->Bulkload(entries, thread_num);
     EXPECT_EQ(rc, kSuccess);
   }
 
@@ -221,17 +222,11 @@ class BzTreeFixture : public testing::Test  // NOLINT
    *##################################################################################*/
 
   // actual keys and payloads
-  size_t key_size_{};
-  size_t pay_size_{};
   Key keys_[kKeyNumForTest];
   Payload payloads_[kKeyNumForTest];
 
   // a test target BzTree
-  std::unique_ptr<BzTree_t> bztree_{nullptr};
-
-  size_t max_leaf_rec_num_{};
-  size_t max_internal_rec_num_{};
-  size_t rec_num_for_testing_{};
+  std::unique_ptr<BzTree_t> index_{nullptr};
 };
 
 /*######################################################################################
@@ -239,15 +234,14 @@ class BzTreeFixture : public testing::Test  // NOLINT
  *####################################################################################*/
 
 using KeyPayloadPairs = ::testing::Types<  //
-    KeyPayload<UInt8, UInt8>,              // fixed and same alignment
-    KeyPayload<Var, UInt8>,                // variable-fixed
-    KeyPayload<UInt8, Var>,                // fixed-variable
-    KeyPayload<Var, Var>,                  // variable-variable
-    KeyPayload<UInt4, UInt8>,              // fixed but different alignment (key < payload)
-    KeyPayload<UInt8, UInt4>,              // fixed but different alignment (key > payload)
-    KeyPayload<Ptr, Ptr>,                  // pointer key/payload
-    KeyPayload<UInt8, Original>,           // original class payload
-    KeyPayload<UInt8, Int8>                // payload that cannot use CAS
+    KeyPayload<UInt8, UInt8>,              // fixed keys and in-place payloads
+    KeyPayload<Var, UInt8>,                // variable keys and in-place payloads
+    KeyPayload<UInt8, Var>,                // fixed keys and variable payloads
+    KeyPayload<Var, Var>,                  // variable keys/payloads
+    KeyPayload<Ptr, Ptr>,                  // pointer keys/payloads
+    KeyPayload<UInt8, Original>,           // original class payloads
+    KeyPayload<UInt8, Int8>,               // fixed keys and appended payloads
+    KeyPayload<Var, Int8>                  // variable keys and appended payloads
     >;
 TYPED_TEST_SUITE(BzTreeFixture, KeyPayloadPairs);
 
@@ -273,7 +267,7 @@ TYPED_TEST(BzTreeFixture, WriteWithoutSMOsReadWrittenValues)
 
 TYPED_TEST(BzTreeFixture, WriteWithConsolidationReadWrittenValues)
 {
-  const size_t rec_num = TestFixture::max_leaf_rec_num_;
+  const size_t rec_num = TestFixture::kRecNumInNode;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyWrite(i, i);
@@ -285,7 +279,7 @@ TYPED_TEST(BzTreeFixture, WriteWithConsolidationReadWrittenValues)
 
 TYPED_TEST(BzTreeFixture, WriteWithRootLeafSplitReadWrittenValues)
 {
-  const size_t rec_num = TestFixture::max_leaf_rec_num_ * 1.5;
+  const size_t rec_num = TestFixture::kRecNumInNode * 1.5;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyWrite(i, i);
@@ -297,7 +291,7 @@ TYPED_TEST(BzTreeFixture, WriteWithRootLeafSplitReadWrittenValues)
 
 TYPED_TEST(BzTreeFixture, WriteWithRootInternalSplitReadWrittenValues)
 {
-  const size_t rec_num = TestFixture::max_leaf_rec_num_ * TestFixture::max_internal_rec_num_;
+  const size_t rec_num = TestFixture::kRecNumInNode * TestFixture::kRecNumInNode;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyWrite(i, i);
@@ -309,7 +303,7 @@ TYPED_TEST(BzTreeFixture, WriteWithRootInternalSplitReadWrittenValues)
 
 TYPED_TEST(BzTreeFixture, WriteWithInternalSplitReadWrittenValues)
 {
-  const size_t rec_num = TestFixture::rec_num_for_testing_;
+  const size_t rec_num = TestFixture::kMaxRecNumForTest;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyWrite(i, i);
@@ -321,7 +315,7 @@ TYPED_TEST(BzTreeFixture, WriteWithInternalSplitReadWrittenValues)
 
 TYPED_TEST(BzTreeFixture, WriteWithHalfDeletingReadRemainingValues)
 {
-  const size_t rec_num = TestFixture::rec_num_for_testing_;
+  const size_t rec_num = TestFixture::kMaxRecNumForTest;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyWrite(i, i);
@@ -339,7 +333,7 @@ TYPED_TEST(BzTreeFixture, WriteWithHalfDeletingReadRemainingValues)
 
 TYPED_TEST(BzTreeFixture, WriteWithAllDeletingReadFail)
 {
-  const size_t rec_num = TestFixture::rec_num_for_testing_;
+  const size_t rec_num = TestFixture::kMaxRecNumForTest;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyWrite(i, i);
@@ -367,7 +361,7 @@ TYPED_TEST(BzTreeFixture, ReadWithNotPresentKeyFail)
 
 TYPED_TEST(BzTreeFixture, ScanWithoutKeysPerformFullScan)
 {
-  const size_t rec_num = TestFixture::rec_num_for_testing_;
+  const size_t rec_num = TestFixture::kMaxRecNumForTest;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyWrite(i, i);
@@ -378,7 +372,7 @@ TYPED_TEST(BzTreeFixture, ScanWithoutKeysPerformFullScan)
 
 TYPED_TEST(BzTreeFixture, ScanWithClosedRangeIncludeLeftRightEnd)
 {
-  const size_t rec_num = TestFixture::rec_num_for_testing_;
+  const size_t rec_num = TestFixture::kMaxRecNumForTest;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyWrite(i, i);
@@ -390,7 +384,7 @@ TYPED_TEST(BzTreeFixture, ScanWithClosedRangeIncludeLeftRightEnd)
 
 TYPED_TEST(BzTreeFixture, ScanWithOpenedRangeExcludeLeftRightEnd)
 {
-  const size_t rec_num = TestFixture::rec_num_for_testing_;
+  const size_t rec_num = TestFixture::kMaxRecNumForTest;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyWrite(i, i);
@@ -406,7 +400,7 @@ TYPED_TEST(BzTreeFixture, ScanWithOpenedRangeExcludeLeftRightEnd)
 
 TYPED_TEST(BzTreeFixture, WriteWithDuplicateKeysReadLatestValues)
 {
-  const size_t rec_num = TestFixture::rec_num_for_testing_;
+  const size_t rec_num = TestFixture::kMaxRecNumForTest;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyWrite(i, i);
@@ -425,7 +419,7 @@ TYPED_TEST(BzTreeFixture, WriteWithDuplicateKeysReadLatestValues)
 
 TYPED_TEST(BzTreeFixture, InsertWithUniqueKeysReadInsertedValues)
 {
-  const size_t rec_num = TestFixture::rec_num_for_testing_;
+  const size_t rec_num = TestFixture::kMaxRecNumForTest;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyInsert(i, i, kExpectSuccess);
@@ -437,7 +431,7 @@ TYPED_TEST(BzTreeFixture, InsertWithUniqueKeysReadInsertedValues)
 
 TYPED_TEST(BzTreeFixture, InsertWithDuplicateKeysFail)
 {
-  const size_t rec_num = TestFixture::rec_num_for_testing_;
+  const size_t rec_num = TestFixture::kMaxRecNumForTest;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyInsert(i, i, kExpectSuccess);
@@ -452,7 +446,7 @@ TYPED_TEST(BzTreeFixture, InsertWithDuplicateKeysFail)
 
 TYPED_TEST(BzTreeFixture, InsertWithDeletedKeysSucceed)
 {
-  const size_t rec_num = TestFixture::rec_num_for_testing_;
+  const size_t rec_num = TestFixture::kMaxRecNumForTest;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyInsert(i, i, kExpectSuccess);
@@ -474,7 +468,7 @@ TYPED_TEST(BzTreeFixture, InsertWithDeletedKeysSucceed)
 
 TYPED_TEST(BzTreeFixture, UpdateWithDuplicateKeysReadUpdatedValues)
 {
-  const size_t rec_num = TestFixture::rec_num_for_testing_;
+  const size_t rec_num = TestFixture::kMaxRecNumForTest;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyWrite(i, i);
@@ -489,7 +483,7 @@ TYPED_TEST(BzTreeFixture, UpdateWithDuplicateKeysReadUpdatedValues)
 
 TYPED_TEST(BzTreeFixture, UpdateNotInsertedKeysFail)
 {
-  const size_t rec_num = TestFixture::rec_num_for_testing_;
+  const size_t rec_num = TestFixture::kMaxRecNumForTest;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyUpdate(i, i, kExpectFailed);
@@ -501,7 +495,7 @@ TYPED_TEST(BzTreeFixture, UpdateNotInsertedKeysFail)
 
 TYPED_TEST(BzTreeFixture, UpdateWithDeletedKeysFail)
 {
-  const size_t rec_num = TestFixture::rec_num_for_testing_;
+  const size_t rec_num = TestFixture::kMaxRecNumForTest;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyWrite(i, i);
@@ -523,7 +517,7 @@ TYPED_TEST(BzTreeFixture, UpdateWithDeletedKeysFail)
 
 TYPED_TEST(BzTreeFixture, DeleteWithDuplicateKeysSucceed)
 {
-  const size_t rec_num = TestFixture::rec_num_for_testing_;
+  const size_t rec_num = TestFixture::kMaxRecNumForTest;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyWrite(i, i);
@@ -538,7 +532,7 @@ TYPED_TEST(BzTreeFixture, DeleteWithDuplicateKeysSucceed)
 
 TYPED_TEST(BzTreeFixture, DeleteWithNotInsertedKeysFail)
 {
-  const size_t rec_num = TestFixture::rec_num_for_testing_;
+  const size_t rec_num = TestFixture::kMaxRecNumForTest;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyDelete(i, kExpectFailed);
@@ -547,7 +541,7 @@ TYPED_TEST(BzTreeFixture, DeleteWithNotInsertedKeysFail)
 
 TYPED_TEST(BzTreeFixture, DeleteWithDeletedKeysFail)
 {
-  const size_t rec_num = TestFixture::rec_num_for_testing_;
+  const size_t rec_num = TestFixture::kMaxRecNumForTest;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyWrite(i, i);
@@ -578,7 +572,7 @@ TYPED_TEST(BzTreeFixture, BulkloadWithoutSMOsReadWrittenValues)
 
 TYPED_TEST(BzTreeFixture, BulkloadWithConsolidationReadWrittenValues)
 {
-  const size_t rec_num = TestFixture::max_leaf_rec_num_;
+  const size_t rec_num = TestFixture::kRecNumInNode;
   const size_t thread_num = 1;
 
   TestFixture::VerifyBulkload(0, rec_num, thread_num);
@@ -590,7 +584,7 @@ TYPED_TEST(BzTreeFixture, BulkloadWithConsolidationReadWrittenValues)
 
 TYPED_TEST(BzTreeFixture, BulkloadWithRootLeafSplitReadWrittenValues)
 {
-  const size_t rec_num = TestFixture::max_leaf_rec_num_ * 1.5;
+  const size_t rec_num = TestFixture::kRecNumInNode * 1.5;
   const size_t thread_num = 1;
 
   TestFixture::VerifyBulkload(0, rec_num, thread_num);
@@ -602,7 +596,7 @@ TYPED_TEST(BzTreeFixture, BulkloadWithRootLeafSplitReadWrittenValues)
 
 TYPED_TEST(BzTreeFixture, BulkloadWithRootInternalSplitReadWrittenValues)
 {
-  const size_t rec_num = TestFixture::max_leaf_rec_num_ * TestFixture::max_internal_rec_num_;
+  const size_t rec_num = TestFixture::kRecNumInNode * TestFixture::kRecNumInNode;
   const size_t thread_num = 1;
 
   TestFixture::VerifyBulkload(0, rec_num, thread_num);
@@ -614,7 +608,7 @@ TYPED_TEST(BzTreeFixture, BulkloadWithRootInternalSplitReadWrittenValues)
 
 TYPED_TEST(BzTreeFixture, BulkloadWithInternalSplitReadWrittenValues)
 {
-  const size_t rec_num = TestFixture::rec_num_for_testing_;
+  const size_t rec_num = TestFixture::kMaxRecNumForTest;
   const size_t thread_num = 1;
 
   TestFixture::VerifyBulkload(0, rec_num, thread_num);

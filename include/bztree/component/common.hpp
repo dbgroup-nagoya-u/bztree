@@ -60,6 +60,8 @@ enum KeyExistence
   kUncertain
 };
 
+constexpr size_t kAlignMask = ~7UL;
+
 /*######################################################################################
  * Internal utility functions
  *####################################################################################*/
@@ -125,12 +127,12 @@ ShiftAddr(  //
  */
 template <class Key, class Payload>
 constexpr auto
-AlignRecord(  //
-    size_t key_len,
-    size_t pay_len)  //
+Align(  //
+    [[maybe_unused]] size_t key_len,
+    [[maybe_unused]] size_t pay_len)  //
     -> std::tuple<size_t, size_t, size_t>
 {
-  if constexpr (IsVariableLengthData<Key>() && IsVariableLengthData<Payload>()) {
+  if constexpr (!CanCASUpdate<Payload>()) {
     // record alignment is not required
     return {key_len, pay_len, key_len + pay_len};
   } else if constexpr (IsVariableLengthData<Key>()) {
@@ -138,39 +140,72 @@ AlignRecord(  //
     const size_t align_len = alignof(Payload) - key_len % alignof(Payload);
     if (align_len == alignof(Payload)) {
       // alignment is not required
-      return {key_len, pay_len, key_len + pay_len};
+      return {key_len, sizeof(Payload), key_len + sizeof(Payload)};
     }
-    return {key_len, pay_len, align_len + key_len + pay_len};
-  } else if constexpr (IsVariableLengthData<Payload>()) {
-    const size_t align_len = alignof(Key) - pay_len % alignof(Key);
-    if (align_len != alignof(Key)) {
-      // dynamic alignment is required
-      key_len += align_len;
-    }
-    return {key_len, pay_len, key_len + pay_len};
-  } else if constexpr (alignof(Key) < alignof(Payload)) {
+    return {key_len, sizeof(Payload), align_len + key_len + sizeof(Payload)};
+  } else {
     constexpr size_t kAlignLen = alignof(Payload) - sizeof(Key) % alignof(Payload);
     if constexpr (kAlignLen == alignof(Payload)) {
       // alignment is not required
-      return {key_len, pay_len, key_len + pay_len};
+      return {sizeof(Key), sizeof(Payload), sizeof(Key) + sizeof(Payload)};
     } else {
       // fixed-length alignment is required
       constexpr size_t kKeyLen = sizeof(Key) + kAlignLen;
-      return {kKeyLen, pay_len, kKeyLen + pay_len};
+      return {kKeyLen, sizeof(Payload), kKeyLen + sizeof(Payload)};
     }
-  } else if constexpr (alignof(Key) > alignof(Payload)) {
-    constexpr size_t kAlignLen = alignof(Key) - sizeof(Payload) % alignof(Key);
-    if constexpr (kAlignLen == alignof(Key)) {
+  }
+}
+
+/**
+ * @tparam Key a class of keys.
+ * @tparam Payload a class of payloads.
+ * @retval true if offsets may need padding for alignments.
+ * @retval false otherwise.
+ */
+template <class Key, class Payload>
+constexpr auto
+NeedOffsetAlignment()  //
+    -> bool
+{
+  if constexpr (!CanCASUpdate<Payload>()) {
+    // record alignment is not required
+    return false;
+  } else if constexpr (IsVariableLengthData<Key>()) {
+    // dynamic alignment is required
+    return true;
+  } else {
+    constexpr size_t kAlignLen = alignof(Payload) - sizeof(Key) % alignof(Payload);
+    if constexpr (kAlignLen == alignof(Payload)) {
       // alignment is not required
-      return {key_len, pay_len, key_len + pay_len};
+      return false;
     } else {
       // fixed-length alignment is required
-      constexpr size_t kPayLen = sizeof(Payload) + kAlignLen;
-      return {key_len, kPayLen, key_len + kPayLen};
+      return true;
     }
+  }
+}
+
+/**
+ * @brief Compute padded key/payload/total lengths for alignment.
+ *
+ * @tparam Key a class of keys.
+ * @tparam Payload a class of payloads.
+ * @param key_len the length of a target key.
+ * @param pay_len the length of a target payload.
+ * @return the tuple of key/payload/total lengths.
+ */
+template <class Key, class Payload>
+constexpr auto
+Pad(size_t offset)  //
+    -> size_t
+{
+  if constexpr (IsVariableLengthData<Key>()) {
+    // dynamic alignment is required
+    return offset & kAlignMask;
   } else {
-    // alignment is not required
-    return {key_len, pay_len, key_len + pay_len};
+    // fixed-length alignment is required
+    constexpr size_t kAlignLen = alignof(Payload) - sizeof(Key) % alignof(Payload);
+    return offset - kAlignLen;
   }
 }
 
@@ -184,35 +219,9 @@ GetMaxInternalRecordSize()  //
     -> size_t
 {
   if constexpr (IsVariableLengthData<Key>()) {
-    return std::get<2>(AlignRecord<Key, void *>(kMaxVariableSize, kWordLength));
+    return std::get<2>(Align<Key, void *>(kMaxVariableSize, kWordLength));
   } else {
-    return std::get<2>(AlignRecord<Key, void *>(sizeof(Key), kWordLength));
-  }
-}
-
-/**
- * @brief Compute an aligned offset for node initialization.
- *
- * @tparam Key a class of keys.
- * @tparam Payload a class of payloads.
- * @return an aligned offset.
- */
-template <class Key, class Payload>
-constexpr auto
-GetInitialOffset()  //
-    -> size_t
-{
-  if constexpr (IsVariableLengthData<Payload>() || IsVariableLengthData<Key>()) {
-    return kPageSize;
-  } else if constexpr (alignof(Key) <= alignof(Payload)) {
-    return kPageSize;
-  } else {
-    constexpr size_t kAlignLen = alignof(Key) - sizeof(Payload) % alignof(Key);
-    if constexpr (kAlignLen == alignof(Key)) {
-      return kPageSize;
-    } else {
-      return kPageSize - kAlignLen;
-    }
+    return std::get<2>(Align<Key, void *>(sizeof(Key), kWordLength));
   }
 }
 

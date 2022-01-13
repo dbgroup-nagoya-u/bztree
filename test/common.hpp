@@ -20,7 +20,9 @@
 
 #include "bztree/utility.hpp"
 
-constexpr size_t kVarDataLength = 9;
+/*######################################################################################
+ * Classes for testing
+ *####################################################################################*/
 
 /**
  * @brief An example class to represent CAS-updatable data.
@@ -69,6 +71,24 @@ CanMwCAS<MyClass>()
 
 }  // namespace dbgroup::atomic::mwcas
 
+/*######################################################################################
+ * Constants for testing
+ *####################################################################################*/
+
+#ifdef BZTREE_TEST_THREAD_NUM
+static constexpr size_t kThreadNum = BZTREE_TEST_THREAD_NUM;
+#else
+static constexpr size_t kThreadNum = 8;
+#endif
+
+constexpr size_t kVarDataLength = 12;
+
+constexpr size_t kRandomSeed = 10;
+
+/*######################################################################################
+ * Global utilities
+ *####################################################################################*/
+
 namespace dbgroup::index::bztree
 {
 /**
@@ -83,23 +103,34 @@ IsVariableLengthData<char *>()
 }
 
 template <class T>
+constexpr auto
+GetDataLength()  //
+    -> size_t
+{
+  if constexpr (IsVariableLengthData<T>()) {
+    return kVarDataLength;
+  } else {
+    return sizeof(T);
+  }
+}
+
+template <class T>
 void
 PrepareTestData(  //
     T *data_array,
-    const size_t data_num,
-    [[maybe_unused]] const size_t data_length)
+    const size_t data_num)
 {
   if constexpr (IsVariableLengthData<T>()) {
     // variable-length data
     for (size_t i = 0; i < data_num; ++i) {
-      auto *data = reinterpret_cast<char *>(::operator new(data_length));
-      snprintf(data, data_length, "%08lu", i);  // NOLINT
+      auto *data = reinterpret_cast<char *>(::operator new(kVarDataLength));
+      snprintf(data, kVarDataLength, "%011lu", i);  // NOLINT
       data_array[i] = reinterpret_cast<T>(data);
     }
   } else if constexpr (std::is_same_v<T, uint64_t *>) {
     // pointer data
     for (size_t i = 0; i < data_num; ++i) {
-      auto *data = reinterpret_cast<uint64_t *>(::operator new(data_length));
+      auto *data = reinterpret_cast<uint64_t *>(::operator new(sizeof(uint64_t)));
       *data = i;
       data_array[i] = data;
     }
