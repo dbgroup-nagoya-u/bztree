@@ -240,7 +240,8 @@ using KeyPayloadPairs = ::testing::Types<  //
     KeyPayload<Var, Var>,                  // variable keys/payloads
     KeyPayload<Ptr, Ptr>,                  // pointer keys/payloads
     KeyPayload<UInt8, Original>,           // original class payloads
-    KeyPayload<UInt8, Int8>                // fixed keys and appended payloads
+    KeyPayload<UInt8, Int8>,               // fixed keys and appended payloads
+    KeyPayload<Var, Int8>                  // variable keys and appended payloads
     >;
 TYPED_TEST_SUITE(BzTreeFixture, KeyPayloadPairs);
 
