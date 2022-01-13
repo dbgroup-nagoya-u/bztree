@@ -945,10 +945,11 @@ class BzTree
     std::vector<Node_t *> rightmost_trace{};
     rightmost_trace.emplace_back(root);
 
+    Node_t *prev_leaf = nullptr;
     while (iter < iter_end) {
       // load records into a leaf node
       Node_t *leaf_node = CreateNewNode<Payload>();
-      leaf_node->template Bulkload<Payload>(iter, iter_end);
+      leaf_node->template Bulkload<Payload>(iter, iter_end, prev_leaf);
 
       // insert the loaded leaf node into the tree
       Node_t *parent = rightmost_trace.back();
@@ -957,6 +958,8 @@ class BzTree
         rightmost_trace.pop_back();
         SplitForBulkload(parent, rightmost_trace);
       }
+
+      prev_leaf = leaf_node;
     }
 
     return rightmost_trace.front();

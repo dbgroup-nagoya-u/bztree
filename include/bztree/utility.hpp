@@ -163,10 +163,7 @@ class BulkloadEntry
 constexpr size_t kWordLength = 8;
 
 /// Header length in bytes.
-constexpr size_t kHeaderLength = 2 * kWordLength;
-
-/// the maximum alignment of keys/payloads assumed in this library
-constexpr size_t kMaxAlignment = 16;
+constexpr size_t kHeaderLength = 4 * kWordLength;
 
 #ifdef BZTREE_PAGE_SIZE
 /// The page size of each node

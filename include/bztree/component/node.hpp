@@ -37,7 +37,7 @@ namespace dbgroup::index::bztree::component
  * @tparam Compare a comparetor class for keys.
  */
 template <class Key, class Compare>
-class alignas(kMaxAlignment) Node
+class Node
 {
  public:
   /*####################################################################################
@@ -56,7 +56,6 @@ class alignas(kMaxAlignment) Node
       : node_size_{kPageSize},
         sorted_count_{0},
         is_leaf_{static_cast<uint64_t>(is_leaf)},
-        is_right_end_{1},
         status_{0, block_size}
   {
   }
@@ -123,14 +122,14 @@ class alignas(kMaxAlignment) Node
   }
 
   /**
-   * @retval true if this node has a next sibling node.
+   * @retval true if this node is rightmost in its level.
    * @retval false otherwise.
    */
   [[nodiscard]] constexpr auto
   IsRightEnd() const  //
       -> bool
   {
-    return is_right_end_;
+    return high_meta_.GetKeyLength() == 0;
   }
 
   /**
@@ -859,15 +858,20 @@ class alignas(kMaxAlignment) Node
   void
   Consolidate(const Node *old_node)
   {
-    // set a right-end flag if needed
-    is_right_end_ = old_node->is_right_end_;
+    // set a lowest/highest keys
+    auto offset = CopyKeyFrom(old_node, old_node->low_meta_, kPageSize);
+    low_meta_ = old_node->low_meta_.UpdateOffset(offset);
+    offset = CopyKeyFrom(old_node, old_node->high_meta_, offset);
+    high_meta_ = old_node->high_meta_.UpdateOffset(offset);
+    if constexpr (NeedOffsetAlignment<Key, Payload>()) {
+      offset = Pad<Key, Payload>(offset);
+    }
 
     // sort records in an unsorted region
     const auto [new_rec_num, records] = old_node->SortNewRecords();
 
     // perform merge-sort to consolidate a node
     const auto sorted_count = old_node->sorted_count_;
-    auto offset = kPageSize;
     size_t rec_count = 0;
 
     size_t j = 0;
@@ -923,20 +927,34 @@ class alignas(kMaxAlignment) Node
       Node *l_node,
       Node *r_node) const
   {
-    // set a right-end flag
-    r_node->is_right_end_ = is_right_end_;
-    l_node->is_right_end_ = false;
-
-    // copy records to a left node
     const auto rec_count = sorted_count_;
     const size_t l_count = rec_count / 2;
-    auto l_offset = kPageSize;
+    const auto split_meta = meta_array_[l_count - 1];
+
+    // set a lowest/highest keys to a left node
+    auto l_offset = l_node->CopyKeyFrom(this, low_meta_, kPageSize);
+    l_node->low_meta_ = low_meta_.UpdateOffset(l_offset);
+    l_offset = l_node->CopyKeyFrom(this, split_meta, l_offset);
+    l_node->high_meta_ = split_meta.UpdateOffset(l_offset);
+    if constexpr (NeedOffsetAlignment<Key, Payload>()) {
+      l_offset = Pad<Key, Payload>(l_offset);
+    }
+
+    // copy records to a left node
     l_offset = l_node->CopyRecordsFrom<Payload>(this, 0, l_count, 0, l_offset);
     l_node->sorted_count_ = l_count;
     l_node->status_ = StatusWord{l_count, kPageSize - l_offset};
 
+    // set a lowest/highest keys to a righit node
+    auto r_offset = r_node->CopyKeyFrom(this, split_meta, kPageSize);
+    r_node->low_meta_ = split_meta.UpdateOffset(r_offset);
+    r_offset = r_node->CopyKeyFrom(this, high_meta_, r_offset);
+    r_node->high_meta_ = high_meta_.UpdateOffset(r_offset);
+    if constexpr (NeedOffsetAlignment<Key, Payload>()) {
+      r_offset = Pad<Key, Payload>(r_offset);
+    }
+
     // copy records to a right node
-    auto r_offset = kPageSize;
     r_offset = r_node->CopyRecordsFrom<Payload>(this, l_count, rec_count, 0, r_offset);
     const auto r_count = rec_count - l_count;
     r_node->sorted_count_ = r_count;
@@ -961,11 +979,16 @@ class alignas(kMaxAlignment) Node
       const size_t l_pos)  //
       -> bool
   {
-    // set a right-end flag if needed
-    is_right_end_ = old_node->is_right_end_;
+    // set a lowest/highest keys
+    auto offset = CopyKeyFrom(old_node, old_node->low_meta_, kPageSize);
+    low_meta_ = old_node->low_meta_.UpdateOffset(offset);
+    offset = CopyKeyFrom(old_node, old_node->high_meta_, offset);
+    high_meta_ = old_node->high_meta_.UpdateOffset(offset);
+    if constexpr (NeedOffsetAlignment<Key, Node *>()) {
+      offset = Pad<Key, Node *>(offset);
+    }
 
     // copy lower records
-    auto offset = kPageSize;
     offset = CopyRecordsFrom<Node *>(old_node, 0, l_pos, 0, offset);
 
     // insert split nodes
@@ -1001,9 +1024,6 @@ class alignas(kMaxAlignment) Node
       const Node *l_child,
       const Node *r_child)
   {
-    // set a right-end flag
-    is_right_end_ = true;
-
     // insert initial children
     const auto l_meta = l_child->meta_array_[l_child->sorted_count_ - 1];
     auto offset = kPageSize;
@@ -1031,9 +1051,17 @@ class alignas(kMaxAlignment) Node
       const Node *l_node,
       const Node *r_node)
   {
+    // set a lowest/highest keys
+    auto offset = CopyKeyFrom(l_node, l_node->low_meta_, kPageSize);
+    low_meta_ = l_node->low_meta_.UpdateOffset(offset);
+    offset = CopyKeyFrom(r_node, r_node->high_meta_, offset);
+    high_meta_ = r_node->high_meta_.UpdateOffset(offset);
+    if constexpr (NeedOffsetAlignment<Key, Payload>()) {
+      offset = Pad<Key, Payload>(offset);
+    }
+
     // copy records in left/right nodes
     size_t l_count{};
-    auto offset = kPageSize;
     if constexpr (std::is_same_v<Payload, Node *>) {
       // copy records from a merged left node
       l_count = l_node->sorted_count_;
@@ -1046,9 +1074,6 @@ class alignas(kMaxAlignment) Node
     }
     const auto r_count = r_node->sorted_count_;
     offset = CopyRecordsFrom<Payload>(r_node, 0, r_count, l_count, offset);
-
-    // set a right-end flag
-    is_right_end_ = r_node->is_right_end_;
 
     // create a merged node
     const auto rec_count = l_count + r_count;
@@ -1070,11 +1095,16 @@ class alignas(kMaxAlignment) Node
       const size_t position)  //
       -> bool
   {
-    // set a right-end flag
-    is_right_end_ = old_node->is_right_end_;
+    // set a lowest/highest keys
+    auto offset = CopyKeyFrom(old_node, old_node->low_meta_, kPageSize);
+    low_meta_ = old_node->low_meta_.UpdateOffset(offset);
+    offset = CopyKeyFrom(old_node, old_node->high_meta_, offset);
+    high_meta_ = old_node->high_meta_.UpdateOffset(offset);
+    if constexpr (NeedOffsetAlignment<Key, Node *>()) {
+      offset = Pad<Key, Node *>(offset);
+    }
 
     // copy lower records
-    auto offset = kPageSize;
     offset = CopyRecordsFrom<Node *>(old_node, 0, position, 0, offset);
 
     // insert a merged node
@@ -1112,12 +1142,21 @@ class alignas(kMaxAlignment) Node
   void
   Bulkload(  //
       typename std::vector<BulkloadEntry<Key, Payload>>::const_iterator &iter,
-      const typename std::vector<BulkloadEntry<Key, Payload>>::const_iterator &iter_end)
+      const typename std::vector<BulkloadEntry<Key, Payload>>::const_iterator &iter_end,
+      const Node *l_sib_node)
   {
-    size_t offset = kPageSize;
-    size_t node_size = kHeaderLength;
+    // set a lowest key
+    auto offset = kPageSize;
+    if (l_sib_node != nullptr) {
+      offset = CopyKeyFrom(l_sib_node, l_sib_node->high_meta_, offset);
+      low_meta_ = l_sib_node->high_meta_.UpdateOffset(offset);
+      if constexpr (NeedOffsetAlignment<Key, Payload>()) {
+        offset = Pad<Key, Payload>(offset);
+      }
+    }
 
     // extract and insert entries for the leaf node
+    size_t node_size = kHeaderLength;
     while (iter < iter_end) {
       const auto key_length = iter->GetKeyLength();
       const auto pay_length = iter->GetPayloadLength();
@@ -1137,8 +1176,15 @@ class alignas(kMaxAlignment) Node
       ++iter;
     }
 
+    // set a highest key
+    const auto meta = meta_array_[sorted_count_ - 1];
+    offset = CopyKeyFrom(this, meta, offset);
+    high_meta_ = meta.UpdateOffset(offset);
+    if constexpr (NeedOffsetAlignment<Key, Payload>()) {
+      offset = Pad<Key, Payload>(offset);
+    }
+
     // create the header of the leaf node
-    is_right_end_ = (iter == iter_end);
     status_ = StatusWord{sorted_count_, kPageSize - offset};
   }
 
@@ -1159,7 +1205,6 @@ class alignas(kMaxAlignment) Node
     offset = InsertChild(node, meta, node, sorted_count_, offset);
 
     // update headers
-    is_right_end_ = node->is_right_end_;
     ++sorted_count_;
     status_ = StatusWord{sorted_count_, kPageSize - offset};
 
@@ -1461,6 +1506,29 @@ class alignas(kMaxAlignment) Node
   }
 
   /**
+   * @brief Copy a key from a given node.
+   *
+   * @param node an original node that has a target key.
+   * @param meta the corresponding metadata of a target key.
+   * @param offset the current offset of this node.
+   * @return the updated offset value.
+   */
+  auto
+  CopyKeyFrom(  //
+      const Node *node,
+      const Metadata meta,
+      size_t offset)  //
+      -> size_t
+  {
+    // copy a record from the given node
+    const auto key_len = meta.GetKeyLength();
+    offset -= key_len;
+    memcpy(ShiftAddr(this, offset), node->GetKeyAddr(meta), key_len);
+
+    return offset;
+  }
+
+  /**
    * @brief Copy a record from a given node.
    *
    * @tparam Payload a class of payload.
@@ -1592,14 +1660,17 @@ class alignas(kMaxAlignment) Node
   /// a flag to indicate whether this node is a leaf or internal node.
   uint64_t is_leaf_ : 1;
 
-  /// a flag to indicate whether this node is a right end node.
-  uint64_t is_right_end_ : 1;
-
   /// a black block for alignment.
   uint64_t : 0;
 
   /// a status word.
   StatusWord status_{};
+
+  /// the metadata of a lowest key.
+  Metadata low_meta_{};
+
+  /// the metadata of a highest key.
+  Metadata high_meta_{};
 
   /// the head of a metadata array.
   Metadata meta_array_[0];

@@ -60,6 +60,8 @@ enum KeyExistence
   kUncertain
 };
 
+constexpr size_t kAlignMask = ~7UL;
+
 /*######################################################################################
  * Internal utility functions
  *####################################################################################*/
@@ -151,6 +153,59 @@ Align(  //
       constexpr size_t kKeyLen = sizeof(Key) + kAlignLen;
       return {kKeyLen, sizeof(Payload), kKeyLen + sizeof(Payload)};
     }
+  }
+}
+
+/**
+ * @tparam Key a class of keys.
+ * @tparam Payload a class of payloads.
+ * @retval true if offsets may need padding for alignments.
+ * @retval false otherwise.
+ */
+template <class Key, class Payload>
+constexpr auto
+NeedOffsetAlignment()  //
+    -> bool
+{
+  if constexpr (!CanCASUpdate<Payload>()) {
+    // record alignment is not required
+    return false;
+  } else if constexpr (IsVariableLengthData<Key>()) {
+    // dynamic alignment is required
+    return true;
+  } else {
+    constexpr size_t kAlignLen = alignof(Payload) - sizeof(Key) % alignof(Payload);
+    if constexpr (kAlignLen == alignof(Payload)) {
+      // alignment is not required
+      return false;
+    } else {
+      // fixed-length alignment is required
+      return true;
+    }
+  }
+}
+
+/**
+ * @brief Compute padded key/payload/total lengths for alignment.
+ *
+ * @tparam Key a class of keys.
+ * @tparam Payload a class of payloads.
+ * @param key_len the length of a target key.
+ * @param pay_len the length of a target payload.
+ * @return the tuple of key/payload/total lengths.
+ */
+template <class Key, class Payload>
+constexpr auto
+Pad(size_t offset)  //
+    -> size_t
+{
+  if constexpr (IsVariableLengthData<Key>()) {
+    // dynamic alignment is required
+    return offset & kAlignMask;
+  } else {
+    // fixed-length alignment is required
+    constexpr size_t kAlignLen = alignof(Payload) - sizeof(Key) % alignof(Payload);
+    return offset - kAlignLen;
   }
 }
 
