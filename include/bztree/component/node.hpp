@@ -1493,15 +1493,6 @@ class alignas(kMaxAlignment) Node
       // set new metadata and update current offset
       meta_array_[rec_count] = meta.UpdateOffset(tmp_offset);
       offset -= meta.GetTotalLength();
-    } else if constexpr (IsVariableLengthData<Key>() && !IsVariableLengthData<Payload>()) {
-      // record's offset is different its aligned position
-      const auto rec_len = meta.GetKeyLength() + sizeof(Payload);
-      auto tmp_offset = offset - rec_len;
-      memcpy(ShiftAddr(this, tmp_offset), node->GetKeyAddr(meta), rec_len);
-
-      // set new metadata and update current offset
-      meta_array_[rec_count] = meta.UpdateOffset(tmp_offset);
-      offset -= meta.GetTotalLength();
     } else {
       // copy a record from the given node
       const auto rec_len = meta.GetTotalLength();
