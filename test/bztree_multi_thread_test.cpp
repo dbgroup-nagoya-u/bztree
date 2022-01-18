@@ -59,6 +59,7 @@ class BzTreeFixture : public testing::Test  // NOLINT
   // define type aliases for simplicity
   using Node_t = component::Node<Key, KeyComp>;
   using BzTree_t = BzTree<Key, Payload, KeyComp>;
+  using LoadEntry_t = BulkloadEntry<Key, Payload>;
 
  protected:
   /*####################################################################################
@@ -306,6 +307,28 @@ class BzTreeFixture : public testing::Test  // NOLINT
     }
   }
 
+  void
+  VerifyBulkload(  //
+      const size_t begin_key_id,
+      const size_t end_key_id,
+      const size_t thread_num)
+  {
+    // prepare bulkload entries
+    std::vector<LoadEntry_t> entries{};
+    entries.reserve(end_key_id - begin_key_id);
+    for (size_t i = begin_key_id; i < end_key_id; ++i) {
+      entries.emplace_back(keys_[i], payloads_[i], kKeyLen, kPayLen);
+    }
+
+    // bulkload the entries
+    auto rc = index_->Bulkload(entries, thread_num);
+    EXPECT_EQ(rc, kSuccess);
+
+    for (size_t i = begin_key_id; i < end_key_id; ++i) {
+      VerifyRead(i, i);
+    }
+  }
+
   /*####################################################################################
    * Internal member variables
    *##################################################################################*/
@@ -362,6 +385,11 @@ TYPED_TEST(BzTreeFixture, UpdateWithMultiThreadsReadUpdatedPayloads)
 TYPED_TEST(BzTreeFixture, DeleteWithMultiThreadsReadFailWithDeletedKeys)
 {  //
   TestFixture::VerifyDelete();
+}
+
+TYPED_TEST(BzTreeFixture, BulkloadWithMultiThreadsReadLoaded)
+{  //
+  TestFixture::VerifyBulkload(0, kKeyNumForTest, kThreadNum);
 }
 
 }  // namespace dbgroup::index::bztree::test

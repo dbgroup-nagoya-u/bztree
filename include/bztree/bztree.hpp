@@ -540,7 +540,8 @@ class BzTree
     auto &&iter = entries.cbegin();
     if (thread_num == 1) {
       // bulkloading with a single thread
-      new_root = BulkloadWithSingleThread(new_root, iter, entries.cend());
+      auto &&[root, height] = BulkloadWithSingleThread(new_root, iter, entries.cend());
+      new_root = root;
     } else {
       // bulkloading with multi-threads
       std::vector<std::future<Node_t *>> threads{};
@@ -551,7 +552,8 @@ class BzTree
                         size_t n,                  //
                         typename std::vector<LoadEntry_t>::const_iterator iter) {
         Node_t *partial_root = CreateNewNode<Node_t *>();
-        partial_root = BulkloadWithSingleThread(partial_root, iter, iter + n);
+        auto &&[tmp_root, height] = BulkloadWithSingleThread(partial_root, iter, iter + n);
+        partial_root = tmp_root;
         p.set_value(partial_root);
       };
 
@@ -940,7 +942,7 @@ class BzTree
       Node_t *root,
       typename std::vector<LoadEntry_t>::const_iterator &iter,
       const typename std::vector<LoadEntry_t>::const_iterator &iter_end)  //
-      -> Node_t *
+      -> std::pair<Node_t *, size_t>
   {
     std::vector<Node_t *> rightmost_trace{};
     rightmost_trace.emplace_back(root);
@@ -962,7 +964,7 @@ class BzTree
       prev_leaf = leaf_node;
     }
 
-    return rightmost_trace.front();
+    return {rightmost_trace.front(), rightmost_trace.size()};
   }
 
   /**
