@@ -544,24 +544,25 @@ class BzTree
       new_root = root;
     } else {
       // bulkloading with multi-threads
-      std::vector<std::future<Node_t *>> threads{};
+      std::vector<std::future<std::pair<Node_t *, size_t>>> threads{};
       threads.reserve(thread_num);
 
       // prepare a lambda function for bulkloading
-      auto loader = [&](std::promise<Node_t *> p,  //
-                        size_t n,                  //
+      auto loader = [&](std::promise<std::pair<Node_t *, size_t>> p,  //
+                        size_t n,                                     //
                         typename std::vector<LoadEntry_t>::const_iterator iter) {
         Node_t *partial_root = CreateNewNode<Node_t *>();
         auto &&[tmp_root, height] = BulkloadWithSingleThread(partial_root, iter, iter + n);
-        partial_root = tmp_root;
-        p.set_value(partial_root);
+        p.set_value(std::make_pair(tmp_root, height));
+        // partial_root = tmp_root;
+        // p.set_value(partial_root);
       };
 
       // create threads to construct partial BzTrees
       const size_t rec_num = entries.size();
       for (size_t i = 0; i < thread_num; ++i) {
         // create a partial BzTree
-        std::promise<Node_t *> p{};
+        std::promise<std::pair<Node_t *, size_t>> p{};
         threads.emplace_back(p.get_future());
         const size_t n = (rec_num + i) / thread_num;
         std::thread{loader, std::move(p), n, iter}.detach();
@@ -571,7 +572,7 @@ class BzTree
       }
 
       // wait for the worker threads to create BzTrees
-      std::vector<Node_t *> partial_trees{};
+      std::vector<std::pair<Node_t *, size_t>> partial_trees{};
       partial_trees.reserve(thread_num);
       for (auto &&future : threads) {
         partial_trees.emplace_back(future.get());
@@ -580,6 +581,61 @@ class BzTree
       // --- Not implemented yes -----------------------------------------------------//
       // ...partial_treesをマージしてnew_rootに入れる処理...
       // -----------------------------------------------------------------------------//
+      Node_t *left_root = nullptr;
+      size_t left_height = 0;
+
+      for (auto &&partial_tree : partial_trees) {
+        auto &&partial_root = partial_tree.first;
+        size_t partial_height = partial_tree.second;
+
+        if (left_root == nullptr && left_height == 0) {
+          left_root = partial_root;
+          left_height = partial_height;
+          continue;
+        }
+
+        if (left_height >= partial_height) {
+          std::vector<Node_t *> l_rightmost_trace{};
+          size_t difference = left_height - partial_height;
+          Node_t *l_node = left_root;
+          Node_t *r_node = partial_root;
+
+          while (difference > 0) {
+            l_rightmost_trace.emplace_back(l_node);
+            l_node =
+                l_node->GetChild((l_node->GetStatusWord()).GetRecordCount() - 1);  // use MwCAS!!!
+            --difference;
+          }
+
+          // r_node->SetLowestKeys(l_node);
+
+          if ((l_node->GetStatusWord()).CanMergeWith(r_node->GetStatusWord())) {
+            l_node->template MergeForBulkload<Payload>(r_node);  // use MwCAS!!!
+          } else {
+            if (l_rightmost_trace.empty()) {
+              Node_t *new_left_root = CreateNewNode<Node_t *>();
+              // needsplitの確認いる？
+              new_left_root->LoadChildNode(l_node);
+              new_left_root->LoadChildNode(r_node);
+
+              left_root = new_left_root;
+              ++left_height;
+            } else {
+              auto &&parent = l_rightmost_trace.back();
+              const auto need_split = parent->LoadChildNode(r_node);
+              if (need_split) {
+                l_rightmost_trace.pop_back();
+                SplitForBulkload(parent, l_rightmost_trace);
+                left_root = l_rightmost_trace.front();
+                left_height = l_rightmost_trace.size();
+              }
+            }
+          }
+
+        } else {
+        }
+      }
+      new_root = left_root;
     }
 
     // set a new root

@@ -367,7 +367,7 @@ TYPED_TEST_SUITE(BzTreeFixture, KeyPayloadPairs);
  * Unit test definitions
  *####################################################################################*/
 
-TYPED_TEST(BzTreeFixture, WriteWithMultiThreadsReadWrittenPayloads)
+/*TYPED_TEST(BzTreeFixture, WriteWithMultiThreadsReadWrittenPayloads)
 {  //
   TestFixture::VerifyWrite();
 }
@@ -385,7 +385,7 @@ TYPED_TEST(BzTreeFixture, UpdateWithMultiThreadsReadUpdatedPayloads)
 TYPED_TEST(BzTreeFixture, DeleteWithMultiThreadsReadFailWithDeletedKeys)
 {  //
   TestFixture::VerifyDelete();
-}
+}*/
 
 TYPED_TEST(BzTreeFixture, BulkloadWithMultiThreadsReadLoaded)
 {  //

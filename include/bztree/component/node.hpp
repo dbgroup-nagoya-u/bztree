@@ -387,6 +387,48 @@ class Node
     atomic_stat->store(status_.Unfreeze(), std::memory_order_relaxed);
   }
 
+  void
+  SetLowestKeys(  //
+      const Node *l_sib_node)
+  {
+    // set a lowest key
+    auto offset = kPageSize - sizeof(low_meta_);
+    offset = CopyKeyFrom(l_sib_node, l_sib_node->high_meta_, offset);
+    low_meta_ = l_sib_node->high_meta_.UpdateOffset(offset);
+
+    if (!IsLeaf()) {
+      auto &&l_child = l_sib_node->GetChild(l_sib_node->GetSortedCount() - 1);
+      auto &&r_child = GetChild(0);
+      r_child->SetLowestKeys(l_child);
+    }
+  }
+
+  template <class Payload>
+  void
+  MergeForBulkload(  //
+      const Node *r_node)
+  {
+    /*
+    auto offset = CopyKeyFrom(this, low_meta_, kPageSize);
+    low_meta_ = low_meta_.UpdateOffset(offset);
+    offset = CopyKeyFrom(r_node, r_node->high_meta_, offset);
+    high_meta_ = r_node->high_meta_.UpdateOffset(offset);
+    if constexpr (NeedOffsetAlignment<Key, Payload>()) {
+      offset = Pad<Key, Payload>(offset);
+    }*/
+
+    auto offset = kPageSize - status_.GetBlockSize();
+
+    size_t l_count = sorted_count_;
+    size_t r_count = r_node->GetSortedCount();
+    offset = CopyRecordsFrom<Payload>(r_node, 0, r_count, sorted_count_, offset);
+
+    // create a merged node
+    const auto rec_count = l_count + r_count;
+    sorted_count_ = rec_count;
+    status_ = StatusWord{rec_count, kPageSize - offset};
+  }
+
   /*####################################################################################
    * Leaf read operations
    *##################################################################################*/
