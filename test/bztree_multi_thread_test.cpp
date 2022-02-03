@@ -327,69 +327,68 @@ class BzTreeFixture : public testing::Test  // NOLINT
     for (size_t i = begin_key_id; i < end_key_id; ++i) {
       VerifyRead(i, i);
     }
+
+    /*####################################################################################
+     * Internal member variables
+     *##################################################################################*/
+
+    // actual keys and payloads
+    Key keys_[kKeyNumForTest];
+    Payload payloads_[kKeyNumForTest];
+
+    // a test target BzTree
+    std::unique_ptr<BzTree_t> index_{nullptr};
+
+    std::uniform_int_distribution<size_t> id_dist_{0, kKeyNumForTest - 2};
+
+    std::shared_mutex main_lock_;
+
+    std::shared_mutex worker_lock_;
+  };
+
+  /*######################################################################################
+   * Preparation for typed testing
+   *####################################################################################*/
+
+  using KeyPayloadPairs = ::testing::Types<  //
+      KeyPayload<UInt8, UInt8>,              // fixed keys and in-place payloads
+      KeyPayload<Var, UInt8>,                // variable keys and in-place payloads
+      KeyPayload<UInt8, Var>,                // fixed keys and variable payloads
+      KeyPayload<Var, Var>,                  // variable keys/payloads
+      KeyPayload<Ptr, Ptr>,                  // pointer keys/payloads
+      KeyPayload<UInt8, Original>,           // original class payloads
+      KeyPayload<UInt8, Int8>,               // fixed keys and appended payloads
+      KeyPayload<Var, Int8>                  // variable keys and appended payloads
+      >;
+  TYPED_TEST_SUITE(BzTreeFixture, KeyPayloadPairs);
+
+  /*######################################################################################
+   * Unit test definitions
+   *####################################################################################*/
+
+  /*TYPED_TEST(BzTreeFixture, WriteWithMultiThreadsReadWrittenPayloads)
+  {  //
+    TestFixture::VerifyWrite();
   }
 
-  /*####################################################################################
-   * Internal member variables
-   *##################################################################################*/
+  TYPED_TEST(BzTreeFixture, InsertWithMultiThreadsReadInsertedPayloads)
+  {  //
+    TestFixture::VerifyInsert();
+  }
 
-  // actual keys and payloads
-  Key keys_[kKeyNumForTest];
-  Payload payloads_[kKeyNumForTest];
+  TYPED_TEST(BzTreeFixture, UpdateWithMultiThreadsReadUpdatedPayloads)
+  {  //
+    TestFixture::VerifyUpdate();
+  }
 
-  // a test target BzTree
-  std::unique_ptr<BzTree_t> index_{nullptr};
+  TYPED_TEST(BzTreeFixture, DeleteWithMultiThreadsReadFailWithDeletedKeys)
+  {  //
+    TestFixture::VerifyDelete();
+  }*/
 
-  std::uniform_int_distribution<size_t> id_dist_{0, kKeyNumForTest - 2};
-
-  std::shared_mutex main_lock_;
-
-  std::shared_mutex worker_lock_;
-};
-
-/*######################################################################################
- * Preparation for typed testing
- *####################################################################################*/
-
-using KeyPayloadPairs = ::testing::Types<  //
-    KeyPayload<UInt8, UInt8>,              // fixed keys and in-place payloads
-    KeyPayload<Var, UInt8>,                // variable keys and in-place payloads
-    KeyPayload<UInt8, Var>,                // fixed keys and variable payloads
-    KeyPayload<Var, Var>,                  // variable keys/payloads
-    KeyPayload<Ptr, Ptr>,                  // pointer keys/payloads
-    KeyPayload<UInt8, Original>,           // original class payloads
-    KeyPayload<UInt8, Int8>,               // fixed keys and appended payloads
-    KeyPayload<Var, Int8>                  // variable keys and appended payloads
-    >;
-TYPED_TEST_SUITE(BzTreeFixture, KeyPayloadPairs);
-
-/*######################################################################################
- * Unit test definitions
- *####################################################################################*/
-
-/*TYPED_TEST(BzTreeFixture, WriteWithMultiThreadsReadWrittenPayloads)
-{  //
-  TestFixture::VerifyWrite();
-}
-
-TYPED_TEST(BzTreeFixture, InsertWithMultiThreadsReadInsertedPayloads)
-{  //
-  TestFixture::VerifyInsert();
-}
-
-TYPED_TEST(BzTreeFixture, UpdateWithMultiThreadsReadUpdatedPayloads)
-{  //
-  TestFixture::VerifyUpdate();
-}
-
-TYPED_TEST(BzTreeFixture, DeleteWithMultiThreadsReadFailWithDeletedKeys)
-{  //
-  TestFixture::VerifyDelete();
-}*/
-
-TYPED_TEST(BzTreeFixture, BulkloadWithMultiThreadsReadLoaded)
-{  //
-  TestFixture::VerifyBulkload(0, kKeyNumForTest, kThreadNum);
-}
+  TYPED_TEST(BzTreeFixture, BulkloadWithMultiThreadsReadLoaded)
+  {  //
+    TestFixture::VerifyBulkload(0, kKeyNumForTest, kThreadNum);
+  }
 
 }  // namespace dbgroup::index::bztree::test

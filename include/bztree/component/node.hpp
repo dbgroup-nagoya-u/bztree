@@ -408,22 +408,13 @@ class Node
   MergeForBulkload(  //
       const Node *r_node)
   {
-    /*
-    auto offset = CopyKeyFrom(this, low_meta_, kPageSize);
-    low_meta_ = low_meta_.UpdateOffset(offset);
-    offset = CopyKeyFrom(r_node, r_node->high_meta_, offset);
-    high_meta_ = r_node->high_meta_.UpdateOffset(offset);
-    if constexpr (NeedOffsetAlignment<Key, Payload>()) {
-      offset = Pad<Key, Payload>(offset);
-    }*/
+    size_t l_count = GetSortedCount();
+    size_t r_count = r_node->GetSortedCount();
 
     auto offset = kPageSize - status_.GetBlockSize();
+    offset = CopyRecordsFrom<Payload>(r_node, 0, r_count, l_count, offset);
 
-    size_t l_count = sorted_count_;
-    size_t r_count = r_node->GetSortedCount();
-    offset = CopyRecordsFrom<Payload>(r_node, 0, r_count, sorted_count_, offset);
-
-    // create a merged node
+    // create a header
     const auto rec_count = l_count + r_count;
     sorted_count_ = rec_count;
     status_ = StatusWord{rec_count, kPageSize - offset};
