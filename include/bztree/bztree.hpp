@@ -552,9 +552,9 @@ class BzTree
                         size_t n,                                     //
                         typename std::vector<LoadEntry_t>::const_iterator iter) {
         Node_t *partial_root = CreateNewNode<Node_t *>();
-        auto &&[tmp_root, height] = BulkloadWithSingleThread(partial_root, iter, iter + n);
-        p.set_value(std::make_pair(tmp_root, height));
-        // partial_root = tmp_root;
+        size_t height = 0;
+        std::tie(partial_root, height) = BulkloadWithSingleThread(partial_root, iter, iter + n);
+        p.set_value(std::make_pair(partial_root, height));
         // p.set_value(partial_root);
       };
 
@@ -610,11 +610,10 @@ class BzTree
           // r_node->SetLowestKeys(l_node);
 
           if ((l_node->GetStatusWord()).CanMergeWith(r_node->GetStatusWord())) {
-            l_node->template MergeForBulkload<Payload>(r_node);  // use MwCAS!!!
+            l_node->template MergeForBulkload<Node_t *>(r_node);  // use MwCAS!!!
           } else {
             if (l_rightmost_trace.empty()) {
               Node_t *new_left_root = CreateNewNode<Node_t *>();
-              // needsplitの確認いる？
               new_left_root->LoadChildNode(l_node);
               new_left_root->LoadChildNode(r_node);
 
@@ -626,8 +625,13 @@ class BzTree
               if (need_split) {
                 l_rightmost_trace.pop_back();
                 SplitForBulkload(parent, l_rightmost_trace);
-                left_root = l_rightmost_trace.front();
-                left_height = l_rightmost_trace.size();
+              }
+              left_root = l_rightmost_trace.front();
+              left_height = 0;
+              Node_t *tmp_left = left_root;
+              while (!tmp_left->IsLeaf()) {
+                ++left_height;
+                tmp_left = tmp_left->GetChild((tmp_left->GetStatusWord()).GetRecordCount() - 1);
               }
             }
           }
