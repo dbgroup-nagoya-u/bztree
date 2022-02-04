@@ -528,7 +528,7 @@ class BzTree
   template <template <class K, class V> class Entry>
   auto
   Bulkload(  //
-      std::vector<Entry<Key, Payload>> &entries,
+      const std::vector<Entry<Key, Payload>> &entries,
       const size_t thread_num = 1)  //
       -> ReturnCode
   {
