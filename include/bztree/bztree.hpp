@@ -578,9 +578,7 @@ class BzTree
         partial_trees.emplace_back(future.get());
       }
 
-      // --- Not implemented yes -----------------------------------------------------//
-      // ...partial_treesをマージしてnew_rootに入れる処理...
-      // -----------------------------------------------------------------------------//
+      // merge partial trees
       Node_t *left_root = nullptr;
       size_t left_height = 0;
 
@@ -588,7 +586,7 @@ class BzTree
         auto &&partial_root = partial_tree.first;
         size_t partial_height = partial_tree.second;
 
-        if (left_root == nullptr && left_height == 0) {
+        if (left_root == nullptr && left_height == 0) {  // partial_tree is a leftmost tree
           left_root = partial_root;
           left_height = partial_height;
           continue;
@@ -602,15 +600,14 @@ class BzTree
 
           while (difference > 0) {
             l_rightmost_trace.emplace_back(l_node);
-            l_node =
-                l_node->GetChild((l_node->GetStatusWord()).GetRecordCount() - 1);  // use MwCAS!!!
+            l_node = l_node->GetChild(l_node->GetSortedCount() - 1);  // GetChild use MwCAS
             --difference;
           }
 
-          r_node->SetLowestKeys(l_node);
+          r_node->SetLowestKeys(l_node);  // GetChild use MwCAS
 
           if ((l_node->GetStatusWord()).CanMergeWith(r_node->GetStatusWord())) {
-            l_node->template MergeForBulkload<Node_t *>(r_node);  // use MwCAS!!!
+            l_node->template MergeForBulkload<Node_t *>(r_node);  // use MwCAS
 
             l_node->UpdateLastKeysAndHighestKeys(l_rightmost_trace);
           } else {
@@ -630,13 +627,13 @@ class BzTree
                 SplitForBulkload(parent, l_rightmost_trace);
               }
 
-              //もう少し工夫できる
               left_root = l_rightmost_trace.front();
               left_height = 0;
               Node_t *tmp_left = left_root;
               while (!tmp_left->IsLeaf()) {
                 ++left_height;
-                tmp_left = tmp_left->GetChild((tmp_left->GetStatusWord()).GetRecordCount() - 1);
+                tmp_left = tmp_left->GetChild((tmp_left->GetStatusWord()).GetRecordCount()
+                                              - 1);  // GetChild use MwCAS
               }
 
               l_rightmost_trace.pop_back();

@@ -406,13 +406,11 @@ class Node
   MergeForBulkload(  //
       const Node *r_node)
   {
-    // high metaの設定
-
     size_t l_count = GetSortedCount();
     size_t r_count = r_node->GetSortedCount();
 
     auto offset = kPageSize - status_.GetBlockSize();
-    offset = CopyRecordsFrom<Payload>(r_node, 0, r_count, l_count, offset);
+    offset = CopyRecordsFrom<Payload>(r_node, 0, r_count, l_count, offset);  // use MwCAS
 
     // create a header
     const auto rec_count = l_count + r_count;
