@@ -392,9 +392,7 @@ class Node
       const Node *l_sib_node)
   {
     // set a lowest key
-    auto offset = kPageSize - sizeof(low_meta_);
-    offset = CopyKeyFrom(l_sib_node, l_sib_node->high_meta_, offset);
-    low_meta_ = l_sib_node->high_meta_.UpdateOffset(offset);
+    low_meta_ = l_sib_node->GetHighMeta();
 
     if (!IsLeaf()) {
       auto &&l_child = l_sib_node->GetChild(l_sib_node->GetSortedCount() - 1);
@@ -408,6 +406,8 @@ class Node
   MergeForBulkload(  //
       const Node *r_node)
   {
+    // high metaの設定
+
     size_t l_count = GetSortedCount();
     size_t r_count = r_node->GetSortedCount();
 
@@ -418,6 +418,24 @@ class Node
     const auto rec_count = l_count + r_count;
     sorted_count_ = rec_count;
     status_ = StatusWord{rec_count, kPageSize - offset};
+  }
+
+  void
+  UpdateLastKeysAndHighestKeys(  //
+      std::vector<Node *> &rightmost_trace)
+  {
+    // update a highest key
+    high_meta_ = GetMetadata(GetSortedCount() - 1);
+
+    if (rightmost_trace.empty()) return;  // node is a root node
+
+    // update a last key of parent node
+    auto &&parent = rightmost_trace.back();
+    parent->RemoveLastNode();
+    parent->LoadChildNode(this);
+
+    rightmost_trace.pop_back();
+    parent->UpdateLastKeysAndHighestKeys(rightmost_trace);
   }
 
   /*####################################################################################

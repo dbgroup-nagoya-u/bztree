@@ -35,9 +35,7 @@ namespace dbgroup::index::bztree::test
  *####################################################################################*/
 
 constexpr size_t kGCTime = 1000;
-constexpr size_t kKeyNumForTest = 8 * 8192 * 10 * kThreadNum;
-//  constexpr size_t kKeyNumForTest = 512 * 1000 * kThreadNum;
-// constexpr size_t kKeyNumForTest = 65000;
+constexpr size_t kKeyNumForTest = 8 * 8192 * kThreadNum;
 
 /*######################################################################################
  * Classes for templated testing

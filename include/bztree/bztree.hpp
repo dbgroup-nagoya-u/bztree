@@ -21,7 +21,6 @@
 #include <atomic>
 #include <functional>
 #include <future>
-#include <iostream>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -608,17 +607,12 @@ class BzTree
             --difference;
           }
 
-          // r_node->SetLowestKeys(l_node);
-
-          // std::cout << "l_node0" : << l_node->GetKey(l_node->GetMetadata(0)) << std::endl;
-          // std::cout << "r_node0" : << r_node->GetKey(r_node->GetMetadata(0)) << std::endl;
+          r_node->SetLowestKeys(l_node);
 
           if ((l_node->GetStatusWord()).CanMergeWith(r_node->GetStatusWord())) {
             l_node->template MergeForBulkload<Node_t *>(r_node);  // use MwCAS!!!
 
-            if (!l_rightmost_trace.empty()) {
-              UpdateRightmostKeys(l_node, l_rightmost_trace);
-            }
+            l_node->UpdateLastKeysAndHighestKeys(l_rightmost_trace);
           } else {
             if (l_rightmost_trace.empty()) {
               Node_t *new_left_root = CreateNewNode<Node_t *>();
@@ -646,19 +640,7 @@ class BzTree
               }
 
               l_rightmost_trace.pop_back();
-              if (!l_rightmost_trace.empty()) {
-                UpdateRightmostKeys(parent, l_rightmost_trace);
-              }
-
-              /*r_node = parent;
-              l_rightmost_trace.pop_back();
-              while (!l_rightmost_trace.empty()) {
-                auto &&parent = l_rightmost_trace.back();
-                parent->RemoveLastNode();
-                parent->LoadChildNode(r_node);
-                r_node = parent;
-                l_rightmost_trace.pop_back();
-              }*/
+              parent->UpdateLastKeysAndHighestKeys(l_rightmost_trace);
             }
           }
 
@@ -776,21 +758,6 @@ class BzTree
     trace.emplace_back(current_node, index);
 
     return trace;
-  }
-
-  void
-  UpdateRightmostKeys(  //
-      Node_t *child_node,
-      std::vector<Node_t *> &rightmost_trace)
-  {
-    auto &&target_node = rightmost_trace.back();
-    target_node->RemoveLastNode();
-    target_node->LoadChildNode(child_node);
-
-    rightmost_trace.pop_back();
-    if (!rightmost_trace.empty()) {
-      UpdateRightmostKeys(target_node, rightmost_trace);
-    }
   }
 
   /*####################################################################################
@@ -1067,9 +1034,7 @@ class BzTree
 
     auto r_trace_copy = rightmost_trace;
     r_trace_copy.pop_back();
-    if (!r_trace_copy.empty()) {
-      UpdateRightmostKeys(rightmost_trace.back(), r_trace_copy);
-    }
+    rightmost_trace.back()->UpdateLastKeysAndHighestKeys(r_trace_copy);
 
     return {rightmost_trace.front(), rightmost_trace.size()};
   }
