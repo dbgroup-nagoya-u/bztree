@@ -615,10 +615,9 @@ class BzTree
 
           if ((l_node->GetStatusWord()).CanMergeWith(r_node->GetStatusWord())) {
             l_node->template MergeForBulkload<Node_t *>(r_node);  // use MwCAS!!!
+
             if (!l_rightmost_trace.empty()) {
-              auto &&parent = l_rightmost_trace.back();
-              parent->RemoveLastNode();
-              parent->LoadChildNode(l_node);
+              UpdateRightmostKeys(l_node, l_rightmost_trace);
             }
           } else {
             if (l_rightmost_trace.empty()) {
@@ -631,10 +630,13 @@ class BzTree
             } else {
               auto &&parent = l_rightmost_trace.back();
               const auto need_split = parent->LoadChildNode(r_node);
+
               if (need_split) {
                 l_rightmost_trace.pop_back();
                 SplitForBulkload(parent, l_rightmost_trace);
               }
+
+              //もう少し工夫できる
               left_root = l_rightmost_trace.front();
               left_height = 0;
               Node_t *tmp_left = left_root;
@@ -642,6 +644,21 @@ class BzTree
                 ++left_height;
                 tmp_left = tmp_left->GetChild((tmp_left->GetStatusWord()).GetRecordCount() - 1);
               }
+
+              l_rightmost_trace.pop_back();
+              if (!l_rightmost_trace.empty()) {
+                UpdateRightmostKeys(parent, l_rightmost_trace);
+              }
+
+              /*r_node = parent;
+              l_rightmost_trace.pop_back();
+              while (!l_rightmost_trace.empty()) {
+                auto &&parent = l_rightmost_trace.back();
+                parent->RemoveLastNode();
+                parent->LoadChildNode(r_node);
+                r_node = parent;
+                l_rightmost_trace.pop_back();
+              }*/
             }
           }
 
@@ -759,6 +776,21 @@ class BzTree
     trace.emplace_back(current_node, index);
 
     return trace;
+  }
+
+  void
+  UpdateRightmostKeys(  //
+      Node_t *child_node,
+      std::vector<Node_t *> &rightmost_trace)
+  {
+    auto &&target_node = rightmost_trace.back();
+    target_node->RemoveLastNode();
+    target_node->LoadChildNode(child_node);
+
+    rightmost_trace.pop_back();
+    if (!rightmost_trace.empty()) {
+      UpdateRightmostKeys(target_node, rightmost_trace);
+    }
   }
 
   /*####################################################################################
@@ -1031,6 +1063,12 @@ class BzTree
       }
 
       prev_leaf = leaf_node;
+    }
+
+    auto r_trace_copy = rightmost_trace;
+    r_trace_copy.pop_back();
+    if (!r_trace_copy.empty()) {
+      UpdateRightmostKeys(rightmost_trace.back(), r_trace_copy);
     }
 
     return {rightmost_trace.front(), rightmost_trace.size()};
