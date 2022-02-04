@@ -21,6 +21,7 @@
 #include <atomic>
 #include <functional>
 #include <future>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -609,8 +610,16 @@ class BzTree
 
           // r_node->SetLowestKeys(l_node);
 
+          // std::cout << "l_node0" : << l_node->GetKey(l_node->GetMetadata(0)) << std::endl;
+          // std::cout << "r_node0" : << r_node->GetKey(r_node->GetMetadata(0)) << std::endl;
+
           if ((l_node->GetStatusWord()).CanMergeWith(r_node->GetStatusWord())) {
             l_node->template MergeForBulkload<Node_t *>(r_node);  // use MwCAS!!!
+            if (!l_rightmost_trace.empty()) {
+              auto &&parent = l_rightmost_trace.back();
+              parent->RemoveLastNode();
+              parent->LoadChildNode(l_node);
+            }
           } else {
             if (l_rightmost_trace.empty()) {
               Node_t *new_left_root = CreateNewNode<Node_t *>();

@@ -36,7 +36,8 @@ namespace dbgroup::index::bztree::test
 
 constexpr size_t kGCTime = 1000;
 // constexpr size_t kKeyNumForTest = 8 * 8192 * kThreadNum;
-constexpr size_t kKeyNumForTest = 512 * 1000 * kThreadNum;
+// constexpr size_t kKeyNumForTest = 512 * 1000 * kThreadNum;
+constexpr size_t kKeyNumForTest = 65000;
 
 /*######################################################################################
  * Classes for templated testing
@@ -330,11 +331,11 @@ class BzTreeFixture : public testing::Test  // NOLINT
     auto rc = index_->Bulkload(entries, thread_num);
     EXPECT_EQ(rc, kSuccess);
 
-    VerifyRead(2514992, 2514992);
+    // VerifyRead(2514992, 2514992);
 
-    /*for (size_t i = begin_key_id; i < end_key_id; ++i) {
+    for (size_t i = begin_key_id; i < end_key_id; ++i) {
       VerifyRead(i, i);
-    }*/
+    }
   }
 
   /*####################################################################################
