@@ -392,10 +392,10 @@ class Node
       const Node *l_sib_node)
   {
     // set a lowest key
-    low_meta_ = l_sib_node->GetHighMeta();
+    low_meta_ = l_sib_node->high_meta_;
 
     if (!IsLeaf()) {
-      auto &&l_child = l_sib_node->GetChild(l_sib_node->GetSortedCount() - 1);
+      auto &&l_child = l_sib_node->GetChild(l_sib_node->sorted_count_ - 1);
       auto &&r_child = GetChild(0);
       r_child->SetLowestKeys(l_child);
     }
@@ -406,8 +406,8 @@ class Node
   MergeForBulkload(  //
       const Node *r_node)
   {
-    size_t l_count = GetSortedCount();
-    size_t r_count = r_node->GetSortedCount();
+    size_t l_count = sorted_count_;
+    size_t r_count = r_node->sorted_count_;
 
     auto offset = kPageSize - status_.GetBlockSize();
     offset = CopyRecordsFrom<Payload>(r_node, 0, r_count, l_count, offset);  // use MwCAS
@@ -418,22 +418,30 @@ class Node
     status_ = StatusWord{rec_count, kPageSize - offset};
   }
 
-  void
-  UpdateLastKeysAndHighestKeys(  //
-      std::vector<Node *> &rightmost_trace)
+  static void
+  UpdateLastKeysAndHighestKeys(std::vector<Node *> &rightmost_trace)
   {
-    // update a highest key
-    high_meta_ = GetMetadata(GetSortedCount() - 1);
+    if (rightmost_trace.empty()) return;
 
-    if (rightmost_trace.empty()) return;  // node is a root node
-
-    // update a last key of parent node
-    auto &&parent = rightmost_trace.back();
-    parent->RemoveLastNode();
-    parent->LoadChildNode(this);
-
+    auto *node = rightmost_trace.back();
     rightmost_trace.pop_back();
-    parent->UpdateLastKeysAndHighestKeys(rightmost_trace);
+
+    while (!rightmost_trace.empty()) {
+      // update a highest key
+      node->high_meta_ = node->meta_array_[node->sorted_count_ - 1];
+
+      // update a last key of parent node
+      auto *parent = rightmost_trace.back();
+      parent->RemoveLastNode();
+      parent->LoadChildNode(node);
+
+      // perform updating high-key recursively
+      node = parent;
+      rightmost_trace.pop_back();
+    }
+
+    // update a highest key
+    node->high_meta_ = node->meta_array_[node->sorted_count_ - 1];
   }
 
   /*####################################################################################

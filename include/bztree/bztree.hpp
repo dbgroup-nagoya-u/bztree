@@ -579,18 +579,10 @@ class BzTree
       }
 
       // merge partial trees
-      Node_t *left_root = nullptr;
-      size_t left_height = 0;
 
-      for (auto &&partial_tree : partial_trees) {
-        auto &&partial_root = partial_tree.first;
-        size_t partial_height = partial_tree.second;
-
-        if (left_root == nullptr && left_height == 0) {  // partial_tree is a leftmost tree
-          left_root = partial_root;
-          left_height = partial_height;
-          continue;
-        }
+      auto [left_root, left_height] = partial_trees[0];
+      for (size_t i = 1; i < thread_num; ++i) {
+        auto [partial_root, partial_height] = partial_trees[i];
 
         if (left_height >= partial_height) {
           std::vector<Node_t *> l_rightmost_trace{};
@@ -609,36 +601,32 @@ class BzTree
           if ((l_node->GetStatusWord()).CanMergeWith(r_node->GetStatusWord())) {
             l_node->template MergeForBulkload<Node_t *>(r_node);  // use MwCAS
 
-            l_node->UpdateLastKeysAndHighestKeys(l_rightmost_trace);
+            Node_t::UpdateLastKeysAndHighestKeys(l_rightmost_trace);
+          } else if (l_rightmost_trace.empty()) {
+            Node_t *new_left_root = CreateNewNode<Node_t *>();
+            new_left_root->LoadChildNode(l_node);
+            new_left_root->LoadChildNode(r_node);
+
+            left_root = new_left_root;
+            ++left_height;
           } else {
-            if (l_rightmost_trace.empty()) {
-              Node_t *new_left_root = CreateNewNode<Node_t *>();
-              new_left_root->LoadChildNode(l_node);
-              new_left_root->LoadChildNode(r_node);
+            auto &&parent = l_rightmost_trace.back();
+            const auto need_split = parent->LoadChildNode(r_node);
 
-              left_root = new_left_root;
-              ++left_height;
-            } else {
-              auto &&parent = l_rightmost_trace.back();
-              const auto need_split = parent->LoadChildNode(r_node);
-
-              if (need_split) {
-                l_rightmost_trace.pop_back();
-                SplitForBulkload(parent, l_rightmost_trace);
-              }
-
-              left_root = l_rightmost_trace.front();
-              left_height = 0;
-              Node_t *tmp_left = left_root;
-              while (!tmp_left->IsLeaf()) {
-                ++left_height;
-                tmp_left = tmp_left->GetChild((tmp_left->GetStatusWord()).GetRecordCount()
-                                              - 1);  // GetChild use MwCAS
-              }
-
+            if (need_split) {
               l_rightmost_trace.pop_back();
-              parent->UpdateLastKeysAndHighestKeys(l_rightmost_trace);
+              SplitForBulkload(parent, l_rightmost_trace);
             }
+
+            left_root = l_rightmost_trace.front();
+            left_height = 0;
+            Node_t *tmp_left = left_root;
+            while (!tmp_left->IsLeaf()) {
+              ++left_height;
+              tmp_left = tmp_left->GetChild(tmp_left->GetSortedCount() - 1);  // GetChild use MwCAS
+            }
+
+            Node_t::UpdateLastKeysAndHighestKeys(l_rightmost_trace);
           }
 
         } else {
@@ -1029,11 +1017,10 @@ class BzTree
       prev_leaf = leaf_node;
     }
 
-    auto r_trace_copy = rightmost_trace;
-    r_trace_copy.pop_back();
-    rightmost_trace.back()->UpdateLastKeysAndHighestKeys(r_trace_copy);
+    const auto &root_and_height = std::make_pair(rightmost_trace.front(), rightmost_trace.size());
+    Node_t::UpdateLastKeysAndHighestKeys(rightmost_trace);
 
-    return {rightmost_trace.front(), rightmost_trace.size()};
+    return root_and_height;
   }
 
   /**
