@@ -49,7 +49,6 @@ class BzTree
   using NodeStack = std::vector<std::pair<Node_t *, size_t>>;
   using MwCASDescriptor = component::MwCASDescriptor;
   using KeyExistence = component::KeyExistence;
-  using LoadEntry_t = BulkloadEntry<Key, Payload>;
 
  public:
   /*####################################################################################
@@ -526,12 +525,15 @@ class BzTree
    * @param thread_num the number of threads to perform bulkloading.
    * @return kSuccess.
    */
+  template <template <class K, class V> class Entry>
   auto
   Bulkload(  //
-      std::vector<LoadEntry_t> &entries,
+      std::vector<Entry<Key, Payload>> &entries,
       const size_t thread_num = 1)  //
       -> ReturnCode
   {
+    using ConstIter_t = typename std::vector<Entry<Key, Payload>>::const_iterator;
+
     assert(thread_num > 0);
 
     if (entries.empty()) return ReturnCode::kSuccess;
@@ -540,7 +542,7 @@ class BzTree
     auto &&iter = entries.cbegin();
     if (thread_num == 1) {
       // bulkloading with a single thread
-      auto &&[root, height] = BulkloadWithSingleThread(new_root, iter, entries.cend());
+      auto &&[root, height] = BulkloadWithSingleThread<Entry>(new_root, iter, entries.cend());
       new_root = root;
     } else {
       // bulkloading with multi-threads
@@ -548,14 +550,10 @@ class BzTree
       threads.reserve(thread_num);
 
       // prepare a lambda function for bulkloading
-      auto loader = [&](std::promise<std::pair<Node_t *, size_t>> p,  //
-                        size_t n,                                     //
-                        typename std::vector<LoadEntry_t>::const_iterator iter) {
-        Node_t *partial_root = CreateNewNode<Node_t *>();
-        size_t height = 0;
-        std::tie(partial_root, height) = BulkloadWithSingleThread(partial_root, iter, iter + n);
+      auto loader = [&](std::promise<std::pair<Node_t *, size_t>> p, size_t n, ConstIter_t iter) {
+        auto [partial_root, height] =
+            BulkloadWithSingleThread<Entry>(CreateNewNode<Node_t *>(), iter, iter + n);
         p.set_value(std::make_pair(partial_root, height));
-        // p.set_value(partial_root);
       };
 
       // create threads to construct partial BzTrees
@@ -990,11 +988,12 @@ class BzTree
    * @param iter_end the end position of target records.
    * @return the root node of a created BzTree.
    */
+  template <template <class K, class V> class Entry>
   auto
   BulkloadWithSingleThread(  //
       Node_t *root,
-      typename std::vector<LoadEntry_t>::const_iterator &iter,
-      const typename std::vector<LoadEntry_t>::const_iterator &iter_end)  //
+      typename std::vector<Entry<Key, Payload>>::const_iterator &iter,
+      const typename std::vector<Entry<Key, Payload>>::const_iterator &iter_end)  //
       -> std::pair<Node_t *, size_t>
   {
     std::vector<Node_t *> rightmost_trace{};
@@ -1004,7 +1003,7 @@ class BzTree
     while (iter < iter_end) {
       // load records into a leaf node
       Node_t *leaf_node = CreateNewNode<Payload>();
-      leaf_node->template Bulkload<Payload>(iter, iter_end, prev_leaf);
+      leaf_node->template Bulkload<Payload, Entry>(iter, iter_end, prev_leaf);
 
       // insert the loaded leaf node into the tree
       Node_t *parent = rightmost_trace.back();

@@ -1205,11 +1205,11 @@ class Node
    * @param iter the begin position of target records.
    * @param iter_end the end position of target records.
    */
-  template <class Payload>
+  template <class Payload, template <class K, class V> class Entry>
   void
   Bulkload(  //
-      typename std::vector<BulkloadEntry<Key, Payload>>::const_iterator &iter,
-      const typename std::vector<BulkloadEntry<Key, Payload>>::const_iterator &iter_end,
+      typename std::vector<Entry<Key, Payload>>::const_iterator &iter,
+      const typename std::vector<Entry<Key, Payload>>::const_iterator &iter_end,
       const Node *l_sib_node)
   {
     // set a lowest key
