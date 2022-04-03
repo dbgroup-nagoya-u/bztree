@@ -149,9 +149,9 @@ class StatusWord
   NeedConsolidation(const size_t sorted_count) const  //
       -> bool
   {
-    const auto total_size = (kWordLength * record_count_) + block_size_;
+    const auto total_size = (kWordSize * record_count_) + block_size_;
 
-    return record_count_ - sorted_count > kMaxUnsortedRecNum
+    return record_count_ - sorted_count > kMaxDeltaRecNum
            || total_size > kPageSize - kHeaderLength  //
            || deleted_size_ > kMaxDeletedSpaceSize;
   }
@@ -165,7 +165,7 @@ class StatusWord
       -> bool
   {
     constexpr size_t kMaxUsedSize = kPageSize - (kHeaderLength + kMinFreeSpaceSize);
-    const auto this_size = (kWordLength * record_count_) + block_size_;
+    const auto this_size = (kWordSize * record_count_) + block_size_;
 
     return this_size > kMaxUsedSize;
   }
@@ -180,8 +180,8 @@ class StatusWord
       -> bool
   {
     constexpr size_t kRecLen = GetMaxInternalRecordSize<Key>();
-    constexpr size_t kMaxUsedSize = kPageSize - (kHeaderLength + kWordLength + kRecLen);
-    const auto this_size = (kWordLength * record_count_) + block_size_;
+    constexpr size_t kMaxUsedSize = kPageSize - (kHeaderLength + kWordSize + kRecLen);
+    const auto this_size = (kWordSize * record_count_) + block_size_;
 
     return this_size > kMaxUsedSize;
   }
@@ -194,9 +194,9 @@ class StatusWord
   NeedMerge() const  //
       -> bool
   {
-    const auto this_size = (kWordLength * record_count_) + block_size_;
+    const auto this_size = (kWordSize * record_count_) + block_size_;
 
-    return this_size < kMinConsolidatedSize - kHeaderLength;
+    return this_size < kMinNodeSize - kHeaderLength;
   }
 
   /**
@@ -208,8 +208,8 @@ class StatusWord
   CanMergeWith(const StatusWord stat) const  //
       -> bool
   {
-    const auto this_size = (kWordLength * record_count_) + block_size_;
-    const auto sib_size = (kWordLength * stat.record_count_) + stat.block_size_;
+    const auto this_size = (kWordSize * record_count_) + block_size_;
+    const auto sib_size = (kWordSize * stat.record_count_) + stat.block_size_;
 
     return this_size + sib_size < kMaxMergedSize - kHeaderLength;
   }

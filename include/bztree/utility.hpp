@@ -28,6 +28,45 @@
 namespace dbgroup::index::bztree
 {
 /*######################################################################################
+ * Global constants
+ *####################################################################################*/
+
+/// Assumes that one word is represented by 8 bytes
+constexpr size_t kWordSize = sizeof(uintptr_t);
+
+/*######################################################################################
+ * Tuning parameters for BzTree
+ *####################################################################################*/
+
+/// Header length in bytes.
+constexpr size_t kHeaderLength = 4 * kWordSize;
+
+/// The page size of each node.
+constexpr size_t kPageSize = BZTREE_PAGE_SIZE;
+
+/// Invoking consolidation if the number of delta records exceeds this threshold.
+constexpr size_t kMaxDeltaRecNum = BZTREE_MAX_DELTA_RECORD_NUM;
+
+/// Invoking consolidation if the size of deleted space exceeds this threshold.
+constexpr size_t kMaxDeletedSpaceSize = BZTREE_MAX_DELETED_SPACE_SIZE;
+
+/// Invoking a split-operation if the size of free space falls below this threshold.
+constexpr size_t kMinFreeSpaceSize = BZTREE_MIN_FREE_SPACE_SIZE;
+
+/// Invoking a merge-operation if the size of a consolidated node falls below this threshold.
+constexpr size_t kMinNodeSize = BZTREE_MIN_NODE_SIZE;
+
+/// Canceling a merge-operation if the size of a merged node exceeds this threshold.
+constexpr size_t kMaxMergedSize = BZTREE_MAX_MERGED_SIZE;
+
+/// the maximun size of variable-length data.
+constexpr size_t kMaxVarDataSize = BZTREE_MAX_VARIABLE_DATA_SIZE;
+
+// Check whether the specified page size is valid
+static_assert(kPageSize % kWordSize == 0);
+static_assert(kMaxVarDataSize * 2 < kPageSize);
+
+/*######################################################################################
  * Utility enum and classes
  *####################################################################################*/
 
@@ -154,74 +193,6 @@ class BulkloadEntry
 
   size_t payload_length_{};
 };
-
-/*######################################################################################
- * Tuning parameters for BzTree
- *####################################################################################*/
-
-/// Assumes that one word is represented by 8 bytes
-constexpr size_t kWordLength = 8;
-
-/// Header length in bytes.
-constexpr size_t kHeaderLength = 4 * kWordLength;
-
-#ifdef BZTREE_PAGE_SIZE
-/// The page size of each node
-constexpr size_t kPageSize = BZTREE_PAGE_SIZE;
-#else
-constexpr size_t kPageSize = 8192;
-#endif
-
-/// check whether the specified page size is valid
-static_assert(kPageSize % kWordLength == 0);
-
-#ifdef BZTREE_MAX_UNSORTED_REC_NUM
-/// Invoking consolidation if the number of unsorted records exceeds this threshold
-constexpr size_t kMaxUnsortedRecNum = BZTREE_MAX_UNSORTED_REC_NUM;
-#else
-/// Invoking consolidation if the number of unsorted records exceeds this threshold
-constexpr size_t kMaxUnsortedRecNum = kPageSize >> 7UL;
-#endif
-
-#ifdef BZTREE_MAX_DELETED_SPACE_SIZE
-/// Invoking consolidation if the size of deleted records exceeds this threshold
-constexpr size_t kMaxDeletedSpaceSize = BZTREE_MAX_DELETED_SPACE_SIZE;
-#else
-/// Invoking consolidation if the size of deleted records exceeds this threshold
-constexpr size_t kMaxDeletedSpaceSize = 0.25 * kPageSize;
-#endif
-
-#ifdef BZTREE_MIN_FREE_SPACE_SIZE
-/// Invoking a split if the size of free space in a node exceeds this threshold
-constexpr size_t kMinFreeSpaceSize = BZTREE_MIN_FREE_SPACE_SIZE;
-#else
-/// Invoking a split if the size of free space in a node exceeds this threshold
-constexpr size_t kMinFreeSpaceSize = kMaxUnsortedRecNum * (3 * kWordLength);
-#endif
-
-#ifdef BZTREE_MIN_CONSOLIDATED_SIZE
-/// Invoking merging if the node size falls below this threshold
-constexpr size_t kMinConsolidatedSize = BZTREE_MIN_CONSOLIDATED_SIZE;
-#else
-/// Invoking merging if the node size falls below this threshold
-constexpr size_t kMinConsolidatedSize = kHeaderLength + kMinFreeSpaceSize;
-#endif
-
-#ifdef BZTREE_MAX_MERGED_SIZE
-/// Canceling merging if the size of a merged node exceeds this threshold
-constexpr size_t kMaxMergedSize = BZTREE_MAX_MERGED_SIZE;
-#else
-/// Canceling merging if the size of a merged node exceeds this threshold
-constexpr size_t kMaxMergedSize = kPageSize - (2 * kMinFreeSpaceSize);
-#endif
-
-#ifdef BZTREE_MAX_VARIABLE_DATA_SIZE
-/// the maximun size of variable-length data
-constexpr size_t kMaxVariableSize = BZTREE_MAX_VARIABLE_DATA_SIZE;
-#else
-/// the maximun size of variable-length data
-constexpr size_t kMaxVariableSize = 128;
-#endif
 
 }  // namespace dbgroup::index::bztree
 

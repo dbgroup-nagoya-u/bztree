@@ -219,9 +219,9 @@ GetMaxInternalRecordSize()  //
     -> size_t
 {
   if constexpr (IsVariableLengthData<Key>()) {
-    return std::get<2>(Align<Key, void *>(kMaxVariableSize, kWordLength));
+    return std::get<2>(Align<Key, void *>(kMaxVarDataSize, kWordSize));
   } else {
-    return std::get<2>(Align<Key, void *>(sizeof(Key), kWordLength));
+    return std::get<2>(Align<Key, void *>(sizeof(Key), kWordSize));
   }
 }
 

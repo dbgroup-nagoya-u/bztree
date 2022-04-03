@@ -255,7 +255,7 @@ TYPED_TEST_SUITE(BzTreeFixture, KeyPayloadPairs);
 
 TYPED_TEST(BzTreeFixture, WriteWithoutSMOsReadWrittenValues)
 {
-  const size_t rec_num = kMaxUnsortedRecNum;
+  const size_t rec_num = kMaxDeltaRecNum;
 
   for (size_t i = 0; i < rec_num; ++i) {
     TestFixture::VerifyWrite(i, i);
@@ -560,7 +560,7 @@ TYPED_TEST(BzTreeFixture, DeleteWithDeletedKeysFail)
 
 TYPED_TEST(BzTreeFixture, BulkloadWithoutSMOsReadWrittenValues)
 {
-  const size_t rec_num = kMaxUnsortedRecNum;
+  const size_t rec_num = kMaxDeltaRecNum;
   const size_t thread_num = 1;
 
   TestFixture::VerifyBulkload(0, rec_num, thread_num);

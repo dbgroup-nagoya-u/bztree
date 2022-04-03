@@ -660,7 +660,7 @@ class Node
   {
     // variables and constants shared in Phase 1 & 2
     const auto [key_len, pay_len, rec_len] = Align<Key, Payload>(key_length, payload_length);
-    const auto deleted_size = kWordLength + rec_len;
+    const auto deleted_size = kWordSize + rec_len;
     const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status;
     size_t target_pos{};
@@ -792,7 +792,7 @@ class Node
       if constexpr (CanCASUpdate<Payload>()) {
         if (rc == kExist && exist_pos < sorted_count_) {
           const auto deleted_meta = meta.Delete();
-          const auto new_status = cur_status.Delete(kWordLength + meta.GetTotalLength());
+          const auto new_status = cur_status.Delete(kWordSize + meta.GetTotalLength());
           if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
           // delete a record directly
@@ -805,7 +805,7 @@ class Node
       }
 
       // prepare new status for MwCAS
-      const auto deleted_size = (2 * kWordLength) + meta.GetTotalLength() + rec_len;
+      const auto deleted_size = (2 * kWordSize) + meta.GetTotalLength() + rec_len;
       const auto new_status = cur_status.Add(rec_len).Delete(deleted_size);
       if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
@@ -1173,7 +1173,7 @@ class Node
       const auto [key_len, pay_len, rec_len] = Align<Key, Payload>(key_length, pay_length);
 
       // check whether the node has sufficent space
-      node_size += rec_len + kWordLength;
+      node_size += rec_len + kWordSize;
       if (node_size > kPageSize - kMinFreeSpaceSize) break;
 
       // insert an entry to the leaf node
@@ -1621,12 +1621,12 @@ class Node
    */
   [[nodiscard]] auto
   SortNewRecords() const  //
-      -> std::pair<size_t, std::array<MetaKeyPair, kMaxUnsortedRecNum>>
+      -> std::pair<size_t, std::array<MetaKeyPair, kMaxDeltaRecNum>>
   {
     const auto rec_count = GetStatusWordProtected().GetRecordCount();
     std::atomic_thread_fence(std::memory_order_acquire);
 
-    std::array<MetaKeyPair, kMaxUnsortedRecNum> arr;
+    std::array<MetaKeyPair, kMaxDeltaRecNum> arr;
     size_t count = 0;
 
     // sort unsorted records by insertion sort

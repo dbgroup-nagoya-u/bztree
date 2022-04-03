@@ -29,7 +29,7 @@ constexpr size_t kExpectedRecordCount = 1;
 constexpr size_t kExpectedBlockSize = 16;
 constexpr size_t kMaxBlockSize = kPageSize - kHeaderLength;
 constexpr size_t kMaxUsedSize = kMaxBlockSize - kMinFreeSpaceSize;
-constexpr size_t kMinUsedSize = kMinConsolidatedSize - kHeaderLength;
+constexpr size_t kMinUsedSize = kMinNodeSize - kHeaderLength;
 constexpr size_t kMaxMergedBlockSize = kMaxMergedSize - kHeaderLength;
 
 class StatusWordFixture : public testing::Test
@@ -124,14 +124,14 @@ TEST_F(StatusWordFixture, NEQWithDifferentStatusWordsReturnTrue)
 
 TEST_F(StatusWordFixture, NeedConsolidateionWithFewUnsoretedRecordsReturnFalse)
 {
-  const StatusWord stat{kMaxUnsortedRecNum, 0};
+  const StatusWord stat{kMaxDeltaRecNum, 0};
 
   EXPECT_FALSE(stat.NeedConsolidation(0));
 }
 
 TEST_F(StatusWordFixture, NeedConsolidateionWithManyUnsoretedRecordsReturnTrue)
 {
-  const StatusWord stat{kMaxUnsortedRecNum + 1, 0};
+  const StatusWord stat{kMaxDeltaRecNum + 1, 0};
 
   EXPECT_TRUE(stat.NeedConsolidation(0));
 }

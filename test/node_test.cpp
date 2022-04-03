@@ -72,7 +72,7 @@ class NodeFixture : public testing::Test  // NOLINT
   void
   SetUp() override
   {
-    static_assert(kPageSize > kMaxRecSize * kMaxUnsortedRecNum * 2 + kHeaderLength,
+    static_assert(kPageSize > kMaxRecSize * kMaxDeltaRecNum * 2 + kHeaderLength,
                   "The page size is too small to perform unit tests.");
 
     node_.reset(new Node_t{kLeafFlag, 0});
@@ -88,8 +88,8 @@ class NodeFixture : public testing::Test  // NOLINT
       const auto del_size = kRecLen + kKeyLen + 2 * sizeof(Metadata);
       max_del_num_ = kMaxDeletedSpaceSize / del_size;
     }
-    if (max_del_num_ > kMaxUnsortedRecNum) {
-      max_del_num_ = kMaxUnsortedRecNum;
+    if (max_del_num_ > kMaxDeltaRecNum) {
+      max_del_num_ = kMaxDeltaRecNum;
     }
   }
 
@@ -149,7 +149,7 @@ class NodeFixture : public testing::Test  // NOLINT
   void
   PrepareConsolidatedNode()
   {
-    const size_t first_max_num = kMaxUnsortedRecNum;
+    const size_t first_max_num = kMaxDeltaRecNum;
     const size_t second_max_num = 2 * first_max_num;
 
     // prepare consolidated node
@@ -256,12 +256,12 @@ class NodeFixture : public testing::Test  // NOLINT
     node_->template Split<Payload>(left_node, right_node);
 
     node_.reset(left_node);
-    for (size_t i = 0; i < kMaxUnsortedRecNum; ++i) {
+    for (size_t i = 0; i < kMaxDeltaRecNum; ++i) {
       VerifyRead(i, i, kExpectSuccess);
     }
 
     node_.reset(right_node);
-    for (size_t i = kMaxUnsortedRecNum; i < 2 * kMaxUnsortedRecNum; ++i) {
+    for (size_t i = kMaxDeltaRecNum; i < 2 * kMaxDeltaRecNum; ++i) {
       VerifyRead(i, i, kExpectSuccess);
     }
   }
@@ -278,7 +278,7 @@ class NodeFixture : public testing::Test  // NOLINT
     merged_node->template Merge<Payload>(left_node, right_node);
 
     node_.reset(merged_node);
-    for (size_t i = 0; i < 2 * kMaxUnsortedRecNum; ++i) {
+    for (size_t i = 0; i < 2 * kMaxDeltaRecNum; ++i) {
       VerifyRead(i, i, kExpectSuccess);
     }
 
@@ -391,7 +391,7 @@ TYPED_TEST_SUITE(NodeFixture, KeyPayloadPairs);
 
 TYPED_TEST(NodeFixture, WriteWithUniqueKeysWOConsolidationReadWrittenValues)
 {
-  const size_t max_num = kMaxUnsortedRecNum;
+  const size_t max_num = kMaxDeltaRecNum;
 
   // the node has capacity for new records
   for (size_t i = 0; i < max_num; ++i) {
@@ -409,7 +409,7 @@ TYPED_TEST(NodeFixture, WriteWithUniqueKeysWOConsolidationReadWrittenValues)
 
 TYPED_TEST(NodeFixture, WriteWithUniqueKeysWithConsolidationReadWrittenValues)
 {
-  const size_t first_max_num = kMaxUnsortedRecNum;
+  const size_t first_max_num = kMaxDeltaRecNum;
   const size_t second_max_num = 2 * first_max_num;
 
   // the node has capacity for new records
@@ -436,7 +436,7 @@ TYPED_TEST(NodeFixture, WriteWithUniqueKeysWithConsolidationReadWrittenValues)
 
 TYPED_TEST(NodeFixture, WriteWithDuplicateKeysWOConsolidationReadLatestValues)
 {
-  const size_t max_num = kMaxUnsortedRecNum / 2;
+  const size_t max_num = kMaxDeltaRecNum / 2;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
@@ -456,7 +456,7 @@ TYPED_TEST(NodeFixture, WriteWithDuplicateKeysWOConsolidationReadLatestValues)
 
 TYPED_TEST(NodeFixture, WriteWithDuplicateKeysWithConsolidationReadLatestValues)
 {
-  const size_t max_num = kMaxUnsortedRecNum;
+  const size_t max_num = kMaxDeltaRecNum;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
@@ -483,7 +483,7 @@ TYPED_TEST(NodeFixture, WriteWithDuplicateKeysWithConsolidationReadLatestValues)
 
 TYPED_TEST(NodeFixture, InsertWithUniqueKeysWOConsolidationReadWrittenValues)
 {
-  const size_t max_num = kMaxUnsortedRecNum;
+  const size_t max_num = kMaxDeltaRecNum;
 
   // the node has capacity for new records
   for (size_t i = 0; i < max_num; ++i) {
@@ -501,7 +501,7 @@ TYPED_TEST(NodeFixture, InsertWithUniqueKeysWOConsolidationReadWrittenValues)
 
 TYPED_TEST(NodeFixture, InsertWithUniqueKeysWithConsolidationReadWrittenValues)
 {
-  const size_t first_max_num = kMaxUnsortedRecNum;
+  const size_t first_max_num = kMaxDeltaRecNum;
   const size_t second_max_num = 2 * first_max_num;
 
   // the node has capacity for new records
@@ -528,7 +528,7 @@ TYPED_TEST(NodeFixture, InsertWithUniqueKeysWithConsolidationReadWrittenValues)
 
 TYPED_TEST(NodeFixture, InsertWithDuplicateKeysWOConsolidationFail)
 {
-  const size_t max_num = kMaxUnsortedRecNum / 2;
+  const size_t max_num = kMaxDeltaRecNum / 2;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
@@ -548,7 +548,7 @@ TYPED_TEST(NodeFixture, InsertWithDuplicateKeysWOConsolidationFail)
 
 TYPED_TEST(NodeFixture, InsertWithDuplicateKeysWithConsolidationFail)
 {
-  const size_t max_num = kMaxUnsortedRecNum;
+  const size_t max_num = kMaxDeltaRecNum;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
@@ -575,7 +575,7 @@ TYPED_TEST(NodeFixture, InsertWithDuplicateKeysWithConsolidationFail)
 
 TYPED_TEST(NodeFixture, UpdateWithUniqueKeysWOConsolidationFail)
 {
-  const size_t max_num = kMaxUnsortedRecNum / 2;
+  const size_t max_num = kMaxDeltaRecNum / 2;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
@@ -600,7 +600,7 @@ TYPED_TEST(NodeFixture, UpdateWithUniqueKeysWOConsolidationFail)
 
 TYPED_TEST(NodeFixture, UpdateWithUniqueKeysWithConsolidationFail)
 {
-  const size_t first_max_num = kMaxUnsortedRecNum;
+  const size_t first_max_num = kMaxDeltaRecNum;
   const size_t second_max_num = 2 * first_max_num;
 
   // write base records
@@ -629,7 +629,7 @@ TYPED_TEST(NodeFixture, UpdateWithUniqueKeysWithConsolidationFail)
 
 TYPED_TEST(NodeFixture, UpdateWithDuplicateKeysWOConsolidationReadLatestValues)
 {
-  const size_t max_num = kMaxUnsortedRecNum / 2;
+  const size_t max_num = kMaxDeltaRecNum / 2;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
@@ -649,7 +649,7 @@ TYPED_TEST(NodeFixture, UpdateWithDuplicateKeysWOConsolidationReadLatestValues)
 
 TYPED_TEST(NodeFixture, UpdateWithDuplicateKeysWithConsolidationReadLatestValues)
 {
-  const size_t max_num = kMaxUnsortedRecNum;
+  const size_t max_num = kMaxDeltaRecNum;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
@@ -676,7 +676,7 @@ TYPED_TEST(NodeFixture, UpdateWithDuplicateKeysWithConsolidationReadLatestValues
 
 TYPED_TEST(NodeFixture, DeleteWithUniqueKeysWOConsolidationFail)
 {
-  const size_t max_num = kMaxUnsortedRecNum / 2;
+  const size_t max_num = kMaxDeltaRecNum / 2;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
@@ -696,7 +696,7 @@ TYPED_TEST(NodeFixture, DeleteWithUniqueKeysWOConsolidationFail)
 
 TYPED_TEST(NodeFixture, DeleteWithUniqueKeysWithConsolidationFail)
 {
-  const size_t first_max_num = kMaxUnsortedRecNum;
+  const size_t first_max_num = kMaxDeltaRecNum;
   const size_t second_max_num = 2 * first_max_num;
 
   // write base records
@@ -770,7 +770,7 @@ TYPED_TEST(NodeFixture, ConsolidateWithSortedAndUnsortedRecordsCreateConsolidate
   TestFixture::PrepareConsolidatedNode();
 
   // the node has the both sorted/unsorted records
-  for (size_t i = 0; i < 2 * kMaxUnsortedRecNum; ++i) {
+  for (size_t i = 0; i < 2 * kMaxDeltaRecNum; ++i) {
     TestFixture::VerifyRead(i, i, kExpectSuccess);
   }
 }
