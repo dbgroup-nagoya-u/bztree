@@ -408,8 +408,19 @@ class Node
       -> NodeRC
   {
     // check whether there is a given key in this node
-    const auto status = GetStatusWordProtected();
-    const auto [rc, pos] = CheckUniqueness<Payload>(key, status.GetRecordCount() - 1);
+    KeyExistence rc{};
+    size_t pos{};
+    if constexpr (CanCASUpdate<Payload>()) {
+      std::tie(rc, pos) = SearchSortedRecord(key);
+      if (rc == kNotExist || rc == kDeleted) {
+        // a new record may be inserted in an unsorted region
+        const auto status = GetStatusWordProtected();
+        std::tie(rc, pos) = SearchUnsortedRecord(key, status.GetRecordCount() - 1);
+      }
+    } else {
+      const auto status = GetStatusWordProtected();
+      std::tie(rc, pos) = CheckUniqueness<Payload>(key, status.GetRecordCount() - 1);
+    }
     if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
     // copy a written payload to a given address
