@@ -2,7 +2,7 @@
 
 ![example workflow name](https://github.com/dbgroup-nagoya-u/bztree/workflows/Ubuntu-20.04/badge.svg?branch=main)
 
-This repository is an open source implementation of a [BzTree](http://www.vldb.org/pvldb/vol11/p553-arulraj.pdf)[1] for research use. The purpose of this implementation is to reproduce a BzTree and measure its performance. However, the concurrency controls proposed in the paper are insufficient, so we have modified them to guarantee consistent read/write operations. Moreover, some tuning parameters have been changed for convenience.
+This repository is an open source implementation of a [BzTree][http://www.vldb.org/pvldb/vol11/p553-arulraj.pdf](1) for research use. The purpose of this implementation is to reproduce a BzTree and measure its performance. However, the concurrency controls proposed in the paper are insufficient, so we have modified them to guarantee consistent read/write operations. Moreover, some tuning parameters have been changed for convenience.
 
 Note that although the original BzTree is proposed as an index for persistent memory (e.g., Intel Optane), we implemented our BzTree for volatile memory. Thus, there is no persistency support in this implementation.
 
@@ -22,12 +22,12 @@ sudo apt update && sudo apt install -y build-essential cmake
 
 #### Tuning Parameters
 
-- `BZTREE_PAGE_SIZE`: The byte length of each node page (default `8192`).
-- `BZTREE_MAX_UNSORTED_REC_NUM`: Invoking consolidation if the number of unsorted records exceeds this threshold (default `64`).
-- `BZTREE_MAX_DELETED_SPACE_SIZE`: Invoking consolidation if the size of deleted records exceeds this threshold (default `0.25 * BZTREE_PAGE_SIZE`).
-- `BZTREE_MIN_FREE_SPACE_SIZE`: Invoking a split if the size of free space in a node exceeds this threshold (default `BZTREE_MAX_UNSORTED_REC_NUM * 24`).
-- `BZTREE_MIN_SORTED_REC_NUM`: Invoking merging if the number of sorted records falls below this threshold (default `2 * BZTREE_MAX_UNSORTED_REC_NUM`).
-- `BZTREE_MAX_MERGED_SIZE`: Canceling merging if the size of a merged node exceeds this threshold (default `BZTREE_PAGE_SIZE - (2 * BZTREE_MIN_FREE_SPACE_SIZE)`).
+- `BZTREE_PAGE_SIZE`: Page size in bytes (default `1024`).
+- `BZTREE_MAX_UNSORTED_REC_NUM`: Invoking consolidation if the number of delta records exceeds this threshold (default `64`).
+- `BZTREE_MAX_DELETED_SPACE_SIZE`: Invoking consolidation if the size of deleted space exceeds this threshold (default `${BZTREE_PAGE_SIZE} / 8`).
+- `BZTREE_MIN_FREE_SPACE_SIZE`: Invoking a split-operation if the size of free space falls below this threshold (default `${BZTREE_PAGE_SIZE} / 8`).
+- `BZTREE_MIN_NODE_SIZE`: Invoking a merge-operation if the size of a consolidated node falls below this threshold (default `${BZTREE_PAGE_SIZE} / 16`).
+- `BZTREE_MAX_MERGED_SIZE`: Canceling a merge-operation if the size of a merged node exceeds this threshold (default `${BZTREE_PAGE_SIZE} / 2`).
 
 ### Build Options for Unit Testing
 
@@ -260,6 +260,7 @@ This code will output the following results.
 Search key: 4097
 Return code: 1
 ```
+
 ### Multi-Threading
 
 This library is a thread-safe implementation. You can call all the APIs (i.e., `Read`, `Scan`, `Write`, `Insert`, `Update`, and `Delete`) from multi-threads concurrently. Note that concurrent writes follow the last write win protocol, and so you need to some concurrency control methods (e.g., snapshot isolation) externally to guarantee the order of read/write operations.
@@ -541,6 +542,7 @@ This code will output the following results.
 Search key: 4095
 Return code: 1
 ```
+
 ### Updating Payloads by Using MwCAS
 
 Although our BzTree can update payloads directly by using MwCAS operations (for details, please refer to Section 4.2 in [1]), it is restricted to unsigned integers and pointer types as default. To enable this feature for your own type, it must satisfy the following conditions:
