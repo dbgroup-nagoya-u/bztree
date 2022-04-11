@@ -716,7 +716,7 @@ class BzTree
 
     // check whether splitting/merging is needed
     const auto stat = consol_node->GetStatusWord();
-    if (stat.NeedSplit()) {
+    if (stat.template NeedSplit<Key, Payload>()) {
       // invoke splitting
       Split<Payload>(consol_node, key);
     } else if (!stat.NeedMerge() || !Merge<Payload>(consol_node, key)) {  // try merging

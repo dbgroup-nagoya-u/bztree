@@ -167,15 +167,17 @@ TEST_F(StatusWordFixture, NeedConsolidateionWithLargeDeletedSizeReturnTrue)
 TEST_F(StatusWordFixture, NeedSplitWithSmallBlockSizeReturnFalse)
 {
   const StatusWord stat{0, kMaxUsedSize};
+  const auto need_split = stat.template NeedSplit<size_t, size_t>();
 
-  EXPECT_FALSE(stat.NeedSplit());
+  EXPECT_FALSE(need_split);
 }
 
 TEST_F(StatusWordFixture, NeedSplitWithLargeBlockSizeReturnTrue)
 {
   const StatusWord stat{0, kMaxUsedSize + 1};
+  const auto need_split = stat.template NeedSplit<size_t, size_t>();
 
-  EXPECT_TRUE(stat.NeedSplit());
+  EXPECT_TRUE(need_split);
 }
 
 TEST_F(StatusWordFixture, NeedMergeWithSmallBlockSizeReturnTrue)

@@ -160,13 +160,17 @@ class StatusWord
    * @retval true if this node does not have sufficient free space.
    * @retval false otherwise.
    */
+  template <class Key, class Payload>
   [[nodiscard]] constexpr auto
   NeedSplit() const  //
       -> bool
   {
-    constexpr size_t kMaxUsedSize = kPageSize - (kHeaderLength + kMinFreeSpaceSize);
-    const auto this_size = (kWordSize * record_count_) + block_size_;
+    constexpr auto kKeyLen = (IsVariableLengthData<Key>()) ? kMaxVarDataSize : sizeof(Key);
+    constexpr auto kRecLen = kWordSize + kKeyLen + sizeof(Payload);
+    constexpr auto kMinBlockSize = (kRecLen > kMinFreeSpaceSize) ? kRecLen : kMinFreeSpaceSize;
+    constexpr auto kMaxUsedSize = kPageSize - (kHeaderLength + kMinBlockSize);
 
+    const auto this_size = (kWordSize * record_count_) + block_size_;
     return this_size > kMaxUsedSize;
   }
 
