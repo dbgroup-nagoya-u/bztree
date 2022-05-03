@@ -159,7 +159,7 @@ class BzTreeFixture : public testing::Test  // NOLINT
       const size_t key_id,
       const size_t payload_id)
   {
-    auto rc = index_->Write(keys_[key_id], payloads_[payload_id], kKeyLen, kPayLen);
+    auto rc = index_->Write(keys_[key_id], payloads_[payload_id], kKeyLen);
 
     EXPECT_EQ(ReturnCode::kSuccess, rc);
   }
@@ -172,7 +172,7 @@ class BzTreeFixture : public testing::Test  // NOLINT
   {
     ReturnCode expected_rc = (expect_success) ? kSuccess : kKeyExist;
 
-    auto rc = index_->Insert(keys_[key_id], payloads_[payload_id], kKeyLen, kPayLen);
+    auto rc = index_->Insert(keys_[key_id], payloads_[payload_id], kKeyLen);
     EXPECT_EQ(expected_rc, rc);
   }
 
@@ -184,7 +184,7 @@ class BzTreeFixture : public testing::Test  // NOLINT
   {
     ReturnCode expected_rc = (expect_success) ? kSuccess : kKeyNotExist;
 
-    auto rc = index_->Update(keys_[key_id], payloads_[payload_id], kKeyLen, kPayLen);
+    auto rc = index_->Update(keys_[key_id], payloads_[payload_id], kKeyLen);
     EXPECT_EQ(expected_rc, rc);
   }
 
@@ -234,14 +234,16 @@ class BzTreeFixture : public testing::Test  // NOLINT
  *####################################################################################*/
 
 using KeyPayloadPairs = ::testing::Types<  //
-    KeyPayload<UInt8, UInt8>,              // fixed keys and in-place payloads
-    KeyPayload<Var, UInt8>,                // variable keys and in-place payloads
-    KeyPayload<UInt8, Var>,                // fixed keys and variable payloads
-    KeyPayload<Var, Var>,                  // variable keys/payloads
-    KeyPayload<Ptr, Ptr>,                  // pointer keys/payloads
-    KeyPayload<UInt8, Original>,           // original class payloads
-    KeyPayload<UInt8, Int8>,               // fixed keys and appended payloads
-    KeyPayload<Var, Int8>                  // variable keys and appended payloads
+    KeyPayload<UInt8, UInt8>,              // fixed-length keys
+    KeyPayload<UInt8, Int8>,               // fixed-length keys with append-mode
+    KeyPayload<UInt4, UInt8>,              // small keys
+    KeyPayload<UInt4, Int8>,               // small keys with append-mode
+    KeyPayload<UInt8, UInt4>,              // small payloads with append-mode
+    KeyPayload<UInt4, UInt4>,              // small keys/payloads with append-mode
+    KeyPayload<Var, UInt8>,                // variable-length keys
+    KeyPayload<Var, Int8>,                 // variable-length keys with append-mode
+    KeyPayload<Ptr, Ptr>,                  // pointer keys/payloads with append-mode
+    KeyPayload<Original, Original>         // original class payloads with append-mode
     >;
 TYPED_TEST_SUITE(BzTreeFixture, KeyPayloadPairs);
 

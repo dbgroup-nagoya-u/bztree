@@ -127,31 +127,33 @@ ShiftAddr(  //
  */
 template <class Key, class Payload>
 constexpr auto
-Align(  //
-    [[maybe_unused]] size_t key_len,
-    [[maybe_unused]] size_t pay_len)  //
-    -> std::tuple<size_t, size_t, size_t>
+Align([[maybe_unused]] size_t key_len)  //
+    -> std::pair<size_t, size_t>
 {
   if constexpr (!CanCASUpdate<Payload>()) {
     // record alignment is not required
-    return {key_len, pay_len, key_len + pay_len};
+    if constexpr (IsVariableLengthData<Key>()) {
+      return {key_len, key_len + sizeof(Payload)};
+    } else {
+      return {sizeof(Key), sizeof(Key) + sizeof(Payload)};
+    }
   } else if constexpr (IsVariableLengthData<Key>()) {
     // dynamic alignment is required
     const size_t align_len = alignof(Payload) - key_len % alignof(Payload);
     if (align_len == alignof(Payload)) {
       // alignment is not required
-      return {key_len, sizeof(Payload), key_len + sizeof(Payload)};
+      return {key_len, key_len + sizeof(Payload)};
     }
-    return {key_len, sizeof(Payload), align_len + key_len + sizeof(Payload)};
+    return {key_len, align_len + key_len + sizeof(Payload)};
   } else {
     constexpr size_t kAlignLen = alignof(Payload) - sizeof(Key) % alignof(Payload);
     if constexpr (kAlignLen == alignof(Payload)) {
       // alignment is not required
-      return {sizeof(Key), sizeof(Payload), sizeof(Key) + sizeof(Payload)};
+      return {sizeof(Key), sizeof(Key) + sizeof(Payload)};
     } else {
       // fixed-length alignment is required
       constexpr size_t kKeyLen = sizeof(Key) + kAlignLen;
-      return {kKeyLen, sizeof(Payload), kKeyLen + sizeof(Payload)};
+      return {kKeyLen, kKeyLen + sizeof(Payload)};
     }
   }
 }
@@ -219,9 +221,9 @@ GetMaxInternalRecordSize()  //
     -> size_t
 {
   if constexpr (IsVariableLengthData<Key>()) {
-    return std::get<2>(Align<Key, void *>(kMaxVarDataSize, kWordSize));
+    return Align<Key, void *>(kMaxVarDataSize).second;
   } else {
-    return std::get<2>(Align<Key, void *>(sizeof(Key), kWordSize));
+    return Align<Key, void *>(sizeof(Key)).second;
   }
 }
 

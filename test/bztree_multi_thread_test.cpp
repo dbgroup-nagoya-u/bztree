@@ -116,15 +116,15 @@ class BzTreeFixture : public testing::Test  // NOLINT
 
     switch (ops.w_type) {
       case kInsert:
-        return index_->Insert(key, payload, kKeyLen, kPayLen);
+        return index_->Insert(key, payload, kKeyLen);
       case kUpdate:
-        return index_->Update(key, payload, kKeyLen, kPayLen);
+        return index_->Update(key, payload, kKeyLen);
       case kDelete:
         return index_->Delete(key, kKeyLen);
       case kWrite:
         break;
     }
-    return index_->Write(key, payload, kKeyLen, kPayLen);
+    return index_->Write(key, payload, kKeyLen);
   }
 
   Operation
@@ -329,14 +329,16 @@ class BzTreeFixture : public testing::Test  // NOLINT
  *####################################################################################*/
 
 using KeyPayloadPairs = ::testing::Types<  //
-    KeyPayload<UInt8, UInt8>,              // fixed keys and in-place payloads
-    KeyPayload<Var, UInt8>,                // variable keys and in-place payloads
-    KeyPayload<UInt8, Var>,                // fixed keys and variable payloads
-    KeyPayload<Var, Var>,                  // variable keys/payloads
-    KeyPayload<Ptr, Ptr>,                  // pointer keys/payloads
-    KeyPayload<UInt8, Original>,           // original class payloads
-    KeyPayload<UInt8, Int8>,               // fixed keys and appended payloads
-    KeyPayload<Var, Int8>                  // variable keys and appended payloads
+    KeyPayload<UInt8, UInt8>,              // fixed-length keys
+    KeyPayload<UInt8, Int8>,               // fixed-length keys with append-mode
+    KeyPayload<UInt4, UInt8>,              // small keys
+    KeyPayload<UInt4, Int8>,               // small keys with append-mode
+    KeyPayload<UInt8, UInt4>,              // small payloads with append-mode
+    KeyPayload<UInt4, UInt4>,              // small keys/payloads with append-mode
+    KeyPayload<Var, UInt8>,                // variable-length keys
+    KeyPayload<Var, Int8>,                 // variable-length keys with append-mode
+    KeyPayload<Ptr, Ptr>,                  // pointer keys/payloads with append-mode
+    KeyPayload<Original, Original>         // original class payloads with append-mode
     >;
 TYPED_TEST_SUITE(BzTreeFixture, KeyPayloadPairs);
 

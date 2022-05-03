@@ -360,15 +360,14 @@ class BzTree
   Write(  //
       const Key &key,
       const Payload &payload,
-      const size_t key_length = sizeof(Key),
-      const size_t payload_length = sizeof(Payload))  //
+      const size_t key_length = sizeof(Key))  //
       -> ReturnCode
   {
     [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
 
     while (true) {
       Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->Write(key, key_length, payload, payload_length);
+      const auto rc = node->Write(key, key_length, payload);
 
       switch (rc) {
         case NodeRC::kSuccess:
@@ -403,15 +402,14 @@ class BzTree
   Insert(  //
       const Key &key,
       const Payload &payload,
-      const size_t key_length = sizeof(Key),
-      const size_t payload_length = sizeof(Payload))  //
+      const size_t key_length = sizeof(Key))  //
       -> ReturnCode
   {
     [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
 
     while (true) {
       Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->Insert(key, key_length, payload, payload_length);
+      const auto rc = node->Insert(key, key_length, payload);
 
       switch (rc) {
         case NodeRC::kSuccess:
@@ -447,15 +445,14 @@ class BzTree
   Update(  //
       const Key &key,
       const Payload &payload,
-      const size_t key_length = sizeof(Key),
-      const size_t payload_length = sizeof(Payload))  //
+      const size_t key_length = sizeof(Key))  //
       -> ReturnCode
   {
     [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
 
     while (true) {
       Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->Update(key, key_length, payload, payload_length);
+      const auto rc = node->Update(key, key_length, payload);
 
       switch (rc) {
         case NodeRC::kSuccess:
