@@ -869,9 +869,7 @@ class Node
   Consolidate(const Node *old_node)
   {
     // set a lowest/highest keys
-    auto offset = CopyKeyFrom(old_node, old_node->low_meta_, kPageSize);
-    low_meta_ = old_node->low_meta_.UpdateOffset(offset);
-    offset = CopyKeyFrom(old_node, old_node->high_meta_, offset);
+    auto offset = CopyKeyFrom(old_node, old_node->high_meta_, kPageSize);
     high_meta_ = old_node->high_meta_.UpdateOffset(offset);
     if constexpr (NeedOffsetAlignment<Key, Payload>()) {
       offset = Pad<Key, Payload>(offset);
@@ -942,9 +940,7 @@ class Node
     const auto split_meta = meta_array_[l_count - 1];
 
     // set a lowest/highest keys to a left node
-    auto l_offset = l_node->CopyKeyFrom(this, low_meta_, kPageSize);
-    l_node->low_meta_ = low_meta_.UpdateOffset(l_offset);
-    l_offset = l_node->CopyKeyFrom(this, split_meta, l_offset);
+    auto l_offset = l_node->CopyKeyFrom(this, split_meta, kPageSize);
     l_node->high_meta_ = split_meta.UpdateOffset(l_offset);
     if constexpr (NeedOffsetAlignment<Key, Payload>()) {
       l_offset = Pad<Key, Payload>(l_offset);
@@ -956,9 +952,7 @@ class Node
     l_node->status_ = StatusWord{l_count, kPageSize - l_offset};
 
     // set a lowest/highest keys to a righit node
-    auto r_offset = r_node->CopyKeyFrom(this, split_meta, kPageSize);
-    r_node->low_meta_ = split_meta.UpdateOffset(r_offset);
-    r_offset = r_node->CopyKeyFrom(this, high_meta_, r_offset);
+    auto r_offset = r_node->CopyKeyFrom(this, high_meta_, kPageSize);
     r_node->high_meta_ = high_meta_.UpdateOffset(r_offset);
     if constexpr (NeedOffsetAlignment<Key, Payload>()) {
       r_offset = Pad<Key, Payload>(r_offset);
@@ -990,9 +984,7 @@ class Node
       -> bool
   {
     // set a lowest/highest keys
-    auto offset = CopyKeyFrom(old_node, old_node->low_meta_, kPageSize);
-    low_meta_ = old_node->low_meta_.UpdateOffset(offset);
-    offset = CopyKeyFrom(old_node, old_node->high_meta_, offset);
+    auto offset = CopyKeyFrom(old_node, old_node->high_meta_, kPageSize);
     high_meta_ = old_node->high_meta_.UpdateOffset(offset);
     if constexpr (NeedOffsetAlignment<Key, Node *>()) {
       offset = Pad<Key, Node *>(offset);
@@ -1062,9 +1054,7 @@ class Node
       const Node *r_node)
   {
     // set a lowest/highest keys
-    auto offset = CopyKeyFrom(l_node, l_node->low_meta_, kPageSize);
-    low_meta_ = l_node->low_meta_.UpdateOffset(offset);
-    offset = CopyKeyFrom(r_node, r_node->high_meta_, offset);
+    auto offset = CopyKeyFrom(r_node, r_node->high_meta_, kPageSize);
     high_meta_ = r_node->high_meta_.UpdateOffset(offset);
     if constexpr (NeedOffsetAlignment<Key, Payload>()) {
       offset = Pad<Key, Payload>(offset);
@@ -1106,9 +1096,7 @@ class Node
       -> bool
   {
     // set a lowest/highest keys
-    auto offset = CopyKeyFrom(old_node, old_node->low_meta_, kPageSize);
-    low_meta_ = old_node->low_meta_.UpdateOffset(offset);
-    offset = CopyKeyFrom(old_node, old_node->high_meta_, offset);
+    auto offset = CopyKeyFrom(old_node, old_node->high_meta_, kPageSize);
     high_meta_ = old_node->high_meta_.UpdateOffset(offset);
     if constexpr (NeedOffsetAlignment<Key, Node *>()) {
       offset = Pad<Key, Node *>(offset);
@@ -1152,21 +1140,11 @@ class Node
   void
   Bulkload(  //
       typename std::vector<BulkloadEntry<Key, Payload>>::const_iterator &iter,
-      const typename std::vector<BulkloadEntry<Key, Payload>>::const_iterator &iter_end,
-      const Node *l_sib_node)
+      const typename std::vector<BulkloadEntry<Key, Payload>>::const_iterator &iter_end)
   {
-    // set a lowest key
-    auto offset = kPageSize;
-    if (l_sib_node != nullptr) {
-      offset = CopyKeyFrom(l_sib_node, l_sib_node->high_meta_, offset);
-      low_meta_ = l_sib_node->high_meta_.UpdateOffset(offset);
-      if constexpr (NeedOffsetAlignment<Key, Payload>()) {
-        offset = Pad<Key, Payload>(offset);
-      }
-    }
-
     // extract and insert entries for the leaf node
     size_t node_size = kHeaderLength;
+    auto offset = kPageSize;
     while (iter < iter_end) {
       const auto key_length = iter->GetKeyLength();
       const auto [key_len, rec_len] = Align<Key, Payload>(key_length);
@@ -1692,9 +1670,6 @@ class Node
 
   /// a status word.
   StatusWord status_{};
-
-  /// the metadata of a lowest key.
-  Metadata low_meta_{};
 
   /// the metadata of a highest key.
   Metadata high_meta_{};

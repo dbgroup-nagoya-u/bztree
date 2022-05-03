@@ -39,7 +39,7 @@ constexpr size_t kWordSize = sizeof(uintptr_t);
  *####################################################################################*/
 
 /// Header length in bytes.
-constexpr size_t kHeaderLength = 4 * kWordSize;
+constexpr size_t kHeaderLength = 3 * kWordSize;
 
 /// The page size of each node.
 constexpr size_t kPageSize = BZTREE_PAGE_SIZE;
