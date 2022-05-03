@@ -72,8 +72,7 @@ class NodeFixture : public testing::Test  // NOLINT
   void
   SetUp() override
   {
-    static_assert(kPageSize > kMaxRecSize * kMaxDeltaRecNum * 2 + kHeaderLength,
-                  "The page size is too small to perform unit tests.");
+    if (kPageSize < kMaxRecSize * kMaxDeltaRecNum * 2 + kHeaderLength) GTEST_SKIP();
 
     node_.reset(new Node_t{kLeafFlag, 0});
 
@@ -629,7 +628,7 @@ TYPED_TEST(NodeFixture, UpdateWithUniqueKeysWithConsolidationFail)
 
 TYPED_TEST(NodeFixture, UpdateWithDuplicateKeysWOConsolidationReadLatestValues)
 {
-  const size_t max_num = kMaxDeltaRecNum / 2;
+  const size_t max_num = TestFixture::max_del_num_ / 2;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
@@ -649,7 +648,7 @@ TYPED_TEST(NodeFixture, UpdateWithDuplicateKeysWOConsolidationReadLatestValues)
 
 TYPED_TEST(NodeFixture, UpdateWithDuplicateKeysWithConsolidationReadLatestValues)
 {
-  const size_t max_num = kMaxDeltaRecNum;
+  const size_t max_num = TestFixture::max_del_num_;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
