@@ -584,14 +584,14 @@ class Node
       cur_status = GetStatusWordProtected();
       if (cur_status.IsFrozen()) return kFrozen;
 
-      // prepare new status for MwCAS
-      const auto new_status = cur_status.Add(rec_len);
-      if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
-
       // check uniqueness
       target_pos = cur_status.GetRecordCount();
       std::tie(rc, recheck_pos) = CheckUniqueness<Payload>(key, target_pos - 1);
       if (rc == kExist) return kKeyExist;
+
+      // prepare new status for MwCAS
+      const auto new_status = cur_status.Add(rec_len);
+      if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
       // perform MwCAS to reserve space
       MwCASDescriptor desc{};
