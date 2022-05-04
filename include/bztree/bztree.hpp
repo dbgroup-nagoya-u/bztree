@@ -273,10 +273,11 @@ class BzTree
    *##################################################################################*/
 
   /**
-   * @brief Read a payload of a specified key if it exists.
+   * @brief Read the payload corresponding to a given key if it exists.
    *
    * @param key a target key.
-   * @returnnullopt.
+   * @retval the payload of a given key wrapped with std::optional if it is in this tree.
+   * @retval std::nullopt otherwise.
    */
   auto
   Read(const Key &key)  //
@@ -293,12 +294,11 @@ class BzTree
   }
 
   /**
-   * @brief Perform a range scan with specified keys.
+   * @brief Perform a range scan with given keys.
    *
    * @param begin_key a pair of a begin key and its openness (true=closed).
    * @param end_key a pair of an end key and its openness (true=closed).
-   * @param page a page that contains old keys/payloads (used internally).
-   * @return an iterator to access target records.
+   * @return an iterator to access scanned records.
    */
   auto
   Scan(  //
@@ -342,33 +342,29 @@ class BzTree
    *##################################################################################*/
 
   /**
-   * @brief Write (i.e., upsert) a specified kay/payload pair.
+   * @brief Write (i.e., put) a given key/payload pair.
    *
-   * If a specified key does not exist in the index, this function performs an insert
-   * operation. If a specified key has been already inserted, this function perfroms an
+   * If a given key does not exist in this tree, this function performs an insert
+   * operation. If a given key has been already inserted, this function perfroms an
    * update operation. Thus, this function always returns kSuccess as a return code.
-   *
-   * Note that if a target key/payload is binary data, it is required to specify its
-   * length in bytes.
    *
    * @param key a target key to be written.
    * @param payload a target payload to be written.
-   * @param key_length the length of a target key.
-   * @param payload_length the length of a target payload.
+   * @param key_len the length of a target key.
    * @return kSuccess.
    */
   auto
   Write(  //
       const Key &key,
       const Payload &payload,
-      const size_t key_length = sizeof(Key))  //
+      const size_t key_len = sizeof(Key))  //
       -> ReturnCode
   {
     [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
 
     while (true) {
       Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->Write(key, key_length, payload);
+      const auto rc = node->Write(key, key_len, payload);
 
       switch (rc) {
         case NodeRC::kSuccess:
@@ -382,35 +378,31 @@ class BzTree
   }
 
   /**
-   * @brief Insert a specified kay/payload pair.
+   * @brief Insert a given key/payload pair.
    *
-   * This function performs a uniqueness check in its processing. If a specified key
-   * does not exist, this function insert a target payload into the index. If a
-   * specified key exists in the index, this function does nothing and returns kKeyExist
+   * This function performs a uniqueness check in its processing. If a given key does
+   * not exist in this tree, this function inserts a target payload to this tree. If
+   * there is a given key in this tree, this function does nothing and returns kKeyExist
    * as a return code.
    *
-   * Note that if a target key/payload is binary data, it is required to specify its
-   * length in bytes.
-   *
-   * @param key a target key to be written.
-   * @param payload a target payload to be written.
-   * @param key_length the length of a target key.
-   * @param payload_length the length of a target payload.
+   * @param key a target key to be inserted.
+   * @param payload a target payload to be inserted.
+   * @param key_len the length of a target key.
    * @retval.kSuccess if inserted.
-   * @retval kKeyExist if a specified key exists.
+   * @retval kKeyExist otherwise.
    */
   auto
   Insert(  //
       const Key &key,
       const Payload &payload,
-      const size_t key_length = sizeof(Key))  //
+      const size_t key_len = sizeof(Key))  //
       -> ReturnCode
   {
     [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
 
     while (true) {
       Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->Insert(key, key_length, payload);
+      const auto rc = node->Insert(key, key_len, payload);
 
       switch (rc) {
         case NodeRC::kSuccess:
@@ -426,34 +418,31 @@ class BzTree
   }
 
   /**
-   * @brief Update a target kay with a specified payload.
+   * @brief Update the record corresponding to a given key with a given payload.
    *
-   * This function performs a uniqueness check in its processing. If a specified key
-   * exist, this function update a target payload. If a specified key does not exist in
-   * the index, this function does nothing and returns kKeyNotExist as a return code.
+   * This function performs a uniqueness check in its processing. If there is a given
+   * key in this tree, this function updates the corresponding record. If a given key
+   * does not exist in this tree, this function does nothing and returns kKeyNotExist as
+   * a return code.
    *
-   * Note that if a target key/payload is binary data, it is required to specify its
-   * length in bytes.
-   *
-   * @param key a target key to be written.
-   * @param payload a target payload to be written.
-   * @param key_length the length of a target key.
-   * @param payload_length the length of a target payload.
+   * @param key a target key to be updated.
+   * @param payload a payload for updating.
+   * @param key_len the length of a target key.
    * @retval kSuccess if updated.
-   * @retval kKeyNotExist if a specified key does not exist.
+   * @retval kKeyNotExist otherwise.
    */
   auto
   Update(  //
       const Key &key,
       const Payload &payload,
-      const size_t key_length = sizeof(Key))  //
+      const size_t key_len = sizeof(Key))  //
       -> ReturnCode
   {
     [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
 
     while (true) {
       Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->Update(key, key_length, payload);
+      const auto rc = node->Update(key, key_len, payload);
 
       switch (rc) {
         case NodeRC::kSuccess:
@@ -469,31 +458,28 @@ class BzTree
   }
 
   /**
-   * @brief Delete a target kay from the index.
+   * @brief Delete the record corresponding to a given key from this tree.
    *
-   * This function performs a uniqueness check in its processing. If a specified key
-   * exist, this function deletes it. If a specified key does not exist in the index,
-   * this function does nothing and returns kKeyNotExist as a return code.
+   * This function performs a uniqueness check in its processing. If there is a given
+   * key in this tree, this function deletes it. If a given key does not exist in this
+   * tree, this function does nothing and returns kKeyNotExist as a return code.
    *
-   * Note that if a target key is binary data, it is required to specify its length in
-   * bytes.
-   *
-   * @param key a target key to be written.
-   * @param key_length the length of a target key.
+   * @param key a target key to be deleted.
+   * @param key_len the length of a target key.
    * @retval kSuccess if deleted.
-   * @retval kKeyNotExist if a specified key does not exist.
+   * @retval kKeyNotExist otherwise.
    */
   auto
   Delete(  //
       const Key &key,
-      const size_t key_length = sizeof(Key))  //
+      const size_t key_len = sizeof(Key))  //
       -> ReturnCode
   {
     [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
 
     while (true) {
       Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->template Delete<Payload>(key, key_length);
+      const auto rc = node->template Delete<Payload>(key, key_len);
 
       switch (rc) {
         case NodeRC::kSuccess:

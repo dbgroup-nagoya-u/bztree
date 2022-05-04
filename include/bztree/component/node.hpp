@@ -872,7 +872,7 @@ class Node
   }
 
   /**
-   * @brief Consolidate a target leaf node.
+   * @brief Consolidate a given node into this node.
    *
    * @tparam Payload a class of payload.
    * @param node an original node.
@@ -1143,13 +1143,6 @@ class Node
   }
 
  private:
-  /*####################################################################################
-   * Internal constatnts
-   *##################################################################################*/
-
-  /// a flag for indicating splitting is performed
-  static constexpr bool kDoSplit = true;
-
   /*####################################################################################
    * Internal classes
    *##################################################################################*/
@@ -1448,10 +1441,9 @@ class Node
   }
 
   /**
-   * @brief Copy a key from a given node.
+   * @brief Copy a highest key from a given node.
    *
    * @param node an original node that has a target key.
-   * @param meta the corresponding metadata of a target key.
    * @param offset the current offset of this node.
    * @return the updated offset value.
    */
@@ -1481,13 +1473,14 @@ class Node
   }
 
   /**
-   * @brief Copy a record from a given node.
+   * @brief Copy a record from a given node to another one.
    *
    * @tparam Payload a class of payload.
    * @param from_node an original node that has a target record.
-   * @param to_node a target node for copying.
+   * @param to_node a destination node for copying.
    * @param meta the corresponding metadata of a target record.
    * @param offset the current offset of this node.
+   * @param r_node an optional right-split node for splitting.
    * @return the updated offset value.
    */
   template <class Payload>
@@ -1543,10 +1536,11 @@ class Node
   }
 
   /**
-   * @brief Copy records from a given node.
+   * @brief Copy records from a given node to another one.
    *
    * @tparam Payload a class of payload.
-   * @param orig_node an original node that has target records.
+   * @param from_node an original node that has a target record.
+   * @param to_node a destination node for copying.
    * @param begin_pos the begin position of target records.
    * @param end_pos the end position of target records.
    * @param offset the current offset of this node.
