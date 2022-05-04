@@ -148,16 +148,11 @@ class NodeFixture : public testing::Test  // NOLINT
   void
   PrepareConsolidatedNode()
   {
-    const size_t first_max_num = kMaxDeltaRecNum;
-    const size_t second_max_num = 2 * first_max_num;
-
-    // prepare consolidated node
-    for (size_t i = 0; i < first_max_num; ++i) {
-      Write(i, i);
-    }
-    Consolidate();
-    for (size_t i = first_max_num; i < second_max_num; ++i) {
-      Write(i, i);
+    for (size_t i = 0; i < kRecNumInNode; ++i) {
+      if (Write(i, i) != NodeRC::kSuccess) {
+        Consolidate();
+        --i;
+      }
     }
     Consolidate();
   }
@@ -251,13 +246,7 @@ class NodeFixture : public testing::Test  // NOLINT
     const auto r_count = kRecNumInNode / 2;
     const auto l_count = kRecNumInNode - r_count;
 
-    for (size_t i = 0; i < kRecNumInNode; ++i) {
-      if (Write(i, i) != NodeRC::kSuccess) {
-        Consolidate();
-        --i;
-      }
-    }
-    Consolidate();
+    PrepareConsolidatedNode();
 
     auto *left_node = new Node_t{kLeafFlag, 0};
     auto *right_node = new Node_t{kLeafFlag, 0};
@@ -282,7 +271,8 @@ class NodeFixture : public testing::Test  // NOLINT
     auto *left_node = new Node_t{kLeafFlag, 0};
     auto *right_node = new Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(left_node, right_node);
-    Node_t *merged_node = left_node;
+
+    auto *merged_node = new Node_t{kLeafFlag, 0};
     merged_node->template Merge<Payload>(left_node, right_node);
 
     node_.reset(merged_node);
@@ -290,6 +280,7 @@ class NodeFixture : public testing::Test  // NOLINT
       VerifyRead(i, i, kExpectSuccess);
     }
 
+    delete left_node;
     delete right_node;
   }
 
@@ -350,7 +341,7 @@ class NodeFixture : public testing::Test  // NOLINT
     node_->template Split<Payload>(l_node, r_node);
     auto *old_parent = new Node_t{!kLeafFlag, 0};
     old_parent->InitAsRoot(l_node, r_node);
-    Node_t *merged_node = l_node;
+    auto *merged_node = new Node_t{kLeafFlag, 0};
     merged_node->template Merge<Payload>(l_node, r_node);
     auto *new_parent = new Node_t{!kLeafFlag, 0};
     new_parent->InitAsMergeParent(old_parent, merged_node, 0);
@@ -359,6 +350,7 @@ class NodeFixture : public testing::Test  // NOLINT
 
     delete l_node;
     delete r_node;
+    delete merged_node;
     delete old_parent;
     delete new_parent;
   }

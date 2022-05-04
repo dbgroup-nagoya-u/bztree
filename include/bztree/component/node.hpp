@@ -53,9 +53,10 @@ class Node
   Node(  //
       const bool is_leaf,
       const size_t block_size)
-      : node_size_{kPageSize},
+      : node_size_{kHeaderLength},
         sorted_count_{0},
         is_leaf_{static_cast<uint64_t>(is_leaf)},
+        do_splitting_{0},
         status_{0, block_size}
   {
   }
@@ -859,67 +860,32 @@ class Node
    *##################################################################################*/
 
   /**
+   * @brief Initialize header information for scanning.
+   *
+   */
+  void
+  InitForScanning()
+  {
+    node_size_ = 0;
+    sorted_count_ = 0;
+    do_splitting_ = 0;
+  }
+
+  /**
    * @brief Consolidate a target leaf node.
    *
    * @tparam Payload a class of payload.
-   * @param old_node an original node.
+   * @param node an original node.
    */
   template <class Payload>
   void
-  Consolidate(const Node *old_node)
+  Consolidate(const Node *node)
   {
-    // set a lowest/highest keys
-    auto offset = CopyKeyFrom(old_node, old_node->high_meta_, kPageSize);
-    high_meta_ = old_node->high_meta_.UpdateOffset(offset);
-    if constexpr (NeedOffsetAlignment<Key, Payload>()) {
-      offset = Pad<Key, Payload>(offset);
-    }
-
-    // sort records in an unsorted region
-    const auto [new_rec_num, records] = old_node->SortNewRecords();
-
-    // perform merge-sort to consolidate a node
-    const auto sorted_count = old_node->sorted_count_;
-    size_t rec_count = 0;
-
-    size_t j = 0;
-    for (size_t i = 0; i < sorted_count; ++i) {
-      const auto meta = old_node->GetMetadataProtected(i);
-      const auto &key = old_node->GetKey(meta);
-
-      // copy new records
-      for (; j < new_rec_num; ++j) {
-        const auto &[target_meta, target_key] = records[j];
-        if (!Compare{}(target_key, key)) break;
-
-        // check a new record is active
-        if (target_meta.IsVisible()) {
-          offset = CopyRecordFrom<Payload>(old_node, target_meta, rec_count++, offset);
-        }
-      }
-
-      // check a new record is updated one
-      if (j < new_rec_num && IsEqual<Compare>(key, records[j].key)) {
-        const auto target_meta = records[j++].meta;
-        if (target_meta.IsVisible()) {
-          offset = CopyRecordFrom<Payload>(old_node, target_meta, rec_count++, offset);
-        }
-      } else if (meta.IsVisible()) {
-        offset = CopyRecordFrom<Payload>(old_node, meta, rec_count++, offset);
-      }
-    }
-
-    // move remaining new records
-    for (; j < new_rec_num; ++j) {
-      const auto target_meta = records[j].meta;
-      if (target_meta.IsVisible()) {
-        offset = CopyRecordFrom<Payload>(old_node, target_meta, rec_count++, offset);
-      }
-    }
+    auto offset = node->ConsolidateTo<Payload>(kPageSize, this);
 
     // set header information
-    sorted_count_ = rec_count;
-    status_ = StatusWord{rec_count, kPageSize - offset};
+    offset = CopyHighKeyFrom<Payload>(node, offset);
+    status_ = StatusWord{sorted_count_, kPageSize - offset};
   }
 
   /**
@@ -935,32 +901,22 @@ class Node
       Node *l_node,
       Node *r_node) const
   {
-    const auto rec_count = sorted_count_;
+    constexpr auto kIsInternal = std::is_same_v<Payload, Node *>;
+    l_node->do_splitting_ = true;
 
-    // copy records to a left node
-    auto l_offset = l_node->CopyRecordsFrom<Payload>(this, 0, rec_count, kPageSize, kDoSplit);
-
-    // set a highest key to a left node
-    const auto split_meta = meta_array_[l_node->sorted_count_ - 1];
-    l_offset = l_node->CopyKeyFrom(this, split_meta, l_offset);
-    l_node->high_meta_ = split_meta.UpdateOffset(l_offset);
-    if constexpr (NeedOffsetAlignment<Key, Payload>()) {
-      l_offset = Pad<Key, Payload>(l_offset);
+    // copy records to left/right nodes
+    auto offset = kPageSize;
+    if constexpr (kIsInternal) {
+      for (size_t i = 0; i < sorted_count_; ++i) {
+        offset = CopyRecord<Payload>(this, l_node, meta_array_[i], offset, r_node);
+      }
+    } else {
+      offset = ConsolidateTo<Payload>(kPageSize, l_node, r_node);
     }
 
-    // set a header of a left node
-    l_node->status_ = StatusWord{l_node->sorted_count_, kPageSize - l_offset};
-
-    // set a highest key to a righit node
-    auto r_offset = r_node->CopyKeyFrom(this, high_meta_, kPageSize);
-    r_node->high_meta_ = high_meta_.UpdateOffset(r_offset);
-    if constexpr (NeedOffsetAlignment<Key, Payload>()) {
-      r_offset = Pad<Key, Payload>(r_offset);
-    }
-
-    // copy records to a right node
-    r_offset = r_node->CopyRecordsFrom<Payload>(this, l_node->sorted_count_, rec_count, r_offset);
-    r_node->status_ = StatusWord{r_node->sorted_count_, kPageSize - r_offset};
+    // set header information for a right node (left header is set via splitting)
+    offset = r_node->CopyHighKeyFrom<Payload>(this, offset);
+    r_node->status_ = StatusWord{r_node->sorted_count_, kPageSize - offset};
   }
 
   /**
@@ -982,14 +938,10 @@ class Node
       -> bool
   {
     // set a lowest/highest keys
-    auto offset = CopyKeyFrom(old_node, old_node->high_meta_, kPageSize);
-    high_meta_ = old_node->high_meta_.UpdateOffset(offset);
-    if constexpr (NeedOffsetAlignment<Key, Node *>()) {
-      offset = Pad<Key, Node *>(offset);
-    }
+    auto offset = CopyHighKeyFrom<Node *>(old_node, kPageSize);
 
     // copy lower records
-    offset = CopyRecordsFrom<Node *>(old_node, 0, l_pos, offset);
+    offset = CopyRecords<Node *>(old_node, this, 0, l_pos, offset);
 
     // insert split nodes
     const auto l_meta = l_child->meta_array_[l_child->sorted_count_ - 1];
@@ -1000,7 +952,7 @@ class Node
     sorted_count_ += 2;
 
     // copy upper records
-    offset = CopyRecordsFrom<Node *>(old_node, r_pos, old_node->sorted_count_, offset);
+    offset = CopyRecords<Node *>(old_node, this, r_pos, old_node->sorted_count_, offset);
 
     // set an updated header
     StatusWord stat{sorted_count_, kPageSize - offset};
@@ -1050,25 +1002,20 @@ class Node
       const Node *l_node,
       const Node *r_node)
   {
-    // set a highest key
-    auto offset = CopyKeyFrom(r_node, r_node->high_meta_, kPageSize);
-    high_meta_ = r_node->high_meta_.UpdateOffset(offset);
-    if constexpr (NeedOffsetAlignment<Key, Payload>()) {
-      offset = Pad<Key, Payload>(offset);
-    }
+    constexpr auto kIsInternal = std::is_same_v<Payload, Node *>;
 
     // copy records in left/right nodes
-    if constexpr (std::is_same_v<Payload, Node *>) {
-      // copy records from a merged left node
-      offset = CopyRecordsFrom<Payload>(l_node, 0, l_node->sorted_count_, offset);
+    size_t offset{};
+    if constexpr (kIsInternal) {
+      offset = CopyRecords<Payload>(l_node, this, 0, l_node->sorted_count_, kPageSize);
+      offset = CopyRecords<Payload>(r_node, this, 0, r_node->sorted_count_, offset);
     } else {
-      // perform consolidation to sort and copy records in a merge left node
-      Consolidate<Payload>(l_node);
-      offset = (sorted_count_ > 0) ? meta_array_[sorted_count_ - 1].GetOffset() : offset;
+      offset = l_node->ConsolidateTo<Payload>(kPageSize, this);
+      offset = r_node->ConsolidateTo<Payload>(offset, this);
     }
-    offset = CopyRecordsFrom<Payload>(r_node, 0, r_node->sorted_count_, offset);
 
-    // create a merged node
+    // set header information
+    offset = CopyHighKeyFrom<Payload>(r_node, offset);
     status_ = StatusWord{sorted_count_, kPageSize - offset};
   }
 
@@ -1087,14 +1034,10 @@ class Node
       -> bool
   {
     // set a lowest/highest keys
-    auto offset = CopyKeyFrom(old_node, old_node->high_meta_, kPageSize);
-    high_meta_ = old_node->high_meta_.UpdateOffset(offset);
-    if constexpr (NeedOffsetAlignment<Key, Node *>()) {
-      offset = Pad<Key, Node *>(offset);
-    }
+    auto offset = CopyHighKeyFrom<Node *>(old_node, kPageSize);
 
     // copy lower records
-    offset = CopyRecordsFrom<Node *>(old_node, 0, position, offset);
+    offset = CopyRecords<Node *>(old_node, this, 0, position, offset);
 
     // insert a merged node
     const auto meta = merged_child->meta_array_[merged_child->sorted_count_ - 1];
@@ -1103,7 +1046,7 @@ class Node
 
     // copy upper records
     const auto r_pos = position + 2;
-    offset = CopyRecordsFrom<Node *>(old_node, r_pos, old_node->sorted_count_, offset);
+    offset = CopyRecords<Node *>(old_node, this, r_pos, old_node->sorted_count_, offset);
 
     // set an updated header
     StatusWord stat{sorted_count_, kPageSize - offset};
@@ -1154,12 +1097,9 @@ class Node
     }
 
     // set a highest key
-    const auto meta = meta_array_[sorted_count_ - 1];
-    offset = CopyKeyFrom(this, meta, offset);
-    high_meta_ = meta.UpdateOffset(offset);
-    if constexpr (NeedOffsetAlignment<Key, Payload>()) {
-      offset = Pad<Key, Payload>(offset);
-    }
+    const auto high_meta = meta_array_[sorted_count_ - 1];
+    const auto high_key_len = high_meta.GetKeyLength();
+    high_meta_ = Metadata{high_meta.GetOffset(), high_key_len, high_key_len};
 
     // create the header of the leaf node
     status_ = StatusWord{sorted_count_, kPageSize - offset};
@@ -1515,17 +1455,27 @@ class Node
    * @param offset the current offset of this node.
    * @return the updated offset value.
    */
+  template <class Payload>
   auto
-  CopyKeyFrom(  //
+  CopyHighKeyFrom(  //
       const Node *node,
-      const Metadata meta,
       size_t offset)  //
       -> size_t
   {
-    // copy a record from the given node
-    const auto key_len = meta.GetKeyLength();
+    const auto high_meta = node->high_meta_;
+    const auto key_len = high_meta.GetKeyLength();
+
+    // copy a highest key from the given node
     offset -= key_len;
-    memcpy(ShiftAddr(this, offset), node->GetKeyAddr(meta), key_len);
+    memcpy(ShiftAddr(this, offset), node->GetKeyAddr(high_meta), key_len);
+    high_meta_ = Metadata{offset, key_len, key_len};
+
+    // align offset if needed
+    if constexpr (NeedOffsetAlignment<Key, Payload>()) {
+      if (key_len > 0) {
+        offset = Pad<Key, Payload>(offset);
+      }
+    }
 
     return offset;
   }
@@ -1534,43 +1484,59 @@ class Node
    * @brief Copy a record from a given node.
    *
    * @tparam Payload a class of payload.
-   * @param orig_node an original node that has a target record.
+   * @param from_node an original node that has a target record.
+   * @param to_node a target node for copying.
    * @param meta the corresponding metadata of a target record.
-   * @param rec_count the current number of records in this node.
    * @param offset the current offset of this node.
    * @return the updated offset value.
    */
   template <class Payload>
-  auto
-  CopyRecordFrom(  //
-      const Node *node,
+  static auto
+  CopyRecord(  //
+      const Node *from_node,
+      Node *&to_node,
       const Metadata meta,
-      const size_t rec_count,
-      size_t offset)  //
+      size_t offset,
+      Node *r_node = nullptr)  //
       -> size_t
   {
+    const auto key_len = meta.GetKeyLength();
+    const auto rec_len = meta.GetTotalLength();
+    auto tmp_offset = offset;
+
     if constexpr (CanCASUpdate<Payload>()) {
       // copy a payload with MwCAS read protection
-      auto tmp_offset = offset - sizeof(Payload);
-      auto &&payload = MwCASDescriptor::Read<Payload>(node->GetPayloadAddr(meta));
-      memcpy(ShiftAddr(this, tmp_offset), &payload, sizeof(Payload));
+      tmp_offset -= sizeof(Payload);
+      const auto &payload = MwCASDescriptor::Read<Payload>(from_node->GetPayloadAddr(meta));
+      memcpy(ShiftAddr(to_node, tmp_offset), &payload, sizeof(Payload));
 
       // copy a correspondng key
-      const auto key_len = meta.GetKeyLength();
       tmp_offset -= key_len;
-      memcpy(ShiftAddr(this, tmp_offset), node->GetKeyAddr(meta), key_len);
-
-      // set new metadata and update current offset
-      meta_array_[rec_count] = meta.UpdateOffset(tmp_offset);
-      offset -= meta.GetTotalLength();
+      memcpy(ShiftAddr(to_node, tmp_offset), from_node->GetKeyAddr(meta), key_len);
     } else {
       // copy a record from the given node
-      const auto rec_len = meta.GetTotalLength();
-      offset -= rec_len;
-      memcpy(ShiftAddr(this, offset), node->GetKeyAddr(meta), rec_len);
+      tmp_offset -= rec_len;
+      memcpy(ShiftAddr(to_node, tmp_offset), from_node->GetKeyAddr(meta), rec_len);
+    }
 
-      // set new metadata
-      meta_array_[rec_count] = meta.UpdateOffset(offset);
+    // set new metadata
+    to_node->meta_array_[to_node->sorted_count_] = Metadata{tmp_offset, key_len, rec_len};
+
+    // update header information
+    ++to_node->sorted_count_;
+    to_node->node_size_ += rec_len + sizeof(Metadata);
+
+    if (to_node->do_splitting_ && to_node->node_size_ > kPageSize / 2) {
+      // finalize copying of a split-left node
+      to_node->do_splitting_ = false;
+      to_node->high_meta_ = Metadata{tmp_offset, key_len, key_len};
+      to_node->status_ = StatusWord{to_node->sorted_count_, kPageSize - tmp_offset};
+
+      // initialize a split-right node
+      to_node = r_node;
+      offset = kPageSize;
+    } else {
+      offset -= rec_len;
     }
 
     return offset;
@@ -1587,22 +1553,18 @@ class Node
    * @return the updated offset value.
    */
   template <class Payload>
-  auto
-  CopyRecordsFrom(  //
-      const Node *orig_node,
+  static auto
+  CopyRecords(  //
+      const Node *from_node,
+      Node *to_node,
       const size_t begin_pos,
       const size_t end_pos,
-      size_t offset,
-      const bool do_splitting = false)  //
+      size_t offset)  //
       -> size_t
   {
     // copy records from the given node
     for (size_t i = begin_pos; i < end_pos; ++i) {
-      const auto target_meta = orig_node->meta_array_[i];
-      offset = CopyRecordFrom<Payload>(orig_node, target_meta, sorted_count_++, offset);
-
-      size_t filled_size = kHeaderLength + kPageSize - offset + sizeof(Metadata) * sorted_count_;
-      if (do_splitting && filled_size > kPageSize / 2) break;
+      offset = CopyRecord<Payload>(from_node, to_node, from_node->meta_array_[i], offset);
     }
 
     return offset;
@@ -1651,6 +1613,62 @@ class Node
     return {count, arr};
   }
 
+  /**
+   * @brief Consolidate a target leaf node.
+   *
+   * @tparam Payload a class of payload.
+   * @param old_node an original node.
+   */
+  template <class Payload>
+  auto
+  ConsolidateTo(  //
+      size_t offset,
+      Node *node,
+      Node *r_node = nullptr) const  //
+      -> size_t
+  {
+    // sort records in an unsorted region
+    const auto [new_rec_num, records] = SortNewRecords();
+
+    // perform merge-sort to consolidate a node
+    size_t j = 0;
+    for (size_t i = 0; i < sorted_count_; ++i) {
+      const auto meta = GetMetadataProtected(i);
+      const auto &key = GetKey(meta);
+
+      // copy new records
+      for (; j < new_rec_num; ++j) {
+        const auto &[rec_meta, rec_key] = records[j];
+        if (!Compare{}(rec_key, key)) break;
+
+        // check a new record is active
+        if (rec_meta.IsVisible()) {
+          offset = CopyRecord<Payload>(this, node, rec_meta, offset, r_node);
+        }
+      }
+
+      // check a new record is updated one
+      if (j < new_rec_num && IsEqual<Compare>(key, records[j].key)) {
+        const auto rec_meta = records[j++].meta;
+        if (rec_meta.IsVisible()) {
+          offset = CopyRecord<Payload>(this, node, rec_meta, offset, r_node);
+        }
+      } else if (meta.IsVisible()) {
+        offset = CopyRecord<Payload>(this, node, meta, offset, r_node);
+      }
+    }
+
+    // move remaining new records
+    for (; j < new_rec_num; ++j) {
+      const auto rec_meta = records[j].meta;
+      if (rec_meta.IsVisible()) {
+        offset = CopyRecord<Payload>(this, node, rec_meta, offset, r_node);
+      }
+    }
+
+    return offset;
+  }
+
   /*####################################################################################
    * Internal variables
    *##################################################################################*/
@@ -1661,8 +1679,11 @@ class Node
   /// the number of sorted records.
   uint64_t sorted_count_ : 16;
 
-  /// a flag to indicate whether this node is a leaf or internal node.
+  /// a flag for indicating whether this node is a leaf or internal node.
   uint64_t is_leaf_ : 1;
+
+  /// a flag for indicating whether this node is being split.
+  uint64_t do_splitting_ : 1;
 
   /// a black block for alignment.
   uint64_t : 0;

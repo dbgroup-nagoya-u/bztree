@@ -309,6 +309,7 @@ class BzTree
     [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
 
     thread_local std::unique_ptr<Node_t> page{CreateNewNode<Payload>()};
+    page->InitForScanning();
 
     // sort records in a target node
     auto &&[b_key, b_closed] = begin_key.value_or(std::make_pair(Key{}, true));
@@ -707,21 +708,25 @@ class BzTree
     // freeze a target node and perform consolidation
     if (node->Freeze() != NodeRC::kSuccess) return;
 
-    // create a consolidated node
-    Node_t *consol_node = CreateNewNode<Payload>();
-    consol_node->template Consolidate<Payload>(node);
-
-    // check whether splitting/merging is needed
-    const auto stat = consol_node->GetStatusWord();
+    const auto stat = node->GetStatusWord();
     if (stat.template NeedSplit<Key, Payload>()) {
       // invoke splitting
-      Split<Payload>(consol_node, key);
-    } else if (!stat.NeedMerge() || !Merge<Payload>(consol_node, key)) {  // try merging
-      // install the consolidated node
-      auto &&trace = TraceTargetNode(key, node);
-      InstallNewNode(trace, consol_node, key, node);
+      Split<Payload>(node, key);
+      return;
     }
 
+    if (stat.NeedMerge()) {
+      // invoke merging
+      if (Merge<Payload>(node, key)) return;
+    }
+
+    // create a consolidated node
+    auto *consol_node = CreateNewNode<Payload>();
+    consol_node->template Consolidate<Payload>(node);
+
+    // install the consolidated node
+    auto &&trace = TraceTargetNode(key, node);
+    InstallNewNode(trace, consol_node, key, node);
     gc_.AddGarbage(node);
   }
 

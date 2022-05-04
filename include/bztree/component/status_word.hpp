@@ -170,7 +170,7 @@ class StatusWord
     constexpr auto kMinBlockSize = (kRecLen > kMinFreeSpaceSize) ? kRecLen : kMinFreeSpaceSize;
     constexpr auto kMaxUsedSize = kPageSize - (kHeaderLength + kMinBlockSize);
 
-    const auto this_size = (kWordSize * record_count_) + block_size_;
+    const auto this_size = (kWordSize * record_count_) + block_size_ - deleted_size_;
     return this_size > kMaxUsedSize;
   }
 
@@ -198,7 +198,7 @@ class StatusWord
   NeedMerge() const  //
       -> bool
   {
-    const auto this_size = (kWordSize * record_count_) + block_size_;
+    const auto this_size = (kWordSize * record_count_) + block_size_ - deleted_size_;
 
     return this_size < kMinNodeSize - kHeaderLength;
   }
