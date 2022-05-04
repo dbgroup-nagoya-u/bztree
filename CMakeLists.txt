@@ -24,10 +24,10 @@ set(MEMORY_MANAGER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/memory-manag
 
 set(BZTREE_PAGE_SIZE "1024" CACHE STRING "Page size in bytes.")
 set(BZTREE_MAX_DELTA_RECORD_NUM "64" CACHE STRING "Invoking consolidation if the number of delta records exceeds this threshold.")
-set(BZTREE_MAX_DELETED_SPACE_SIZE "(${BZTREE_PAGE_SIZE} / 8)" CACHE STRING "Invoking consolidation if the size of deleted space exceeds this threshold.")
-set(BZTREE_MIN_FREE_SPACE_SIZE "(${BZTREE_PAGE_SIZE} / 8)" CACHE STRING "Invoking a split-operation if the size of free space falls below this threshold.")
-set(BZTREE_MIN_NODE_SIZE  "(${BZTREE_PAGE_SIZE} / 16)" CACHE STRING "Invoking a merge-operation if the size of a consolidated node falls below this threshold.")
-set(BZTREE_MAX_MERGED_SIZE "(${BZTREE_PAGE_SIZE} / 2)" CACHE STRING "Canceling a merge-operation if the size of a merged node exceeds this threshold.")
+set(BZTREE_MAX_DELETED_SPACE_SIZE "(kPageSize / 8)" CACHE STRING "Invoking consolidation if the size of deleted space exceeds this threshold.")
+set(BZTREE_MIN_FREE_SPACE_SIZE "(kPageSize / 8)" CACHE STRING "Invoking a split-operation if the size of free space falls below this threshold.")
+set(BZTREE_MIN_NODE_SIZE  "(kPageSize / 16)" CACHE STRING "Invoking a merge-operation if the size of a consolidated node falls below this threshold.")
+set(BZTREE_MAX_MERGED_SIZE "(kPageSize / 2)" CACHE STRING "Canceling a merge-operation if the size of a merged node exceeds this threshold.")
 set(BZTREE_MAX_VARIABLE_DATA_SIZE "128" CACHE STRING "The maximun size of variable-length data.")
 
 #--------------------------------------------------------------------------------------#
