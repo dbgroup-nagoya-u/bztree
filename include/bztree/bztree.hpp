@@ -680,26 +680,26 @@ class BzTree
     // freeze a target node and perform consolidation
     if (node->Freeze() != NodeRC::kSuccess) return;
 
-    const auto stat = node->GetStatusWord();
-    if (stat.template NeedSplit<Key, Payload>()) {
-      // invoke splitting
-      Split<Payload>(node, key);
-      return;
-    }
-
-    if (stat.NeedMerge()) {
-      // invoke merging
-      if (Merge<Payload>(node, key)) return;
-    }
-
-    // create a consolidated node
+    // create a consolidated node to calculate a correct node size
     auto *consol_node = CreateNewNode<Payload>();
     consol_node->template Consolidate<Payload>(node);
+    gc_.AddGarbage(node);
+
+    // check other SMOs are needed
+    const auto stat = consol_node->GetStatusWord();
+    if (stat.template NeedSplit<Key, Payload>()) {
+      // invoke splitting
+      Split<Payload>(consol_node, key);
+      return;
+    }
+    if (stat.NeedMerge()) {
+      // invoke merging
+      if (Merge<Payload>(consol_node, key)) return;
+    }
 
     // install the consolidated node
     auto &&trace = TraceTargetNode(key, node);
     InstallNewNode(trace, consol_node, key, node);
-    gc_.AddGarbage(node);
   }
 
   /**
@@ -744,13 +744,13 @@ class BzTree
      *--------------------------------------------------------------------------------*/
 
     // create split nodes and its parent node
-    Node_t *l_node = CreateNewNode<T>();
-    Node_t *r_node = CreateNewNode<T>();
+    auto *l_node = CreateNewNode<T>();
+    auto *r_node = CreateNewNode<T>();
     node->template Split<T>(l_node, r_node);
 
     // create a new root/parent node
     bool recurse_split = false;
-    Node_t *new_parent = CreateNewNode<Node_t *>();
+    auto *new_parent = CreateNewNode<Node_t *>();
     if (root_split) {
       new_parent->InitAsRoot(l_node, r_node);
     } else {
@@ -827,9 +827,9 @@ class BzTree
      *--------------------------------------------------------------------------------*/
 
     // create new nodes
-    Node_t *merged_node = CreateNewNode<T>();
+    auto *merged_node = CreateNewNode<T>();
     merged_node->template Merge<T>(left_node, right_node);
-    Node_t *new_parent = CreateNewNode<Node_t *>();
+    auto *new_parent = CreateNewNode<Node_t *>();
     bool recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos - 1);
     if (trace.size() <= 1 && new_parent->GetSortedCount() == 1) {
       // the new root node has only one child, use the merged child as a new root

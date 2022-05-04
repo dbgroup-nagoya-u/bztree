@@ -943,17 +943,11 @@ class Node
       Node *l_node,
       Node *r_node) const
   {
-    constexpr auto kIsInternal = std::is_same_v<Payload, Node *>;
-    l_node->do_splitting_ = true;
-
     // copy records to left/right nodes
+    l_node->do_splitting_ = true;
     auto offset = kPageSize;
-    if constexpr (kIsInternal) {
-      for (size_t i = 0; i < sorted_count_; ++i) {
-        offset = CopyRecord<Payload>(this, l_node, meta_array_[i], offset, r_node);
-      }
-    } else {
-      offset = ConsolidateTo<Payload>(kPageSize, l_node, r_node);
+    for (size_t i = 0; i < sorted_count_; ++i) {
+      offset = CopyRecord<Payload>(this, l_node, meta_array_[i], offset, r_node);
     }
 
     // set header information for a right node (left header is set via splitting)
@@ -1047,14 +1041,10 @@ class Node
     constexpr auto kIsInternal = std::is_same_v<Payload, Node *>;
 
     // copy records in left/right nodes
-    size_t offset{};
-    if constexpr (kIsInternal) {
-      offset = CopyRecords<Payload>(l_node, this, 0, l_node->sorted_count_, kPageSize);
-      offset = CopyRecords<Payload>(r_node, this, 0, r_node->sorted_count_, offset);
-    } else {
-      offset = l_node->ConsolidateTo<Payload>(kPageSize, this);
-      offset = r_node->ConsolidateTo<Payload>(offset, this);
-    }
+    auto offset = (kIsInternal)
+                      ? CopyRecords<Payload>(l_node, this, 0, l_node->sorted_count_, kPageSize)
+                      : l_node->ConsolidateTo<Payload>(kPageSize, this);
+    offset = CopyRecords<Payload>(r_node, this, 0, r_node->sorted_count_, offset);
 
     // set header information
     offset = CopyHighKeyFrom<Payload>(r_node, offset);
@@ -1564,8 +1554,9 @@ class Node
       memcpy(ShiftAddr(to_node, tmp_offset), from_node->GetKeyAddr(meta), key_len);
     } else {
       // copy a record from the given node
+      const auto act_rec_len = key_len + sizeof(Payload);
       tmp_offset -= rec_len;
-      memcpy(ShiftAddr(to_node, tmp_offset), from_node->GetKeyAddr(meta), rec_len);
+      memcpy(ShiftAddr(to_node, tmp_offset), from_node->GetKeyAddr(meta), act_rec_len);
     }
 
     // set new metadata
@@ -1579,7 +1570,14 @@ class Node
       // finalize copying of a split-left node
       to_node->do_splitting_ = false;
       to_node->high_meta_ = Metadata{tmp_offset, key_len, key_len};
-      to_node->status_ = StatusWord{to_node->sorted_count_, kPageSize - tmp_offset};
+
+      // reduce offset to preserve space for a highest key
+      offset -= rec_len + key_len;
+      if constexpr (NeedOffsetAlignment<Key, Payload>()) {
+        // align offset if needed
+        offset = Pad<Key, Payload>(offset);
+      }
+      to_node->status_ = StatusWord{to_node->sorted_count_, kPageSize - offset};
 
       // initialize a split-right node
       to_node = r_node;
@@ -1673,8 +1671,7 @@ class Node
   auto
   ConsolidateTo(  //
       size_t offset,
-      Node *node,
-      Node *r_node = nullptr) const  //
+      Node *node) const  //
       -> size_t
   {
     // sort records in an unsorted region
@@ -1693,7 +1690,7 @@ class Node
 
         // check a new record is active
         if (rec_meta.IsVisible()) {
-          offset = CopyRecord<Payload>(this, node, rec_meta, offset, r_node);
+          offset = CopyRecord<Payload>(this, node, rec_meta, offset);
         }
       }
 
@@ -1701,10 +1698,10 @@ class Node
       if (j < new_rec_num && IsEqual<Compare>(key, records[j].key)) {
         const auto rec_meta = records[j++].meta;
         if (rec_meta.IsVisible()) {
-          offset = CopyRecord<Payload>(this, node, rec_meta, offset, r_node);
+          offset = CopyRecord<Payload>(this, node, rec_meta, offset);
         }
       } else if (meta.IsVisible()) {
-        offset = CopyRecord<Payload>(this, node, meta, offset, r_node);
+        offset = CopyRecord<Payload>(this, node, meta, offset);
       }
     }
 
@@ -1712,7 +1709,7 @@ class Node
     for (; j < new_rec_num; ++j) {
       const auto rec_meta = records[j].meta;
       if (rec_meta.IsVisible()) {
-        offset = CopyRecord<Payload>(this, node, rec_meta, offset, r_node);
+        offset = CopyRecord<Payload>(this, node, rec_meta, offset);
       }
     }
 
