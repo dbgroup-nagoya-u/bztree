@@ -248,19 +248,28 @@ class NodeFixture : public testing::Test  // NOLINT
   void
   VerifySplit()
   {
-    PrepareConsolidatedNode();
+    const auto r_count = kRecNumInNode / 2;
+    const auto l_count = kRecNumInNode - r_count;
+
+    for (size_t i = 0; i < kRecNumInNode; ++i) {
+      if (Write(i, i) != NodeRC::kSuccess) {
+        Consolidate();
+        --i;
+      }
+    }
+    Consolidate();
 
     auto *left_node = new Node_t{kLeafFlag, 0};
     auto *right_node = new Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(left_node, right_node);
 
     node_.reset(left_node);
-    for (size_t i = 0; i < kMaxDeltaRecNum; ++i) {
+    for (size_t i = 0; i < l_count; ++i) {
       VerifyRead(i, i, kExpectSuccess);
     }
 
     node_.reset(right_node);
-    for (size_t i = kMaxDeltaRecNum; i < 2 * kMaxDeltaRecNum; ++i) {
+    for (size_t i = l_count; i < kRecNumInNode; ++i) {
       VerifyRead(i, i, kExpectSuccess);
     }
   }
