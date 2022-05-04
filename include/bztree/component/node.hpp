@@ -123,17 +123,6 @@ class Node
   }
 
   /**
-   * @retval true if this node is rightmost in its level.
-   * @retval false otherwise.
-   */
-  [[nodiscard]] constexpr auto
-  IsRightEnd() const  //
-      -> bool
-  {
-    return high_meta_.GetKeyLength() == 0;
-  }
-
-  /**
    * @return the number of sorted records.
    */
   [[nodiscard]] constexpr auto
@@ -193,6 +182,31 @@ class Node
       -> Metadata
   {
     return meta_array_[position];
+  }
+
+  /**
+   * @brief Copy and return a highest key for scanning.
+   *
+   * NOTE: this function does not check the existence of a highest key.
+   * NOTE: this function allocates memory dynamically for variable-length keys, so it
+   * must be released by the caller.
+   *
+   * @return the highest key in this node.
+   */
+  [[nodiscard]] auto
+  GetHighKey() const  //
+      -> Key
+  {
+    Key high_key{};
+    if constexpr (IsVariableLengthData<Key>()) {
+      const auto key_len = high_meta_.GetKeyLength();
+      high_key = reinterpret_cast<Key>(::operator new(key_len));
+      memcpy(high_key, GetKeyAddr(high_meta_), key_len);
+    } else {
+      memcpy(&high_key, GetKeyAddr(high_meta_), sizeof(Key));
+    }
+
+    return high_key;
   }
 
   /**
@@ -429,6 +443,46 @@ class Node
     }
 
     return kSuccess;
+  }
+
+  /*####################################################################################
+   * Public APIs for scanning
+   *##################################################################################*/
+
+  /**
+   * @brief Initialize header information for scanning.
+   *
+   */
+  void
+  InitForScanning()
+  {
+    node_size_ = 0;
+    sorted_count_ = 0;
+    do_splitting_ = 0;
+  }
+
+  /**
+   * @brief Get the end position of records for scanning and check it has been finished.
+   *
+   * @param end_key a pair of a target key and its closed/open-interval flag.
+   * @retval 1st: true if this node is end of scanning.
+   * @retval 2nd: the end position for scanning.
+   */
+  [[nodiscard]] auto
+  SearchEndPositionFor(const std::optional<std::pair<const Key &, bool>> &end_key) const  //
+      -> std::pair<bool, size_t>
+  {
+    const auto is_end = IsRightmostOf(end_key);
+    size_t end_pos{};
+    if (is_end && end_key) {
+      const auto &[e_key, e_closed] = *end_key;
+      const auto [rc, pos] = SearchSortedRecord(e_key);
+      end_pos = (rc == kExist && e_closed) ? pos + 1 : pos;
+    } else {
+      end_pos = sorted_count_;
+    }
+
+    return {is_end, end_pos};
   }
 
   /*####################################################################################
@@ -860,18 +914,6 @@ class Node
    *##################################################################################*/
 
   /**
-   * @brief Initialize header information for scanning.
-   *
-   */
-  void
-  InitForScanning()
-  {
-    node_size_ = 0;
-    sorted_count_ = 0;
-    do_splitting_ = 0;
-  }
-
-  /**
    * @brief Consolidate a given node into this node.
    *
    * @tparam Payload a class of payload.
@@ -1159,6 +1201,20 @@ class Node
   /*####################################################################################
    * Internal getters
    *##################################################################################*/
+
+  /**
+   * @param end_key a pair of a target key and its closed/open-interval flag.
+   * @retval true if this node is a rightmost node for the given key.
+   * @retval false otherwise.
+   */
+  [[nodiscard]] auto
+  IsRightmostOf(const std::optional<std::pair<const Key &, bool>> &end_key) const  //
+      -> bool
+  {
+    if (high_meta_.GetKeyLength() == 0) return true;  // the rightmost node
+    if (!end_key) return false;                       // perform full scan
+    return !Compare{}(GetKey(high_meta_), end_key->first);
+  }
 
   /**
    * @brief Read metadata with MwCAS read protection.

@@ -151,28 +151,19 @@ class BzTree
     bool
     HasNext()
     {
-      if (current_pos_ < record_count_) return true;
-      if (is_right_end_) return false;
+      while (true) {
+        if (current_pos_ < record_count_) return true;  // records remain in this node
+        if (is_right_end_) return false;                // this node is the end of range-scan
 
-      // keep the end key to use as the next begin key
-      current_meta_ = node_->GetHighMeta();
-      Key begin_k{};
-      if constexpr (IsVariableLengthData<Key>()) {
-        const auto key_len = current_meta_.GetKeyLength();
-        begin_k = reinterpret_cast<Key>(::operator new(key_len));
-        memcpy(begin_k, node_->GetKey(current_meta_), key_len);
-      } else {
-        begin_k = node_->GetKey(current_meta_);
+        // update this iterator with the next scan results
+        const auto &next_key = node_->GetHighKey();
+        *this = bztree_->Scan(std::make_pair(next_key, false), end_key_);
+
+        if constexpr (IsVariableLengthData<Key>()) {
+          // release a dynamically allocated key
+          delete next_key;
+        }
       }
-
-      // update this iterator with the next scan results
-      *this = bztree_->Scan(std::make_pair(begin_k, false), end_key_);
-
-      if constexpr (IsVariableLengthData<Key>()) {
-        delete begin_k;
-      }
-
-      return HasNext();
     }
 
     /**
@@ -312,29 +303,24 @@ class BzTree
     page->InitForScanning();
 
     // sort records in a target node
-    auto &&[b_key, b_closed] = begin_key.value_or(std::make_pair(Key{}, true));
-    Node_t *node = (begin_key) ? SearchLeafNode(b_key, b_closed) : SearchLeftEdgeLeaf();
-    page->template Consolidate<Payload>(node);
-
-    // find begin/end positions in the sorted records
     size_t begin_pos = 0;
     if (begin_key) {
+      const auto &[b_key, b_closed] = *begin_key;
+      const auto *node = SearchLeafNode(b_key, b_closed);
+      page->template Consolidate<Payload>(node);
+
+      // check the begin position for scanning
       auto [rc, pos] = page->SearchSortedRecord(b_key);
       begin_pos = (rc == KeyExistence::kNotExist || b_closed) ? pos : pos + 1;
-    }
-    auto end_pos = page->GetSortedCount();
-    auto is_right_end = page->IsRightEnd();
-    if (end_key) {
-      auto &&[e_key, e_closed] = *end_key;
-      if (!Compare{}(page->GetKey(page->GetMetadata(end_pos - 1)), e_key)) {
-        is_right_end = true;
-
-        auto [rc, pos] = page->SearchSortedRecord(e_key);
-        end_pos = (rc == KeyExistence::kExist && e_closed) ? pos + 1 : pos;
-      }
+    } else {
+      const auto *node = SearchLeftEdgeLeaf();
+      page->template Consolidate<Payload>(node);
     }
 
-    return RecordIterator{this, page.get(), begin_pos, end_pos, end_key, is_right_end};
+    // check the end position of scanning
+    const auto [is_end, end_pos] = page->SearchEndPositionFor(end_key);
+
+    return RecordIterator{this, page.get(), begin_pos, end_pos, end_key, is_end};
   }
 
   /*####################################################################################
