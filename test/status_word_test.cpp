@@ -29,7 +29,7 @@ constexpr size_t kExpectedRecordCount = 1;
 constexpr size_t kExpectedBlockSize = 16;
 constexpr size_t kMaxBlockSize = kPageSize - kHeaderLength;
 constexpr size_t kMaxUsedSize = kMaxBlockSize - kMinFreeSpaceSize;
-constexpr size_t kMinUsedSize = kMinConsolidatedSize - kHeaderLength;
+constexpr size_t kMinUsedSize = kMinNodeSize - kHeaderLength;
 constexpr size_t kMaxMergedBlockSize = kMaxMergedSize - kHeaderLength;
 
 class StatusWordFixture : public testing::Test
@@ -124,14 +124,14 @@ TEST_F(StatusWordFixture, NEQWithDifferentStatusWordsReturnTrue)
 
 TEST_F(StatusWordFixture, NeedConsolidateionWithFewUnsoretedRecordsReturnFalse)
 {
-  const StatusWord stat{kMaxUnsortedRecNum, 0};
+  const StatusWord stat{kMaxDeltaRecNum, 0};
 
   EXPECT_FALSE(stat.NeedConsolidation(0));
 }
 
 TEST_F(StatusWordFixture, NeedConsolidateionWithManyUnsoretedRecordsReturnTrue)
 {
-  const StatusWord stat{kMaxUnsortedRecNum + 1, 0};
+  const StatusWord stat{kMaxDeltaRecNum + 1, 0};
 
   EXPECT_TRUE(stat.NeedConsolidation(0));
 }
@@ -167,15 +167,17 @@ TEST_F(StatusWordFixture, NeedConsolidateionWithLargeDeletedSizeReturnTrue)
 TEST_F(StatusWordFixture, NeedSplitWithSmallBlockSizeReturnFalse)
 {
   const StatusWord stat{0, kMaxUsedSize};
+  const auto need_split = stat.template NeedSplit<size_t, size_t>();
 
-  EXPECT_FALSE(stat.NeedSplit());
+  EXPECT_FALSE(need_split);
 }
 
 TEST_F(StatusWordFixture, NeedSplitWithLargeBlockSizeReturnTrue)
 {
   const StatusWord stat{0, kMaxUsedSize + 1};
+  const auto need_split = stat.template NeedSplit<size_t, size_t>();
 
-  EXPECT_TRUE(stat.NeedSplit());
+  EXPECT_TRUE(need_split);
 }
 
 TEST_F(StatusWordFixture, NeedMergeWithSmallBlockSizeReturnTrue)

@@ -8,52 +8,38 @@ on:
 
 env:
   BUILD_TYPE: Release
+  THREAD_NUM: 2
 
 jobs:
   unit_test:
     runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        page-size: [1024, 2048, 4096, 8192]
     steps:
 
     - name: Clone Repository
       uses: actions/checkout@v2
       with:
         submodules: recursive
-        ssh-key: ${{secrets.SSH_KEY_FOR_ACTIONS}}
-        persist-credentials: false
 
     - name: Create Build Environment
       shell: bash
       run: |
         sudo apt-get install -y build-essential cmake
-        cmake -E make_directory ${{github.workspace}}/build_4k
-        cmake -E make_directory ${{github.workspace}}/build_8k
+        cmake -E make_directory ${{github.workspace}}/build
 
-    - name: Configure CMake for 4K Pages
+    - name: Configure CMake
       shell: bash
-      working-directory: ${{github.workspace}}/build_4k
-      run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBZTREE_PAGE_SIZE=4096 -DBZTREE_MAX_UNSORTED_REC_NUM=32 -DBZTREE_BUILD_TESTS=ON -DBZTREE_TEST_THREAD_NUM=2
+      working-directory: ${{github.workspace}}/build
+      run: cmake ${GITHUB_WORKSPACE} -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DBZTREE_PAGE_SIZE=${{matrix.page-size}} -DBZTREE_BUILD_TESTS=ON -DBZTREE_TEST_THREAD_NUM=${THREAD_NUM}
 
-    - name: Build for 4K Pages
+    - name: Build
       shell: bash
-      working-directory: ${{github.workspace}}/build_4k
-      run: cmake --build . --parallel 2 --config $BUILD_TYPE
+      working-directory: ${{github.workspace}}/build
+      run: cmake --build . --parallel ${THREAD_NUM} --config ${BUILD_TYPE}
 
-    - name: Test for 4K Pages
+    - name: Test
       shell: bash
-      working-directory: ${{github.workspace}}/build_4k
-      run: ctest -C $BUILD_TYPE
-
-    - name: Configure CMake for 8K Pages
-      shell: bash
-      working-directory: ${{github.workspace}}/build_8k
-      run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBZTREE_PAGE_SIZE=8192 -DBZTREE_MAX_UNSORTED_REC_NUM=64 -DBZTREE_BUILD_TESTS=ON -DBZTREE_TEST_THREAD_NUM=2
-
-    - name: Build for 8K Pages
-      shell: bash
-      working-directory: ${{github.workspace}}/build_8k
-      run: cmake --build . --parallel 2 --config $BUILD_TYPE
-
-    - name: Test for 8K Pages
-      shell: bash
-      working-directory: ${{github.workspace}}/build_8k
-      run: ctest -C $BUILD_TYPE
+      working-directory: ${{github.workspace}}/build
+      run: ctest -C ${BUILD_TYPE}

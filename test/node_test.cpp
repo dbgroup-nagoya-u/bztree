@@ -49,7 +49,7 @@ class NodeFixture : public testing::Test  // NOLINT
   using Key = typename KeyPayload::Key::Data;
   using Payload = typename KeyPayload::Payload::Data;
   using KeyComp = typename KeyPayload::Key::Comp;
-  using PayloadComp = typename KeyPayload::Payload::Comp;
+  using PayComp = typename KeyPayload::Payload::Comp;
 
   // define type aliases for simplicity
   using Node_t = Node<Key, KeyComp>;
@@ -61,7 +61,7 @@ class NodeFixture : public testing::Test  // NOLINT
 
   static constexpr size_t kKeyLen = GetDataLength<Key>();
   static constexpr size_t kPayLen = GetDataLength<Payload>();
-  static constexpr size_t kRecLen = std::get<2>(Align<Key, Payload>(kKeyLen, kPayLen));
+  static constexpr size_t kRecLen = Align<Key, Payload>(kKeyLen).second;
   static constexpr size_t kRecNumInNode =
       (kPageSize - kHeaderLength) / (kRecLen + sizeof(Metadata));
 
@@ -72,8 +72,7 @@ class NodeFixture : public testing::Test  // NOLINT
   void
   SetUp() override
   {
-    static_assert(kPageSize > kMaxRecSize * kMaxUnsortedRecNum * 2 + kHeaderLength,
-                  "The page size is too small to perform unit tests.");
+    if (kPageSize < kMaxRecSize * kMaxDeltaRecNum * 2 + kHeaderLength) GTEST_SKIP();
 
     node_.reset(new Node_t{kLeafFlag, 0});
 
@@ -88,8 +87,8 @@ class NodeFixture : public testing::Test  // NOLINT
       const auto del_size = kRecLen + kKeyLen + 2 * sizeof(Metadata);
       max_del_num_ = kMaxDeletedSpaceSize / del_size;
     }
-    if (max_del_num_ > kMaxUnsortedRecNum) {
-      max_del_num_ = kMaxUnsortedRecNum;
+    if (max_del_num_ > kMaxDeltaRecNum) {
+      max_del_num_ = kMaxDeltaRecNum;
     }
   }
 
@@ -109,7 +108,7 @@ class NodeFixture : public testing::Test  // NOLINT
       const size_t key_id,
       const size_t payload_id)
   {
-    return node_->Write(keys_[key_id], kKeyLen, payloads_[payload_id], kPayLen);
+    return node_->Write(keys_[key_id], kKeyLen, payloads_[payload_id]);
   }
 
   auto
@@ -117,7 +116,7 @@ class NodeFixture : public testing::Test  // NOLINT
       const size_t key_id,
       const size_t payload_id)
   {
-    return node_->Insert(keys_[key_id], kKeyLen, payloads_[payload_id], kPayLen);
+    return node_->Insert(keys_[key_id], kKeyLen, payloads_[payload_id]);
   }
 
   auto
@@ -125,7 +124,7 @@ class NodeFixture : public testing::Test  // NOLINT
       const size_t key_id,
       const size_t payload_id)
   {
-    return node_->Update(keys_[key_id], kKeyLen, payloads_[payload_id], kPayLen);
+    return node_->Update(keys_[key_id], kKeyLen, payloads_[payload_id]);
   }
 
   auto
@@ -149,16 +148,11 @@ class NodeFixture : public testing::Test  // NOLINT
   void
   PrepareConsolidatedNode()
   {
-    const size_t first_max_num = kMaxUnsortedRecNum;
-    const size_t second_max_num = 2 * first_max_num;
-
-    // prepare consolidated node
-    for (size_t i = 0; i < first_max_num; ++i) {
-      Write(i, i);
-    }
-    Consolidate();
-    for (size_t i = first_max_num; i < second_max_num; ++i) {
-      Write(i, i);
+    for (size_t i = 0; i < kRecNumInNode; ++i) {
+      if (Write(i, i) != NodeRC::kSuccess) {
+        Consolidate();
+        --i;
+      }
     }
     Consolidate();
   }
@@ -180,7 +174,7 @@ class NodeFixture : public testing::Test  // NOLINT
 
     EXPECT_EQ(expected_rc, rc);
     if (expect_success) {
-      EXPECT_TRUE(IsEqual<PayloadComp>(payloads_[expected_id], payload));
+      EXPECT_TRUE(IsEqual<PayComp>(payloads_[expected_id], payload));
       if constexpr (IsVariableLengthData<Payload>()) {
         ::operator delete(payload);
       }
@@ -249,6 +243,9 @@ class NodeFixture : public testing::Test  // NOLINT
   void
   VerifySplit()
   {
+    const auto r_count = kRecNumInNode / 2;
+    const auto l_count = kRecNumInNode - r_count;
+
     PrepareConsolidatedNode();
 
     auto *left_node = new Node_t{kLeafFlag, 0};
@@ -256,12 +253,12 @@ class NodeFixture : public testing::Test  // NOLINT
     node_->template Split<Payload>(left_node, right_node);
 
     node_.reset(left_node);
-    for (size_t i = 0; i < kMaxUnsortedRecNum; ++i) {
+    for (size_t i = 0; i < l_count; ++i) {
       VerifyRead(i, i, kExpectSuccess);
     }
 
     node_.reset(right_node);
-    for (size_t i = kMaxUnsortedRecNum; i < 2 * kMaxUnsortedRecNum; ++i) {
+    for (size_t i = l_count; i < kRecNumInNode; ++i) {
       VerifyRead(i, i, kExpectSuccess);
     }
   }
@@ -274,14 +271,16 @@ class NodeFixture : public testing::Test  // NOLINT
     auto *left_node = new Node_t{kLeafFlag, 0};
     auto *right_node = new Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(left_node, right_node);
-    Node_t *merged_node = left_node;
+
+    auto *merged_node = new Node_t{kLeafFlag, 0};
     merged_node->template Merge<Payload>(left_node, right_node);
 
     node_.reset(merged_node);
-    for (size_t i = 0; i < 2 * kMaxUnsortedRecNum; ++i) {
+    for (size_t i = 0; i < 2 * kMaxDeltaRecNum; ++i) {
       VerifyRead(i, i, kExpectSuccess);
     }
 
+    delete left_node;
     delete right_node;
   }
 
@@ -342,7 +341,7 @@ class NodeFixture : public testing::Test  // NOLINT
     node_->template Split<Payload>(l_node, r_node);
     auto *old_parent = new Node_t{!kLeafFlag, 0};
     old_parent->InitAsRoot(l_node, r_node);
-    Node_t *merged_node = l_node;
+    auto *merged_node = new Node_t{kLeafFlag, 0};
     merged_node->template Merge<Payload>(l_node, r_node);
     auto *new_parent = new Node_t{!kLeafFlag, 0};
     new_parent->InitAsMergeParent(old_parent, merged_node, 0);
@@ -351,6 +350,7 @@ class NodeFixture : public testing::Test  // NOLINT
 
     delete l_node;
     delete r_node;
+    delete merged_node;
     delete old_parent;
     delete new_parent;
   }
@@ -374,14 +374,16 @@ class NodeFixture : public testing::Test  // NOLINT
  *####################################################################################*/
 
 using KeyPayloadPairs = ::testing::Types<  //
-    KeyPayload<UInt8, UInt8>,              // fixed keys and in-place payloads
-    KeyPayload<Var, UInt8>,                // variable keys and in-place payloads
-    KeyPayload<UInt8, Var>,                // fixed keys and variable payloads
-    KeyPayload<Var, Var>,                  // variable keys/payloads
-    KeyPayload<Ptr, Ptr>,                  // pointer keys/payloads
-    KeyPayload<UInt8, Original>,           // original class payloads
-    KeyPayload<UInt8, Int8>,               // fixed keys and appended payloads
-    KeyPayload<Var, Int8>                  // variable keys and appended payloads
+    KeyPayload<UInt8, UInt8>,              // fixed-length keys
+    KeyPayload<UInt8, Int8>,               // fixed-length keys with append-mode
+    KeyPayload<UInt4, UInt8>,              // small keys
+    KeyPayload<UInt4, Int8>,               // small keys with append-mode
+    KeyPayload<UInt8, UInt4>,              // small payloads with append-mode
+    KeyPayload<UInt4, UInt4>,              // small keys/payloads with append-mode
+    KeyPayload<Var, UInt8>,                // variable-length keys
+    KeyPayload<Var, Int8>,                 // variable-length keys with append-mode
+    KeyPayload<Ptr, Ptr>,                  // pointer keys/payloads with append-mode
+    KeyPayload<Original, Original>         // original class payloads with append-mode
     >;
 TYPED_TEST_SUITE(NodeFixture, KeyPayloadPairs);
 
@@ -391,7 +393,7 @@ TYPED_TEST_SUITE(NodeFixture, KeyPayloadPairs);
 
 TYPED_TEST(NodeFixture, WriteWithUniqueKeysWOConsolidationReadWrittenValues)
 {
-  const size_t max_num = kMaxUnsortedRecNum;
+  const size_t max_num = kMaxDeltaRecNum;
 
   // the node has capacity for new records
   for (size_t i = 0; i < max_num; ++i) {
@@ -409,7 +411,7 @@ TYPED_TEST(NodeFixture, WriteWithUniqueKeysWOConsolidationReadWrittenValues)
 
 TYPED_TEST(NodeFixture, WriteWithUniqueKeysWithConsolidationReadWrittenValues)
 {
-  const size_t first_max_num = kMaxUnsortedRecNum;
+  const size_t first_max_num = kMaxDeltaRecNum;
   const size_t second_max_num = 2 * first_max_num;
 
   // the node has capacity for new records
@@ -436,7 +438,7 @@ TYPED_TEST(NodeFixture, WriteWithUniqueKeysWithConsolidationReadWrittenValues)
 
 TYPED_TEST(NodeFixture, WriteWithDuplicateKeysWOConsolidationReadLatestValues)
 {
-  const size_t max_num = kMaxUnsortedRecNum / 2;
+  const size_t max_num = kMaxDeltaRecNum / 2;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
@@ -456,7 +458,7 @@ TYPED_TEST(NodeFixture, WriteWithDuplicateKeysWOConsolidationReadLatestValues)
 
 TYPED_TEST(NodeFixture, WriteWithDuplicateKeysWithConsolidationReadLatestValues)
 {
-  const size_t max_num = kMaxUnsortedRecNum;
+  const size_t max_num = kMaxDeltaRecNum;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
@@ -483,7 +485,7 @@ TYPED_TEST(NodeFixture, WriteWithDuplicateKeysWithConsolidationReadLatestValues)
 
 TYPED_TEST(NodeFixture, InsertWithUniqueKeysWOConsolidationReadWrittenValues)
 {
-  const size_t max_num = kMaxUnsortedRecNum;
+  const size_t max_num = kMaxDeltaRecNum;
 
   // the node has capacity for new records
   for (size_t i = 0; i < max_num; ++i) {
@@ -501,7 +503,7 @@ TYPED_TEST(NodeFixture, InsertWithUniqueKeysWOConsolidationReadWrittenValues)
 
 TYPED_TEST(NodeFixture, InsertWithUniqueKeysWithConsolidationReadWrittenValues)
 {
-  const size_t first_max_num = kMaxUnsortedRecNum;
+  const size_t first_max_num = kMaxDeltaRecNum;
   const size_t second_max_num = 2 * first_max_num;
 
   // the node has capacity for new records
@@ -528,7 +530,7 @@ TYPED_TEST(NodeFixture, InsertWithUniqueKeysWithConsolidationReadWrittenValues)
 
 TYPED_TEST(NodeFixture, InsertWithDuplicateKeysWOConsolidationFail)
 {
-  const size_t max_num = kMaxUnsortedRecNum / 2;
+  const size_t max_num = kMaxDeltaRecNum / 2;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
@@ -548,7 +550,7 @@ TYPED_TEST(NodeFixture, InsertWithDuplicateKeysWOConsolidationFail)
 
 TYPED_TEST(NodeFixture, InsertWithDuplicateKeysWithConsolidationFail)
 {
-  const size_t max_num = kMaxUnsortedRecNum;
+  const size_t max_num = kMaxDeltaRecNum;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
@@ -575,7 +577,7 @@ TYPED_TEST(NodeFixture, InsertWithDuplicateKeysWithConsolidationFail)
 
 TYPED_TEST(NodeFixture, UpdateWithUniqueKeysWOConsolidationFail)
 {
-  const size_t max_num = kMaxUnsortedRecNum / 2;
+  const size_t max_num = kMaxDeltaRecNum / 2;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
@@ -600,7 +602,7 @@ TYPED_TEST(NodeFixture, UpdateWithUniqueKeysWOConsolidationFail)
 
 TYPED_TEST(NodeFixture, UpdateWithUniqueKeysWithConsolidationFail)
 {
-  const size_t first_max_num = kMaxUnsortedRecNum;
+  const size_t first_max_num = kMaxDeltaRecNum;
   const size_t second_max_num = 2 * first_max_num;
 
   // write base records
@@ -629,7 +631,7 @@ TYPED_TEST(NodeFixture, UpdateWithUniqueKeysWithConsolidationFail)
 
 TYPED_TEST(NodeFixture, UpdateWithDuplicateKeysWOConsolidationReadLatestValues)
 {
-  const size_t max_num = kMaxUnsortedRecNum / 2;
+  const size_t max_num = TestFixture::max_del_num_ / 2;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
@@ -649,7 +651,7 @@ TYPED_TEST(NodeFixture, UpdateWithDuplicateKeysWOConsolidationReadLatestValues)
 
 TYPED_TEST(NodeFixture, UpdateWithDuplicateKeysWithConsolidationReadLatestValues)
 {
-  const size_t max_num = kMaxUnsortedRecNum;
+  const size_t max_num = TestFixture::max_del_num_;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
@@ -676,7 +678,7 @@ TYPED_TEST(NodeFixture, UpdateWithDuplicateKeysWithConsolidationReadLatestValues
 
 TYPED_TEST(NodeFixture, DeleteWithUniqueKeysWOConsolidationFail)
 {
-  const size_t max_num = kMaxUnsortedRecNum / 2;
+  const size_t max_num = kMaxDeltaRecNum / 2;
 
   // write base records
   for (size_t i = 0; i < max_num; ++i) {
@@ -696,7 +698,7 @@ TYPED_TEST(NodeFixture, DeleteWithUniqueKeysWOConsolidationFail)
 
 TYPED_TEST(NodeFixture, DeleteWithUniqueKeysWithConsolidationFail)
 {
-  const size_t first_max_num = kMaxUnsortedRecNum;
+  const size_t first_max_num = kMaxDeltaRecNum;
   const size_t second_max_num = 2 * first_max_num;
 
   // write base records
@@ -770,7 +772,7 @@ TYPED_TEST(NodeFixture, ConsolidateWithSortedAndUnsortedRecordsCreateConsolidate
   TestFixture::PrepareConsolidatedNode();
 
   // the node has the both sorted/unsorted records
-  for (size_t i = 0; i < 2 * kMaxUnsortedRecNum; ++i) {
+  for (size_t i = 0; i < 2 * kMaxDeltaRecNum; ++i) {
     TestFixture::VerifyRead(i, i, kExpectSuccess);
   }
 }

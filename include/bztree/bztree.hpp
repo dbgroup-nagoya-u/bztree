@@ -151,28 +151,19 @@ class BzTree
     bool
     HasNext()
     {
-      if (current_pos_ < record_count_) return true;
-      if (is_right_end_) return false;
+      while (true) {
+        if (current_pos_ < record_count_) return true;  // records remain in this node
+        if (is_right_end_) return false;                // this node is the end of range-scan
 
-      // keep the end key to use as the next begin key
-      current_meta_ = node_->GetHighMeta();
-      Key begin_k{};
-      if constexpr (IsVariableLengthData<Key>()) {
-        const auto key_len = current_meta_.GetKeyLength();
-        begin_k = reinterpret_cast<Key>(::operator new(key_len));
-        memcpy(begin_k, node_->GetKey(current_meta_), key_len);
-      } else {
-        begin_k = node_->GetKey(current_meta_);
+        // update this iterator with the next scan results
+        const auto &next_key = node_->GetHighKey();
+        *this = bztree_->Scan(std::make_pair(next_key, false), end_key_);
+
+        if constexpr (IsVariableLengthData<Key>()) {
+          // release a dynamically allocated key
+          delete next_key;
+        }
       }
-
-      // update this iterator with the next scan results
-      *this = bztree_->Scan(std::make_pair(begin_k, false), end_key_);
-
-      if constexpr (IsVariableLengthData<Key>()) {
-        delete begin_k;
-      }
-
-      return HasNext();
     }
 
     /**
@@ -245,7 +236,7 @@ class BzTree
       : gc_{gc_interval_microsec, gc_thread_num, true}
   {
     // create an initial root node
-    Node_t *leaf = CreateNewNode<Payload>();
+    auto *leaf = CreateNewNode<Payload>();
     root_.store(leaf, std::memory_order_release);
   }
 
@@ -273,18 +264,19 @@ class BzTree
    *##################################################################################*/
 
   /**
-   * @brief Read a payload of a specified key if it exists.
+   * @brief Read the payload corresponding to a given key if it exists.
    *
    * @param key a target key.
-   * @returnnullopt.
+   * @retval the payload of a given key wrapped with std::optional if it is in this tree.
+   * @retval std::nullopt otherwise.
    */
   auto
   Read(const Key &key)  //
       -> std::optional<Payload>
   {
-    [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
-    const Node_t *node = SearchLeafNode(key, true);
+    const auto *node = SearchLeafNode(key, true);
 
     Payload payload{};
     const auto rc = node->Read(key, payload);
@@ -293,12 +285,11 @@ class BzTree
   }
 
   /**
-   * @brief Perform a range scan with specified keys.
+   * @brief Perform a range scan with given keys.
    *
    * @param begin_key a pair of a begin key and its openness (true=closed).
    * @param end_key a pair of an end key and its openness (true=closed).
-   * @param page a page that contains old keys/payloads (used internally).
-   * @return an iterator to access target records.
+   * @return an iterator to access scanned records.
    */
   auto
   Scan(  //
@@ -306,34 +297,30 @@ class BzTree
       const std::optional<std::pair<const Key &, bool>> &end_key = std::nullopt)  //
       -> RecordIterator
   {
-    [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     thread_local std::unique_ptr<Node_t> page{CreateNewNode<Payload>()};
+    page->InitForScanning();
 
     // sort records in a target node
-    auto &&[b_key, b_closed] = begin_key.value_or(std::make_pair(Key{}, true));
-    Node_t *node = (begin_key) ? SearchLeafNode(b_key, b_closed) : SearchLeftEdgeLeaf();
-    page->template Consolidate<Payload>(node);
-
-    // find begin/end positions in the sorted records
     size_t begin_pos = 0;
     if (begin_key) {
+      const auto &[b_key, b_closed] = *begin_key;
+      const auto *node = SearchLeafNode(b_key, b_closed);
+      page->template Consolidate<Payload>(node);
+
+      // check the begin position for scanning
       auto [rc, pos] = page->SearchSortedRecord(b_key);
       begin_pos = (rc == KeyExistence::kNotExist || b_closed) ? pos : pos + 1;
-    }
-    auto end_pos = page->GetSortedCount();
-    auto is_right_end = page->IsRightEnd();
-    if (end_key) {
-      auto &&[e_key, e_closed] = *end_key;
-      if (!Compare{}(page->GetKey(page->GetMetadata(end_pos - 1)), e_key)) {
-        is_right_end = true;
-
-        auto [rc, pos] = page->SearchSortedRecord(e_key);
-        end_pos = (rc == KeyExistence::kExist && e_closed) ? pos + 1 : pos;
-      }
+    } else {
+      const auto *node = SearchLeftEdgeLeaf();
+      page->template Consolidate<Payload>(node);
     }
 
-    return RecordIterator{this, page.get(), begin_pos, end_pos, end_key, is_right_end};
+    // check the end position of scanning
+    const auto [is_end, end_pos] = page->SearchEndPositionFor(end_key);
+
+    return RecordIterator{this, page.get(), begin_pos, end_pos, end_key, is_end};
   }
 
   /*####################################################################################
@@ -341,34 +328,29 @@ class BzTree
    *##################################################################################*/
 
   /**
-   * @brief Write (i.e., upsert) a specified kay/payload pair.
+   * @brief Write (i.e., put) a given key/payload pair.
    *
-   * If a specified key does not exist in the index, this function performs an insert
-   * operation. If a specified key has been already inserted, this function perfroms an
+   * If a given key does not exist in this tree, this function performs an insert
+   * operation. If a given key has been already inserted, this function perfroms an
    * update operation. Thus, this function always returns kSuccess as a return code.
-   *
-   * Note that if a target key/payload is binary data, it is required to specify its
-   * length in bytes.
    *
    * @param key a target key to be written.
    * @param payload a target payload to be written.
-   * @param key_length the length of a target key.
-   * @param payload_length the length of a target payload.
+   * @param key_len the length of a target key.
    * @return kSuccess.
    */
   auto
   Write(  //
       const Key &key,
       const Payload &payload,
-      const size_t key_length = sizeof(Key),
-      const size_t payload_length = sizeof(Payload))  //
+      const size_t key_len = sizeof(Key))  //
       -> ReturnCode
   {
-    [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->Write(key, key_length, payload, payload_length);
+      auto *node = SearchLeafNode(key, true);
+      const auto rc = node->Write(key, key_len, payload);
 
       switch (rc) {
         case NodeRC::kSuccess:
@@ -382,36 +364,31 @@ class BzTree
   }
 
   /**
-   * @brief Insert a specified kay/payload pair.
+   * @brief Insert a given key/payload pair.
    *
-   * This function performs a uniqueness check in its processing. If a specified key
-   * does not exist, this function insert a target payload into the index. If a
-   * specified key exists in the index, this function does nothing and returns kKeyExist
+   * This function performs a uniqueness check in its processing. If a given key does
+   * not exist in this tree, this function inserts a target payload to this tree. If
+   * there is a given key in this tree, this function does nothing and returns kKeyExist
    * as a return code.
    *
-   * Note that if a target key/payload is binary data, it is required to specify its
-   * length in bytes.
-   *
-   * @param key a target key to be written.
-   * @param payload a target payload to be written.
-   * @param key_length the length of a target key.
-   * @param payload_length the length of a target payload.
+   * @param key a target key to be inserted.
+   * @param payload a target payload to be inserted.
+   * @param key_len the length of a target key.
    * @retval.kSuccess if inserted.
-   * @retval kKeyExist if a specified key exists.
+   * @retval kKeyExist otherwise.
    */
   auto
   Insert(  //
       const Key &key,
       const Payload &payload,
-      const size_t key_length = sizeof(Key),
-      const size_t payload_length = sizeof(Payload))  //
+      const size_t key_len = sizeof(Key))  //
       -> ReturnCode
   {
-    [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->Insert(key, key_length, payload, payload_length);
+      auto *node = SearchLeafNode(key, true);
+      const auto rc = node->Insert(key, key_len, payload);
 
       switch (rc) {
         case NodeRC::kSuccess:
@@ -427,35 +404,31 @@ class BzTree
   }
 
   /**
-   * @brief Update a target kay with a specified payload.
+   * @brief Update the record corresponding to a given key with a given payload.
    *
-   * This function performs a uniqueness check in its processing. If a specified key
-   * exist, this function update a target payload. If a specified key does not exist in
-   * the index, this function does nothing and returns kKeyNotExist as a return code.
+   * This function performs a uniqueness check in its processing. If there is a given
+   * key in this tree, this function updates the corresponding record. If a given key
+   * does not exist in this tree, this function does nothing and returns kKeyNotExist as
+   * a return code.
    *
-   * Note that if a target key/payload is binary data, it is required to specify its
-   * length in bytes.
-   *
-   * @param key a target key to be written.
-   * @param payload a target payload to be written.
-   * @param key_length the length of a target key.
-   * @param payload_length the length of a target payload.
+   * @param key a target key to be updated.
+   * @param payload a payload for updating.
+   * @param key_len the length of a target key.
    * @retval kSuccess if updated.
-   * @retval kKeyNotExist if a specified key does not exist.
+   * @retval kKeyNotExist otherwise.
    */
   auto
   Update(  //
       const Key &key,
       const Payload &payload,
-      const size_t key_length = sizeof(Key),
-      const size_t payload_length = sizeof(Payload))  //
+      const size_t key_len = sizeof(Key))  //
       -> ReturnCode
   {
-    [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->Update(key, key_length, payload, payload_length);
+      auto *node = SearchLeafNode(key, true);
+      const auto rc = node->Update(key, key_len, payload);
 
       switch (rc) {
         case NodeRC::kSuccess:
@@ -471,31 +444,28 @@ class BzTree
   }
 
   /**
-   * @brief Delete a target kay from the index.
+   * @brief Delete the record corresponding to a given key from this tree.
    *
-   * This function performs a uniqueness check in its processing. If a specified key
-   * exist, this function deletes it. If a specified key does not exist in the index,
-   * this function does nothing and returns kKeyNotExist as a return code.
+   * This function performs a uniqueness check in its processing. If there is a given
+   * key in this tree, this function deletes it. If a given key does not exist in this
+   * tree, this function does nothing and returns kKeyNotExist as a return code.
    *
-   * Note that if a target key is binary data, it is required to specify its length in
-   * bytes.
-   *
-   * @param key a target key to be written.
-   * @param key_length the length of a target key.
+   * @param key a target key to be deleted.
+   * @param key_len the length of a target key.
    * @retval kSuccess if deleted.
-   * @retval kKeyNotExist if a specified key does not exist.
+   * @retval kKeyNotExist otherwise.
    */
   auto
   Delete(  //
       const Key &key,
-      const size_t key_length = sizeof(Key))  //
+      const size_t key_len = sizeof(Key))  //
       -> ReturnCode
   {
-    [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      Node_t *node = SearchLeafNode(key, true);
-      const auto rc = node->template Delete<Payload>(key, key_length);
+      auto *node = SearchLeafNode(key, true);
+      const auto rc = node->template Delete<Payload>(key, key_len);
 
       switch (rc) {
         case NodeRC::kSuccess:
@@ -536,7 +506,7 @@ class BzTree
 
     if (entries.empty()) return ReturnCode::kSuccess;
 
-    Node_t *new_root = CreateNewNode<Node_t *>();
+    auto *new_root = CreateNewNode<Node_t *>();
     auto &&iter = entries.cbegin();
     if (thread_num == 1) {
       // bulkloading with a single thread
@@ -550,7 +520,7 @@ class BzTree
       auto loader = [&](std::promise<Node_t *> p,  //
                         size_t n,                  //
                         typename std::vector<LoadEntry_t>::const_iterator iter) {
-        Node_t *partial_root = CreateNewNode<Node_t *>();
+        auto *partial_root = CreateNewNode<Node_t *>();
         partial_root = BulkloadWithSingleThread(partial_root, iter, iter + n);
         p.set_value(partial_root);
       };
@@ -581,7 +551,7 @@ class BzTree
     }
 
     // set a new root
-    Node_t *old_root = root_.exchange(new_root, std::memory_order_release);
+    auto *old_root = root_.exchange(new_root, std::memory_order_release);
     gc_.AddGarbage(old_root);
 
     return ReturnCode::kSuccess;
@@ -636,7 +606,7 @@ class BzTree
       const bool range_is_closed) const  //
       -> Node_t *
   {
-    Node_t *current_node = GetRoot();
+    auto *current_node = GetRoot();
     while (!current_node->IsLeaf()) {
       const auto pos = current_node->Search(key, range_is_closed);
       current_node = current_node->GetChild(pos);
@@ -652,7 +622,7 @@ class BzTree
   SearchLeftEdgeLeaf() const  //
       -> Node_t *
   {
-    Node_t *current_node = GetRoot();
+    auto *current_node = GetRoot();
     while (!current_node->IsLeaf()) {
       current_node = current_node->GetChild(0);
     }
@@ -679,7 +649,7 @@ class BzTree
     // trace nodes to a target internal node
     NodeStack trace;
     size_t index = 0;
-    Node_t *current_node = GetRoot();
+    auto *current_node = GetRoot();
     while (current_node != target_node && !current_node->IsLeaf()) {
       trace.emplace_back(current_node, index);
       index = current_node->Search(key, true);
@@ -710,22 +680,19 @@ class BzTree
     // freeze a target node and perform consolidation
     if (node->Freeze() != NodeRC::kSuccess) return;
 
-    // create a consolidated node
-    Node_t *consol_node = CreateNewNode<Payload>();
+    // create a consolidated node to calculate a correct node size
+    auto *consol_node = CreateNewNode<Payload>();
     consol_node->template Consolidate<Payload>(node);
-
-    // check whether splitting/merging is needed
-    const auto stat = consol_node->GetStatusWord();
-    if (stat.NeedSplit()) {
-      // invoke splitting
-      Split<Payload>(consol_node, key);
-    } else if (!stat.NeedMerge() || !Merge<Payload>(consol_node, key)) {  // try merging
-      // install the consolidated node
-      auto &&trace = TraceTargetNode(key, node);
-      InstallNewNode(trace, consol_node, key, node);
-    }
-
     gc_.AddGarbage(node);
+
+    // check other SMOs are needed
+    const auto stat = consol_node->GetStatusWord();
+    if (stat.template NeedSplit<Key, Payload>()) return Split<Payload>(consol_node, key);
+    if (stat.NeedMerge() && Merge<Payload>(consol_node, key)) return;
+
+    // install the consolidated node
+    auto &&trace = TraceTargetNode(key, node);
+    InstallNewNode(trace, consol_node, key, node);
   }
 
   /**
@@ -770,13 +737,13 @@ class BzTree
      *--------------------------------------------------------------------------------*/
 
     // create split nodes and its parent node
-    Node_t *l_node = CreateNewNode<T>();
-    Node_t *r_node = CreateNewNode<T>();
+    auto *l_node = CreateNewNode<T>();
+    auto *r_node = CreateNewNode<T>();
     node->template Split<T>(l_node, r_node);
 
     // create a new root/parent node
     bool recurse_split = false;
-    Node_t *new_parent = CreateNewNode<Node_t *>();
+    auto *new_parent = CreateNewNode<Node_t *>();
     if (root_split) {
       new_parent->InitAsRoot(l_node, r_node);
     } else {
@@ -853,9 +820,9 @@ class BzTree
      *--------------------------------------------------------------------------------*/
 
     // create new nodes
-    Node_t *merged_node = CreateNewNode<T>();
+    auto *merged_node = CreateNewNode<T>();
     merged_node->template Merge<T>(left_node, right_node);
-    Node_t *new_parent = CreateNewNode<Node_t *>();
+    auto *new_parent = CreateNewNode<Node_t *>();
     bool recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos - 1);
     if (trace.size() <= 1 && new_parent->GetSortedCount() == 1) {
       // the new root node has only one child, use the merged child as a new root
@@ -906,7 +873,7 @@ class BzTree
       // prepare installing nodes
       auto [old_node, target_pos] = trace.back();
       trace.pop_back();
-      Node_t *parent = trace.back().first;
+      auto *parent = trace.back().first;
 
       // check wether related nodes are frozen
       const auto parent_status = parent->GetStatusWordProtected();
@@ -945,21 +912,18 @@ class BzTree
     std::vector<Node_t *> rightmost_trace{};
     rightmost_trace.emplace_back(root);
 
-    Node_t *prev_leaf = nullptr;
     while (iter < iter_end) {
       // load records into a leaf node
-      Node_t *leaf_node = CreateNewNode<Payload>();
-      leaf_node->template Bulkload<Payload>(iter, iter_end, prev_leaf);
+      auto *leaf_node = CreateNewNode<Payload>();
+      leaf_node->template Bulkload<Payload>(iter, iter_end);
 
       // insert the loaded leaf node into the tree
-      Node_t *parent = rightmost_trace.back();
+      auto *parent = rightmost_trace.back();
       const auto need_split = parent->LoadChildNode(leaf_node);
       if (need_split) {
         rightmost_trace.pop_back();
         SplitForBulkload(parent, rightmost_trace);
       }
-
-      prev_leaf = leaf_node;
     }
 
     return rightmost_trace.front();
@@ -983,12 +947,12 @@ class BzTree
 
     if (rightmost_trace.empty()) {
       // the split node is a root
-      Node_t *new_root = CreateNewNode<Node_t *>();
+      auto *new_root = CreateNewNode<Node_t *>();
       new_root->InitAsRoot(l_node, r_node);
       rightmost_trace.emplace_back(new_root);
     } else {
       // insert the new nodes into a parent node
-      Node_t *parent = rightmost_trace.back();
+      auto *parent = rightmost_trace.back();
       parent->RemoveLastNode();
       parent->LoadChildNode(l_node);
       const auto need_split = parent->LoadChildNode(r_node);
@@ -1017,7 +981,7 @@ class BzTree
     if (!node->IsLeaf()) {
       // delete children nodes recursively
       for (size_t i = 0; i < node->GetSortedCount(); ++i) {
-        Node_t *child_node = node->GetChild(i);
+        auto *child_node = node->GetChild(i);
         DeleteChildren(child_node);
       }
     }
