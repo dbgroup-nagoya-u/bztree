@@ -1,6 +1,6 @@
 [submodule "external/mwcas"]
 	path = external/mwcas
-	url = git@github.com:dbgroup-nagoya-u/mwcas.git
+	url = https://github.com/dbgroup-nagoya-u/mwcas.git
 [submodule "external/memory-manager"]
 	path = external/memory-manager
-	url = git@github.com:dbgroup-nagoya-u/memory-manager.git
+	url = https://github.com/dbgroup-nagoya-u/memory-manager.git
