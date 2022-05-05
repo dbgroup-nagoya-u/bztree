@@ -152,8 +152,7 @@ Align([[maybe_unused]] size_t key_len)  //
       return {sizeof(Key), sizeof(Key) + sizeof(Payload)};
     } else {
       // fixed-length alignment is required
-      constexpr size_t kKeyLen = sizeof(Key) + kAlignLen;
-      return {kKeyLen, kKeyLen + sizeof(Payload)};
+      return {sizeof(Key), sizeof(Key) + sizeof(Payload) + kAlignLen};
     }
   }
 }
