@@ -236,7 +236,7 @@ class BzTree
       : gc_{gc_interval_microsec, gc_thread_num, true}
   {
     // create an initial root node
-    Node_t *leaf = CreateNewNode<Payload>();
+    auto *leaf = CreateNewNode<Payload>();
     root_.store(leaf, std::memory_order_release);
   }
 
@@ -274,9 +274,9 @@ class BzTree
   Read(const Key &key)  //
       -> std::optional<Payload>
   {
-    [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
-    const Node_t *node = SearchLeafNode(key, true);
+    const auto *node = SearchLeafNode(key, true);
 
     Payload payload{};
     const auto rc = node->Read(key, payload);
@@ -297,7 +297,7 @@ class BzTree
       const std::optional<std::pair<const Key &, bool>> &end_key = std::nullopt)  //
       -> RecordIterator
   {
-    [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     thread_local std::unique_ptr<Node_t> page{CreateNewNode<Payload>()};
     page->InitForScanning();
@@ -346,10 +346,10 @@ class BzTree
       const size_t key_len = sizeof(Key))  //
       -> ReturnCode
   {
-    [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      Node_t *node = SearchLeafNode(key, true);
+      auto *node = SearchLeafNode(key, true);
       const auto rc = node->Write(key, key_len, payload);
 
       switch (rc) {
@@ -384,10 +384,10 @@ class BzTree
       const size_t key_len = sizeof(Key))  //
       -> ReturnCode
   {
-    [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      Node_t *node = SearchLeafNode(key, true);
+      auto *node = SearchLeafNode(key, true);
       const auto rc = node->Insert(key, key_len, payload);
 
       switch (rc) {
@@ -424,10 +424,10 @@ class BzTree
       const size_t key_len = sizeof(Key))  //
       -> ReturnCode
   {
-    [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      Node_t *node = SearchLeafNode(key, true);
+      auto *node = SearchLeafNode(key, true);
       const auto rc = node->Update(key, key_len, payload);
 
       switch (rc) {
@@ -461,10 +461,10 @@ class BzTree
       const size_t key_len = sizeof(Key))  //
       -> ReturnCode
   {
-    [[maybe_unused]] auto &&guard = gc_.CreateEpochGuard();
+    [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      Node_t *node = SearchLeafNode(key, true);
+      auto *node = SearchLeafNode(key, true);
       const auto rc = node->template Delete<Payload>(key, key_len);
 
       switch (rc) {
@@ -506,7 +506,7 @@ class BzTree
 
     if (entries.empty()) return ReturnCode::kSuccess;
 
-    Node_t *new_root = CreateNewNode<Node_t *>();
+    auto *new_root = CreateNewNode<Node_t *>();
     auto &&iter = entries.cbegin();
     if (thread_num == 1) {
       // bulkloading with a single thread
@@ -520,7 +520,7 @@ class BzTree
       auto loader = [&](std::promise<Node_t *> p,  //
                         size_t n,                  //
                         typename std::vector<LoadEntry_t>::const_iterator iter) {
-        Node_t *partial_root = CreateNewNode<Node_t *>();
+        auto *partial_root = CreateNewNode<Node_t *>();
         partial_root = BulkloadWithSingleThread(partial_root, iter, iter + n);
         p.set_value(partial_root);
       };
@@ -551,7 +551,7 @@ class BzTree
     }
 
     // set a new root
-    Node_t *old_root = root_.exchange(new_root, std::memory_order_release);
+    auto *old_root = root_.exchange(new_root, std::memory_order_release);
     gc_.AddGarbage(old_root);
 
     return ReturnCode::kSuccess;
@@ -606,7 +606,7 @@ class BzTree
       const bool range_is_closed) const  //
       -> Node_t *
   {
-    Node_t *current_node = GetRoot();
+    auto *current_node = GetRoot();
     while (!current_node->IsLeaf()) {
       const auto pos = current_node->Search(key, range_is_closed);
       current_node = current_node->GetChild(pos);
@@ -622,7 +622,7 @@ class BzTree
   SearchLeftEdgeLeaf() const  //
       -> Node_t *
   {
-    Node_t *current_node = GetRoot();
+    auto *current_node = GetRoot();
     while (!current_node->IsLeaf()) {
       current_node = current_node->GetChild(0);
     }
@@ -649,7 +649,7 @@ class BzTree
     // trace nodes to a target internal node
     NodeStack trace;
     size_t index = 0;
-    Node_t *current_node = GetRoot();
+    auto *current_node = GetRoot();
     while (current_node != target_node && !current_node->IsLeaf()) {
       trace.emplace_back(current_node, index);
       index = current_node->Search(key, true);
@@ -873,7 +873,7 @@ class BzTree
       // prepare installing nodes
       auto [old_node, target_pos] = trace.back();
       trace.pop_back();
-      Node_t *parent = trace.back().first;
+      auto *parent = trace.back().first;
 
       // check wether related nodes are frozen
       const auto parent_status = parent->GetStatusWordProtected();
@@ -914,11 +914,11 @@ class BzTree
 
     while (iter < iter_end) {
       // load records into a leaf node
-      Node_t *leaf_node = CreateNewNode<Payload>();
+      auto *leaf_node = CreateNewNode<Payload>();
       leaf_node->template Bulkload<Payload>(iter, iter_end);
 
       // insert the loaded leaf node into the tree
-      Node_t *parent = rightmost_trace.back();
+      auto *parent = rightmost_trace.back();
       const auto need_split = parent->LoadChildNode(leaf_node);
       if (need_split) {
         rightmost_trace.pop_back();
@@ -947,12 +947,12 @@ class BzTree
 
     if (rightmost_trace.empty()) {
       // the split node is a root
-      Node_t *new_root = CreateNewNode<Node_t *>();
+      auto *new_root = CreateNewNode<Node_t *>();
       new_root->InitAsRoot(l_node, r_node);
       rightmost_trace.emplace_back(new_root);
     } else {
       // insert the new nodes into a parent node
-      Node_t *parent = rightmost_trace.back();
+      auto *parent = rightmost_trace.back();
       parent->RemoveLastNode();
       parent->LoadChildNode(l_node);
       const auto need_split = parent->LoadChildNode(r_node);
@@ -981,7 +981,7 @@ class BzTree
     if (!node->IsLeaf()) {
       // delete children nodes recursively
       for (size_t i = 0; i < node->GetSortedCount(); ++i) {
-        Node_t *child_node = node->GetChild(i);
+        auto *child_node = node->GetChild(i);
         DeleteChildren(child_node);
       }
     }
