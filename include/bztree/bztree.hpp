@@ -687,15 +687,8 @@ class BzTree
 
     // check other SMOs are needed
     const auto stat = consol_node->GetStatusWord();
-    if (stat.template NeedSplit<Key, Payload>()) {
-      // invoke splitting
-      Split<Payload>(consol_node, key);
-      return;
-    }
-    if (stat.NeedMerge()) {
-      // invoke merging
-      if (Merge<Payload>(consol_node, key)) return;
-    }
+    if (stat.template NeedSplit<Key, Payload>()) return Split<Payload>(consol_node, key);
+    if (stat.NeedMerge() && Merge<Payload>(consol_node, key)) return;
 
     // install the consolidated node
     auto &&trace = TraceTargetNode(key, node);
