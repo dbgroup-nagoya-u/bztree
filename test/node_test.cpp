@@ -49,7 +49,7 @@ class NodeFixture : public testing::Test  // NOLINT
   using Key = typename KeyPayload::Key::Data;
   using Payload = typename KeyPayload::Payload::Data;
   using KeyComp = typename KeyPayload::Key::Comp;
-  using PayloadComp = typename KeyPayload::Payload::Comp;
+  using PayComp = typename KeyPayload::Payload::Comp;
 
   // define type aliases for simplicity
   using Node_t = Node<Key, KeyComp>;
@@ -174,7 +174,7 @@ class NodeFixture : public testing::Test  // NOLINT
 
     EXPECT_EQ(expected_rc, rc);
     if (expect_success) {
-      EXPECT_TRUE(IsEqual<PayloadComp>(payloads_[expected_id], payload));
+      EXPECT_TRUE(IsEqual<PayComp>(payloads_[expected_id], payload));
       if constexpr (IsVariableLengthData<Payload>()) {
         ::operator delete(payload);
       }

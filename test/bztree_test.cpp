@@ -67,7 +67,7 @@ class BzTreeFixture : public testing::Test  // NOLINT
   using Key = typename KeyPayload::Key::Data;
   using Payload = typename KeyPayload::Payload::Data;
   using KeyComp = typename KeyPayload::Key::Comp;
-  using PayloadComp = typename KeyPayload::Payload::Comp;
+  using PayComp = typename KeyPayload::Payload::Comp;
 
   // define type aliases for simplicity
   using Metadata = component::Metadata;
@@ -149,7 +149,7 @@ class BzTreeFixture : public testing::Test  // NOLINT
 
       const auto expected_val = payloads_[expected_id];
       const auto actual_val = read_val.value();
-      EXPECT_TRUE(component::IsEqual<PayloadComp>(expected_val, actual_val));
+      EXPECT_TRUE(component::IsEqual<PayComp>(expected_val, actual_val));
     } else {
       EXPECT_FALSE(read_val);
     }
@@ -181,7 +181,7 @@ class BzTreeFixture : public testing::Test  // NOLINT
     for (; iter.HasNext(); ++iter, ++begin_pos) {
       auto [key, payload] = *iter;
       EXPECT_TRUE(component::IsEqual<KeyComp>(keys_[begin_pos], key));
-      EXPECT_TRUE(component::IsEqual<PayloadComp>(payloads_[begin_pos], payload));
+      EXPECT_TRUE(component::IsEqual<PayComp>(payloads_[begin_pos], payload));
     }
     EXPECT_FALSE(iter.HasNext());
 
