@@ -982,19 +982,11 @@ class Node
     // set a lowest/highest keys
     auto offset = CopyHighKeyFrom<Node *>(old_node, kPageSize);
 
-    // copy lower records
+    // copy records with split nodes
     offset = CopyRecords<Node *>(old_node, this, 0, l_pos, offset);
-
-    // insert split nodes
-    const auto l_meta = l_child->meta_array_[l_child->sorted_count_ - 1];
-    offset = InsertChild(l_child, l_meta, l_child, l_pos, offset);
-    const auto r_meta = r_child->meta_array_[r_child->sorted_count_ - 1];
-    const auto r_pos = l_pos + 1;
-    offset = InsertChild(r_child, r_meta, r_child, r_pos, offset);
-    sorted_count_ += 2;
-
-    // copy upper records
-    offset = CopyRecords<Node *>(old_node, this, r_pos, old_node->sorted_count_, offset);
+    offset = InsertChild(l_child, offset);
+    offset = InsertChild(r_child, offset);
+    offset = CopyRecords<Node *>(old_node, this, l_pos + 1, old_node->sorted_count_, offset);
 
     // set an updated header
     StatusWord stat{sorted_count_, kPageSize - offset};
@@ -1017,15 +1009,8 @@ class Node
       const Node *l_child,
       const Node *r_child)
   {
-    // insert initial children
-    const auto l_meta = l_child->meta_array_[l_child->sorted_count_ - 1];
-    auto offset = kPageSize;
-    offset = InsertChild(l_child, l_meta, l_child, 0, offset);
-    const auto r_meta = r_child->meta_array_[r_child->sorted_count_ - 1];
-    offset = InsertChild(r_child, r_meta, r_child, 1, offset);
-
-    // set an updated header
-    sorted_count_ = 2;
+    auto offset = InsertChild(l_child, kPageSize);
+    offset = InsertChild(r_child, offset);
     status_ = StatusWord{2, kPageSize - offset};
   }
 
@@ -1074,17 +1059,10 @@ class Node
     // set a lowest/highest keys
     auto offset = CopyHighKeyFrom<Node *>(old_node, kPageSize);
 
-    // copy lower records
+    // copy records without a deleted node
     offset = CopyRecords<Node *>(old_node, this, 0, position, offset);
-
-    // insert a merged node
-    const auto meta = merged_child->meta_array_[merged_child->sorted_count_ - 1];
-    offset = InsertChild(merged_child, meta, merged_child, position, offset);
-    ++sorted_count_;
-
-    // copy upper records
-    const auto r_pos = position + 2;
-    offset = CopyRecords<Node *>(old_node, this, r_pos, old_node->sorted_count_, offset);
+    offset = InsertChild(merged_child, offset);
+    offset = CopyRecords<Node *>(old_node, this, position + 2, old_node->sorted_count_, offset);
 
     // set an updated header
     StatusWord stat{sorted_count_, kPageSize - offset};
@@ -1154,13 +1132,7 @@ class Node
   LoadChildNode(Node *node)  //
       -> bool
   {
-    // insert a new node
-    const auto meta = node->meta_array_[node->sorted_count_ - 1];
-    auto offset = kPageSize - status_.GetBlockSize();
-    offset = InsertChild(node, meta, node, sorted_count_, offset);
-
-    // update headers
-    ++sorted_count_;
+    const auto offset = InsertChild(node, kPageSize - status_.GetBlockSize());
     status_ = StatusWord{sorted_count_, kPageSize - offset};
 
     return status_.NeedInternalSplit<Key>();
@@ -1458,38 +1430,32 @@ class Node
   /**
    * @brief Insert a new child node into this node.
    *
-   * @param orig_node an original node that has a target child.
-   * @param orig_meta the corresponding metadata of a target child.
    * @param child_node a target child node.
-   * @param rec_count the current number of records in this node.
    * @param offset the current offset of this node.
    * @return the updated offset value.
    */
   auto
   InsertChild(  //
-      const Node *orig_node,
-      const Metadata orig_meta,
       const Node *child_node,
-      const size_t rec_count,
-      const size_t offset)  //
+      size_t offset)  //
       -> size_t
   {
-    size_t key_len{};
-    size_t rec_len{};
+    auto tmp_offset = SetPayload(offset, child_node);
 
-    const auto &key = orig_node->GetKey(orig_meta);
-    if constexpr (IsVariableLengthData<Key>()) {
-      const auto key_length = orig_meta.GetKeyLength();
-      std::tie(key_len, rec_len) = Align<Key, Node *>(key_length);
+    const auto high_meta = child_node->high_meta_;
+    const auto key_length = high_meta.GetKeyLength();
+    if (key_length == 0) {
+      meta_array_[sorted_count_++] = Metadata{tmp_offset, 0, kWordSize};
+      offset -= kWordSize;
     } else {
-      std::tie(key_len, rec_len) = Align<Key, Node *>(sizeof(Key));
+      const auto [key_len, rec_len] = Align<Key, Node *>(key_length);
+      tmp_offset -= key_len;
+      memcpy(ShiftAddr(this, tmp_offset), child_node->GetKeyAddr(high_meta), key_len);
+      meta_array_[sorted_count_++] = Metadata{tmp_offset, key_len, rec_len};
+      offset -= rec_len;
     }
 
-    auto tmp_offset = SetPayload(offset, child_node);
-    tmp_offset = SetKey(tmp_offset, key, key_len);
-    meta_array_[rec_count] = Metadata{tmp_offset, key_len, rec_len};
-
-    return offset - rec_len;
+    return offset;
   }
 
   /**
