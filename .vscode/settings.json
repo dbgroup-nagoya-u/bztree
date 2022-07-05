@@ -155,6 +155,11 @@
     "any": "cpp",
     "variant": "cpp",
     "*.ipp": "cpp",
-    "strstream": "cpp"
+    "strstream": "cpp",
+    "complex": "cpp",
+    "cfenv": "cpp",
+    "typeindex": "cpp",
+    "valarray": "cpp",
+    "*.txx": "cpp"
   }
 }

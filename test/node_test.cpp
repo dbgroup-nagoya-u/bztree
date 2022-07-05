@@ -19,8 +19,47 @@
 #include <functional>
 #include <memory>
 
-#include "common.hpp"
+// external libraries
 #include "gtest/gtest.h"
+
+// local external libraries
+#include "external/index-fixtures/common.hpp"
+
+/*######################################################################################
+ * Overriding for testing
+ *####################################################################################*/
+
+namespace dbgroup::atomic::mwcas
+{
+/**
+ * @brief Specialization to enable MwCAS to swap our sample class.
+ *
+ */
+template <>
+constexpr auto
+CanMwCAS<MyClass>()  //
+    -> bool
+{
+  return true;
+}
+
+}  // namespace dbgroup::atomic::mwcas
+
+namespace dbgroup::index::bztree
+{
+/**
+ * @brief Use CString as variable-length data in tests.
+ *
+ */
+template <>
+constexpr auto
+IsVariableLengthData<char *>()  //
+    -> bool
+{
+  return true;
+}
+
+}  // namespace dbgroup::index::bztree
 
 namespace dbgroup::index::bztree::component::test
 {
@@ -59,8 +98,8 @@ class NodeFixture : public testing::Test  // NOLINT
    * Internal constants
    *##################################################################################*/
 
-  static constexpr size_t kKeyLen = GetDataLength<Key>();
-  static constexpr size_t kPayLen = GetDataLength<Payload>();
+  static constexpr size_t kKeyLen = ::dbgroup::index::test::GetDataLength<Key>();
+  static constexpr size_t kPayLen = ::dbgroup::index::test::GetDataLength<Payload>();
   static constexpr size_t kRecLen = Align<Key, Payload>(kKeyLen).second;
   static constexpr size_t kRecNumInNode =
       (kPageSize - kHeaderLength) / (kRecLen + sizeof(Metadata));
@@ -74,10 +113,10 @@ class NodeFixture : public testing::Test  // NOLINT
   {
     if (kPageSize < kMaxRecSize * kMaxDeltaRecNum * 2 + kHeaderLength) GTEST_SKIP();
 
-    node_.reset(new Node_t{kLeafFlag, 0});
+    node_ = std::make_unique<Node_t>(kLeafFlag, 0);
 
-    PrepareTestData(keys_, kKeyNumForTest);
-    PrepareTestData(payloads_, kKeyNumForTest);
+    keys_ = ::dbgroup::index::test::PrepareTestData<Key>(kKeyNumForTest);
+    payloads_ = ::dbgroup::index::test::PrepareTestData<Payload>(kKeyNumForTest);
 
     // set a record length and its maximum number
     if constexpr (CanCASUpdate<Payload>()) {
@@ -95,8 +134,12 @@ class NodeFixture : public testing::Test  // NOLINT
   void
   TearDown() override
   {
-    ReleaseTestData(keys_, kKeyNumForTest);
-    ReleaseTestData(payloads_, kKeyNumForTest);
+    if (kPageSize >= kMaxRecSize * kMaxDeltaRecNum * 2 + kHeaderLength) {
+      ::dbgroup::index::test::ReleaseTestData(keys_);
+      ::dbgroup::index::test::ReleaseTestData(payloads_);
+    }
+
+    node_ = nullptr;
   }
 
   /*####################################################################################
@@ -359,9 +402,11 @@ class NodeFixture : public testing::Test  // NOLINT
    * Internal member variables
    *##################################################################################*/
 
-  // actual keys and payloads
-  Key keys_[kKeyNumForTest];
-  Payload payloads_[kKeyNumForTest];
+  /// actual keys
+  std::vector<Key> keys_{};
+
+  /// actual payloads
+  std::vector<Payload> payloads_{};
 
   // the length of a record and its maximum number
   size_t max_del_num_{};
@@ -373,6 +418,13 @@ class NodeFixture : public testing::Test  // NOLINT
  * Preparation for typed testing
  *####################################################################################*/
 
+using UInt8 = ::dbgroup::index::test::UInt8;
+using UInt4 = ::dbgroup::index::test::UInt4;
+using Int8 = ::dbgroup::index::test::Int8;
+using Var = ::dbgroup::index::test::Var;
+using Ptr = ::dbgroup::index::test::Ptr;
+using Original = ::dbgroup::index::test::Original;
+
 using KeyPayloadPairs = ::testing::Types<  //
     KeyPayload<UInt8, UInt8>,              // fixed-length keys
     KeyPayload<UInt8, Int8>,               // fixed-length keys with append-mode
@@ -382,8 +434,8 @@ using KeyPayloadPairs = ::testing::Types<  //
     KeyPayload<UInt4, UInt4>,              // small keys/payloads with append-mode
     KeyPayload<Var, UInt8>,                // variable-length keys
     KeyPayload<Var, Int8>,                 // variable-length keys with append-mode
-    KeyPayload<Ptr, Ptr>,                  // pointer keys/payloads with append-mode
-    KeyPayload<Original, Original>         // original class payloads with append-mode
+    KeyPayload<Ptr, Ptr>,                  // pointer keys/payloads
+    KeyPayload<Original, Original>         // original class keys/payloads
     >;
 TYPED_TEST_SUITE(NodeFixture, KeyPayloadPairs);
 
