@@ -30,7 +30,8 @@ sudo apt update && sudo apt install -y build-essential cmake
 ### Build Options for Unit Testing
 
 - `BZTREE_BUILD_TESTS`: Building unit tests for this library if `ON` (default `OFF`).
-- `BZTREE_TEST_THREAD_NUM`: The maximum number of threads to perform unit tests (default `8`).
+- `BZTREE_TEST_THREAD_NUM`: The maximum number of threads for unit testing (default `8`).
+- `BZTREE_TEST_RANDOM_SEED`: A random seed for unit testing (default `10`).
 
 ### Build and Run Unit Tests
 
