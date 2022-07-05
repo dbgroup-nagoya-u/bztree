@@ -8,24 +8,30 @@ buildType:
       buildType: Debug
       settings:
         CMAKE_CXX_CLANG_TIDY: "clang-tidy"
-        BZTREE_PAGE_SIZE: 8192
+        BZTREE_PAGE_SIZE: 1024
         BZTREE_BUILD_TESTS: ON
         BZTREE_TEST_THREAD_NUM: 8
+        BZTREE_TEST_RANDOM_SEED: 10
+        BZTREE_TEST_EXEC_NUM: 1E6
     relWithDebInfo:
       short: RelWithDebInfo
       long: Perform optimizations and include debugging informatin
       buildType: RelWithDebInfo
       settings:
         CMAKE_CXX_CLANG_TIDY: "clang-tidy"
-        BZTREE_PAGE_SIZE: 8192
+        BZTREE_PAGE_SIZE: 1024
         BZTREE_BUILD_TESTS: ON
         BZTREE_TEST_THREAD_NUM: 8
+        BZTREE_TEST_RANDOM_SEED: 10
+        BZTREE_TEST_EXEC_NUM: 1E6
     release:
       short: Release
       long: Perform optimizations and omit debugging informatin
       buildType: Release
       settings:
         CMAKE_CXX_CLANG_TIDY: "clang-tidy"
-        BZTREE_PAGE_SIZE: 8192
+        BZTREE_PAGE_SIZE: 1024
         BZTREE_BUILD_TESTS: ON
         BZTREE_TEST_THREAD_NUM: 8
+        BZTREE_TEST_RANDOM_SEED: 10
+        BZTREE_TEST_EXEC_NUM: 1E6

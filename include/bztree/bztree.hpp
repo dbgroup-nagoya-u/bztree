@@ -231,7 +231,7 @@ class BzTree
    * @param gc_interval_microsec GC internal [us]
    */
   explicit BzTree(  //
-      const size_t gc_interval_microsec,
+      const size_t gc_interval_microsec = 10000,
       const size_t gc_thread_num = 1)
       : gc_{gc_interval_microsec, gc_thread_num, true}
   {

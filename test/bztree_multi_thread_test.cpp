@@ -14,420 +14,71 @@
  * limitations under the License.
  */
 
-#include <functional>
-#include <future>
-#include <memory>
-#include <random>
-#include <shared_mutex>
-#include <thread>
-#include <utility>
-#include <vector>
-
 #include "bztree/bztree.hpp"
-#include "common.hpp"
-#include "gtest/gtest.h"
 
-namespace dbgroup::index::bztree::test
+// local external libraries
+#include "external/index-fixtures/index_fixture_multi_thread.hpp"
+
+namespace dbgroup::atomic::mwcas
 {
-/*######################################################################################
- * Classes for templated testing
- *####################################################################################*/
-
-// use a supper template to define key-payload pair templates
-template <class KeyType, class PayloadType>
-struct KeyPayload {
-  using Key = KeyType;
-  using Payload = PayloadType;
-};
-
-/*######################################################################################
- * Global constants
- *####################################################################################*/
-
-constexpr size_t kN = 1e5;
-constexpr size_t kKeyNumForTest = kN * kThreadNum / 2;
-constexpr size_t kGCTime = 100000;
-constexpr size_t kGCThreadNum = 1;
-constexpr bool kExpectSuccess = true;
-constexpr bool kExpectFailed = false;
-
-/*######################################################################################
- * Fixture class definition
- *####################################################################################*/
-
-template <class KeyPayload>
-class BzTreeFixture : public testing::Test  // NOLINT
+/**
+ * @brief Specialization to enable MwCAS to swap our sample class.
+ *
+ */
+template <>
+constexpr auto
+CanMwCAS<MyClass>()  //
+    -> bool
 {
-  /*####################################################################################
-   * Type aliases
-   *##################################################################################*/
+  return true;
+}
 
-  // extract key-payload types
-  using Key = typename KeyPayload::Key::Data;
-  using Payload = typename KeyPayload::Payload::Data;
-  using KeyComp = typename KeyPayload::Key::Comp;
-  using PayComp = typename KeyPayload::Payload::Comp;
+}  // namespace dbgroup::atomic::mwcas
 
-  // define type aliases for simplicity
-  using Node_t = component::Node<Key, KeyComp>;
-  using BzTree_t = BzTree<Key, Payload, KeyComp>;
+namespace dbgroup::index::bztree
+{
+/**
+ * @brief Use CString as variable-length data in tests.
+ *
+ */
+template <>
+constexpr auto
+IsVariableLengthData<char *>()  //
+    -> bool
+{
+  return true;
+}
 
- protected:
-  /*####################################################################################
-   * Internal constants
-   *##################################################################################*/
+}  // namespace dbgroup::index::bztree
 
-  enum WriteType
-  {
-    kWrite,
-    kInsert,
-    kUpdate,
-    kDelete
-  };
-
-  struct Operation {
-    constexpr Operation(  //
-        const WriteType type,
-        const size_t k_id,
-        const size_t p_id)
-        : w_type{type}, key_id{k_id}, payload_id{p_id}
-    {
-    }
-
-    WriteType w_type{};
-    size_t key_id{};
-    size_t payload_id{};
-  };
-
-  /*####################################################################################
-   * Internal constants
-   *##################################################################################*/
-
-  static constexpr size_t kKeyLen = GetDataLength<Key>();
-  static constexpr size_t kPayLen = GetDataLength<Payload>();
-
-  /*####################################################################################
-   * Setup/Teardown
-   *##################################################################################*/
-
-  void
-  SetUp() override
-  {
-    PrepareTestData(keys_, kKeyNumForTest);
-    PrepareTestData(payloads_, kKeyNumForTest);
-
-    index_ = std::make_unique<BzTree_t>(kGCTime, kGCThreadNum);
-  }
-
-  void
-  TearDown() override
-  {
-    ReleaseTestData(keys_, kKeyNumForTest);
-    ReleaseTestData(payloads_, kKeyNumForTest);
-
-    index_.reset(nullptr);
-  }
-
-  /*####################################################################################
-   * Utility functions
-   *##################################################################################*/
-
-  /**
-   * @tparam Compare a comparator class.
-   * @tparam T a target class.
-   * @param obj_1 an object to be compared.
-   * @param obj_2 another object to be compared.
-   * @retval true if given objects are equivalent.
-   * @retval false otherwise.
-   */
-  template <class Compare, class T>
-  constexpr auto
-  IsEqual(  //
-      const T &obj_1,
-      const T &obj_2)  //
-      -> bool
-  {
-    return !Compare{}(obj_1, obj_2) && !Compare{}(obj_2, obj_1);
-  }
-
-  auto
-  PerformWriteOperation(const Operation &ops)  //
-      -> ReturnCode
-  {
-    const auto &key = keys_[ops.key_id];
-    const auto &payload = payloads_[ops.payload_id];
-
-    switch (ops.w_type) {
-      case kInsert:
-        return index_->Insert(key, payload, kKeyLen);
-      case kUpdate:
-        return index_->Update(key, payload, kKeyLen);
-      case kDelete:
-        return index_->Delete(key, kKeyLen);
-      case kWrite:
-      default:
-        return index_->Write(key, payload, kKeyLen);
-    }
-  }
-
-  void
-  RunWorker(  //
-      const WriteType w_type,
-      const size_t rand_seed,
-      std::promise<std::vector<size_t>> p)
-  {
-    std::vector<Operation> operations{};
-    std::vector<size_t> written_ids{};
-    operations.reserve(kN);
-    written_ids.reserve(kN);
-
-    {  // create a lock to prevent a main thread
-      const std::shared_lock guard{main_lock_};
-
-      // prepare operations to be executed
-      std::mt19937_64 rand_engine{rand_seed};
-      for (size_t i = 0; i < kN; ++i) {
-        const auto id = id_dist_(rand_engine);
-        switch (w_type) {
-          case kUpdate:
-            operations.emplace_back(w_type, id, id + 1);
-            break;
-          case kWrite:
-          case kInsert:
-          case kDelete:
-          default:
-            operations.emplace_back(w_type, id, id);
-        }
-      }
-    }
-
-    {  // wait for a main thread to release a lock
-      const std::shared_lock lock{worker_lock_};
-
-      // perform and gather results
-      for (const auto &ops : operations) {
-        if (PerformWriteOperation(ops) == kSuccess) {
-          written_ids.emplace_back(ops.key_id);
-        }
-      }
-    }
-
-    // return results via promise
-    p.set_value(std::move(written_ids));
-  }
-
-  auto
-  RunOverMultiThread(const WriteType w_type)  //
-      -> std::vector<size_t>
-  {
-    std::vector<std::future<std::vector<size_t>>> futures{};
-
-    {  // create a lock to prevent workers from executing
-      const std::unique_lock guard{worker_lock_};
-
-      // run a function over multi-threads with promise
-      std::mt19937_64 rand_engine{kRandomSeed};
-      for (size_t i = 0; i < kThreadNum; ++i) {
-        std::promise<std::vector<size_t>> p{};
-        futures.emplace_back(p.get_future());
-        const auto seed = rand_engine();
-        std::thread{&BzTreeFixture::RunWorker, this, w_type, seed, std::move(p)}.detach();
-      }
-
-      // wait for all workers to finish initialization
-      const std::unique_lock lock{main_lock_};
-    }
-
-    // gather results via promise-future
-    std::vector<size_t> written_ids{};
-    written_ids.reserve(kN * kThreadNum);
-    for (auto &&future : futures) {
-      const auto &tmp_written = future.get();
-      written_ids.insert(written_ids.end(), tmp_written.begin(), tmp_written.end());
-    }
-
-    return written_ids;
-  }
-
-  /*####################################################################################
-   * Functions for verification
-   *##################################################################################*/
-
-  void
-  VerifyRead(  //
-      const size_t key_id,
-      const size_t expected_id,
-      const bool expect_success)
-  {
-    const auto &read_val = index_->Read(keys_[key_id]);
-    if (expect_success) {
-      EXPECT_TRUE(read_val);
-
-      const auto &expected_val = payloads_[expected_id];
-      const auto &actual_val = read_val.value();
-      EXPECT_TRUE(IsEqual<PayComp>(expected_val, actual_val));
-    } else {
-      EXPECT_FALSE(read_val);
-    }
-  }
-
-  void
-  VerifyWrittenValuesWithMultiThreads(  //
-      const std::vector<size_t> &written_ids,
-      const WriteType w_type)
-  {
-    auto f = [&](const size_t begin_pos, const size_t n) {
-      const auto end_pos = begin_pos + n;
-      for (size_t i = begin_pos; i < end_pos; ++i) {
-        const auto id = written_ids.at(i);
-        switch (w_type) {
-          case kDelete:
-            VerifyRead(id, id, kExpectFailed);
-            break;
-          case kUpdate:
-            VerifyRead(id, id + 1, kExpectSuccess);
-            break;
-          case kWrite:
-          case kInsert:
-          default:
-            VerifyRead(id, id, kExpectSuccess);
-            break;
-        }
-      }
-    };
-
-    const auto vec_size = written_ids.size();
-    std::vector<std::thread> threads{};
-    threads.reserve(kThreadNum);
-
-    size_t begin_pos = 0;
-    for (size_t i = 0; i < kThreadNum; ++i) {
-      const size_t n = (vec_size + i) / kThreadNum;
-      threads.emplace_back(f, begin_pos, n);
-    }
-    for (auto &&t : threads) {
-      t.join();
-    }
-  }
-
-  void
-  VerifyWrite()
-  {
-    // reading written records succeeds
-    auto &&written_ids = RunOverMultiThread(kWrite);
-    VerifyWrittenValuesWithMultiThreads(written_ids, kWrite);
-  }
-
-  void
-  VerifyInsert()
-  {
-    // insert operations do not insert duplicated records
-    auto &&written_ids = RunOverMultiThread(kInsert);
-    std::sort(written_ids.begin(), written_ids.end());
-    const auto &end_it = std::unique(written_ids.begin(), written_ids.end());
-    EXPECT_EQ(std::distance(end_it, written_ids.end()), 0);
-
-    // reading inserted records succeeds
-    VerifyWrittenValuesWithMultiThreads(written_ids, kInsert);
-
-    // inserting duplicate records fails
-    written_ids = RunOverMultiThread(kInsert);
-    EXPECT_EQ(0, written_ids.size());
-  }
-
-  void
-  VerifyUpdate()
-  {
-    // updating not inserted records fails
-    auto &&written_ids = RunOverMultiThread(kUpdate);
-    EXPECT_EQ(0, written_ids.size());
-
-    // updating inserted records succeeds
-    written_ids = RunOverMultiThread(kInsert);
-    auto &&updated_ids = RunOverMultiThread(kUpdate);
-    // update operations may succeed multiple times, so remove duplications
-    std::sort(updated_ids.begin(), updated_ids.end());
-    updated_ids.erase(std::unique(updated_ids.begin(), updated_ids.end()), updated_ids.end());
-    EXPECT_EQ(written_ids.size(), updated_ids.size());
-
-    // updated values must be read
-    VerifyWrittenValuesWithMultiThreads(written_ids, kUpdate);
-  }
-
-  void
-  VerifyDelete()
-  {
-    // deleting not inserted records fails
-    auto &&written_ids = RunOverMultiThread(kDelete);
-    EXPECT_EQ(0, written_ids.size());
-
-    // deleting inserted records succeeds
-    written_ids = RunOverMultiThread(kInsert);
-    auto &&deleted_ids = RunOverMultiThread(kDelete);
-    EXPECT_EQ(written_ids.size(), deleted_ids.size());
-
-    // reading deleted records fails
-    VerifyWrittenValuesWithMultiThreads(written_ids, kDelete);
-  }
-
-  /*####################################################################################
-   * Internal member variables
-   *##################################################################################*/
-
-  // actual keys and payloads
-  Key keys_[kKeyNumForTest]{};
-  Payload payloads_[kKeyNumForTest]{};
-
-  // a test target BzTree
-  std::unique_ptr<BzTree_t> index_{nullptr};
-
-  std::uniform_int_distribution<size_t> id_dist_{0, kKeyNumForTest - 2};
-
-  std::shared_mutex main_lock_{};
-
-  std::shared_mutex worker_lock_{};
-};
+namespace dbgroup::index::test
+{
 
 /*######################################################################################
  * Preparation for typed testing
  *####################################################################################*/
 
-using KeyPayloadPairs = ::testing::Types<  //
-    KeyPayload<UInt8, UInt8>,              // fixed-length keys
-    KeyPayload<UInt8, Int8>,               // fixed-length keys with append-mode
-    KeyPayload<UInt4, UInt8>,              // small keys
-    KeyPayload<UInt4, Int8>,               // small keys with append-mode
-    KeyPayload<UInt8, UInt4>,              // small payloads with append-mode
-    KeyPayload<UInt4, UInt4>,              // small keys/payloads with append-mode
-    KeyPayload<Var, UInt8>,                // variable-length keys
-    KeyPayload<Var, Int8>,                 // variable-length keys with append-mode
-    KeyPayload<Ptr, Ptr>,                  // pointer keys/payloads with append-mode
-    KeyPayload<Original, Original>         // original class payloads with append-mode
+template <class K, class V, class C>
+using BzTree = ::dbgroup::index::bztree::BzTree<K, V, C>;
+
+using TestTargets = ::testing::Types<      //
+    IndexInfo<BzTree, UInt8, UInt8>,       // fixed-length keys
+    IndexInfo<BzTree, UInt8, Int8>,        // fixed-length keys with append-mode
+    IndexInfo<BzTree, UInt4, UInt8>,       // small keys
+    IndexInfo<BzTree, UInt4, Int8>,        // small keys with append-mode
+    IndexInfo<BzTree, UInt8, UInt4>,       // small payloads with append-mode
+    IndexInfo<BzTree, UInt4, UInt4>,       // small keys/payloads with append-mode
+    IndexInfo<BzTree, Var, UInt8>,         // variable-length keys
+    IndexInfo<BzTree, Var, Int8>,          // variable-length keys with append-mode
+    IndexInfo<BzTree, Ptr, Ptr>,           // pointer keys/payloads
+    IndexInfo<BzTree, Original, Original>  // original class keys/payloads
     >;
-TYPED_TEST_SUITE(BzTreeFixture, KeyPayloadPairs);
+TYPED_TEST_SUITE(IndexMultiThreadFixture, TestTargets);
 
 /*######################################################################################
  * Unit test definitions
  *####################################################################################*/
 
-TYPED_TEST(BzTreeFixture, WriteWithMultiThreadsReadWrittenPayloads)
-{  //
-  TestFixture::VerifyWrite();
-}
+#include "external/index-fixtures/index_fixture_multi_thread_test_definitions.hpp"
 
-TYPED_TEST(BzTreeFixture, InsertWithMultiThreadsReadInsertedPayloads)
-{  //
-  TestFixture::VerifyInsert();
-}
-
-TYPED_TEST(BzTreeFixture, UpdateWithMultiThreadsReadUpdatedPayloads)
-{  //
-  TestFixture::VerifyUpdate();
-}
-
-TYPED_TEST(BzTreeFixture, DeleteWithMultiThreadsReadFailWithDeletedKeys)
-{  //
-  TestFixture::VerifyDelete();
-}
-
-}  // namespace dbgroup::index::bztree::test
+}  // namespace dbgroup::index::test

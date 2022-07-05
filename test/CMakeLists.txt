@@ -30,6 +30,10 @@ add_subdirectory(${CMAKE_CURRENT_BINARY_DIR}/googletest-src
 # Build Unit Tests
 #--------------------------------------------------------------------------------------#
 
+set(BZTREE_TEST_THREAD_NUM "8" CACHE STRING "The maximum number of threads for unit testing.")
+set(BZTREE_TEST_RANDOM_SEED "10" CACHE STRING "A random seed for unit testing.")
+set(BZTREE_TEST_EXEC_NUM "1E5" CACHE STRING "The number of operations for testing.")
+
 # define function to add unit tests in the same format
 function(ADD_BZTREE_TEST BZTREE_TEST_TARGET)
   add_executable(${BZTREE_TEST_TARGET}
@@ -49,12 +53,13 @@ function(ADD_BZTREE_TEST BZTREE_TEST_TARGET)
     bztree
     gtest_main
   )
-
-  if(DEFINED BZTREE_TEST_THREAD_NUM)
-    target_compile_definitions(${BZTREE_TEST_TARGET} PRIVATE
-      BZTREE_TEST_THREAD_NUM=${BZTREE_TEST_THREAD_NUM}
-    )
-  endif()
+  target_compile_definitions(${BZTREE_TEST_TARGET} PRIVATE
+    BZTREE_TEST_THREAD_NUM=${BZTREE_TEST_THREAD_NUM}
+    BZTREE_TEST_RANDOM_SEED=${BZTREE_TEST_RANDOM_SEED}
+    INDEX_FIXTURE_THREAD_NUM=${BZTREE_TEST_THREAD_NUM}
+    INDEX_FIXTURE_RANDOM_SEED=${BZTREE_TEST_RANDOM_SEED}
+    INDEX_FIXTURE_EXEC_NUM_PER_THREAD=${BZTREE_TEST_EXEC_NUM}
+  )
 
   add_test(
     NAME ${BZTREE_TEST_TARGET}
