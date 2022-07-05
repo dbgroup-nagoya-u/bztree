@@ -12,6 +12,7 @@ buildType:
         BZTREE_BUILD_TESTS: ON
         BZTREE_TEST_THREAD_NUM: 8
         BZTREE_TEST_RANDOM_SEED: 10
+        BZTREE_TEST_EXEC_NUM: 1E6
     relWithDebInfo:
       short: RelWithDebInfo
       long: Perform optimizations and include debugging informatin
@@ -22,6 +23,7 @@ buildType:
         BZTREE_BUILD_TESTS: ON
         BZTREE_TEST_THREAD_NUM: 8
         BZTREE_TEST_RANDOM_SEED: 10
+        BZTREE_TEST_EXEC_NUM: 1E6
     release:
       short: Release
       long: Perform optimizations and omit debugging informatin
@@ -32,3 +34,4 @@ buildType:
         BZTREE_BUILD_TESTS: ON
         BZTREE_TEST_THREAD_NUM: 8
         BZTREE_TEST_RANDOM_SEED: 10
+        BZTREE_TEST_EXEC_NUM: 1E6
