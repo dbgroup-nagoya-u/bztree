@@ -27,12 +27,21 @@ add_subdirectory(${CMAKE_CURRENT_BINARY_DIR}/googletest-src
                  EXCLUDE_FROM_ALL)
 
 #--------------------------------------------------------------------------------------#
+# Configurations for testing
+#--------------------------------------------------------------------------------------#
+
+set(BZTREE_TEST_THREAD_NUM "8" CACHE STRING "The maximum number of threads unit testing.")
+set(BZTREE_TEST_RANDOM_SEED "10" CACHE STRING "A fixed seed value to reproduce unit tests.")
+set(BZTREE_TEST_EXEC_NUM "1E5" CACHE STRING "The number of executions per a thread.")
+option(BZTREE_TEST_OVERRIDE_MIMALLOC "Override entire memory allocation with mimalloc" OFF)
+
+#--------------------------------------------------------------------------------------#
 # Build Unit Tests
 #--------------------------------------------------------------------------------------#
 
-set(BZTREE_TEST_THREAD_NUM "8" CACHE STRING "The maximum number of threads for unit testing.")
-set(BZTREE_TEST_RANDOM_SEED "10" CACHE STRING "A random seed for unit testing.")
-set(BZTREE_TEST_EXEC_NUM "1E5" CACHE STRING "The number of operations for testing.")
+if(${BZTREE_TEST_OVERRIDE_MIMALLOC})
+  find_package(mimalloc 1.7 REQUIRED)
+endif()
 
 # define function to add unit tests in the same format
 function(ADD_BZTREE_TEST BZTREE_TEST_TARGET)
@@ -52,6 +61,7 @@ function(ADD_BZTREE_TEST BZTREE_TEST_TARGET)
   target_link_libraries(${BZTREE_TEST_TARGET} PRIVATE
     bztree
     gtest_main
+    $<$<BOOL:${BZTREE_TEST_OVERRIDE_MIMALLOC}>:mimalloc-static>
   )
   target_compile_definitions(${BZTREE_TEST_TARGET} PRIVATE
     BZTREE_TEST_THREAD_NUM=${BZTREE_TEST_THREAD_NUM}
