@@ -53,6 +53,21 @@ IsVariableLengthData<char *>()  //
 
 namespace dbgroup::index::test
 {
+/*######################################################################################
+ * API implementation status
+ *####################################################################################*/
+
+struct BzImplStat {
+  // dummy struct
+};
+
+template <>
+constexpr auto
+HasBulkloadOperation<BzImplStat>()  //
+    -> bool
+{
+  return false;
+}
 
 /*######################################################################################
  * Preparation for typed testing
@@ -61,17 +76,17 @@ namespace dbgroup::index::test
 template <class K, class V, class C>
 using BzTree = ::dbgroup::index::bztree::BzTree<K, V, C>;
 
-using TestTargets = ::testing::Types<      //
-    IndexInfo<BzTree, UInt8, UInt8>,       // fixed-length keys
-    IndexInfo<BzTree, UInt8, Int8>,        // fixed-length keys with append-mode
-    IndexInfo<BzTree, UInt4, UInt8>,       // small keys
-    IndexInfo<BzTree, UInt4, Int8>,        // small keys with append-mode
-    IndexInfo<BzTree, UInt8, UInt4>,       // small payloads with append-mode
-    IndexInfo<BzTree, UInt4, UInt4>,       // small keys/payloads with append-mode
-    IndexInfo<BzTree, Var, UInt8>,         // variable-length keys
-    IndexInfo<BzTree, Var, Int8>,          // variable-length keys with append-mode
-    IndexInfo<BzTree, Ptr, Ptr>,           // pointer keys/payloads
-    IndexInfo<BzTree, Original, Original>  // original class keys/payloads
+using TestTargets = ::testing::Types<                  //
+    IndexInfo<BzTree, UInt8, UInt8, BzImplStat>,       // fixed-length keys
+    IndexInfo<BzTree, UInt8, Int8, BzImplStat>,        // fixed-length keys with append-mode
+    IndexInfo<BzTree, UInt4, UInt8, BzImplStat>,       // small keys
+    IndexInfo<BzTree, UInt4, Int8, BzImplStat>,        // small keys with append-mode
+    IndexInfo<BzTree, UInt8, UInt4, BzImplStat>,       // small payloads with append-mode
+    IndexInfo<BzTree, UInt4, UInt4, BzImplStat>,       // small keys/payloads with append-mode
+    IndexInfo<BzTree, Var, UInt8, BzImplStat>,         // variable-length keys
+    IndexInfo<BzTree, Var, Int8, BzImplStat>,          // variable-length keys with append-mode
+    IndexInfo<BzTree, Ptr, Ptr, BzImplStat>,           // pointer keys/payloads
+    IndexInfo<BzTree, Original, Original, BzImplStat>  // original class keys/payloads
     >;
 TYPED_TEST_SUITE(IndexFixture, TestTargets);
 
