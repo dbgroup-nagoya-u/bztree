@@ -39,6 +39,13 @@ namespace dbgroup::index::bztree::component
 template <class Key, class Compare>
 class Node
 {
+  /*####################################################################################
+   * Type aliases
+   *##################################################################################*/
+
+  template <class Entry>
+  using BulkIter = typename std::vector<Entry>::const_iterator;
+
  public:
   /*####################################################################################
    * Public constructors and assignment operators
@@ -1082,73 +1089,96 @@ class Node
    * @brief Create a leaf node with the maximum number of records for bulkloading.
    *
    * @tparam Payload a target payload class.
+   * @tparam Entry a container of a key/payload pair.
    * @param iter the begin position of target records.
    * @param iter_end the end position of target records.
+   * @param is_rightmost a flag for indicating a rightmost node to be created.
    */
-  template <class Payload>
+  template <class Payload, class Entry>
   void
   Bulkload(  //
-      typename std::vector<BulkloadEntry<Key, Payload>>::const_iterator &iter,
-      const typename std::vector<BulkloadEntry<Key, Payload>>::const_iterator &iter_end)
+      BulkIter<Entry> &iter,
+      const BulkIter<Entry> &iter_end,
+      const bool is_rightmost)
   {
-    // extract and insert entries for the leaf node
+    // extract and insert entries into this node
     size_t node_size = kHeaderLength;
     auto offset = kPageSize;
-    while (iter < iter_end) {
-      const auto key_length = iter->GetKeyLength();
+    for (; iter < iter_end; ++iter) {
+      const auto &[key, payload, key_length] = ParseEntry<Payload>(*iter);
       const auto [key_len, rec_len] = Align<Key, Payload>(key_length);
 
       // check whether the node has sufficent space
       node_size += rec_len + kWordSize;
-      if (node_size > kPageSize - kMinFreeSpaceSize) break;
+      if (node_size + key_len > kPageSize - kMinFreeSpaceSize) break;
 
-      // insert an entry to the leaf node
-      auto tmp_offset = SetPayload(offset, iter->GetPayload());
-      tmp_offset = SetKey(tmp_offset, iter->GetKey(), key_len);
-      meta_array_[sorted_count_] = Metadata{tmp_offset, key_len, rec_len};
+      // insert an entry into this node
+      auto tmp_offset = SetPayload(offset, payload);
+      tmp_offset = SetKey(tmp_offset, key, key_len);
+      meta_array_[sorted_count_++] = Metadata{tmp_offset, key_len, rec_len};
       offset -= rec_len;
-
-      ++sorted_count_;
-      ++iter;
     }
 
-    // set a highest key
-    const auto high_meta = meta_array_[sorted_count_ - 1];
-    const auto high_key_len = high_meta.GetKeyLength();
-    high_meta_ = Metadata{high_meta.GetOffset(), high_key_len, high_key_len};
+    // set a highest key if needed
+    if (iter < iter_end || !is_rightmost) {
+      const auto high_meta = meta_array_[sorted_count_ - 1];
+      const auto high_key_len = high_meta.GetKeyLength();
+      high_meta_ = Metadata{high_meta.GetOffset(), high_key_len, high_key_len};
+      offset -= high_key_len;  // reduce offset to make room for a highest key
+    }
 
     // create the header of the leaf node
     status_ = StatusWord{sorted_count_, kPageSize - offset};
   }
 
   /**
-   * @brief Insert a child node directly.
+   * @brief Create an internal node with the maximum number of records for bulkloading.
    *
-   * @param node a target child node.
-   * @retval true if this node should be split.
-   * @retval false otherwise.
-   */
-  auto
-  LoadChildNode(Node *node)  //
-      -> bool
-  {
-    const auto offset = InsertChild(node, kPageSize - status_.GetBlockSize());
-    status_ = StatusWord{sorted_count_, kPageSize - offset};
-
-    return status_.NeedInternalSplit<Key>();
-  }
-
-  /**
-   * @brief Delete the last (i.e., rightmost) child node from this.
-   *
+   * @param iter the begin position of child nodes.
+   * @param iter_end the end position of child nodes.
    */
   void
-  RemoveLastNode()
+  Bulkload(  //
+      BulkIter<Node *> &iter,
+      const BulkIter<Node *> &iter_end)
   {
-    // update only a header
-    const auto meta = meta_array_[sorted_count_ - 1];
-    const auto offset = kPageSize - (status_.GetBlockSize() - meta.GetTotalLength());
-    --sorted_count_;
+    // extract and insert child nodes
+    size_t node_size = kHeaderLength;
+    auto offset = kPageSize;
+    auto is_rightmost = false;
+    for (; iter < iter_end; ++iter) {
+      const auto *child_node = *iter;
+      const auto high_meta = child_node->high_meta_;
+      const auto key_length = high_meta.GetKeyLength();
+
+      if (key_length == 0) {  // the rightmost node
+        node_size += 2 * kWordSize;
+        if (node_size > kPageSize) break;
+
+        offset = SetPayload(offset, child_node);
+        meta_array_[sorted_count_++] = Metadata{offset, 0, kWordSize};
+        is_rightmost = true;
+      } else {  // the other internal nodes
+        const auto [key_len, rec_len] = Align<Key, Node *>(key_length);
+        node_size += rec_len + kWordSize;
+        if (node_size + key_len > kPageSize) break;
+
+        auto tmp_offset = SetPayload(offset, child_node) - key_len;
+        memcpy(ShiftAddr(this, tmp_offset), child_node->GetKeyAddr(high_meta), key_len);
+        meta_array_[sorted_count_++] = Metadata{tmp_offset, key_len, rec_len};
+        offset -= rec_len;
+      }
+    }
+
+    // set a highest key
+    if (!is_rightmost) {
+      const auto high_meta = meta_array_[sorted_count_ - 1];
+      const auto high_key_len = high_meta.GetKeyLength();
+      high_meta_ = Metadata{high_meta.GetOffset(), high_key_len, high_key_len};
+      offset -= high_key_len;  // reduce offset to make room for a highest key
+    }
+
+    // create the header of the leaf node
     status_ = StatusWord{sorted_count_, kPageSize - offset};
   }
 
@@ -1686,6 +1716,29 @@ class Node
     }
 
     return offset;
+  }
+
+  /**
+   * @brief Parse an entry of bulkload according to key's type.
+   *
+   * @tparam Payload a payload type.
+   * @tparam Entry std::pair or std::tuple for containing entries.
+   * @param entry a bulkload entry.
+   * @retval 1st: a target key.
+   * @retval 2nd: a target payload.
+   * @retval 3rd: the length of a target key.
+   */
+  template <class Payload, class Entry>
+  constexpr auto
+  ParseEntry(const Entry &entry)  //
+      -> std::tuple<Key, Payload, size_t>
+  {
+    if constexpr (IsVariableLengthData<Key>()) {
+      return entry;
+    } else {
+      const auto &[key, payload] = entry;
+      return {key, payload, sizeof(Key)};
+    }
   }
 
   /*####################################################################################

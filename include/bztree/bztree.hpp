@@ -49,7 +49,11 @@ class BzTree
   using NodeStack = std::vector<std::pair<Node_t *, size_t>>;
   using MwCASDescriptor = component::MwCASDescriptor;
   using KeyExistence = component::KeyExistence;
-  using LoadEntry_t = BulkloadEntry<Key, Payload>;
+  template <class Entry>
+  using BulkIter = typename std::vector<Entry>::const_iterator;
+  using BulkResult = std::pair<size_t, std::vector<Node_t *>>;
+  using BulkPromise = std::promise<BulkResult>;
+  using BulkFuture = std::future<BulkResult>;
 
  public:
   /*####################################################################################
@@ -487,77 +491,105 @@ class BzTree
   /**
    * @brief Bulkload specified kay/payload pairs.
    *
-   * This function bulkloads the given entries into the BzTree. The entries are assumed
-   * to be given as a vector of tuples of a key, a payload, the length of a key, and the
-   * length of a payload (c.f., BulkloadEntry). Note that the keys in records are
-   * assumed to be unique and sorted.
+   * This function bulkloads given entries into this index. The entries are assumed to
+   * be given as a vector of pairs of Key and Payload (or key/payload/key-length for
+   * variable-length keys). Note that keys in records are assumed to be unique and
+   * sorted.
    *
    * @param entries vector of entries to be bulkloaded.
    * @param thread_num the number of threads to perform bulkloading.
    * @return kSuccess.
    */
+  template <class Entry>
   auto
   Bulkload(  //
-      std::vector<LoadEntry_t> &entries,
+      const std::vector<Entry> &entries,
       const size_t thread_num = 1)  //
       -> ReturnCode
   {
     assert(thread_num > 0);
+    assert(entries.size() >= thread_num);
 
     if (entries.empty()) return ReturnCode::kSuccess;
 
-    auto *new_root = CreateNewNode<Node_t *>();
+    std::vector<Node_t *> nodes{};
     auto &&iter = entries.cbegin();
     if (thread_num == 1) {
       // bulkloading with a single thread
-      new_root = BulkloadWithSingleThread(new_root, iter, entries.cend());
+      nodes = BulkloadWithSingleThread<Entry>(iter, entries.size()).second;
     } else {
       // bulkloading with multi-threads
-      std::vector<std::future<Node_t *>> threads{};
-      threads.reserve(thread_num);
+      std::vector<BulkFuture> futures{};
+      futures.reserve(thread_num);
 
-      // prepare a lambda function for bulkloading
-      auto loader = [&](std::promise<Node_t *> p,  //
-                        size_t n,                  //
-                        typename std::vector<LoadEntry_t>::const_iterator iter) {
-        auto *partial_root = CreateNewNode<Node_t *>();
-        partial_root = BulkloadWithSingleThread(partial_root, iter, iter + n);
-        p.set_value(partial_root);
+      // a lambda function for bulkloading with multi-threads
+      auto loader = [&](BulkPromise p, BulkIter<Entry> iter, size_t n, bool is_rightmost) {
+        p.set_value(BulkloadWithSingleThread<Entry>(iter, n, is_rightmost));
       };
 
       // create threads to construct partial BzTrees
-      const size_t rec_num = entries.size();
+      const auto rec_num = entries.size();
+      const auto rightmost_id = thread_num - 1;
       for (size_t i = 0; i < thread_num; ++i) {
         // create a partial BzTree
-        std::promise<Node_t *> p{};
-        threads.emplace_back(p.get_future());
+        BulkPromise p{};
+        futures.emplace_back(p.get_future());
         const size_t n = (rec_num + i) / thread_num;
-        std::thread{loader, std::move(p), n, iter}.detach();
+        std::thread{loader, std::move(p), iter, n, i == rightmost_id}.detach();
 
         // forward the iterator to the next begin position
         iter += n;
       }
 
-      // wait for the worker threads to create BzTrees
-      std::vector<Node_t *> partial_trees{};
+      // wait for the worker threads to create partial trees
+      std::vector<std::pair<size_t, std::vector<Node_t *>>> partial_trees{};
       partial_trees.reserve(thread_num);
-      for (auto &&future : threads) {
+      size_t height = 1;
+      for (auto &&future : futures) {
         partial_trees.emplace_back(future.get());
+        const auto partial_height = partial_trees.back().first;
+        height = (partial_height > height) ? partial_height : height;
       }
 
-      // --- Not implemented yes -----------------------------------------------------//
-      // ...partial_treesをマージしてnew_rootに入れる処理...
-      // -----------------------------------------------------------------------------//
+      // align the height of partial trees
+      nodes.reserve(kInnerNodeCap * thread_num);
+      for (auto &&[p_height, p_nodes] : partial_trees) {
+        while (p_height < height) {  // NOLINT
+          ConstructUpperLayer(p_nodes);
+          ++p_height;
+        }
+        nodes.insert(nodes.end(), p_nodes.begin(), p_nodes.end());
+      }
+    }
+
+    // create upper layers until a root node is created
+    while (nodes.size() > 1) {
+      ConstructUpperLayer(nodes);
     }
 
     // set a new root
-    auto *old_root = root_.exchange(new_root, std::memory_order_release);
+    auto *old_root = root_.exchange(nodes.front(), std::memory_order_release);
     gc_.AddGarbage(old_root);
 
     return ReturnCode::kSuccess;
   }
 
  private:
+  /*####################################################################################
+   * Internal constants
+   *##################################################################################*/
+
+  static constexpr size_t kExpKeyLen = (IsVariableLengthData<Key>()) ? kWordSize : sizeof(Key);
+  static constexpr size_t kLeafHKeyLen = component::Align<Key, Payload>(kExpKeyLen).first;
+  static constexpr size_t kLeafRecLen = component::Align<Key, Payload>(kExpKeyLen).second;
+  static constexpr size_t kLeafNodeCap =
+      (kPageSize - kHeaderLength - kLeafHKeyLen - kMinFreeSpaceSize)
+      / (kLeafRecLen + sizeof(Metadata));
+  static constexpr size_t kInnerHKeyLen = component::Align<Key, Node_t *>(kExpKeyLen).first;
+  static constexpr size_t kInnerRecLen = component::Align<Key, Node_t *>(kExpKeyLen).second;
+  static constexpr size_t kInnerNodeCap =
+      (kPageSize - kHeaderLength - kInnerHKeyLen) / (kInnerRecLen + sizeof(Metadata));
+
   /*####################################################################################
    * Internal utility functions
    *##################################################################################*/
@@ -658,6 +690,27 @@ class BzTree
     trace.emplace_back(current_node, index);
 
     return trace;
+  }
+
+  /**
+   * @brief Delete child nodes recursively.
+   *
+   * Note that this function assumes that there are no other threads in operation.
+   *
+   * @param node a target node.
+   */
+  static void
+  DeleteChildren(Node_t *node)
+  {
+    if (!node->IsLeaf()) {
+      // delete children nodes recursively
+      for (size_t i = 0; i < node->GetSortedCount(); ++i) {
+        auto *child_node = node->GetChild(i);
+        DeleteChildren(child_node);
+      }
+    }
+
+    delete node;
   }
 
   /*####################################################################################
@@ -897,96 +950,73 @@ class BzTree
   /**
    * @brief Bulkload specified kay/payload pairs with a single thread.
    *
-   * @param root an empty internal node.
+   * Note that this function does not create a root node. The main process must create a
+   * root node by using the nodes constructed by this function.
+   *
    * @param iter the begin position of target records.
-   * @param iter_end the end position of target records.
-   * @return the root node of a created BzTree.
+   * @param n the number of entries to be bulkloaded.
+   * @param is_rightmost a flag for indicating a constructed tree is rightmost one.
+   * @retval 1st: the height of a constructed tree.
+   * @retval 2nd: constructed nodes in the top layer.
    */
+  template <class Entry>
   auto
   BulkloadWithSingleThread(  //
-      Node_t *root,
-      typename std::vector<LoadEntry_t>::const_iterator &iter,
-      const typename std::vector<LoadEntry_t>::const_iterator &iter_end)  //
-      -> Node_t *
+      BulkIter<Entry> &iter,
+      const size_t n,
+      const bool is_rightmost = true)  //
+      -> BulkResult
   {
-    std::vector<Node_t *> rightmost_trace{};
-    rightmost_trace.emplace_back(root);
+    // reserve space for nodes in the leaf layer
+    std::vector<Node_t *> nodes{};
+    nodes.reserve((n / kLeafNodeCap) + 1);
 
+    // load records into leaf nodes
+    const auto &iter_end = iter + n;
     while (iter < iter_end) {
-      // load records into a leaf node
-      auto *leaf_node = CreateNewNode<Payload>();
-      leaf_node->template Bulkload<Payload>(iter, iter_end);
-
-      // insert the loaded leaf node into the tree
-      auto *parent = rightmost_trace.back();
-      const auto need_split = parent->LoadChildNode(leaf_node);
-      if (need_split) {
-        rightmost_trace.pop_back();
-        SplitForBulkload(parent, rightmost_trace);
-      }
+      auto *node = CreateNewNode<Payload>();
+      node->template Bulkload<Payload, Entry>(iter, iter_end, is_rightmost);
+      nodes.emplace_back(node);
     }
 
-    return rightmost_trace.front();
+    // construct index layers
+    size_t height = 1;
+    if (nodes.size() > 1) {
+      // continue until the number of internal nodes is sufficiently small
+      do {
+        ++height;
+      } while (ConstructUpperLayer(nodes));
+    }
+
+    return {height, std::move(nodes)};
   }
 
   /**
-   * @brief Split an internal node and update a rightmost node stack.
+   * @brief Construct internal nodes based on given child nodes.
    *
-   * @param node a target internal node.
-   * @param rightmost_trace the stack of rightmost nodes.
+   * @param child_nodes child nodes in a lower layer.
+   * @retval true if constructed nodes cannot be contained in a single node.
+   * @retval false otherwise.
    */
-  void
-  SplitForBulkload(  //
-      Node_t *node,
-      std::vector<Node_t *> &rightmost_trace)
+  auto
+  ConstructUpperLayer(std::vector<Node_t *> &child_nodes)  //
+      -> bool
   {
-    // create split internal nodes
-    auto *l_node = CreateNewNode<Node_t *>();
-    auto *r_node = CreateNewNode<Node_t *>();
-    node->template Split<Node_t *>(l_node, r_node);
+    // reserve space for nodes in the upper layer
+    std::vector<Node_t *> nodes{};
+    nodes.reserve((child_nodes.size() / kInnerNodeCap) + 1);
 
-    if (rightmost_trace.empty()) {
-      // the split node is a root
-      auto *new_root = CreateNewNode<Node_t *>();
-      new_root->InitAsRoot(l_node, r_node);
-      rightmost_trace.emplace_back(new_root);
-    } else {
-      // insert the new nodes into a parent node
-      auto *parent = rightmost_trace.back();
-      parent->RemoveLastNode();
-      parent->LoadChildNode(l_node);
-      const auto need_split = parent->LoadChildNode(r_node);
-      if (need_split) {
-        // split the parent node recursively
-        rightmost_trace.pop_back();
-        SplitForBulkload(parent, rightmost_trace);
-      }
+    // load child nodes into parent nodes
+    auto &&iter = child_nodes.cbegin();
+    const auto &iter_end = child_nodes.cend();
+    while (iter < iter_end) {
+      auto *node = CreateNewNode<Node_t *>();
+      node->Bulkload(iter, iter_end);
+      nodes.emplace_back(node);
     }
 
-    // update rightmost node stack
-    rightmost_trace.emplace_back(r_node);
-    gc_.AddGarbage(node);
-  }
-
-  /**
-   * @brief Delete children nodes recursively.
-   *
-   * Note that this function assumes that there are no other threads in operation.
-   *
-   * @param node a target node.
-   */
-  static void
-  DeleteChildren(Node_t *node)
-  {
-    if (!node->IsLeaf()) {
-      // delete children nodes recursively
-      for (size_t i = 0; i < node->GetSortedCount(); ++i) {
-        auto *child_node = node->GetChild(i);
-        DeleteChildren(child_node);
-      }
-    }
-
-    delete node;
+    child_nodes = std::move(nodes);
+    return child_nodes.size() > kInnerNodeCap;
   }
 
   /*####################################################################################
