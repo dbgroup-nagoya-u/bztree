@@ -151,8 +151,7 @@ class StatusWord
   {
     const auto total_size = (kWordSize * record_count_) + block_size_;
 
-    return record_count_ - sorted_count > kMaxDeltaRecNum
-           || total_size > kPageSize - kHeaderLength  //
+    return record_count_ - sorted_count > kMaxDeltaRecNum || total_size > kPageSize - kHeaderLen  //
            || deleted_size_ > kMaxDeletedSpaceSize;
   }
 
@@ -168,7 +167,7 @@ class StatusWord
     constexpr auto kKeyLen = (IsVariableLengthData<Key>()) ? kMaxVarDataSize : sizeof(Key);
     constexpr auto kRecLen = kWordSize + kKeyLen + sizeof(Payload);
     constexpr auto kMinBlockSize = (kRecLen > kMinFreeSpaceSize) ? kRecLen : kMinFreeSpaceSize;
-    constexpr auto kMaxUsedSize = kPageSize - (kHeaderLength + kMinBlockSize);
+    constexpr auto kMaxUsedSize = kPageSize - (kHeaderLen + kMinBlockSize);
 
     const auto this_size = (kWordSize * record_count_) + block_size_ - deleted_size_;
     return this_size > kMaxUsedSize;
@@ -184,7 +183,7 @@ class StatusWord
       -> bool
   {
     constexpr size_t kRecLen = GetMaxInternalRecordSize<Key>();
-    constexpr size_t kMaxUsedSize = kPageSize - (kHeaderLength + kWordSize + kRecLen);
+    constexpr size_t kMaxUsedSize = kPageSize - (kHeaderLen + kWordSize + kRecLen);
     const auto this_size = (kWordSize * record_count_) + block_size_;
 
     return this_size > kMaxUsedSize;
@@ -200,7 +199,7 @@ class StatusWord
   {
     const auto this_size = (kWordSize * record_count_) + block_size_ - deleted_size_;
 
-    return this_size < kMinNodeSize - kHeaderLength;
+    return this_size < kMinNodeSize - kHeaderLen;
   }
 
   /**
@@ -215,7 +214,7 @@ class StatusWord
     const auto this_size = (kWordSize * record_count_) + block_size_;
     const auto sib_size = (kWordSize * stat.record_count_) + stat.block_size_;
 
-    return this_size + sib_size < kMaxMergedSize - kHeaderLength;
+    return this_size + sib_size < kMaxMergedSize - kHeaderLen;
   }
 
   /**

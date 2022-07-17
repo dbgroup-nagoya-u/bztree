@@ -27,10 +27,10 @@ namespace dbgroup::index::bztree::component::test
 constexpr uint64_t kControlBitsMask = 7UL << 61UL;
 constexpr size_t kExpectedRecordCount = 1;
 constexpr size_t kExpectedBlockSize = 16;
-constexpr size_t kMaxBlockSize = kPageSize - kHeaderLength;
+constexpr size_t kMaxBlockSize = kPageSize - kHeaderLen;
 constexpr size_t kMaxUsedSize = kMaxBlockSize - kMinFreeSpaceSize;
-constexpr size_t kMinUsedSize = kMinNodeSize - kHeaderLength;
-constexpr size_t kMaxMergedBlockSize = kMaxMergedSize - kHeaderLength;
+constexpr size_t kMinUsedSize = kMinNodeSize - kHeaderLen;
+constexpr size_t kMaxMergedBlockSize = kMaxMergedSize - kHeaderLen;
 
 class StatusWordFixture : public testing::Test
 {

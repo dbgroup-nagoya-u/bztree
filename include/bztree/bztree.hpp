@@ -579,16 +579,28 @@ class BzTree
    * Internal constants
    *##################################################################################*/
 
-  static constexpr size_t kExpKeyLen = (IsVariableLengthData<Key>()) ? kWordSize : sizeof(Key);
-  static constexpr size_t kLeafHKeyLen = component::Align<Key, Payload>(kExpKeyLen).first;
-  static constexpr size_t kLeafRecLen = component::Align<Key, Payload>(kExpKeyLen).second;
-  static constexpr size_t kLeafNodeCap =
-      (kPageSize - kHeaderLength - kLeafHKeyLen - kMinFreeSpaceSize)
-      / (kLeafRecLen + sizeof(Metadata));
-  static constexpr size_t kInnerHKeyLen = component::Align<Key, Node_t *>(kExpKeyLen).first;
-  static constexpr size_t kInnerRecLen = component::Align<Key, Node_t *>(kExpKeyLen).second;
+  /// the expected length of keys for bulkloading.
+  static constexpr size_t kBulkKeyLen = (IsVariableLengthData<Key>()) ? kWordSize : sizeof(Key);
+
+  /// the expected length of highest keys in leaf nodes for bulkloading.
+  static constexpr size_t kLeafHKeyLen = component::Align<Key, Payload>(kBulkKeyLen).first;
+
+  /// the expected length of records in leaf nodes for bulkloading.
+  static constexpr size_t kLeafRecLen = component::Align<Key, Payload>(kBulkKeyLen).second;
+
+  /// the expected capacity of leaf nodes for bulkloading.
+  static constexpr size_t kLeafNodeCap = (kPageSize - kHeaderLen - kLeafHKeyLen - kMinFreeSpaceSize)
+                                         / (kLeafRecLen + sizeof(Metadata));
+
+  /// the expected length of highest keys in internal nodes for bulkloading.
+  static constexpr size_t kInnerHKeyLen = component::Align<Key, Node_t *>(kBulkKeyLen).first;
+
+  /// the expected length of records in internal nodes for bulkloading.
+  static constexpr size_t kInnerRecLen = component::Align<Key, Node_t *>(kBulkKeyLen).second;
+
+  /// the expected capacity of internal nodes for bulkloading.
   static constexpr size_t kInnerNodeCap =
-      (kPageSize - kHeaderLength - kInnerHKeyLen) / (kInnerRecLen + sizeof(Metadata));
+      (kPageSize - kHeaderLen - kInnerHKeyLen) / (kInnerRecLen + sizeof(Metadata));
 
   /*####################################################################################
    * Internal utility functions

@@ -101,8 +101,7 @@ class NodeFixture : public testing::Test  // NOLINT
   static constexpr size_t kKeyLen = ::dbgroup::index::test::GetDataLength<Key>();
   static constexpr size_t kPayLen = ::dbgroup::index::test::GetDataLength<Payload>();
   static constexpr size_t kRecLen = Align<Key, Payload>(kKeyLen).second;
-  static constexpr size_t kRecNumInNode =
-      (kPageSize - kHeaderLength) / (kRecLen + sizeof(Metadata));
+  static constexpr size_t kRecNumInNode = (kPageSize - kHeaderLen) / (kRecLen + sizeof(Metadata));
 
   /*####################################################################################
    * Setup/Teardown
@@ -111,7 +110,7 @@ class NodeFixture : public testing::Test  // NOLINT
   void
   SetUp() override
   {
-    if (kPageSize < kMaxRecSize * kMaxDeltaRecNum * 2 + kHeaderLength) GTEST_SKIP();
+    if (kPageSize < kMaxRecSize * kMaxDeltaRecNum * 2 + kHeaderLen) GTEST_SKIP();
 
     node_ = std::make_unique<Node_t>(kLeafFlag, 0);
 
@@ -134,7 +133,7 @@ class NodeFixture : public testing::Test  // NOLINT
   void
   TearDown() override
   {
-    if (kPageSize >= kMaxRecSize * kMaxDeltaRecNum * 2 + kHeaderLength) {
+    if (kPageSize >= kMaxRecSize * kMaxDeltaRecNum * 2 + kHeaderLen) {
       ::dbgroup::index::test::ReleaseTestData(keys_);
       ::dbgroup::index::test::ReleaseTestData(payloads_);
     }

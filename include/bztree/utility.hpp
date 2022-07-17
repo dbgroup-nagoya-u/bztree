@@ -39,7 +39,7 @@ constexpr size_t kWordSize = sizeof(uintptr_t);
  *####################################################################################*/
 
 /// Header length in bytes.
-constexpr size_t kHeaderLength = 3 * kWordSize;
+constexpr size_t kHeaderLen = 3 * kWordSize;
 
 /// The page size of each node.
 constexpr size_t kPageSize = BZTREE_PAGE_SIZE;
@@ -74,8 +74,7 @@ static_assert(kMaxVarDataSize * 2 < kPageSize);
  * @brief Return codes for BzTree.
  *
  */
-enum ReturnCode
-{
+enum ReturnCode {
   kSuccess = 0,
   kKeyNotExist = -2,
   kKeyExist

@@ -60,7 +60,7 @@ class Node
   Node(  //
       const bool is_leaf,
       const size_t block_size)
-      : node_size_{kHeaderLength},
+      : node_size_{kHeaderLen},
         sorted_count_{0},
         is_leaf_{static_cast<uint64_t>(is_leaf)},
         do_splitting_{0},
@@ -1102,7 +1102,7 @@ class Node
       const bool is_rightmost)
   {
     // extract and insert entries into this node
-    size_t node_size = kHeaderLength;
+    size_t node_size = kHeaderLen;
     auto offset = kPageSize;
     for (; iter < iter_end; ++iter) {
       const auto &[key, payload, key_length] = ParseEntry<Payload>(*iter);
@@ -1143,7 +1143,7 @@ class Node
       const BulkIter<Node *> &iter_end)
   {
     // extract and insert child nodes
-    size_t node_size = kHeaderLength;
+    size_t node_size = kHeaderLen;
     auto offset = kPageSize;
     auto is_rightmost = false;
     for (; iter < iter_end; ++iter) {
@@ -1382,7 +1382,7 @@ class Node
     // the minimum length of payloads
     record_min_length += 1;
 
-    return (kPageSize - kHeaderLength) / record_min_length;
+    return (kPageSize - kHeaderLen) / record_min_length;
   }
 
   /*####################################################################################
