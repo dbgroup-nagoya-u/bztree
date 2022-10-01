@@ -1623,19 +1623,18 @@ class Node
   /**
    * @brief Sort unsorted records by insertion sort.
    *
-   * @return a pair of the number of new records and its array.
+   * @param arr an array for storing sorted new records.
+   * @return the number of new records.
    */
   [[nodiscard]] auto
-  SortNewRecords() const  //
-      -> std::pair<size_t, std::array<MetaKeyPair, kMaxDeltaRecNum>>
+  SortNewRecords(std::array<MetaKeyPair, kMaxDeltaRecNum> &arr) const  //
+      -> size_t
   {
     const auto rec_count = GetStatusWordProtected().GetRecordCount();
     std::atomic_thread_fence(std::memory_order_acquire);
 
-    std::array<MetaKeyPair, kMaxDeltaRecNum> arr;
-    size_t count = 0;
-
     // sort unsorted records by insertion sort
+    size_t count = 0;
     for (size_t pos = sorted_count_; pos < rec_count; ++pos) {
       // check whether a record has been inserted
       const auto meta = GetMetadataProtected(pos);
@@ -1660,7 +1659,7 @@ class Node
       arr[i] = MetaKeyPair{meta, cur_key};
     }
 
-    return {count, arr};
+    return count;
   }
 
   /**
@@ -1677,7 +1676,8 @@ class Node
       -> size_t
   {
     // sort records in an unsorted region
-    const auto [new_rec_num, records] = SortNewRecords();
+    thread_local std::array<MetaKeyPair, kMaxDeltaRecNum> records{};
+    const auto new_rec_num = SortNewRecords(records);
 
     // perform merge-sort to consolidate a node
     size_t j = 0;
