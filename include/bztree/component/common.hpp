@@ -23,6 +23,13 @@
 #include "bztree/utility.hpp"
 #include "mwcas/mwcas_descriptor.hpp"
 
+#ifdef BZTREE_HAS_SPINLOCK_HINT
+#include <xmmintrin.h>
+#define BZTREE_SPINLOCK_HINT _mm_pause();  // NOLINT
+#else
+#define BZTREE_SPINLOCK_HINT /* do nothing */
+#endif
+
 namespace dbgroup::index::bztree::component
 {
 /*######################################################################################
@@ -39,8 +46,7 @@ using ::dbgroup::atomic::mwcas::MwCASDescriptor;
  * @brief Internal return codes to represent results of node modification.
  *
  */
-enum NodeRC
-{
+enum NodeRC {
   kSuccess = 0,
   kKeyNotExist = -4,
   kKeyExist,
@@ -52,8 +58,7 @@ enum NodeRC
  * @brief Internal return codes to represent results of uniqueness check.
  *
  */
-enum KeyExistence
-{
+enum KeyExistence {
   kExist = 0,
   kNotExist = -3,
   kDeleted,

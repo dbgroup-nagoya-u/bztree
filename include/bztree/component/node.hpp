@@ -389,7 +389,7 @@ class Node
       MwCASDescriptor desc;
       SetStatusForMwCAS(desc, current_status, current_status.Freeze());
       if (desc.MwCAS()) break;
-      SPINLOCK_HINT
+      BZTREE_SPINLOCK_HINT
     }
 
     return kSuccess;
@@ -563,7 +563,7 @@ class Node
       SetStatusForMwCAS(desc, cur_status, new_status);
       SetMetadataForMwCAS(desc, target_pos, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
-      SPINLOCK_HINT
+      BZTREE_SPINLOCK_HINT
     }
 
     /*----------------------------------------------------------------------------------
@@ -589,7 +589,7 @@ class Node
       SetStatusForMwCAS(desc, status, status);
       SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
-      SPINLOCK_HINT
+      BZTREE_SPINLOCK_HINT
     }
 
     return kSuccess;
@@ -689,7 +689,7 @@ class Node
       SetStatusForMwCAS(desc, status, status);
       SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
-      SPINLOCK_HINT
+      BZTREE_SPINLOCK_HINT
     }
 
     return kSuccess;
@@ -804,7 +804,7 @@ class Node
       SetStatusForMwCAS(desc, status, status);
       SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
-      SPINLOCK_HINT
+      BZTREE_SPINLOCK_HINT
     }
 
     return kSuccess;
@@ -916,7 +916,7 @@ class Node
       SetStatusForMwCAS(desc, status, status);
       SetMetadataForMwCAS(desc, target_pos, in_progress_meta, deleted_meta);
       if (desc.MwCAS()) break;
-      SPINLOCK_HINT
+      BZTREE_SPINLOCK_HINT
     }
 
     return kSuccess;

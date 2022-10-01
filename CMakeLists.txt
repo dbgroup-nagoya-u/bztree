@@ -18,6 +18,10 @@ set(BZTREE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 set(MWCAS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/mwcas")
 set(MEMORY_MANAGER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/memory-manager")
 
+# check SSE support for spinlock hints
+include(CheckIncludeFileCXX)
+CHECK_INCLUDE_FILE_CXX("xmmintrin.h" BZTREE_HAS_SPINLOCK_HINT)
+
 #--------------------------------------------------------------------------------------#
 # BzTree configurations
 #--------------------------------------------------------------------------------------#
@@ -66,6 +70,7 @@ if(NOT TARGET bztree::bztree)
     BZTREE_MIN_NODE_SIZE=${BZTREE_MIN_NODE_SIZE}
     BZTREE_MAX_MERGED_SIZE=${BZTREE_MAX_MERGED_SIZE}
     BZTREE_MAX_VARIABLE_DATA_SIZE=${BZTREE_MAX_VARIABLE_DATA_SIZE}
+    $<$<BOOL:${BZTREE_HAS_SPINLOCK_HINT}>:BZTREE_HAS_SPINLOCK_HINT>
   )
   target_include_directories(bztree INTERFACE
     "${BZTREE_SOURCE_DIR}/include"
