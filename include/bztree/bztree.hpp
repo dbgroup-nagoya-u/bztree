@@ -699,7 +699,11 @@ class BzTree
       index = current_node->Search(key, true);
       current_node = current_node->GetChild(index);
     }
-    trace.emplace_back(current_node, index);
+    if (current_node == target_node) {
+      trace.emplace_back(current_node, index);
+    } else {
+      trace.clear();
+    }
 
     return trace;
   }
@@ -743,7 +747,8 @@ class BzTree
       const Key &key)
   {
     // freeze a target node and perform consolidation
-    if (node->Freeze() != NodeRC::kSuccess) return;
+    // if (node->Freeze() != NodeRC::kSuccess) return;
+    node->Freeze();
 
     // create a consolidated node to calculate a correct node size
     auto *consol_node = CreateNewNode<Payload>();
@@ -757,6 +762,7 @@ class BzTree
 
     // install the consolidated node
     auto &&trace = TraceTargetNode(key, node);
+    if (trace.empty()) return;
     InstallNewNode(trace, consol_node, key, node);
   }
 
@@ -785,7 +791,9 @@ class BzTree
     while (true) {
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(key, node);
-      if (trace.size() <= 1) {
+      if (trace.empty()) {
+        return;
+      } else if (trace.size() == 1) {
         root_split = true;
         break;
       }
@@ -858,6 +866,7 @@ class BzTree
     while (true) {
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(key, right_node);
+      if (trace.empty()) return false;
       target_pos = trace.back().second;
       if (target_pos <= 0) return false;  // there is no mergeable node
 
@@ -952,6 +961,7 @@ class BzTree
 
       // traverse again to get a modified parent
       trace = TraceTargetNode(key, target_node);
+      if (trace.empty()) return;
     }
   }
 
