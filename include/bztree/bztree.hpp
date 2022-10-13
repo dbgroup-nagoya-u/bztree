@@ -21,6 +21,7 @@
 #include <atomic>
 #include <functional>
 #include <future>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -687,7 +688,8 @@ class BzTree
   auto
   TraceTargetNode(  //
       const Key &key,
-      const Node_t *target_node) const  //
+      const Node_t *target_node,
+      const Node_t *existing_node) const  //
       -> NodeStack
   {
     // trace nodes to a target internal node
@@ -699,11 +701,9 @@ class BzTree
       index = current_node->Search(key, true);
       current_node = current_node->GetChild(index);
     }
-    if (current_node == target_node) {
-      trace.emplace_back(current_node, index);
-    } else {
-      trace.clear();
-    }
+    trace.emplace_back(current_node, index);
+
+    if (current_node != existing_node) trace.clear();
 
     return trace;
   }
@@ -757,11 +757,11 @@ class BzTree
 
     // check other SMOs are needed
     const auto stat = consol_node->GetStatusWord();
-    if (stat.template NeedSplit<Key, Payload>()) return Split<Payload>(consol_node, key);
-    if (stat.NeedMerge() && Merge<Payload>(consol_node, key)) return;
+    if (stat.template NeedSplit<Key, Payload>()) return Split<Payload>(consol_node, node, key);
+    if (stat.NeedMerge() && Merge<Payload>(consol_node, node, key)) return;
 
     // install the consolidated node
-    auto &&trace = TraceTargetNode(key, node);
+    auto &&trace = TraceTargetNode(key, node, node);
     if (trace.empty()) return;
     InstallNewNode(trace, consol_node, key, node);
   }
@@ -778,6 +778,7 @@ class BzTree
   void
   Split(  //
       Node_t *node,
+      Node_t *existing_node,
       const Key &key)
   {
     /*----------------------------------------------------------------------------------
@@ -790,10 +791,9 @@ class BzTree
     bool root_split = false;
     while (true) {
       // trace and get the embedded index of a target node
-      trace = TraceTargetNode(key, node);
-      if (trace.empty()) {
-        return;
-      } else if (trace.size() == 1) {
+      trace = TraceTargetNode(key, node, existing_node);
+      if (trace.empty()) return;
+      if (trace.size() <= 1) {
         root_split = true;
         break;
       }
@@ -802,7 +802,7 @@ class BzTree
 
       // pre-freezing of SMO targets
       old_parent = trace.back().first;
-      if (old_parent->Freeze() == NodeRC::kSuccess) break;
+      if (old_parent->Freeze() == NodeRC::kSuccess) break;  // kSuccessの確認を無くすよう変更予定
     }
 
     /*----------------------------------------------------------------------------------
@@ -824,7 +824,8 @@ class BzTree
     }
 
     // install new nodes to the index and register garbages
-    InstallNewNode(trace, new_parent, key, old_parent);
+    ReturnCode rc = InstallNewNode(trace, new_parent, key, old_parent);
+    if (rc != ReturnCode::kSuccess) return;  // MwCAS失敗，他スレッドに先に行われている可能性あり
     gc_.AddGarbage(node);
     if (!root_split) {
       gc_.AddGarbage(old_parent);
@@ -832,7 +833,7 @@ class BzTree
 
     // split the new parent node if needed
     if (recurse_split) {
-      Split<Node_t *>(new_parent, key);
+      Split<Node_t *>(new_parent, new_parent, key);
     }
   }
 
@@ -850,6 +851,7 @@ class BzTree
   auto
   Merge(  //
       Node_t *right_node,
+      Node_t *existing_node,
       const Key &key)  //
       -> bool
   {
@@ -865,8 +867,8 @@ class BzTree
     size_t target_pos{};
     while (true) {
       // trace and get the embedded index of a target node
-      trace = TraceTargetNode(key, right_node);
-      if (trace.empty()) return false;
+      trace = TraceTargetNode(key, right_node, existing_node);
+      if (trace.empty()) return true;
       target_pos = trace.back().second;
       if (target_pos <= 0) return false;  // there is no mergeable node
 
@@ -905,13 +907,14 @@ class BzTree
     }
 
     // install new nodes to the index and register garbages
-    InstallNewNode(trace, new_parent, key, old_parent);
+    ReturnCode rc = InstallNewNode(trace, new_parent, key, old_parent);
+    if (rc != ReturnCode::kSuccess) return true;
     gc_.AddGarbage(old_parent);
     gc_.AddGarbage(left_node);
     gc_.AddGarbage(right_node);
 
     // merge the new parent node if needed
-    if (recurse_merge && !Merge<Node_t *>(new_parent, key)) {
+    if (recurse_merge && !Merge<Node_t *>(new_parent, new_parent, key)) {
       // if the parent node cannot be merged, unfreeze it
       new_parent->Unfreeze();
     }
@@ -929,23 +932,25 @@ class BzTree
    * @param key a target key.
    * @param target_node an old node to be swapped.
    */
-  void
+  auto
   InstallNewNode(  //
       NodeStack &trace,
       Node_t *new_node,
       const Key &key,
-      const Node_t *target_node)
+      const Node_t *target_node)  //
+      -> ReturnCode
   {
     if (trace.size() <= 1) {
       // root swapping
       root_.store(new_node, std::memory_order_release);
-      return;
+      return ReturnCode::kSuccess;
     }
 
     std::atomic_thread_fence(std::memory_order_release);
     while (true) {
       // prepare installing nodes
       auto [old_node, target_pos] = trace.back();
+      if (old_node != target_node) return ReturnCode::kKeyNotExist;
       trace.pop_back();
       auto *parent = trace.back().first;
 
@@ -956,12 +961,14 @@ class BzTree
         MwCASDescriptor desc{};
         parent->SetStatusForMwCAS(desc, parent_status, parent_status);
         parent->SetChildForMwCAS(desc, target_pos, old_node, new_node);
-        if (desc.MwCAS()) return;
+        if (desc.MwCAS()) {
+          return ReturnCode::kSuccess;
+        }
       }
 
       // traverse again to get a modified parent
-      trace = TraceTargetNode(key, target_node);
-      if (trace.empty()) return;
+      trace = TraceTargetNode(key, target_node, target_node);
+      if (trace.empty()) return ReturnCode::kKeyNotExist;
     }
   }
 
