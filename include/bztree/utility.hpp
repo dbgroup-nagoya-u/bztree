@@ -77,7 +77,8 @@ static_assert(kMaxVarDataSize * 2 < kPageSize);
 enum ReturnCode {
   kSuccess = 0,
   kKeyNotExist = -2,
-  kKeyExist
+  kKeyExist,
+  kNodeNotExist
 };
 
 /**

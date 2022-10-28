@@ -696,14 +696,29 @@ class BzTree
     NodeStack trace;
     size_t index = 0;
     auto *current_node = GetRoot();
-    while (current_node != target_node && !current_node->IsLeaf()) {
+
+    /*while (current_node != target_node && !current_node->IsLeaf()) {
       trace.emplace_back(current_node, index);
       index = current_node->Search(key, true);
       current_node = current_node->GetChild(index);
     }
     trace.emplace_back(current_node, index);
 
-    if (current_node != existing_node) trace.clear();
+    if (target_node != existing_node) trace.clear();*/
+
+    while (true) {
+      if (current_node == existing_node) {
+        trace.emplace_back(current_node, index);
+        break;
+      } else if (current_node->IsLeaf()) {
+        trace.clear();
+        break;
+      }
+
+      trace.emplace_back(current_node, index);
+      index = current_node->Search(key, true);
+      current_node = current_node->GetChild(index);
+    }
 
     return trace;
   }
@@ -757,13 +772,23 @@ class BzTree
 
     // check other SMOs are needed
     const auto stat = consol_node->GetStatusWord();
-    if (stat.template NeedSplit<Key, Payload>()) return Split<Payload>(consol_node, node, key);
-    if (stat.NeedMerge() && Merge<Payload>(consol_node, node, key)) return;
+    if (stat.template NeedSplit<Key, Payload>()) {
+      // node->Unfreeze();
+      return Split<Payload>(consol_node, node, key);
+    }
+    if (stat.NeedMerge() && Merge<Payload>(consol_node, node, key)) {
+      node->Unfreeze();
+      return;
+    }
 
     // install the consolidated node
     auto &&trace = TraceTargetNode(key, node, node);
-    if (trace.empty()) return;
-    InstallNewNode(trace, consol_node, key, node);
+    if (trace.empty()) {
+      node->Unfreeze();
+      return;
+    }
+    const auto rc = InstallNewNode(trace, consol_node, key, node);
+    if (rc == ReturnCode::kNodeNotExist) node->Unfreeze();
   }
 
   /**
@@ -825,7 +850,11 @@ class BzTree
 
     // install new nodes to the index and register garbages
     ReturnCode rc = InstallNewNode(trace, new_parent, key, old_parent);
-    if (rc != ReturnCode::kSuccess) return;  // MwCAS失敗，他スレッドに先に行われている可能性あり
+    if (rc != ReturnCode::kSuccess) {
+      old_parent->Unfreeze();
+      existing_node->Unfreeze();
+      return;  // MwCAS失敗，他スレッドに先に行われている可能性あり
+    }
     gc_.AddGarbage(node);
     if (!root_split) {
       gc_.AddGarbage(old_parent);
@@ -950,7 +979,7 @@ class BzTree
     while (true) {
       // prepare installing nodes
       auto [old_node, target_pos] = trace.back();
-      if (old_node != target_node) return ReturnCode::kKeyNotExist;
+      // if (old_node != target_node) return ReturnCode::kKeyNotExist;
       trace.pop_back();
       auto *parent = trace.back().first;
 
@@ -968,7 +997,8 @@ class BzTree
 
       // traverse again to get a modified parent
       trace = TraceTargetNode(key, target_node, target_node);
-      if (trace.empty()) return ReturnCode::kKeyNotExist;
+      if (trace.empty()) return ReturnCode::kNodeNotExist;
+      // ココで解凍 or consolidateの最後に解凍
     }
   }
 
