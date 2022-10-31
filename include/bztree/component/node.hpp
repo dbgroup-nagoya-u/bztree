@@ -1154,7 +1154,7 @@ class Node
 
       if (key_length == 0) {  // the rightmost node
         node_size += 2 * kWordSize;
-        if (node_size > kPageSize) break;
+        if (node_size > kPageSize - kMinFreeSpaceSize) break;
 
         offset = SetPayload(offset, child_node);
         meta_array_[sorted_count_++] = Metadata{offset, 0, kWordSize};
@@ -1162,7 +1162,7 @@ class Node
       } else {  // the other internal nodes
         const auto [key_len, rec_len] = Align<Key, Node *>(key_length);
         node_size += rec_len + kWordSize;
-        if (node_size + key_len > kPageSize) break;
+        if (node_size + key_len > kPageSize - kMinFreeSpaceSize) break;
 
         auto tmp_offset = SetPayload(offset, child_node) - key_len;
         memcpy(ShiftAddr(this, tmp_offset), child_node->GetKeyAddr(high_meta), key_len);
