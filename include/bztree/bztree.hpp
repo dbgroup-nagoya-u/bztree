@@ -326,7 +326,8 @@ class BzTree
       page->template Consolidate<Payload>(node);
 
       // check the begin position for scanning
-      auto [rc, pos] = page->SearchSortedRecord(b_key);
+      Metadata meta{};
+      auto [rc, pos] = page->SearchSortedRecord(b_key, meta);
       begin_pos = (rc == KeyExistence::kNotExist || b_closed) ? pos : pos + 1;
     } else {
       const auto *node = SearchLeftEdgeLeaf();

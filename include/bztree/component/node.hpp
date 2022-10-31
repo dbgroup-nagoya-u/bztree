@@ -348,7 +348,9 @@ class Node
    * @return a pair of key existence and a key position.
    */
   [[nodiscard]] auto
-  SearchSortedRecord(const Key &key) const  //
+  SearchSortedRecord(  //
+      const Key &key,
+      Metadata &meta) const  //
       -> std::pair<KeyExistence, size_t>
   {
     int64_t begin_pos = 0;
@@ -356,7 +358,7 @@ class Node
     while (begin_pos <= end_pos) {
       size_t pos = (begin_pos + end_pos) >> 1UL;  // NOLINT
 
-      const auto meta = GetMetadataWOFence(pos);
+      meta = GetMetadataWOFence(pos);
       const auto &index_key = GetKey(meta);
 
       if (Compare{}(key, index_key)) {  // a target key is in a left side
@@ -427,33 +429,35 @@ class Node
       Payload &out_payload) const  //
       -> NodeRC
   {
+    Metadata meta{};
+
     // check whether there is a given key in this node
     if constexpr (CanCASUpdate<Payload>()) {
-      auto [rc, pos] = SearchSortedRecord(key);
+      auto [rc, pos] = SearchSortedRecord(key, meta);
       if (rc == kExist) {
         // directly load a payload
-        const auto *addr = GetPayloadAddr(GetMetadataWOFence(pos));
+        const auto *addr = GetPayloadAddr(meta);
         out_payload = MwCASDescriptor::Read<Payload>(addr, std::memory_order_relaxed);
         return kSuccess;
       }
 
       // a new record may be inserted in an unsorted region
       const auto status = GetStatusWordProtected();
-      std::tie(rc, pos) = SearchUnsortedRecord(key, status.GetRecordCount() - 1);
+      std::tie(rc, pos) = SearchUnsortedRecord(key, status.GetRecordCount() - 1, meta);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
       // copy a written payload to a given address
-      const auto *addr = GetPayloadAddr(GetMetadataWithFence(pos));
+      const auto *addr = GetPayloadAddr(meta);
       memcpy(&out_payload, addr, sizeof(Payload));
 
       return kSuccess;
     } else {
       const auto status = GetStatusWordProtected();
-      auto [rc, pos] = CheckUniqueness<Payload>(key, status.GetRecordCount() - 1);
+      auto [rc, pos] = CheckUniqueness<Payload>(key, status.GetRecordCount() - 1, meta);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
       // copy a written payload to a given address
-      const auto *addr = GetPayloadAddr(GetMetadataWithFence(pos));
+      const auto *addr = GetPayloadAddr(meta);
       memcpy(&out_payload, addr, sizeof(Payload));
 
       return kSuccess;
@@ -488,10 +492,11 @@ class Node
       -> std::pair<bool, size_t>
   {
     const auto is_end = IsRightmostOf(end_key);
+    Metadata meta{};
     size_t end_pos{};
     if (is_end && end_key) {
       const auto &[e_key, e_key_len, e_closed] = *end_key;
-      const auto [rc, pos] = SearchSortedRecord(e_key);
+      const auto [rc, pos] = SearchSortedRecord(e_key, meta);
       end_pos = (rc == kExist && e_closed) ? pos + 1 : pos;
     } else {
       end_pos = sorted_count_;
@@ -534,7 +539,8 @@ class Node
     // variables and constants shared in Phase 1 & 2
     const auto [key_len, rec_len] = Align<Key, Payload>(key_length);
     const auto in_progress_meta = Metadata{key_len, rec_len};
-    StatusWord cur_status;
+    StatusWord cur_status{};
+    Metadata meta{};
     size_t target_pos{};
 
     /*----------------------------------------------------------------------------------
@@ -546,15 +552,13 @@ class Node
 
       if constexpr (CanCASUpdate<Payload>()) {
         // check whether a node includes a target key
-        const auto [rc, target_pos] = SearchSortedRecord(key);
+        const auto [rc, target_pos] = SearchSortedRecord(key, meta);
         if (rc == kExist) {
-          const auto target_meta = GetMetadataWOFence(target_pos);
-
           // update a record directly
           MwCASDescriptor desc{};
           SetStatusForMwCAS(desc, cur_status, cur_status);
-          SetMetadataWOFence(desc, target_pos, target_meta, target_meta);
-          SetPayloadForMwCAS(desc, target_meta, payload);
+          SetMetadataWOFence(desc, target_pos, meta, meta);
+          SetPayloadForMwCAS(desc, meta, payload);
           if (desc.MwCAS()) return kSuccess;
           continue;
         }
@@ -633,7 +637,8 @@ class Node
     // variables and constants shared in Phase 1 & 2
     const auto [key_len, rec_len] = Align<Key, Payload>(key_length);
     const auto in_progress_meta = Metadata{key_len, rec_len};
-    StatusWord cur_status;
+    StatusWord cur_status{};
+    Metadata meta{};
     size_t target_pos{};
     size_t recheck_pos{};
     KeyExistence rc{};
@@ -647,7 +652,7 @@ class Node
 
       // check uniqueness
       target_pos = cur_status.GetRecordCount();
-      std::tie(rc, recheck_pos) = CheckUniqueness<Payload>(key, target_pos - 1);
+      std::tie(rc, recheck_pos) = CheckUniqueness<Payload>(key, target_pos - 1, meta);
       if (rc == kExist) return kKeyExist;
 
       // prepare new status for MwCAS
@@ -680,7 +685,7 @@ class Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
-        std::tie(rc, recheck_pos) = CheckUniqueness<Payload>(key, recheck_pos);
+        std::tie(rc, recheck_pos) = CheckUniqueness<Payload>(key, recheck_pos, meta);
         if (rc == kUncertain) continue;
         if (rc == kExist) {
           // delete an inserted record
@@ -733,7 +738,8 @@ class Node
     const auto [key_len, rec_len] = Align<Key, Payload>(key_length);
     const auto deleted_size = kWordSize + rec_len;
     const auto in_progress_meta = Metadata{key_len, rec_len};
-    StatusWord cur_status;
+    StatusWord cur_status{};
+    Metadata meta{};
     size_t target_pos{};
     size_t exist_pos{};
     KeyExistence rc{};
@@ -747,13 +753,11 @@ class Node
 
       // check whether a node includes a target key
       target_pos = cur_status.GetRecordCount();
-      std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos - 1);
+      std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos - 1, meta);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
       if constexpr (CanCASUpdate<Payload>()) {
         if (rc == kExist && exist_pos < sorted_count_) {
-          const auto meta = GetMetadataWOFence(exist_pos);
-
           // update a record directly
           MwCASDescriptor desc{};
           SetStatusForMwCAS(desc, cur_status, cur_status);
@@ -794,7 +798,7 @@ class Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
-        std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, exist_pos);
+        std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, exist_pos, meta);
         if (rc == kUncertain) continue;
         if (rc == kNotExist || rc == kDeleted) {
           // delete an inserted record
@@ -842,7 +846,8 @@ class Node
     // variables and constants
     const auto rec_len = Align<Key, Payload>(key_len).second - sizeof(Payload);
     const auto in_progress_meta = Metadata{key_len, rec_len};
-    StatusWord cur_status;
+    StatusWord cur_status{};
+    Metadata meta{};
     size_t target_pos{};
     size_t exist_pos{};
     KeyExistence rc{};
@@ -856,10 +861,9 @@ class Node
 
       // check whether a node includes a target key
       target_pos = cur_status.GetRecordCount();
-      std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos - 1);
+      std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos - 1, meta);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
-      const auto meta = GetMetadataWOFence(exist_pos);
       if constexpr (CanCASUpdate<Payload>()) {
         if (rc == kExist && exist_pos < sorted_count_) {
           const auto deleted_meta = meta.Delete();
@@ -905,7 +909,7 @@ class Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
-        std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, exist_pos);
+        std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, exist_pos, meta);
         if (rc == kUncertain) continue;
         if (rc == kNotExist || rc == kDeleted) {
           // delete an inserted record
@@ -1436,12 +1440,13 @@ class Node
   [[nodiscard]] auto
   SearchUnsortedRecord(  //
       const Key &key,
-      const size_t begin_pos) const  //
+      const size_t begin_pos,
+      Metadata &meta) const  //
       -> std::pair<KeyExistence, size_t>
   {
     // perform a linear search in revese order
     for (int64_t pos = begin_pos; pos >= sorted_count_; --pos) {
-      const auto meta = GetMetadataWithFence(pos);
+      meta = GetMetadataWithFence(pos);
       if (meta.IsInProgress()) {
         if (meta.IsVisible()) return {kUncertain, pos};
         continue;
@@ -1469,23 +1474,24 @@ class Node
   [[nodiscard]] auto
   CheckUniqueness(  //
       const Key &key,
-      const int64_t begin_pos) const  //
+      const int64_t begin_pos,
+      Metadata &meta) const  //
       -> std::pair<KeyExistence, size_t>
   {
     KeyExistence rc{};
     size_t pos{};
 
     if constexpr (CanCASUpdate<Payload>()) {
-      std::tie(rc, pos) = SearchSortedRecord(key);
+      std::tie(rc, pos) = SearchSortedRecord(key, meta);
       if (rc == kNotExist || rc == kDeleted) {
         // a new record may be inserted in an unsorted region
-        std::tie(rc, pos) = SearchUnsortedRecord(key, begin_pos);
+        std::tie(rc, pos) = SearchUnsortedRecord(key, begin_pos, meta);
       }
     } else {
-      std::tie(rc, pos) = SearchUnsortedRecord(key, begin_pos);
+      std::tie(rc, pos) = SearchUnsortedRecord(key, begin_pos, meta);
       if (rc == kNotExist) {
         // a record may be in a sorted region
-        std::tie(rc, pos) = SearchSortedRecord(key);
+        std::tie(rc, pos) = SearchSortedRecord(key, meta);
       }
     }
 
