@@ -643,8 +643,7 @@ class BzTree
   GetRoot() const  //
       -> Node_t *
   {
-    auto *root = MwCASDescriptor::Read<Node_t *>(&root_);
-    std::atomic_thread_fence(std::memory_order_acquire);
+    auto *root = MwCASDescriptor::Read<Node_t *>(&root_, std::memory_order_acquire);
 
     return root;
   }
@@ -945,7 +944,6 @@ class BzTree
       return;
     }
 
-    std::atomic_thread_fence(std::memory_order_release);
     while (true) {
       // prepare installing nodes
       auto [old_node, target_pos] = trace.back();

@@ -167,7 +167,7 @@ class Node
   GetStatusWordProtected() const  //
       -> StatusWord
   {
-    return MwCASDescriptor::Read<StatusWord>(&status_);
+    return MwCASDescriptor::Read<StatusWord>(&status_, std::memory_order_relaxed);
   }
 
   /**
@@ -259,9 +259,8 @@ class Node
   GetChild(const size_t position) const  //
       -> Node *
   {
-    auto *child = MwCASDescriptor::Read<Node *>(GetPayloadAddr(meta_array_[position]));
-    std::atomic_thread_fence(std::memory_order_acquire);
-
+    const auto *addr = GetPayloadAddr(meta_array_[position]);
+    auto *child = MwCASDescriptor::Read<Node *>(addr, std::memory_order_acquire);
     return child;
   }
 
@@ -278,7 +277,7 @@ class Node
       const StatusWord old_status,
       const StatusWord new_status)
   {
-    desc.AddMwCASTarget(&status_, old_status, new_status);
+    desc.AddMwCASTarget(&status_, old_status, new_status, std::memory_order_relaxed);
   }
 
   /**
@@ -296,7 +295,8 @@ class Node
       const Node *old_child,
       const Node *new_child)
   {
-    desc.AddMwCASTarget(GetPayloadAddr(meta_array_[pos]), old_child, new_child);
+    auto *addr = GetPayloadAddr(meta_array_[pos]);
+    desc.AddMwCASTarget(addr, old_child, new_child, std::memory_order_release);
   }
 
   /*####################################################################################
@@ -356,7 +356,7 @@ class Node
     while (begin_pos <= end_pos) {
       size_t pos = (begin_pos + end_pos) >> 1UL;  // NOLINT
 
-      const auto meta = GetMetadataProtected(pos);
+      const auto meta = GetMetadataWOFence(pos);
       const auto &index_key = GetKey(meta);
 
       if (Compare{}(key, index_key)) {  // a target key is in a left side
@@ -387,7 +387,7 @@ class Node
       const auto current_status = GetStatusWordProtected();
       if (current_status.IsFrozen()) return kFrozen;
 
-      MwCASDescriptor desc;
+      MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, current_status, current_status.Freeze());
       if (desc.MwCAS()) break;
       BZTREE_SPINLOCK_HINT
@@ -428,30 +428,36 @@ class Node
       -> NodeRC
   {
     // check whether there is a given key in this node
-    KeyExistence rc{};
-    size_t pos{};
     if constexpr (CanCASUpdate<Payload>()) {
-      std::tie(rc, pos) = SearchSortedRecord(key);
-      if (rc == kNotExist || rc == kDeleted) {
-        // a new record may be inserted in an unsorted region
-        const auto status = GetStatusWordProtected();
-        std::tie(rc, pos) = SearchUnsortedRecord(key, status.GetRecordCount() - 1);
+      auto [rc, pos] = SearchSortedRecord(key);
+      if (rc == kExist) {
+        // directly load a payload
+        const auto *addr = GetPayloadAddr(GetMetadataWOFence(pos));
+        out_payload = MwCASDescriptor::Read<Payload>(addr, std::memory_order_relaxed);
+        return kSuccess;
       }
+
+      // a new record may be inserted in an unsorted region
+      const auto status = GetStatusWordProtected();
+      std::tie(rc, pos) = SearchUnsortedRecord(key, status.GetRecordCount() - 1);
+      if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
+
+      // copy a written payload to a given address
+      const auto *addr = GetPayloadAddr(GetMetadataWithFence(pos));
+      memcpy(&out_payload, addr, sizeof(Payload));
+
+      return kSuccess;
     } else {
       const auto status = GetStatusWordProtected();
-      std::tie(rc, pos) = CheckUniqueness<Payload>(key, status.GetRecordCount() - 1);
-    }
-    if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
+      auto [rc, pos] = CheckUniqueness<Payload>(key, status.GetRecordCount() - 1);
+      if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
-    // copy a written payload to a given address
-    const auto meta = GetMetadataProtected(pos);
-    if constexpr (CanCASUpdate<Payload>()) {
-      out_payload = MwCASDescriptor::Read<Payload>(GetPayloadAddr(meta));
-    } else {
-      memcpy(&out_payload, GetPayloadAddr(meta), sizeof(Payload));
-    }
+      // copy a written payload to a given address
+      const auto *addr = GetPayloadAddr(GetMetadataWithFence(pos));
+      memcpy(&out_payload, addr, sizeof(Payload));
 
-    return kSuccess;
+      return kSuccess;
+    }
   }
 
   /*####################################################################################
@@ -542,12 +548,12 @@ class Node
         // check whether a node includes a target key
         const auto [rc, target_pos] = SearchSortedRecord(key);
         if (rc == kExist) {
-          const auto target_meta = GetMetadataProtected(target_pos);
+          const auto target_meta = GetMetadataWOFence(target_pos);
 
           // update a record directly
           MwCASDescriptor desc{};
           SetStatusForMwCAS(desc, cur_status, cur_status);
-          SetMetadataForMwCAS(desc, target_pos, target_meta, target_meta);
+          SetMetadataWOFence(desc, target_pos, target_meta, target_meta);
           SetPayloadForMwCAS(desc, target_meta, payload);
           if (desc.MwCAS()) return kSuccess;
           continue;
@@ -562,7 +568,7 @@ class Node
       // perform MwCAS to reserve space
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, cur_status, new_status);
-      SetMetadataForMwCAS(desc, target_pos, Metadata{}, in_progress_meta);
+      SetMetadataWOFence(desc, target_pos, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
       BZTREE_SPINLOCK_HINT
     }
@@ -575,7 +581,6 @@ class Node
     auto offset = kPageSize - cur_status.GetBlockSize();
     offset = SetPayload(offset, payload);
     offset = SetKey(offset, key, key_len);
-    std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = in_progress_meta.Commit(offset);
@@ -588,7 +593,7 @@ class Node
       // perform MwCAS to complete a write
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, status, status);
-      SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
+      SetMetadataWithFence(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
       BZTREE_SPINLOCK_HINT
     }
@@ -652,7 +657,7 @@ class Node
       // perform MwCAS to reserve space
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, cur_status, new_status);
-      SetMetadataForMwCAS(desc, target_pos, Metadata{}, in_progress_meta);
+      SetMetadataWOFence(desc, target_pos, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -664,7 +669,6 @@ class Node
     auto offset = kPageSize - cur_status.GetBlockSize();
     offset = SetPayload(offset, payload);
     offset = SetKey(offset, key, key_len);
-    std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = in_progress_meta.Commit(offset);
@@ -688,7 +692,7 @@ class Node
       // perform MwCAS to complete an insert
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, status, status);
-      SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
+      SetMetadataWithFence(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
       BZTREE_SPINLOCK_HINT
     }
@@ -748,12 +752,12 @@ class Node
 
       if constexpr (CanCASUpdate<Payload>()) {
         if (rc == kExist && exist_pos < sorted_count_) {
-          const auto meta = GetMetadataProtected(exist_pos);
+          const auto meta = GetMetadataWOFence(exist_pos);
 
           // update a record directly
           MwCASDescriptor desc{};
           SetStatusForMwCAS(desc, cur_status, cur_status);
-          SetMetadataForMwCAS(desc, exist_pos, meta, meta);
+          SetMetadataWOFence(desc, exist_pos, meta, meta);
           SetPayloadForMwCAS(desc, meta, payload);
           if (desc.MwCAS()) return kSuccess;
           continue;
@@ -767,7 +771,7 @@ class Node
       // perform MwCAS to reserve space
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, cur_status, new_status);
-      SetMetadataForMwCAS(desc, target_pos, Metadata{}, in_progress_meta);
+      SetMetadataWOFence(desc, target_pos, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -779,7 +783,6 @@ class Node
     auto offset = kPageSize - cur_status.GetBlockSize();
     offset = SetPayload(offset, payload);
     offset = SetKey(offset, key, key_len);
-    std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = in_progress_meta.Commit(offset);
@@ -803,7 +806,7 @@ class Node
       // perform MwCAS to complete an update
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, status, status);
-      SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
+      SetMetadataWithFence(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
       BZTREE_SPINLOCK_HINT
     }
@@ -856,7 +859,7 @@ class Node
       std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos - 1);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
-      const auto meta = GetMetadataProtected(exist_pos);
+      const auto meta = GetMetadataWOFence(exist_pos);
       if constexpr (CanCASUpdate<Payload>()) {
         if (rc == kExist && exist_pos < sorted_count_) {
           const auto deleted_meta = meta.Delete();
@@ -866,7 +869,7 @@ class Node
           // delete a record directly
           MwCASDescriptor desc{};
           SetStatusForMwCAS(desc, cur_status, new_status);
-          SetMetadataForMwCAS(desc, exist_pos, meta, deleted_meta);
+          SetMetadataWOFence(desc, exist_pos, meta, deleted_meta);
           if (desc.MwCAS()) return kSuccess;
           continue;
         }
@@ -880,7 +883,7 @@ class Node
       // perform MwCAS to reserve space
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, cur_status, new_status);
-      SetMetadataForMwCAS(desc, target_pos, Metadata{}, in_progress_meta);
+      SetMetadataWOFence(desc, target_pos, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -891,7 +894,6 @@ class Node
     // insert a null record
     auto offset = kPageSize - cur_status.GetBlockSize();
     offset = SetKey(offset, key, key_len);
-    std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
     const auto deleted_meta = in_progress_meta.Delete(offset);
@@ -915,7 +917,7 @@ class Node
       // perform MwCAS to complete an insert
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, status, status);
-      SetMetadataForMwCAS(desc, target_pos, in_progress_meta, deleted_meta);
+      SetMetadataWithFence(desc, target_pos, in_progress_meta, deleted_meta);
       if (desc.MwCAS()) break;
       BZTREE_SPINLOCK_HINT
     }
@@ -1224,10 +1226,25 @@ class Node
    * @return metadata.
    */
   [[nodiscard]] auto
-  GetMetadataProtected(const size_t position) const  //
+  GetMetadataWithFence(const size_t position) const  //
       -> Metadata
   {
-    return MwCASDescriptor::Read<Metadata>(&meta_array_[position]);
+    return MwCASDescriptor::Read<Metadata>(&(meta_array_[position]), std::memory_order_acquire);
+  }
+
+  /**
+   * @brief Read metadata with MwCAS read protection.
+   *
+   * This function uses a MwCAS read operation internally, and so it is guaranteed that
+   * read metadata is valid.
+   *
+   * @return metadata.
+   */
+  [[nodiscard]] auto
+  GetMetadataWOFence(const size_t position) const  //
+      -> Metadata
+  {
+    return MwCASDescriptor::Read<Metadata>(&(meta_array_[position]), std::memory_order_relaxed);
   }
 
   /**
@@ -1267,7 +1284,7 @@ class Node
       const size_t pos,
       const Metadata meta)
   {
-    auto *atomic_meta = reinterpret_cast<std::atomic<Metadata> *>(meta_array_ + pos);
+    auto *atomic_meta = reinterpret_cast<std::atomic<Metadata> *>(&(meta_array_[pos]));
     atomic_meta->store(meta, std::memory_order_relaxed);
   }
 
@@ -1320,18 +1337,36 @@ class Node
    * @brief Set an old/new metadata pair to a MwCAS target.
    *
    * @param desc a target MwCAS descriptor.
-   * @param position the position of target metadata.
+   * @param position the pos of target metadata.
    * @param old_meta old metadata for MwCAS.
    * @param new_meta new metadata for MwCAS.
    */
   constexpr void
-  SetMetadataForMwCAS(  //
+  SetMetadataWithFence(  //
       MwCASDescriptor &desc,
-      const size_t position,
+      const size_t pos,
       const Metadata old_meta,
       const Metadata new_meta)
   {
-    desc.AddMwCASTarget(meta_array_ + position, old_meta, new_meta);
+    desc.AddMwCASTarget(&(meta_array_[pos]), old_meta, new_meta, std::memory_order_release);
+  }
+
+  /**
+   * @brief Set an old/new metadata pair to a MwCAS target.
+   *
+   * @param desc a target MwCAS descriptor.
+   * @param position the pos of target metadata.
+   * @param old_meta old metadata for MwCAS.
+   * @param new_meta new metadata for MwCAS.
+   */
+  constexpr void
+  SetMetadataWOFence(  //
+      MwCASDescriptor &desc,
+      const size_t pos,
+      const Metadata old_meta,
+      const Metadata new_meta)
+  {
+    desc.AddMwCASTarget(&(meta_array_[pos]), old_meta, new_meta, std::memory_order_relaxed);
   }
 
   /**
@@ -1349,12 +1384,13 @@ class Node
   SetPayloadForMwCAS(  //
       MwCASDescriptor &desc,
       const Metadata meta,
-      const Payload &new_payload)
+      const Payload new_payload)
   {
     static_assert(CanCASUpdate<Payload>());
 
-    auto &&old_payload = MwCASDescriptor::Read<Payload>(GetPayloadAddr(meta));
-    desc.AddMwCASTarget(GetPayloadAddr(meta), old_payload, new_payload);
+    auto *addr = GetPayloadAddr(meta);
+    auto old_payload = MwCASDescriptor::Read<Payload>(addr, std::memory_order_relaxed);
+    desc.AddMwCASTarget(addr, old_payload, new_payload, std::memory_order_relaxed);
   }
 
   /*####################################################################################
@@ -1403,11 +1439,9 @@ class Node
       const size_t begin_pos) const  //
       -> std::pair<KeyExistence, size_t>
   {
-    std::atomic_thread_fence(std::memory_order_acquire);
-
     // perform a linear search in revese order
     for (int64_t pos = begin_pos; pos >= sorted_count_; --pos) {
-      const auto meta = GetMetadataProtected(pos);
+      const auto meta = GetMetadataWithFence(pos);
       if (meta.IsInProgress()) {
         if (meta.IsVisible()) return {kUncertain, pos};
         continue;
@@ -1548,8 +1582,11 @@ class Node
 
     if constexpr (CanCASUpdate<Payload>()) {
       // copy a payload with MwCAS read protection
+      constexpr auto kFence = (std::is_same_v<Payload, Node *>) ? std::memory_order_acquire  //
+                                                                : std::memory_order_relaxed;
+      const auto *addr = from_node->GetPayloadAddr(meta);
+      const auto &payload = MwCASDescriptor::Read<Payload>(addr, kFence);
       tmp_offset -= sizeof(Payload);
-      const auto &payload = MwCASDescriptor::Read<Payload>(from_node->GetPayloadAddr(meta));
       memcpy(ShiftAddr(to_node, tmp_offset), &payload, sizeof(Payload));
 
       // copy a correspondng key
@@ -1632,13 +1669,12 @@ class Node
       -> size_t
   {
     const auto rec_count = GetStatusWordProtected().GetRecordCount();
-    std::atomic_thread_fence(std::memory_order_acquire);
 
     // sort unsorted records by insertion sort
     size_t count = 0;
     for (size_t pos = sorted_count_; pos < rec_count; ++pos) {
       // check whether a record has been inserted
-      const auto meta = GetMetadataProtected(pos);
+      const auto meta = GetMetadataWithFence(pos);
       if (meta.IsInProgress()) continue;
 
       // search an inserting position
@@ -1683,7 +1719,7 @@ class Node
     // perform merge-sort to consolidate a node
     size_t j = 0;
     for (size_t i = 0; i < sorted_count_; ++i) {
-      const auto meta = GetMetadataProtected(i);
+      const auto meta = GetMetadataWOFence(i);
       const auto &key = GetKey(meta);
 
       // copy new records
