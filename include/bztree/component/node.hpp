@@ -43,6 +43,7 @@ class Node
    * Type aliases
    *##################################################################################*/
 
+  using ScanKey = std::optional<std::tuple<const Key &, size_t, bool>>;
   template <class Entry>
   using BulkIter = typename std::vector<Entry>::const_iterator;
 
@@ -477,13 +478,13 @@ class Node
    * @retval 2nd: the end position for scanning.
    */
   [[nodiscard]] auto
-  SearchEndPositionFor(const std::optional<std::pair<const Key &, bool>> &end_key) const  //
+  SearchEndPositionFor(const ScanKey &end_key) const  //
       -> std::pair<bool, size_t>
   {
     const auto is_end = IsRightmostOf(end_key);
     size_t end_pos{};
     if (is_end && end_key) {
-      const auto &[e_key, e_closed] = *end_key;
+      const auto &[e_key, e_key_len, e_closed] = *end_key;
       const auto [rc, pos] = SearchSortedRecord(e_key);
       end_pos = (rc == kExist && e_closed) ? pos + 1 : pos;
     } else {
@@ -1206,12 +1207,12 @@ class Node
    * @retval false otherwise.
    */
   [[nodiscard]] auto
-  IsRightmostOf(const std::optional<std::pair<const Key &, bool>> &end_key) const  //
+  IsRightmostOf(const ScanKey &end_key) const  //
       -> bool
   {
     if (high_meta_.GetKeyLength() == 0) return true;  // the rightmost node
     if (!end_key) return false;                       // perform full scan
-    return !Compare{}(GetKey(high_meta_), end_key->first);
+    return !Compare{}(GetKey(high_meta_), std::get<0>(*end_key));
   }
 
   /**
