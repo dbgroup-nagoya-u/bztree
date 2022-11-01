@@ -170,9 +170,9 @@ class BzTree
 
         // update this iterator with the next scan results
         const auto &next_key = node_->GetHighKey();
-        *this = bztree_->Scan(std::make_tuple(next_key, 0, false), end_key_);
+        *this = bztree_->Scan(std::make_tuple(next_key, 0, kOpen), end_key_);
 
-        if constexpr (IsVariableLengthData<Key>()) {
+        if constexpr (IsVarLenData<Key>()) {
           // release a dynamically allocated key
           delete next_key;
         }
@@ -227,14 +227,6 @@ class BzTree
   };
 
   /*####################################################################################
-   * Public constants
-   *##################################################################################*/
-
-  static constexpr size_t kDefaultGCTime = 100000;
-
-  static constexpr size_t kDefaultGCThreadNum = 1;
-
-  /*####################################################################################
    * Public constructors and assignment operators
    *##################################################################################*/
 
@@ -244,8 +236,8 @@ class BzTree
    * @param gc_interval_microsec GC internal [us]
    */
   explicit BzTree(  //
-      const size_t gc_interval_microsec = 10000,
-      const size_t gc_thread_num = 1)
+      const size_t gc_interval_microsec = kDefaultGCTime,
+      const size_t gc_thread_num = kDefaultGCThreadNum)
       : gc_{gc_interval_microsec, gc_thread_num, true}
   {
     // create an initial root node
@@ -292,7 +284,7 @@ class BzTree
   {
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
-    const auto *node = SearchLeafNode(key, true);
+    const auto *node = SearchLeafNode(key, kClosed);
 
     Payload payload{};
     const auto rc = node->Read(key, payload);
@@ -366,7 +358,7 @@ class BzTree
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto *node = SearchLeafNode(key, true);
+      auto *node = SearchLeafNode(key, kClosed);
       const auto rc = node->Write(key, key_len, payload);
 
       switch (rc) {
@@ -404,7 +396,7 @@ class BzTree
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto *node = SearchLeafNode(key, true);
+      auto *node = SearchLeafNode(key, kClosed);
       const auto rc = node->Insert(key, key_len, payload);
 
       switch (rc) {
@@ -444,7 +436,7 @@ class BzTree
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto *node = SearchLeafNode(key, true);
+      auto *node = SearchLeafNode(key, kClosed);
       const auto rc = node->Update(key, key_len, payload);
 
       switch (rc) {
@@ -481,7 +473,7 @@ class BzTree
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto *node = SearchLeafNode(key, true);
+      auto *node = SearchLeafNode(key, kClosed);
       const auto rc = node->template Delete<Payload>(key, key_len);
 
       switch (rc) {
@@ -592,8 +584,20 @@ class BzTree
    * Internal constants
    *##################################################################################*/
 
+  /// Assumes that one word is represented by 8 bytes
+  static constexpr size_t kWordSize = component::kWordSize;
+
+  /// Header length in bytes.
+  static constexpr size_t kHeaderLen = component::kHeaderLen;
+
+  /// the maximum length of keys.
+  static constexpr size_t kMaxKeyLen = (IsVarLenData<Key>()) ? kMaxVarDataSize : sizeof(Key);
+
+  /// the length of payloads.
+  static constexpr size_t kPayLen = sizeof(Payload);
+
   /// the expected length of keys for bulkloading.
-  static constexpr size_t kBulkKeyLen = (IsVariableLengthData<Key>()) ? kWordSize : sizeof(Key);
+  static constexpr size_t kBulkKeyLen = (IsVarLenData<Key>()) ? kWordSize : sizeof(Key);
 
   /// the expected length of highest keys in leaf nodes for bulkloading.
   static constexpr size_t kLeafHKeyLen = component::Align<Key, Payload>(kBulkKeyLen).first;
@@ -708,7 +712,7 @@ class BzTree
     auto *current_node = GetRoot();
     while (current_node != target_node && !current_node->IsLeaf()) {
       trace.emplace_back(current_node, index);
-      index = current_node->Search(key, true);
+      index = current_node->Search(key, kClosed);
       current_node = current_node->GetChild(index);
     }
     trace.emplace_back(current_node, index);
@@ -1041,6 +1045,42 @@ class BzTree
     child_nodes = std::move(nodes);
     return child_nodes.size() > kInnerNodeCap;
   }
+
+  /*####################################################################################
+   * Static assertions
+   *##################################################################################*/
+
+  /**
+   * @retval true if a target key class is trivially copyable.
+   * @retval false otherwise.
+   */
+  [[nodiscard]] static constexpr auto
+  KeyIsTriviallyCopyable()  //
+      -> bool
+  {
+    if constexpr (IsVarLenData<Key>()) {
+      // check a base type is trivially copyable
+      return std::is_trivially_copyable_v<std::remove_pointer_t<Key>>;
+    } else {
+      // check a given key type is trivially copyable
+      return std::is_trivially_copyable_v<Key>;
+    }
+  }
+
+  // target keys must be trivially copyable.
+  static_assert(KeyIsTriviallyCopyable());
+
+  // target payloads must be trivially copyable.
+  static_assert(std::is_trivially_copyable_v<Payload>);
+
+  // node pages have sufficient capacity for records.
+  static_assert(kMaxKeyLen + kPayLen <= kPageSize / 4);
+
+  // the bottom of a page must be aligned for in-place updating.
+  static_assert(kPageSize % kWordSize == 0);
+
+  // The member variables in Node class act as a node header.
+  static_assert(sizeof(Node_t) == kHeaderLen);
 
   /*####################################################################################
    * Internal member variables

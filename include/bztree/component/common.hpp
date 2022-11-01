@@ -65,7 +65,14 @@ enum KeyExistence {
   kUncertain
 };
 
+/// Assumes that one word is represented by 8 bytes
+constexpr size_t kWordSize = sizeof(uintptr_t);
+
+/// A bit mask for record alignments.
 constexpr size_t kAlignMask = ~7UL;
+
+/// Header length in bytes.
+constexpr size_t kHeaderLen = 32;
 
 /*######################################################################################
  * Internal utility functions
@@ -80,7 +87,7 @@ template <class Payload>
 constexpr bool
 CanCASUpdate()
 {
-  if constexpr (IsVariableLengthData<Payload>()) {
+  if constexpr (IsVarLenData<Payload>()) {
     return false;
   } else if constexpr (::dbgroup::atomic::mwcas::CanMwCAS<Payload>()) {
     return true;
@@ -137,12 +144,12 @@ Align([[maybe_unused]] size_t key_len)  //
 {
   if constexpr (!CanCASUpdate<Payload>()) {
     // record alignment is not required
-    if constexpr (IsVariableLengthData<Key>()) {
+    if constexpr (IsVarLenData<Key>()) {
       return {key_len, key_len + sizeof(Payload)};
     } else {
       return {sizeof(Key), sizeof(Key) + sizeof(Payload)};
     }
-  } else if constexpr (IsVariableLengthData<Key>()) {
+  } else if constexpr (IsVarLenData<Key>()) {
     // dynamic alignment is required
     const size_t align_len = alignof(Payload) - key_len % alignof(Payload);
     if (align_len == alignof(Payload)) {
@@ -176,7 +183,7 @@ NeedOffsetAlignment()  //
   if constexpr (!CanCASUpdate<Payload>()) {
     // record alignment is not required
     return false;
-  } else if constexpr (IsVariableLengthData<Key>()) {
+  } else if constexpr (IsVarLenData<Key>()) {
     // dynamic alignment is required
     return true;
   } else {
@@ -205,7 +212,7 @@ constexpr auto
 Pad(size_t offset)  //
     -> size_t
 {
-  if constexpr (IsVariableLengthData<Key>()) {
+  if constexpr (IsVarLenData<Key>()) {
     // dynamic alignment is required
     return offset & kAlignMask;
   } else {
@@ -224,7 +231,7 @@ template <class Key>
 GetMaxInternalRecordSize()  //
     -> size_t
 {
-  if constexpr (IsVariableLengthData<Key>()) {
+  if constexpr (IsVarLenData<Key>()) {
     return Align<Key, void *>(kMaxVarDataSize).second;
   } else {
     return Align<Key, void *>(sizeof(Key)).second;

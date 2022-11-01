@@ -45,22 +45,6 @@ CanMwCAS<MyClass>()  //
 
 }  // namespace dbgroup::atomic::mwcas
 
-namespace dbgroup::index::bztree
-{
-/**
- * @brief Use CString as variable-length data in tests.
- *
- */
-template <>
-constexpr auto
-IsVariableLengthData<char *>()  //
-    -> bool
-{
-  return true;
-}
-
-}  // namespace dbgroup::index::bztree
-
 namespace dbgroup::index::bztree::component::test
 {
 /*######################################################################################
@@ -98,6 +82,7 @@ class NodeFixture : public testing::Test  // NOLINT
    * Internal constants
    *##################################################################################*/
 
+  static constexpr size_t kHeaderLen = sizeof(Node_t);
   static inline const size_t key_len = ::dbgroup::index::test::GetLength(Key{});
   static inline const size_t rec_len = Align<Key, Payload>(key_len).second;
   static inline const size_t rec_num_in_node =
@@ -217,7 +202,7 @@ class NodeFixture : public testing::Test  // NOLINT
     EXPECT_EQ(expected_rc, rc);
     if (expect_success) {
       EXPECT_TRUE(IsEqual<PayComp>(payloads_[expected_id], payload));
-      if constexpr (IsVariableLengthData<Payload>()) {
+      if constexpr (IsVarLenData<Payload>()) {
         ::operator delete(payload);
       }
     }

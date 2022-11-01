@@ -164,7 +164,7 @@ class StatusWord
   NeedSplit() const  //
       -> bool
   {
-    constexpr auto kKeyLen = (IsVariableLengthData<Key>()) ? kMaxVarDataSize : sizeof(Key);
+    constexpr auto kKeyLen = (IsVarLenData<Key>()) ? kMaxVarDataSize : sizeof(Key);
     constexpr auto kRecLen = kWordSize + kKeyLen + sizeof(Payload);
     constexpr auto kMinBlockSize = (kRecLen > kMinFreeSpaceSize) ? kRecLen : kMinFreeSpaceSize;
     constexpr auto kMaxUsedSize = kPageSize - (kHeaderLen + kMinBlockSize);

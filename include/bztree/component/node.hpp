@@ -206,7 +206,7 @@ class Node
       -> Key
   {
     Key high_key{};
-    if constexpr (IsVariableLengthData<Key>()) {
+    if constexpr (IsVarLenData<Key>()) {
       const auto key_len = high_meta_.GetKeyLength();
       high_key = reinterpret_cast<Key>(::operator new(key_len));
       memcpy(high_key, GetKeyAddr(high_meta_), key_len);
@@ -225,7 +225,7 @@ class Node
   GetKey(const Metadata meta) const  //
       -> Key
   {
-    if constexpr (IsVariableLengthData<Key>()) {
+    if constexpr (IsVarLenData<Key>()) {
       return reinterpret_cast<Key>(GetKeyAddr(meta));
     } else {
       Key key{};
@@ -429,6 +429,7 @@ class Node
       Payload &out_payload) const  //
       -> NodeRC
   {
+    constexpr auto kPayLen = sizeof(Payload);
     Metadata meta{};
 
     // check whether there is a given key in this node
@@ -448,7 +449,7 @@ class Node
 
       // copy a written payload to a given address
       const auto *addr = GetPayloadAddr(meta);
-      memcpy(&out_payload, addr, sizeof(Payload));
+      memcpy(&out_payload, addr, kPayLen);
 
       return kSuccess;
     } else {
@@ -458,7 +459,7 @@ class Node
 
       // copy a written payload to a given address
       const auto *addr = GetPayloadAddr(meta);
-      memcpy(&out_payload, addr, sizeof(Payload));
+      memcpy(&out_payload, addr, kPayLen);
 
       return kSuccess;
     }
@@ -733,7 +734,7 @@ class Node
   {
     // variables and constants shared in Phase 1 & 2
     const auto [key_len, rec_len] = Align<Key, Payload>(key_length);
-    const auto deleted_size = kWordSize + rec_len;
+    const auto deleted_size = kMetaLen + rec_len;
     const auto in_progress_meta = Metadata{key_len, rec_len};
     StatusWord cur_status{};
     Metadata meta{};
@@ -864,7 +865,7 @@ class Node
       if constexpr (CanCASUpdate<Payload>()) {
         if (rc == kExist && exist_pos < sorted_count_) {
           const auto deleted_meta = meta.Delete();
-          const auto new_status = cur_status.Delete(kWordSize + meta.GetTotalLength());
+          const auto new_status = cur_status.Delete(kMetaLen + meta.GetTotalLength());
           if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
           // delete a record directly
@@ -877,7 +878,7 @@ class Node
       }
 
       // prepare new status for MwCAS
-      const auto deleted_size = (2 * kWordSize) + meta.GetTotalLength() + rec_len;
+      const auto deleted_size = (2 * kMetaLen) + meta.GetTotalLength() + rec_len;
       const auto new_status = cur_status.Add(rec_len).Delete(deleted_size);
       if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
@@ -1113,7 +1114,7 @@ class Node
       const auto [key_len, rec_len] = Align<Key, Payload>(key_length);
 
       // check whether the node has sufficent space
-      node_size += rec_len + kWordSize;
+      node_size += rec_len + kMetaLen;
       if (node_size + key_len > kPageSize - kMinFreeSpaceSize) break;
 
       // insert an entry into this node
@@ -1156,15 +1157,15 @@ class Node
       const auto key_length = high_meta.GetKeyLength();
 
       if (key_length == 0) {  // the rightmost node
-        node_size += 2 * kWordSize;
+        node_size += kMetaLen + kPtrLen;
         if (node_size > kPageSize - kMinFreeSpaceSize) break;
 
         offset = SetPayload(offset, child_node);
-        meta_array_[sorted_count_++] = Metadata{offset, 0, kWordSize};
+        meta_array_[sorted_count_++] = Metadata{offset, 0, kPtrLen};
         is_rightmost = true;
       } else {  // the other internal nodes
         const auto [key_len, rec_len] = Align<Key, Node *>(key_length);
-        node_size += rec_len + kWordSize;
+        node_size += kMetaLen + rec_len;
         if (node_size + key_len > kPageSize - kMinFreeSpaceSize) break;
 
         auto tmp_offset = SetPayload(offset, child_node) - key_len;
@@ -1187,6 +1188,16 @@ class Node
   }
 
  private:
+  /*####################################################################################
+   * Internal constants
+   *##################################################################################*/
+
+  /// the length of child pointers.
+  static constexpr size_t kPtrLen = sizeof(uintptr_t);
+
+  /// the length of record metadata.
+  static constexpr size_t kMetaLen = sizeof(Metadata);
+
   /*####################################################################################
    * Internal classes
    *##################################################################################*/
@@ -1305,7 +1316,7 @@ class Node
       -> size_t
   {
     offset -= key_len;
-    if constexpr (IsVariableLengthData<Key>()) {
+    if constexpr (IsVarLenData<Key>()) {
       memcpy(ShiftAddr(this, offset), key, key_len);
     } else {
       memcpy(ShiftAddr(this, offset), &key, sizeof(Key));
@@ -1328,8 +1339,10 @@ class Node
       const Payload &payload)  //
       -> size_t
   {
-    offset -= sizeof(Payload);
-    memcpy(ShiftAddr(this, offset), &payload, sizeof(Payload));
+    constexpr auto kPayLen = sizeof(Payload);
+
+    offset -= kPayLen;
+    memcpy(ShiftAddr(this, offset), &payload, kPayLen);
 
     return offset;
   }
@@ -1408,10 +1421,10 @@ class Node
       -> size_t
   {
     // the length of metadata
-    auto record_min_length = sizeof(Metadata);
+    auto record_min_length = kMetaLen;
 
     // the length of keys
-    if constexpr (IsVariableLengthData<Key>()) {
+    if constexpr (IsVarLenData<Key>()) {
       record_min_length += 1;
     } else {
       record_min_length += sizeof(Key);
@@ -1513,8 +1526,8 @@ class Node
     const auto high_meta = child_node->high_meta_;
     const auto key_length = high_meta.GetKeyLength();
     if (key_length == 0) {
-      meta_array_[sorted_count_++] = Metadata{tmp_offset, 0, kWordSize};
-      offset -= kWordSize;
+      meta_array_[sorted_count_++] = Metadata{tmp_offset, 0, kPtrLen};
+      offset -= kPtrLen;
     } else {
       const auto [key_len, rec_len] = Align<Key, Node *>(key_length);
       tmp_offset -= key_len;
@@ -1579,6 +1592,7 @@ class Node
       Node *r_node = nullptr)  //
       -> size_t
   {
+    constexpr auto kPayLen = sizeof(Payload);
     const auto key_len = meta.GetKeyLength();
     const auto rec_len = meta.GetTotalLength();
     auto tmp_offset = offset;
@@ -1589,15 +1603,15 @@ class Node
                                                                 : std::memory_order_relaxed;
       const auto *addr = from_node->GetPayloadAddr(meta);
       const auto &payload = MwCASDescriptor::Read<Payload>(addr, kFence);
-      tmp_offset -= sizeof(Payload);
-      memcpy(ShiftAddr(to_node, tmp_offset), &payload, sizeof(Payload));
+      tmp_offset -= kPayLen;
+      memcpy(ShiftAddr(to_node, tmp_offset), &payload, kPayLen);
 
       // copy a correspondng key
       tmp_offset -= key_len;
       memcpy(ShiftAddr(to_node, tmp_offset), from_node->GetKeyAddr(meta), key_len);
     } else {
       // copy a record from the given node
-      const auto act_rec_len = key_len + sizeof(Payload);
+      const auto act_rec_len = key_len + kPayLen;
       tmp_offset -= rec_len;
       memcpy(ShiftAddr(to_node, tmp_offset), from_node->GetKeyAddr(meta), act_rec_len);
     }
@@ -1607,7 +1621,7 @@ class Node
 
     // update header information
     ++to_node->sorted_count_;
-    to_node->node_size_ += rec_len + sizeof(Metadata);
+    to_node->node_size_ += rec_len + kMetaLen;
 
     if (to_node->do_splitting_ && to_node->node_size_ > kPageSize / 2) {
       // finalize copying of a split-left node
@@ -1773,7 +1787,7 @@ class Node
   ParseEntry(const Entry &entry)  //
       -> std::tuple<Key, Payload, size_t>
   {
-    if constexpr (IsVariableLengthData<Key>()) {
+    if constexpr (IsVarLenData<Key>()) {
       return entry;
     } else {
       const auto &[key, payload] = entry;
@@ -1802,6 +1816,9 @@ class Node
 
   /// a status word.
   StatusWord status_{};
+
+  /// the metadata of a lowest key.
+  Metadata low_meta_{};
 
   /// the metadata of a highest key.
   Metadata high_meta_{};
