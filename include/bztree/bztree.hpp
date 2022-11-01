@@ -296,7 +296,7 @@ class BzTree
 
     Payload payload{};
     const auto rc = node->Read(key, payload);
-    if (rc == NodeRC::kSuccess) return std::make_optional(payload);
+    if (rc == NodeRC::kSuccess) return payload;
     return std::nullopt;
   }
 
@@ -703,7 +703,7 @@ class BzTree
       -> NodeStack
   {
     // trace nodes to a target internal node
-    NodeStack trace;
+    NodeStack trace{};
     size_t index = 0;
     auto *current_node = GetRoot();
     while (current_node != target_node && !current_node->IsLeaf()) {
@@ -790,7 +790,7 @@ class BzTree
      * Phase 1: preparation
      *--------------------------------------------------------------------------------*/
 
-    NodeStack trace;
+    NodeStack trace{};
     Node_t *old_parent = nullptr;
     size_t target_pos{};
     bool root_split = false;
@@ -863,7 +863,7 @@ class BzTree
      * Phase 1: preparation
      *--------------------------------------------------------------------------------*/
 
-    NodeStack trace;
+    NodeStack trace{};
     Node_t *old_parent{};
     Node_t *left_node{};
     size_t target_pos{};

@@ -521,9 +521,8 @@ class Node
    *
    * @tparam Payload a class of payload.
    * @param key a target key to be written.
-   * @param payload a target payload to be written.
    * @param key_length the length of a target key.
-   * @param payload_length the length of a target payload.
+   * @param payload a target payload to be written.
    * @retval kSuccess if a key/payload pair is written.
    * @retval kFrozen if a target node is frozen.
    * @retval kNeedConsolidation if a target node requires consolidation.
@@ -618,9 +617,8 @@ class Node
    *
    * @tparam Payload a class of payload.
    * @param key a target key to be written.
-   * @param payload a target payload to be written.
    * @param key_length the length of a target key.
-   * @param payload_length the length of a target payload.
+   * @param payload a target payload to be written.
    * @retval kSuccess if a key/payload pair is written.
    * @retval kKeyExist if a specified key exists.
    * @retval kFrozen if a target node is frozen.
@@ -718,9 +716,8 @@ class Node
    *
    * @tparam Payload a class of payload.
    * @param key a target key to be written.
-   * @param payload a target payload to be written.
    * @param key_length the length of a target key.
-   * @param payload_length the length of a target payload.
+   * @param payload a target payload to be written.
    * @retval kSuccess if a key/payload pair is written.
    * @retval kKeyNotExist if a specified key does not exist.
    * @retval kFrozen if a target node is frozen.
