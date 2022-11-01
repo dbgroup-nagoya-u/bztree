@@ -98,10 +98,10 @@ class NodeFixture : public testing::Test  // NOLINT
    * Internal constants
    *##################################################################################*/
 
-  static constexpr size_t kKeyLen = ::dbgroup::index::test::GetDataLength<Key>();
-  static constexpr size_t kPayLen = ::dbgroup::index::test::GetDataLength<Payload>();
-  static constexpr size_t kRecLen = Align<Key, Payload>(kKeyLen).second;
-  static constexpr size_t kRecNumInNode = (kPageSize - kHeaderLen) / (kRecLen + sizeof(Metadata));
+  static inline const size_t key_len = ::dbgroup::index::test::GetLength(Key{});
+  static inline const size_t rec_len = Align<Key, Payload>(key_len).second;
+  static inline const size_t rec_num_in_node =
+      (kPageSize - kHeaderLen) / (rec_len + sizeof(Metadata));
 
   /*####################################################################################
    * Setup/Teardown
@@ -119,10 +119,10 @@ class NodeFixture : public testing::Test  // NOLINT
 
     // set a record length and its maximum number
     if constexpr (CanCASUpdate<Payload>()) {
-      const auto del_size = kRecLen + sizeof(Metadata);
+      const auto del_size = rec_len + sizeof(Metadata);
       max_del_num_ = kMaxDeletedSpaceSize / del_size;
     } else {
-      const auto del_size = kRecLen + kKeyLen + 2 * sizeof(Metadata);
+      const auto del_size = rec_len + key_len + 2 * sizeof(Metadata);
       max_del_num_ = kMaxDeletedSpaceSize / del_size;
     }
     if (max_del_num_ > kMaxDeltaRecNum) {
@@ -150,7 +150,7 @@ class NodeFixture : public testing::Test  // NOLINT
       const size_t key_id,
       const size_t payload_id)
   {
-    return node_->Write(keys_[key_id], kKeyLen, payloads_[payload_id]);
+    return node_->Write(keys_[key_id], key_len, payloads_[payload_id]);
   }
 
   auto
@@ -158,7 +158,7 @@ class NodeFixture : public testing::Test  // NOLINT
       const size_t key_id,
       const size_t payload_id)
   {
-    return node_->Insert(keys_[key_id], kKeyLen, payloads_[payload_id]);
+    return node_->Insert(keys_[key_id], key_len, payloads_[payload_id]);
   }
 
   auto
@@ -166,13 +166,13 @@ class NodeFixture : public testing::Test  // NOLINT
       const size_t key_id,
       const size_t payload_id)
   {
-    return node_->Update(keys_[key_id], kKeyLen, payloads_[payload_id]);
+    return node_->Update(keys_[key_id], key_len, payloads_[payload_id]);
   }
 
   auto
   Delete(const size_t key_id)
   {
-    return node_->template Delete<Payload>(keys_[key_id], kKeyLen);
+    return node_->template Delete<Payload>(keys_[key_id], key_len);
   }
 
   void
@@ -190,7 +190,7 @@ class NodeFixture : public testing::Test  // NOLINT
   void
   PrepareConsolidatedNode()
   {
-    for (size_t i = 0; i < kRecNumInNode; ++i) {
+    for (size_t i = 0; i < rec_num_in_node; ++i) {
       if (Write(i, i) != NodeRC::kSuccess) {
         Consolidate();
         --i;
@@ -285,8 +285,8 @@ class NodeFixture : public testing::Test  // NOLINT
   void
   VerifySplit()
   {
-    const auto r_count = kRecNumInNode / 2;
-    const auto l_count = kRecNumInNode - r_count;
+    const auto r_count = rec_num_in_node / 2;
+    const auto l_count = rec_num_in_node - r_count;
 
     PrepareConsolidatedNode();
 
@@ -300,7 +300,7 @@ class NodeFixture : public testing::Test  // NOLINT
     }
 
     node_.reset(right_node);
-    for (size_t i = l_count; i < kRecNumInNode; ++i) {
+    for (size_t i = l_count; i < rec_num_in_node; ++i) {
       VerifyRead(i, i, kExpectSuccess);
     }
   }
@@ -431,8 +431,6 @@ using KeyPayloadPairs = ::testing::Types<  //
     KeyPayload<UInt4, Int8>,               // small keys with append-mode
     KeyPayload<UInt8, UInt4>,              // small payloads with append-mode
     KeyPayload<UInt4, UInt4>,              // small keys/payloads with append-mode
-    KeyPayload<Var, UInt8>,                // variable-length keys
-    KeyPayload<Var, Int8>,                 // variable-length keys with append-mode
     KeyPayload<Ptr, Ptr>,                  // pointer keys/payloads
     KeyPayload<Original, Original>         // original class keys/payloads
     >;

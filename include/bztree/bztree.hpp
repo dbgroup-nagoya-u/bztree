@@ -49,6 +49,8 @@ class BzTree
   using NodeStack = std::vector<std::pair<Node_t *, size_t>>;
   using MwCASDescriptor = component::MwCASDescriptor;
   using KeyExistence = component::KeyExistence;
+  using ScanKey = std::optional<std::tuple<const Key &, size_t, bool>>;
+
   template <class Entry>
   using BulkIter = typename std::vector<Entry>::const_iterator;
   using BulkResult = std::pair<size_t, std::vector<Node_t *>>;
@@ -81,7 +83,7 @@ class BzTree
         Node_t *node,
         const size_t begin_pos,
         const size_t end_pos,
-        const std::optional<std::pair<const Key &, bool>> end_key,
+        const ScanKey end_key,
         const bool is_right_end)
         : bztree_{bztree},
           node_{node},
@@ -120,6 +122,12 @@ class BzTree
      *################################################################################*/
 
     /**
+     * @retval true if this iterator indicates a live record.
+     * @retval false otherwise.
+     */
+    explicit operator bool() { return HasRecord(); }
+
+    /**
      * @return a current key and payload pair
      */
     constexpr auto
@@ -152,8 +160,9 @@ class BzTree
      * @retval true if there are any records or next node left.
      * @retval false if there are no records and node left.
      */
-    bool
-    HasNext()
+    auto
+    HasRecord()  //
+        -> bool
     {
       while (true) {
         if (current_pos_ < record_count_) return true;  // records remain in this node
@@ -161,7 +170,7 @@ class BzTree
 
         // update this iterator with the next scan results
         const auto &next_key = node_->GetHighKey();
-        *this = bztree_->Scan(std::make_pair(next_key, false), end_key_);
+        *this = bztree_->Scan(std::make_tuple(next_key, 0, false), end_key_);
 
         if constexpr (IsVariableLengthData<Key>()) {
           // release a dynamically allocated key
@@ -211,7 +220,7 @@ class BzTree
     Metadata current_meta_{};
 
     /// the end key given from a user
-    std::optional<std::pair<const Key &, bool>> end_key_{};
+    ScanKey end_key_{};
 
     /// a flag for indicating whether scan has finished
     bool is_right_end_{};
@@ -271,11 +280,14 @@ class BzTree
    * @brief Read the payload corresponding to a given key if it exists.
    *
    * @param key a target key.
+   * @param key_len the length of a target key.
    * @retval the payload of a given key wrapped with std::optional if it is in this tree.
    * @retval std::nullopt otherwise.
    */
   auto
-  Read(const Key &key)  //
+  Read(  //
+      const Key &key,
+      [[maybe_unused]] const size_t key_len = sizeof(Key))  //
       -> std::optional<Payload>
   {
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
@@ -284,7 +296,7 @@ class BzTree
 
     Payload payload{};
     const auto rc = node->Read(key, payload);
-    if (rc == NodeRC::kSuccess) return std::make_optional(payload);
+    if (rc == NodeRC::kSuccess) return payload;
     return std::nullopt;
   }
 
@@ -297,8 +309,8 @@ class BzTree
    */
   auto
   Scan(  //
-      const std::optional<std::pair<const Key &, bool>> &begin_key = std::nullopt,
-      const std::optional<std::pair<const Key &, bool>> &end_key = std::nullopt)  //
+      const ScanKey &begin_key = std::nullopt,
+      const ScanKey &end_key = std::nullopt)  //
       -> RecordIterator
   {
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
@@ -309,12 +321,13 @@ class BzTree
     // sort records in a target node
     size_t begin_pos = 0;
     if (begin_key) {
-      const auto &[b_key, b_closed] = *begin_key;
+      const auto &[b_key, b_key_len, b_closed] = *begin_key;
       const auto *node = SearchLeafNode(b_key, b_closed);
       page->template Consolidate<Payload>(node);
 
       // check the begin position for scanning
-      auto [rc, pos] = page->SearchSortedRecord(b_key);
+      Metadata meta{};
+      auto [rc, pos] = page->SearchSortedRecord(b_key, meta);
       begin_pos = (rc == KeyExistence::kNotExist || b_closed) ? pos : pos + 1;
     } else {
       const auto *node = SearchLeftEdgeLeaf();
@@ -631,8 +644,7 @@ class BzTree
   GetRoot() const  //
       -> Node_t *
   {
-    auto *root = MwCASDescriptor::Read<Node_t *>(&root_);
-    std::atomic_thread_fence(std::memory_order_acquire);
+    auto *root = MwCASDescriptor::Read<Node_t *>(&root_, std::memory_order_acquire);
 
     return root;
   }
@@ -691,7 +703,7 @@ class BzTree
       -> NodeStack
   {
     // trace nodes to a target internal node
-    NodeStack trace;
+    NodeStack trace{};
     size_t index = 0;
     auto *current_node = GetRoot();
     while (current_node != target_node && !current_node->IsLeaf()) {
@@ -778,7 +790,7 @@ class BzTree
      * Phase 1: preparation
      *--------------------------------------------------------------------------------*/
 
-    NodeStack trace;
+    NodeStack trace{};
     Node_t *old_parent = nullptr;
     size_t target_pos{};
     bool root_split = false;
@@ -851,7 +863,7 @@ class BzTree
      * Phase 1: preparation
      *--------------------------------------------------------------------------------*/
 
-    NodeStack trace;
+    NodeStack trace{};
     Node_t *old_parent{};
     Node_t *left_node{};
     size_t target_pos{};
@@ -933,7 +945,6 @@ class BzTree
       return;
     }
 
-    std::atomic_thread_fence(std::memory_order_release);
     while (true) {
       // prepare installing nodes
       auto [old_node, target_pos] = trace.back();
