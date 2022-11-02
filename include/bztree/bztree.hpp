@@ -53,7 +53,8 @@ class BzTree
 
   template <class Entry>
   using BulkIter = typename std::vector<Entry>::const_iterator;
-  using BulkResult = std::pair<size_t, std::vector<Node_t *>>;
+  using NodeEntry = std::tuple<Key, Node_t *, size_t>;
+  using BulkResult = std::pair<size_t, std::vector<NodeEntry>>;
   using BulkPromise = std::promise<BulkResult>;
   using BulkFuture = std::future<BulkResult>;
 
@@ -170,7 +171,7 @@ class BzTree
 
         // update this iterator with the next scan results
         const auto &next_key = node_->GetHighKey();
-        *this = bztree_->Scan(std::make_tuple(next_key, 0, kOpen), end_key_);
+        *this = bztree_->Scan(std::make_tuple(next_key, 0, kClosed), end_key_);
 
         if constexpr (IsVarLenData<Key>()) {
           // release a dynamically allocated key
@@ -284,7 +285,7 @@ class BzTree
   {
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
-    const auto *node = SearchLeafNode(key, kClosed);
+    const auto *node = SearchLeafNode(key);
 
     Payload payload{};
     const auto rc = node->Read(key, payload);
@@ -314,7 +315,7 @@ class BzTree
     size_t begin_pos = 0;
     if (begin_key) {
       const auto &[b_key, b_key_len, b_closed] = *begin_key;
-      const auto *node = SearchLeafNode(b_key, b_closed);
+      const auto *node = SearchLeafNode(b_key);
       page->template Consolidate<Payload>(node);
 
       // check the begin position for scanning
@@ -358,7 +359,7 @@ class BzTree
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto *node = SearchLeafNode(key, kClosed);
+      auto *node = SearchLeafNode(key);
       const auto rc = node->Write(key, key_len, payload);
 
       switch (rc) {
@@ -396,7 +397,7 @@ class BzTree
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto *node = SearchLeafNode(key, kClosed);
+      auto *node = SearchLeafNode(key);
       const auto rc = node->Insert(key, key_len, payload);
 
       switch (rc) {
@@ -436,7 +437,7 @@ class BzTree
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto *node = SearchLeafNode(key, kClosed);
+      auto *node = SearchLeafNode(key);
       const auto rc = node->Update(key, key_len, payload);
 
       switch (rc) {
@@ -473,7 +474,7 @@ class BzTree
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto *node = SearchLeafNode(key, kClosed);
+      auto *node = SearchLeafNode(key);
       const auto rc = node->template Delete<Payload>(key, key_len);
 
       switch (rc) {
@@ -512,42 +513,38 @@ class BzTree
       const size_t thread_num = 1)  //
       -> ReturnCode
   {
-    assert(thread_num > 0);
-    assert(entries.size() >= thread_num);
-
     if (entries.empty()) return ReturnCode::kSuccess;
 
-    std::vector<Node_t *> nodes{};
+    std::vector<NodeEntry> nodes{};
     auto &&iter = entries.cbegin();
-    if (thread_num == 1) {
+    const auto rec_num = entries.size();
+    if (thread_num <= 1 || rec_num < thread_num) {
       // bulkloading with a single thread
-      nodes = BulkloadWithSingleThread<Entry>(iter, entries.size()).second;
+      nodes = BulkloadWithSingleThread<Entry>(iter, rec_num).second;
     } else {
       // bulkloading with multi-threads
       std::vector<BulkFuture> futures{};
       futures.reserve(thread_num);
 
       // a lambda function for bulkloading with multi-threads
-      auto loader = [&](BulkPromise p, BulkIter<Entry> iter, size_t n, bool is_rightmost) {
-        p.set_value(BulkloadWithSingleThread<Entry>(iter, n, is_rightmost));
+      auto loader = [&](BulkPromise p, BulkIter<Entry> iter, size_t n) {
+        p.set_value(BulkloadWithSingleThread<Entry>(iter, n));
       };
 
       // create threads to construct partial BzTrees
-      const auto rec_num = entries.size();
-      const auto rightmost_id = thread_num - 1;
       for (size_t i = 0; i < thread_num; ++i) {
         // create a partial BzTree
         BulkPromise p{};
         futures.emplace_back(p.get_future());
         const size_t n = (rec_num + i) / thread_num;
-        std::thread{loader, std::move(p), iter, n, i == rightmost_id}.detach();
+        std::thread{loader, std::move(p), iter, n}.detach();
 
         // forward the iterator to the next begin position
         iter += n;
       }
 
       // wait for the worker threads to create partial trees
-      std::vector<std::pair<size_t, std::vector<Node_t *>>> partial_trees{};
+      std::vector<BulkResult> partial_trees{};
       partial_trees.reserve(thread_num);
       size_t height = 1;
       for (auto &&future : futures) {
@@ -560,7 +557,7 @@ class BzTree
       nodes.reserve(kInnerNodeCap * thread_num);
       for (auto &&[p_height, p_nodes] : partial_trees) {
         while (p_height < height) {  // NOLINT
-          ConstructUpperLayer(p_nodes);
+          p_nodes = ConstructSingleLayer<NodeEntry>(p_nodes.cbegin(), p_nodes.size());
           ++p_height;
         }
         nodes.insert(nodes.end(), p_nodes.begin(), p_nodes.end());
@@ -569,11 +566,13 @@ class BzTree
 
     // create upper layers until a root node is created
     while (nodes.size() > 1) {
-      ConstructUpperLayer(nodes);
+      nodes = ConstructSingleLayer<NodeEntry>(nodes.cbegin(), nodes.size());
     }
+    auto *new_root = std::get<1>(nodes.front());
+    Node_t::RemoveLeftmostKeys(new_root);
 
     // set a new root
-    auto *old_root = root_.exchange(nodes.front(), std::memory_order_release);
+    auto *old_root = root_.exchange(new_root, std::memory_order_release);
     gc_.AddGarbage(old_root);
 
     return ReturnCode::kSuccess;
@@ -635,10 +634,10 @@ class BzTree
   CreateNewNode()  //
       -> Node_t *
   {
-    constexpr bool kIsLeaf = std::is_same_v<T, Payload>;
+    constexpr auto kIsInner = static_cast<uint64_t>(std::is_same_v<T, Node_t *>);
 
     auto *page = gc_.template GetPageIfPossible<Node_t>();
-    return (page == nullptr) ? new Node_t{kIsLeaf, 0} : new (page) Node_t{kIsLeaf, 0};
+    return (page == nullptr) ? new Node_t{kIsInner, 0} : new (page) Node_t{kIsInner, 0};
   }
 
   /**
@@ -661,14 +660,12 @@ class BzTree
    * @return a leaf node that may contain a target key.
    */
   [[nodiscard]] auto
-  SearchLeafNode(  //
-      const Key &key,
-      const bool range_is_closed) const  //
+  SearchLeafNode(const Key &key) const  //
       -> Node_t *
   {
     auto *current_node = GetRoot();
     while (!current_node->IsLeaf()) {
-      const auto pos = current_node->Search(key, range_is_closed);
+      const auto pos = current_node->Search(key);
       current_node = current_node->GetChild(pos);
     }
 
@@ -712,7 +709,7 @@ class BzTree
     auto *current_node = GetRoot();
     while (current_node != target_node && !current_node->IsLeaf()) {
       trace.emplace_back(current_node, index);
-      index = current_node->Search(key, kClosed);
+      index = current_node->Search(key);
       current_node = current_node->GetChild(index);
     }
     trace.emplace_back(current_node, index);
@@ -982,7 +979,6 @@ class BzTree
    *
    * @param iter the begin position of target records.
    * @param n the number of entries to be bulkloaded.
-   * @param is_rightmost a flag for indicating a constructed tree is rightmost one.
    * @retval 1st: the height of a constructed tree.
    * @retval 2nd: constructed nodes in the top layer.
    */
@@ -990,60 +986,52 @@ class BzTree
   auto
   BulkloadWithSingleThread(  //
       BulkIter<Entry> &iter,
-      const size_t n,
-      const bool is_rightmost = true)  //
+      const size_t n)  //
       -> BulkResult
   {
-    // reserve space for nodes in the leaf layer
-    std::vector<Node_t *> nodes{};
-    nodes.reserve((n / kLeafNodeCap) + 1);
+    // construct a data layer (leaf nodes)
+    auto &&nodes = ConstructSingleLayer<Entry>(iter, n);
 
-    // load records into leaf nodes
-    const auto &iter_end = iter + n;
-    while (iter < iter_end) {
-      auto *node = CreateNewNode<Payload>();
-      node->template Bulkload<Payload, Entry>(iter, iter_end, is_rightmost);
-      nodes.emplace_back(node);
-    }
-
-    // construct index layers
+    // construct index layers (inner nodes)
     size_t height = 1;
-    if (nodes.size() > 1) {
-      // continue until the number of internal nodes is sufficiently small
-      do {
-        ++height;
-      } while (ConstructUpperLayer(nodes));
+    for (auto n = nodes.size(); n > kInnerNodeCap; n = nodes.size(), ++height) {
+      // continue until the number of inner nodes is sufficiently small
+      nodes = ConstructSingleLayer<NodeEntry>(nodes.cbegin(), n);
     }
 
     return {height, std::move(nodes)};
   }
 
   /**
-   * @brief Construct internal nodes based on given child nodes.
+   * @brief Construct nodes based on given entries.
    *
-   * @param child_nodes child nodes in a lower layer.
-   * @retval true if constructed nodes cannot be contained in a single node.
-   * @retval false otherwise.
+   * @tparam Entry a pair/tuple class to be inserted.
+   * @param iter the begin position of target records.
+   * @param n the number of entries to be bulkloaded.
+   * @return constructed nodes.
    */
+  template <class Entry>
   auto
-  ConstructUpperLayer(std::vector<Node_t *> &child_nodes)  //
-      -> bool
+  ConstructSingleLayer(  //
+      BulkIter<Entry> iter,
+      const size_t n)  //
+      -> std::vector<NodeEntry>
   {
-    // reserve space for nodes in the upper layer
-    std::vector<Node_t *> nodes{};
-    nodes.reserve((child_nodes.size() / kInnerNodeCap) + 1);
+    using T = std::tuple_element_t<1, Entry>;
+    constexpr auto kIsInner = std::is_same_v<T, Node_t *>;
 
-    // load child nodes into parent nodes
-    auto &&iter = child_nodes.cbegin();
-    const auto &iter_end = child_nodes.cend();
+    // reserve space for nodes in the upper layer
+    std::vector<NodeEntry> nodes{};
+    nodes.reserve((n / (kIsInner ? kInnerNodeCap : kLeafNodeCap)) + 1);
+
+    // construct nodes over the current level
+    const auto &iter_end = iter + n;
     while (iter < iter_end) {
-      auto *node = CreateNewNode<Node_t *>();
-      node->Bulkload(iter, iter_end);
-      nodes.emplace_back(node);
+      auto *node = CreateNewNode<T>();
+      node->template Bulkload<Entry>(iter, iter_end, nodes);
     }
 
-    child_nodes = std::move(nodes);
-    return child_nodes.size() > kInnerNodeCap;
+    return nodes;
   }
 
   /*####################################################################################
