@@ -875,6 +875,7 @@ class BzTree
 
       // check a parent node is live
       trace.pop_back();
+      if (trace.empty()) return false;  // a root node cannot be merged
       old_parent = trace.back().first;
       if (target_pos == old_parent->GetSortedCount() - 1) return false;  // no mergeable node
       const auto p_stat = old_parent->GetStatusWord();
@@ -901,7 +902,7 @@ class BzTree
     auto *merged_node = CreateNewNode<T>();
     merged_node->template Merge<T>(l_node, r_node);
     auto *new_parent = CreateNewNode<Node_t *>();
-    bool recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos);
+    auto recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos);
     if (trace.size() <= 1 && new_parent->GetSortedCount() == 1) {
       // the new root node has only one child, use the merged child as a new root
       gc_.AddGarbage(new_parent);
