@@ -1048,16 +1048,17 @@ class Node
 
     // copy records in left/right nodes
     auto offset = kPageSize;
+    offset = CopyRecords<Payload>(l_node, this, 0, l_node->sorted_count_, offset);
     if constexpr (kIsInner) {
-      offset = CopyRecords<Payload>(l_node, this, 0, l_node->sorted_count_, offset);
+      offset = CopyRecords<Payload>(r_node, this, 0, r_node->sorted_count_, offset);
     } else {
-      offset = l_node->ConsolidateTo<Payload>(offset, this);
+      // a leaf node have delta records, so consolidate them
+      offset = r_node->ConsolidateTo<Payload>(offset, this);
     }
-    offset = CopyRecords<Payload>(r_node, this, 0, r_node->sorted_count_, offset);
 
     // set header information
     offset = CopyLowKeyFrom(l_node, l_node->low_meta_, offset);
-    offset = CopyHighKeyFrom<Node *>(r_node, r_node->high_meta_, offset);
+    offset = CopyHighKeyFrom<Payload>(r_node, r_node->high_meta_, offset);
     status_ = StatusWord{sorted_count_, kPageSize - offset};
   }
 

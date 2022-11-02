@@ -846,7 +846,7 @@ class BzTree
    *
    * Note that this function may call itself recursively if needed.
    *
-   * @param right_node a target node.
+   * @param l_node a target node.
    * @param key a target key.
    * @retval true if merging succeeds
    * @retval false otherwise
@@ -854,11 +854,11 @@ class BzTree
   template <class T>
   auto
   Merge(  //
-      Node_t *right_node,
+      Node_t *l_node,
       const Key &key)  //
       -> bool
   {
-    const auto r_stat = right_node->GetStatusWord();
+    const auto l_stat = l_node->GetStatusWord();
 
     /*----------------------------------------------------------------------------------
      * Phase 1: preparation
@@ -866,30 +866,30 @@ class BzTree
 
     NodeStack trace{};
     Node_t *old_parent{};
-    Node_t *left_node{};
+    Node_t *r_node{};
     size_t target_pos{};
     while (true) {
       // trace and get the embedded index of a target node
-      trace = TraceTargetNode(key, right_node);
+      trace = TraceTargetNode(key, l_node);
       target_pos = trace.back().second;
-      if (target_pos <= 0) return false;  // there is no mergeable node
 
       // check a parent node is live
       trace.pop_back();
       old_parent = trace.back().first;
-      const auto p_status = old_parent->GetStatusWord();
-      if (p_status.IsFrozen()) continue;
+      if (target_pos == old_parent->GetSortedCount() - 1) return false;  // no mergeable node
+      const auto p_stat = old_parent->GetStatusWord();
+      if (p_stat.IsFrozen()) continue;
 
       // check a right sibling node is live and has sufficent capacity
-      left_node = old_parent->GetChild(target_pos - 1);
-      const auto l_stat = left_node->GetStatusWord();
-      if (!l_stat.CanMergeWith(r_stat)) return false;
-      if (l_stat.IsFrozen()) continue;
+      r_node = old_parent->GetChild(target_pos + 1);
+      const auto r_stat = r_node->GetStatusWord();
+      if (!r_stat.CanMergeWith(l_stat)) return false;  // there is no space for merging
+      if (r_stat.IsFrozen()) continue;
 
       // pre-freezing of SMO targets
       MwCASDescriptor desc{};
-      old_parent->SetStatusForMwCAS(desc, p_status, p_status.Freeze());
-      left_node->SetStatusForMwCAS(desc, l_stat, l_stat.Freeze());
+      old_parent->SetStatusForMwCAS(desc, p_stat, p_stat.Freeze());
+      r_node->SetStatusForMwCAS(desc, r_stat, r_stat.Freeze());
       if (desc.MwCAS()) break;
     }
 
@@ -899,9 +899,9 @@ class BzTree
 
     // create new nodes
     auto *merged_node = CreateNewNode<T>();
-    merged_node->template Merge<T>(left_node, right_node);
+    merged_node->template Merge<T>(l_node, r_node);
     auto *new_parent = CreateNewNode<Node_t *>();
-    bool recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos - 1);
+    bool recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos);
     if (trace.size() <= 1 && new_parent->GetSortedCount() == 1) {
       // the new root node has only one child, use the merged child as a new root
       gc_.AddGarbage(new_parent);
@@ -911,8 +911,8 @@ class BzTree
     // install new nodes to the index and register garbages
     InstallNewNode(trace, new_parent, key, old_parent);
     gc_.AddGarbage(old_parent);
-    gc_.AddGarbage(left_node);
-    gc_.AddGarbage(right_node);
+    gc_.AddGarbage(l_node);
+    gc_.AddGarbage(r_node);
 
     // merge the new parent node if needed
     if (recurse_merge && !Merge<Node_t *>(new_parent, key)) {
