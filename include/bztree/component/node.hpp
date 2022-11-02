@@ -1120,7 +1120,7 @@ class Node
     const size_t is_leaf = !static_cast<bool>(is_inner_);
 
     // extract and insert entries into this node
-    size_t node_size = kHeaderLen + kWordSize + kMaxKeyLen + is_leaf * kMaxKeyLen;
+    size_t node_size = kHeaderLen + kWordSize + kMaxKeyLen + is_leaf * kMinFreeSpaceSize;
     auto offset = kPageSize;
     for (; iter < iter_end; ++iter) {
       const auto &[key, payload, key_length] = ParseEntry(*iter);
