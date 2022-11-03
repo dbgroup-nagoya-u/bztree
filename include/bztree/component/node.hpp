@@ -1140,11 +1140,12 @@ class Node
     // set lowest/highest keys
     offset = CopyLowKeyFrom(this, meta_array_[0], offset);
     if (iter < iter_end) {
-      const auto &[key, payload, key_length] = ParseEntry(*iter);
-      const auto [key_len, rec_len] = Align<Key, Payload>(key_length);
-      auto tmp_offset = SetKey(offset, key, key_len);
-      high_meta_ = Metadata{tmp_offset, key_len, key_len};
-      offset -= rec_len;
+      const auto &[key, payload, key_len] = ParseEntry(*iter);
+      offset = SetKey(offset, key, key_len);
+      high_meta_ = Metadata{offset, key_len, key_len};
+      if constexpr (NeedOffsetAlignment<Key, Payload>()) {
+        offset = Pad<Key, Payload>(offset);
+      }
     }
 
     // create the header of the leaf node
