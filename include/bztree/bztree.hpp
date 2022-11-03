@@ -592,31 +592,33 @@ class BzTree
   /// the maximum length of keys.
   static constexpr size_t kMaxKeyLen = (IsVarLenData<Key>()) ? kMaxVarDataSize : sizeof(Key);
 
+  /// the length of record metadata.
+  static constexpr size_t kMetaLen = sizeof(Metadata);
+
   /// the length of payloads.
   static constexpr size_t kPayLen = sizeof(Payload);
+
+  /// the length of child pointers.
+  static constexpr size_t kPtrLen = sizeof(Node_t *);
 
   /// the expected length of keys for bulkloading.
   static constexpr size_t kBulkKeyLen = (IsVarLenData<Key>()) ? kWordSize : sizeof(Key);
 
   /// the expected length of highest keys in leaf nodes for bulkloading.
-  static constexpr size_t kLeafHKeyLen = component::Align<Key, Payload>(kBulkKeyLen).first;
+  static constexpr size_t kMaxHKeyLen = component::Pad<Payload>(kMaxKeyLen);
 
   /// the expected length of records in leaf nodes for bulkloading.
-  static constexpr size_t kLeafRecLen = component::Align<Key, Payload>(kBulkKeyLen).second;
+  static constexpr size_t kLeafRecLen = component::Pad<Payload>(kBulkKeyLen + kPayLen) + kMetaLen;
 
   /// the expected capacity of leaf nodes for bulkloading.
-  static constexpr size_t kLeafNodeCap = (kPageSize - kHeaderLen - kLeafHKeyLen - kMinFreeSpaceSize)
-                                         / (kLeafRecLen + sizeof(Metadata));
-
-  /// the expected length of highest keys in internal nodes for bulkloading.
-  static constexpr size_t kInnerHKeyLen = component::Align<Key, Node_t *>(kBulkKeyLen).first;
+  static constexpr size_t kLeafNodeCap =
+      (kPageSize - kHeaderLen - kMaxHKeyLen - kMinFreeSpaceSize) / kLeafRecLen;
 
   /// the expected length of records in internal nodes for bulkloading.
-  static constexpr size_t kInnerRecLen = component::Align<Key, Node_t *>(kBulkKeyLen).second;
+  static constexpr size_t kInnerRecLen = component::Pad<Node_t *>(kBulkKeyLen + kPtrLen) + kMetaLen;
 
   /// the expected capacity of internal nodes for bulkloading.
-  static constexpr size_t kInnerNodeCap =
-      (kPageSize - kHeaderLen - kInnerHKeyLen) / (kInnerRecLen + sizeof(Metadata));
+  static constexpr size_t kInnerNodeCap = (kPageSize - kHeaderLen - kMaxHKeyLen) / kInnerRecLen;
 
   /*####################################################################################
    * Internal utility functions
@@ -766,7 +768,7 @@ class BzTree
     // check other SMOs are needed
     const auto stat = consol_node->GetStatusWord();
     if (stat.template NeedSplit<Key, Payload>()) return Split<Payload>(consol_node, key);
-    if (stat.NeedMerge() && Merge<Payload>(consol_node, key)) return;
+    if (stat.NeedMerge() && Merge<Payload>(consol_node, key, node)) return;
 
     // install the consolidated node
     auto &&trace = TraceTargetNode(key, node);
@@ -855,7 +857,8 @@ class BzTree
   auto
   Merge(  //
       Node_t *l_node,
-      const Key &key)  //
+      const Key &key,      //
+      Node_t *old_l_node)  //
       -> bool
   {
     const auto l_stat = l_node->GetStatusWord();
@@ -870,7 +873,7 @@ class BzTree
     size_t target_pos{};
     while (true) {
       // trace and get the embedded index of a target node
-      trace = TraceTargetNode(key, l_node);
+      trace = TraceTargetNode(key, old_l_node);
       target_pos = trace.back().second;
 
       // check a parent node is live
@@ -916,7 +919,7 @@ class BzTree
     gc_.AddGarbage(r_node);
 
     // merge the new parent node if needed
-    if (recurse_merge && !Merge<Node_t *>(new_parent, key)) {
+    if (recurse_merge && !Merge<Node_t *>(new_parent, key, new_parent)) {
       // if the parent node cannot be merged, unfreeze it
       new_parent->Unfreeze();
     }

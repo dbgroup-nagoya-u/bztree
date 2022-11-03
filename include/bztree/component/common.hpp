@@ -129,112 +129,40 @@ ShiftAddr(  //
 }
 
 /**
- * @brief Compute padded key/payload/total lengths for alignment.
+ * @brief Compute the padded length of a record for MwCAS operations.
  *
- * @tparam Key a class of keys.
  * @tparam Payload a class of payloads.
- * @param key_len the length of a target key.
- * @param pay_len the length of a target payload.
- * @return the tuple of key/payload/total lengths.
+ * @param rec_len the length of a target record.
+ * @return the padded length of a record .
  */
-template <class Key, class Payload>
+template <class Payload>
 constexpr auto
-Align([[maybe_unused]] size_t key_len)  //
-    -> std::pair<size_t, size_t>
-{
-  if constexpr (!CanCASUpdate<Payload>()) {
-    // record alignment is not required
-    if constexpr (IsVarLenData<Key>()) {
-      return {key_len, key_len + sizeof(Payload)};
-    } else {
-      return {sizeof(Key), sizeof(Key) + sizeof(Payload)};
-    }
-  } else if constexpr (IsVarLenData<Key>()) {
-    // dynamic alignment is required
-    const size_t align_len = alignof(Payload) - key_len % alignof(Payload);
-    if (align_len == alignof(Payload)) {
-      // alignment is not required
-      return {key_len, key_len + sizeof(Payload)};
-    }
-    return {key_len, align_len + key_len + sizeof(Payload)};
-  } else {
-    constexpr size_t kAlignLen = alignof(Payload) - sizeof(Key) % alignof(Payload);
-    if constexpr (kAlignLen == alignof(Payload)) {
-      // alignment is not required
-      return {sizeof(Key), sizeof(Key) + sizeof(Payload)};
-    } else {
-      // fixed-length alignment is required
-      return {sizeof(Key), sizeof(Key) + sizeof(Payload) + kAlignLen};
-    }
-  }
-}
-
-/**
- * @tparam Key a class of keys.
- * @tparam Payload a class of payloads.
- * @retval true if offsets may need padding for alignments.
- * @retval false otherwise.
- */
-template <class Key, class Payload>
-constexpr auto
-NeedOffsetAlignment()  //
-    -> bool
-{
-  if constexpr (!CanCASUpdate<Payload>()) {
-    // record alignment is not required
-    return false;
-  } else if constexpr (IsVarLenData<Key>()) {
-    // dynamic alignment is required
-    return true;
-  } else {
-    constexpr size_t kAlignLen = alignof(Payload) - sizeof(Key) % alignof(Payload);
-    if constexpr (kAlignLen == alignof(Payload)) {
-      // alignment is not required
-      return false;
-    } else {
-      // fixed-length alignment is required
-      return true;
-    }
-  }
-}
-
-/**
- * @brief Compute padded key/payload/total lengths for alignment.
- *
- * @tparam Key a class of keys.
- * @tparam Payload a class of payloads.
- * @param key_len the length of a target key.
- * @param pay_len the length of a target payload.
- * @return the tuple of key/payload/total lengths.
- */
-template <class Key, class Payload>
-constexpr auto
-Pad(size_t offset)  //
+Pad(size_t rec_len)  //
     -> size_t
 {
-  if constexpr (IsVarLenData<Key>()) {
-    // dynamic alignment is required
+  if constexpr (CanCASUpdate<Payload>()) {
+    return (rec_len + ~kAlignMask) & kAlignMask;
+  } else {
+    return rec_len;
+  }
+}
+
+/**
+ * @brief Compute an aligned offset value for MwCAS operations.
+ *
+ * @tparam Payload a class of payloads.
+ * @param offset a current offset value.
+ * @return an aligned offset value.
+ */
+template <class Payload>
+constexpr auto
+Align(size_t offset)  //
+    -> size_t
+{
+  if constexpr (CanCASUpdate<Payload>()) {
     return offset & kAlignMask;
   } else {
-    // fixed-length alignment is required
-    constexpr size_t kAlignLen = alignof(Payload) - sizeof(Key) % alignof(Payload);
-    return offset - kAlignLen;
-  }
-}
-
-/**
- * @tparam Key a class of keys.
- * @return the maximum size of records in internal nodes.
- */
-template <class Key>
-[[nodiscard]] constexpr auto
-GetMaxInternalRecordSize()  //
-    -> size_t
-{
-  if constexpr (IsVarLenData<Key>()) {
-    return Align<Key, void *>(kMaxVarDataSize).second;
-  } else {
-    return Align<Key, void *>(sizeof(Key)).second;
+    return offset;
   }
 }
 

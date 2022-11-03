@@ -84,9 +84,9 @@ class NodeFixture : public testing::Test  // NOLINT
 
   static constexpr size_t kHeaderLen = sizeof(Node_t);
   static inline const size_t key_len = ::dbgroup::index::test::GetLength(Key{});
-  static inline const size_t rec_len = Align<Key, Payload>(key_len).second;
+  static inline const size_t padded_len = Pad<Payload>(key_len + sizeof(Payload));
   static inline const size_t rec_num_in_node =
-      (kPageSize - kHeaderLen) / (rec_len + sizeof(Metadata));
+      (kPageSize - kHeaderLen) / (padded_len + sizeof(Metadata));
 
   /*####################################################################################
    * Setup/Teardown
@@ -104,10 +104,10 @@ class NodeFixture : public testing::Test  // NOLINT
 
     // set a record length and its maximum number
     if constexpr (CanCASUpdate<Payload>()) {
-      const auto del_size = rec_len + sizeof(Metadata);
+      const auto del_size = padded_len + sizeof(Metadata);
       max_del_num_ = kMaxDeletedSpaceSize / del_size;
     } else {
-      const auto del_size = rec_len + key_len + 2 * sizeof(Metadata);
+      const auto del_size = padded_len + key_len + 2 * sizeof(Metadata);
       max_del_num_ = kMaxDeletedSpaceSize / del_size;
     }
     if (max_del_num_ > kMaxDeltaRecNum) {
