@@ -35,22 +35,6 @@ CanMwCAS<MyClass>()  //
 
 }  // namespace dbgroup::atomic::mwcas
 
-namespace dbgroup::index::bztree
-{
-/**
- * @brief Use CString as variable-length data in tests.
- *
- */
-template <>
-constexpr auto
-IsVariableLengthData<char *>()  //
-    -> bool
-{
-  return true;
-}
-
-}  // namespace dbgroup::index::bztree
-
 namespace dbgroup::index::test
 {
 /*######################################################################################
