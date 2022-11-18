@@ -43,8 +43,10 @@ class Node
    * Type aliases
    *##################################################################################*/
 
+  using ScanKey = std::optional<std::tuple<const Key &, size_t, bool>>;
   template <class Entry>
   using BulkIter = typename std::vector<Entry>::const_iterator;
+  using NodeEntry = std::tuple<Key, Node *, size_t>;
 
  public:
   /*####################################################################################
@@ -54,17 +56,13 @@ class Node
   /**
    * @brief Construct a new node object.
    *
-   * @param is_leaf a flag to indicate whether a leaf node is constructed.
+   * @param is_inner a flag to indicate whether a leaf/inner node is constructed.
    * @param block_size an initial block size to align records.
    */
   Node(  //
-      const bool is_leaf,
+      const uint64_t is_inner,
       const size_t block_size)
-      : node_size_{kHeaderLen},
-        sorted_count_{0},
-        is_leaf_{static_cast<uint64_t>(is_leaf)},
-        do_splitting_{0},
-        status_{0, block_size}
+      : node_size_{kHeaderLen}, sorted_count_{0}, is_inner_{is_inner}, status_{0, block_size}
   {
   }
 
@@ -126,7 +124,7 @@ class Node
   IsLeaf() const  //
       -> bool
   {
-    return is_leaf_;
+    return is_inner_ == 0;
   }
 
   /**
@@ -166,7 +164,7 @@ class Node
   GetStatusWordProtected() const  //
       -> StatusWord
   {
-    return MwCASDescriptor::Read<StatusWord>(&status_);
+    return MwCASDescriptor::Read<StatusWord>(&status_, std::memory_order_relaxed);
   }
 
   /**
@@ -205,7 +203,7 @@ class Node
       -> Key
   {
     Key high_key{};
-    if constexpr (IsVariableLengthData<Key>()) {
+    if constexpr (IsVarLenData<Key>()) {
       const auto key_len = high_meta_.GetKeyLength();
       high_key = reinterpret_cast<Key>(::operator new(key_len));
       memcpy(high_key, GetKeyAddr(high_meta_), key_len);
@@ -224,7 +222,7 @@ class Node
   GetKey(const Metadata meta) const  //
       -> Key
   {
-    if constexpr (IsVariableLengthData<Key>()) {
+    if constexpr (IsVarLenData<Key>()) {
       return reinterpret_cast<Key>(GetKeyAddr(meta));
     } else {
       Key key{};
@@ -258,9 +256,8 @@ class Node
   GetChild(const size_t position) const  //
       -> Node *
   {
-    auto *child = MwCASDescriptor::Read<Node *>(GetPayloadAddr(meta_array_[position]));
-    std::atomic_thread_fence(std::memory_order_acquire);
-
+    const auto *addr = GetPayloadAddr(meta_array_[position]);
+    auto *child = MwCASDescriptor::Read<Node *>(addr, std::memory_order_acquire);
     return child;
   }
 
@@ -277,7 +274,7 @@ class Node
       const StatusWord old_status,
       const StatusWord new_status)
   {
-    desc.AddMwCASTarget(&status_, old_status, new_status);
+    desc.AddMwCASTarget(&status_, old_status, new_status, std::memory_order_relaxed);
   }
 
   /**
@@ -295,7 +292,8 @@ class Node
       const Node *old_child,
       const Node *new_child)
   {
-    desc.AddMwCASTarget(GetPayloadAddr(meta_array_[pos]), old_child, new_child);
+    auto *addr = GetPayloadAddr(meta_array_[pos]);
+    desc.AddMwCASTarget(addr, old_child, new_child, std::memory_order_release);
   }
 
   /*####################################################################################
@@ -308,20 +306,16 @@ class Node
    * specified key
    *
    * @param key a target key.
-   * @param range_is_closed a flag to indicate that a target key is included.
    * @return the position of a specified key.
    */
   [[nodiscard]] auto
-  Search(  //
-      const Key &key,
-      const bool range_is_closed) const  //
+  Search(const Key &key) const  //
       -> size_t
   {
-    int64_t begin_pos = 0;
-    int64_t end_pos = sorted_count_ - 2;
+    int64_t begin_pos = 1;
+    int64_t end_pos = sorted_count_ - 1;
     while (begin_pos <= end_pos) {
       size_t pos = (begin_pos + end_pos) >> 1UL;  // NOLINT
-
       const auto &index_key = GetKey(meta_array_[pos]);
 
       if (Compare{}(key, index_key)) {  // a target key is in a left side
@@ -329,13 +323,12 @@ class Node
       } else if (Compare{}(index_key, key)) {  // a target key is in a right side
         begin_pos = pos + 1;
       } else {  // find an equivalent key
-        if (!range_is_closed) ++pos;
-        begin_pos = pos;
+        begin_pos = pos + 1;
         break;
       }
     }
 
-    return begin_pos;
+    return begin_pos - 1;
   }
 
   /**
@@ -347,7 +340,9 @@ class Node
    * @return a pair of key existence and a key position.
    */
   [[nodiscard]] auto
-  SearchSortedRecord(const Key &key) const  //
+  SearchSortedRecord(  //
+      const Key &key,
+      Metadata &meta) const  //
       -> std::pair<KeyExistence, size_t>
   {
     int64_t begin_pos = 0;
@@ -355,7 +350,7 @@ class Node
     while (begin_pos <= end_pos) {
       size_t pos = (begin_pos + end_pos) >> 1UL;  // NOLINT
 
-      const auto meta = GetMetadataProtected(pos);
+      meta = GetMetadataWOFence(pos);
       const auto &index_key = GetKey(meta);
 
       if (Compare{}(key, index_key)) {  // a target key is in a left side
@@ -386,7 +381,7 @@ class Node
       const auto current_status = GetStatusWordProtected();
       if (current_status.IsFrozen()) return kFrozen;
 
-      MwCASDescriptor desc;
+      MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, current_status, current_status.Freeze());
       if (desc.MwCAS()) break;
       BZTREE_SPINLOCK_HINT
@@ -426,31 +421,40 @@ class Node
       Payload &out_payload) const  //
       -> NodeRC
   {
+    constexpr auto kPayLen = sizeof(Payload);
+    Metadata meta{};
+
     // check whether there is a given key in this node
-    KeyExistence rc{};
-    size_t pos{};
     if constexpr (CanCASUpdate<Payload>()) {
-      std::tie(rc, pos) = SearchSortedRecord(key);
-      if (rc == kNotExist || rc == kDeleted) {
-        // a new record may be inserted in an unsorted region
-        const auto status = GetStatusWordProtected();
-        std::tie(rc, pos) = SearchUnsortedRecord(key, status.GetRecordCount() - 1);
+      auto [rc, pos] = SearchSortedRecord(key, meta);
+      if (rc == kExist) {
+        // directly load a payload
+        const auto *addr = GetPayloadAddr(meta);
+        out_payload = MwCASDescriptor::Read<Payload>(addr, std::memory_order_relaxed);
+        return kSuccess;
       }
+
+      // a new record may be inserted in an unsorted region
+      const auto status = GetStatusWordProtected();
+      std::tie(rc, pos) = SearchUnsortedRecord(key, status.GetRecordCount() - 1, meta);
+      if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
+
+      // copy a written payload to a given address
+      const auto *addr = GetPayloadAddr(meta);
+      memcpy(&out_payload, addr, kPayLen);
+
+      return kSuccess;
     } else {
       const auto status = GetStatusWordProtected();
-      std::tie(rc, pos) = CheckUniqueness<Payload>(key, status.GetRecordCount() - 1);
-    }
-    if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
+      auto [rc, pos] = CheckUniqueness<Payload>(key, status.GetRecordCount() - 1, meta);
+      if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
-    // copy a written payload to a given address
-    const auto meta = GetMetadataProtected(pos);
-    if constexpr (CanCASUpdate<Payload>()) {
-      out_payload = MwCASDescriptor::Read<Payload>(GetPayloadAddr(meta));
-    } else {
-      memcpy(&out_payload, GetPayloadAddr(meta), sizeof(Payload));
-    }
+      // copy a written payload to a given address
+      const auto *addr = GetPayloadAddr(meta);
+      memcpy(&out_payload, addr, kPayLen);
 
-    return kSuccess;
+      return kSuccess;
+    }
   }
 
   /*####################################################################################
@@ -466,7 +470,6 @@ class Node
   {
     node_size_ = 0;
     sorted_count_ = 0;
-    do_splitting_ = 0;
   }
 
   /**
@@ -477,14 +480,15 @@ class Node
    * @retval 2nd: the end position for scanning.
    */
   [[nodiscard]] auto
-  SearchEndPositionFor(const std::optional<std::pair<const Key &, bool>> &end_key) const  //
+  SearchEndPositionFor(const ScanKey &end_key) const  //
       -> std::pair<bool, size_t>
   {
     const auto is_end = IsRightmostOf(end_key);
+    Metadata meta{};
     size_t end_pos{};
     if (is_end && end_key) {
-      const auto &[e_key, e_closed] = *end_key;
-      const auto [rc, pos] = SearchSortedRecord(e_key);
+      const auto &[e_key, e_key_len, e_closed] = *end_key;
+      const auto [rc, pos] = SearchSortedRecord(e_key, meta);
       end_pos = (rc == kExist && e_closed) ? pos + 1 : pos;
     } else {
       end_pos = sorted_count_;
@@ -509,9 +513,8 @@ class Node
    *
    * @tparam Payload a class of payload.
    * @param key a target key to be written.
+   * @param key_len the length of a target key.
    * @param payload a target payload to be written.
-   * @param key_length the length of a target key.
-   * @param payload_length the length of a target payload.
    * @retval kSuccess if a key/payload pair is written.
    * @retval kFrozen if a target node is frozen.
    * @retval kNeedConsolidation if a target node requires consolidation.
@@ -520,14 +523,16 @@ class Node
   auto
   Write(  //
       const Key &key,
-      const size_t key_length,
+      const size_t key_len,
       const Payload &payload)  //
       -> NodeRC
   {
     // variables and constants shared in Phase 1 & 2
-    const auto [key_len, rec_len] = Align<Key, Payload>(key_length);
+    const auto rec_len = key_len + sizeof(Payload);
+    const auto padded_len = Pad<Payload>(rec_len);
     const auto in_progress_meta = Metadata{key_len, rec_len};
-    StatusWord cur_status;
+    StatusWord cur_status{};
+    Metadata meta{};
     size_t target_pos{};
 
     /*----------------------------------------------------------------------------------
@@ -539,29 +544,27 @@ class Node
 
       if constexpr (CanCASUpdate<Payload>()) {
         // check whether a node includes a target key
-        const auto [rc, target_pos] = SearchSortedRecord(key);
+        const auto [rc, target_pos] = SearchSortedRecord(key, meta);
         if (rc == kExist) {
-          const auto target_meta = GetMetadataProtected(target_pos);
-
           // update a record directly
           MwCASDescriptor desc{};
           SetStatusForMwCAS(desc, cur_status, cur_status);
-          SetMetadataForMwCAS(desc, target_pos, target_meta, target_meta);
-          SetPayloadForMwCAS(desc, target_meta, payload);
+          SetMetadataWOFence(desc, target_pos, meta, meta);
+          SetPayloadForMwCAS(desc, meta, payload);
           if (desc.MwCAS()) return kSuccess;
           continue;
         }
       }
 
       // prepare new status for MwCAS
-      const auto new_status = cur_status.Add(rec_len);
+      const auto new_status = cur_status.Add(padded_len);
       if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
       target_pos = cur_status.GetRecordCount();
 
       // perform MwCAS to reserve space
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, cur_status, new_status);
-      SetMetadataForMwCAS(desc, target_pos, Metadata{}, in_progress_meta);
+      SetMetadataWOFence(desc, target_pos, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
       BZTREE_SPINLOCK_HINT
     }
@@ -574,7 +577,6 @@ class Node
     auto offset = kPageSize - cur_status.GetBlockSize();
     offset = SetPayload(offset, payload);
     offset = SetKey(offset, key, key_len);
-    std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = in_progress_meta.Commit(offset);
@@ -587,7 +589,7 @@ class Node
       // perform MwCAS to complete a write
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, status, status);
-      SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
+      SetMetadataWithFence(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
       BZTREE_SPINLOCK_HINT
     }
@@ -608,9 +610,8 @@ class Node
    *
    * @tparam Payload a class of payload.
    * @param key a target key to be written.
-   * @param payload a target payload to be written.
    * @param key_length the length of a target key.
-   * @param payload_length the length of a target payload.
+   * @param payload a target payload to be written.
    * @retval kSuccess if a key/payload pair is written.
    * @retval kKeyExist if a specified key exists.
    * @retval kFrozen if a target node is frozen.
@@ -620,14 +621,16 @@ class Node
   auto
   Insert(  //
       const Key &key,
-      const size_t key_length,
+      const size_t key_len,
       const Payload &payload)  //
       -> NodeRC
   {
     // variables and constants shared in Phase 1 & 2
-    const auto [key_len, rec_len] = Align<Key, Payload>(key_length);
+    const auto rec_len = key_len + sizeof(Payload);
+    const auto padded_len = Pad<Payload>(rec_len);
     const auto in_progress_meta = Metadata{key_len, rec_len};
-    StatusWord cur_status;
+    StatusWord cur_status{};
+    Metadata meta{};
     size_t target_pos{};
     size_t recheck_pos{};
     KeyExistence rc{};
@@ -641,17 +644,17 @@ class Node
 
       // check uniqueness
       target_pos = cur_status.GetRecordCount();
-      std::tie(rc, recheck_pos) = CheckUniqueness<Payload>(key, target_pos - 1);
+      std::tie(rc, recheck_pos) = CheckUniqueness<Payload>(key, target_pos - 1, meta);
       if (rc == kExist) return kKeyExist;
 
       // prepare new status for MwCAS
-      const auto new_status = cur_status.Add(rec_len);
+      const auto new_status = cur_status.Add(padded_len);
       if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
       // perform MwCAS to reserve space
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, cur_status, new_status);
-      SetMetadataForMwCAS(desc, target_pos, Metadata{}, in_progress_meta);
+      SetMetadataWOFence(desc, target_pos, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -663,7 +666,6 @@ class Node
     auto offset = kPageSize - cur_status.GetBlockSize();
     offset = SetPayload(offset, payload);
     offset = SetKey(offset, key, key_len);
-    std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = in_progress_meta.Commit(offset);
@@ -675,7 +677,7 @@ class Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
-        std::tie(rc, recheck_pos) = CheckUniqueness<Payload>(key, recheck_pos);
+        std::tie(rc, recheck_pos) = CheckUniqueness<Payload>(key, recheck_pos, meta);
         if (rc == kUncertain) continue;
         if (rc == kExist) {
           // delete an inserted record
@@ -687,7 +689,7 @@ class Node
       // perform MwCAS to complete an insert
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, status, status);
-      SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
+      SetMetadataWithFence(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
       BZTREE_SPINLOCK_HINT
     }
@@ -708,9 +710,8 @@ class Node
    *
    * @tparam Payload a class of payload.
    * @param key a target key to be written.
-   * @param payload a target payload to be written.
    * @param key_length the length of a target key.
-   * @param payload_length the length of a target payload.
+   * @param payload a target payload to be written.
    * @retval kSuccess if a key/payload pair is written.
    * @retval kKeyNotExist if a specified key does not exist.
    * @retval kFrozen if a target node is frozen.
@@ -720,15 +721,17 @@ class Node
   auto
   Update(  //
       const Key &key,
-      const size_t key_length,
+      const size_t key_len,
       const Payload &payload)  //
       -> NodeRC
   {
     // variables and constants shared in Phase 1 & 2
-    const auto [key_len, rec_len] = Align<Key, Payload>(key_length);
-    const auto deleted_size = kWordSize + rec_len;
+    const auto rec_len = key_len + sizeof(Payload);
+    const auto padded_len = Pad<Payload>(rec_len);
+    const auto deleted_size = kMetaLen + padded_len;
     const auto in_progress_meta = Metadata{key_len, rec_len};
-    StatusWord cur_status;
+    StatusWord cur_status{};
+    Metadata meta{};
     size_t target_pos{};
     size_t exist_pos{};
     KeyExistence rc{};
@@ -742,17 +745,15 @@ class Node
 
       // check whether a node includes a target key
       target_pos = cur_status.GetRecordCount();
-      std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos - 1);
+      std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos - 1, meta);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
       if constexpr (CanCASUpdate<Payload>()) {
         if (rc == kExist && exist_pos < sorted_count_) {
-          const auto meta = GetMetadataProtected(exist_pos);
-
           // update a record directly
           MwCASDescriptor desc{};
           SetStatusForMwCAS(desc, cur_status, cur_status);
-          SetMetadataForMwCAS(desc, exist_pos, meta, meta);
+          SetMetadataWOFence(desc, exist_pos, meta, meta);
           SetPayloadForMwCAS(desc, meta, payload);
           if (desc.MwCAS()) return kSuccess;
           continue;
@@ -760,13 +761,13 @@ class Node
       }
 
       // prepare new status for MwCAS
-      const auto new_status = cur_status.Add(rec_len).Delete(deleted_size);
+      const auto new_status = cur_status.Add(padded_len).Delete(deleted_size);
       if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
       // perform MwCAS to reserve space
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, cur_status, new_status);
-      SetMetadataForMwCAS(desc, target_pos, Metadata{}, in_progress_meta);
+      SetMetadataWOFence(desc, target_pos, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -778,7 +779,6 @@ class Node
     auto offset = kPageSize - cur_status.GetBlockSize();
     offset = SetPayload(offset, payload);
     offset = SetKey(offset, key, key_len);
-    std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
     const auto inserted_meta = in_progress_meta.Commit(offset);
@@ -790,7 +790,7 @@ class Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
-        std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, exist_pos);
+        std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, exist_pos, meta);
         if (rc == kUncertain) continue;
         if (rc == kNotExist || rc == kDeleted) {
           // delete an inserted record
@@ -802,7 +802,7 @@ class Node
       // perform MwCAS to complete an update
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, status, status);
-      SetMetadataForMwCAS(desc, target_pos, in_progress_meta, inserted_meta);
+      SetMetadataWithFence(desc, target_pos, in_progress_meta, inserted_meta);
       if (desc.MwCAS()) break;
       BZTREE_SPINLOCK_HINT
     }
@@ -836,9 +836,10 @@ class Node
       -> NodeRC
   {
     // variables and constants
-    const auto rec_len = Align<Key, Payload>(key_len).second - sizeof(Payload);
-    const auto in_progress_meta = Metadata{key_len, rec_len};
-    StatusWord cur_status;
+    const auto padded_len = Pad<Payload>(key_len);
+    const auto in_progress_meta = Metadata{key_len, key_len};
+    StatusWord cur_status{};
+    Metadata meta{};
     size_t target_pos{};
     size_t exist_pos{};
     KeyExistence rc{};
@@ -852,34 +853,33 @@ class Node
 
       // check whether a node includes a target key
       target_pos = cur_status.GetRecordCount();
-      std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos - 1);
+      std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, target_pos - 1, meta);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
-      const auto meta = GetMetadataProtected(exist_pos);
       if constexpr (CanCASUpdate<Payload>()) {
         if (rc == kExist && exist_pos < sorted_count_) {
           const auto deleted_meta = meta.Delete();
-          const auto new_status = cur_status.Delete(kWordSize + meta.GetTotalLength());
+          const auto new_status = cur_status.Delete(kMetaLen + meta.GetTotalLength());
           if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
           // delete a record directly
           MwCASDescriptor desc{};
           SetStatusForMwCAS(desc, cur_status, new_status);
-          SetMetadataForMwCAS(desc, exist_pos, meta, deleted_meta);
+          SetMetadataWOFence(desc, exist_pos, meta, deleted_meta);
           if (desc.MwCAS()) return kSuccess;
           continue;
         }
       }
 
       // prepare new status for MwCAS
-      const auto deleted_size = (2 * kWordSize) + meta.GetTotalLength() + rec_len;
-      const auto new_status = cur_status.Add(rec_len).Delete(deleted_size);
+      const auto deleted_size = (2 * kMetaLen) + meta.GetTotalLength() + padded_len;
+      const auto new_status = cur_status.Add(padded_len).Delete(deleted_size);
       if (new_status.NeedConsolidation(sorted_count_)) return kNeedConsolidation;
 
       // perform MwCAS to reserve space
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, cur_status, new_status);
-      SetMetadataForMwCAS(desc, target_pos, Metadata{}, in_progress_meta);
+      SetMetadataWOFence(desc, target_pos, Metadata{}, in_progress_meta);
       if (desc.MwCAS()) break;
     }
 
@@ -890,7 +890,6 @@ class Node
     // insert a null record
     auto offset = kPageSize - cur_status.GetBlockSize();
     offset = SetKey(offset, key, key_len);
-    std::atomic_thread_fence(std::memory_order_release);
 
     // prepare record metadata for MwCAS
     const auto deleted_meta = in_progress_meta.Delete(offset);
@@ -902,7 +901,7 @@ class Node
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
-        std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, exist_pos);
+        std::tie(rc, exist_pos) = CheckUniqueness<Payload>(key, exist_pos, meta);
         if (rc == kUncertain) continue;
         if (rc == kNotExist || rc == kDeleted) {
           // delete an inserted record
@@ -914,7 +913,7 @@ class Node
       // perform MwCAS to complete an insert
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, status, status);
-      SetMetadataForMwCAS(desc, target_pos, in_progress_meta, deleted_meta);
+      SetMetadataWithFence(desc, target_pos, in_progress_meta, deleted_meta);
       if (desc.MwCAS()) break;
       BZTREE_SPINLOCK_HINT
     }
@@ -939,7 +938,8 @@ class Node
     auto offset = node->ConsolidateTo<Payload>(kPageSize, this);
 
     // set header information
-    offset = CopyHighKeyFrom<Payload>(node, offset);
+    offset = CopyLowKeyFrom(node, node->low_meta_, offset);
+    offset = CopyHighKeyFrom<Payload>(node, node->high_meta_, offset);
     status_ = StatusWord{sorted_count_, kPageSize - offset};
   }
 
@@ -956,15 +956,25 @@ class Node
       Node *l_node,
       Node *r_node) const
   {
-    // copy records to left/right nodes
-    l_node->do_splitting_ = true;
+    // copy records to a left node
     auto offset = kPageSize;
-    for (size_t i = 0; i < sorted_count_; ++i) {
-      offset = CopyRecord<Payload>(this, l_node, meta_array_[i], offset, r_node);
+    size_t pos = 0;
+    for (; pos < sorted_count_; ++pos) {
+      offset = l_node->CopyRecordFrom<Payload>(this, meta_array_[pos], offset);
+      if (l_node->node_size_ > kPageSize / 2) break;
     }
 
-    // set header information for a right node (left header is set via splitting)
-    offset = r_node->CopyHighKeyFrom<Payload>(this, offset);
+    // set the header of a left node
+    offset = l_node->CopyLowKeyFrom(this, low_meta_, offset);
+    offset = l_node->CopyHighKeyFrom<Payload>(this, meta_array_[++pos], offset);
+    l_node->status_ = StatusWord{l_node->sorted_count_, kPageSize - offset};
+
+    // copy records to a right node
+    offset = CopyRecords<Payload>(this, r_node, pos, sorted_count_, kPageSize);
+
+    // set the header of a right node
+    offset = r_node->CopyLowKeyFrom(r_node, r_node->meta_array_[0], offset);
+    offset = r_node->CopyHighKeyFrom<Payload>(this, high_meta_, offset);
     r_node->status_ = StatusWord{r_node->sorted_count_, kPageSize - offset};
   }
 
@@ -986,14 +996,15 @@ class Node
       const size_t l_pos)  //
       -> bool
   {
-    // set a lowest/highest keys
-    auto offset = CopyHighKeyFrom<Node *>(old_node, kPageSize);
-
     // copy records with split nodes
-    offset = CopyRecords<Node *>(old_node, this, 0, l_pos, offset);
+    auto offset = CopyRecords<Node *>(old_node, this, 0, l_pos, kPageSize);
     offset = InsertChild(l_child, offset);
     offset = InsertChild(r_child, offset);
     offset = CopyRecords<Node *>(old_node, this, l_pos + 1, old_node->sorted_count_, offset);
+
+    // set lowest/highest keys
+    offset = CopyLowKeyFrom(old_node, old_node->low_meta_, offset);
+    offset = CopyHighKeyFrom<Node *>(old_node, old_node->high_meta_, offset);
 
     // set an updated header
     StatusWord stat{sorted_count_, kPageSize - offset};
@@ -1036,16 +1047,20 @@ class Node
       const Node *l_node,
       const Node *r_node)
   {
-    constexpr auto kIsInternal = std::is_same_v<Payload, Node *>;
+    constexpr auto kIsInner = std::is_same_v<Payload, Node *>;
 
     // copy records in left/right nodes
-    auto offset = (kIsInternal)
-                      ? CopyRecords<Payload>(l_node, this, 0, l_node->sorted_count_, kPageSize)
-                      : l_node->ConsolidateTo<Payload>(kPageSize, this);
-    offset = CopyRecords<Payload>(r_node, this, 0, r_node->sorted_count_, offset);
+    auto offset = CopyRecords<Payload>(l_node, this, 0, l_node->sorted_count_, kPageSize);
+    if constexpr (kIsInner) {
+      offset = CopyRecords<Payload>(r_node, this, 0, r_node->sorted_count_, offset);
+    } else {
+      // a leaf node have delta records, so consolidate them
+      offset = r_node->ConsolidateTo<Payload>(offset, this);
+    }
 
     // set header information
-    offset = CopyHighKeyFrom<Payload>(r_node, offset);
+    offset = CopyLowKeyFrom(l_node, l_node->low_meta_, offset);
+    offset = CopyHighKeyFrom<Payload>(r_node, r_node->high_meta_, offset);
     status_ = StatusWord{sorted_count_, kPageSize - offset};
   }
 
@@ -1063,13 +1078,14 @@ class Node
       const size_t position)  //
       -> bool
   {
-    // set a lowest/highest keys
-    auto offset = CopyHighKeyFrom<Node *>(old_node, kPageSize);
-
     // copy records without a deleted node
-    offset = CopyRecords<Node *>(old_node, this, 0, position, offset);
+    auto offset = CopyRecords<Node *>(old_node, this, 0, position, kPageSize);
     offset = InsertChild(merged_child, offset);
     offset = CopyRecords<Node *>(old_node, this, position + 2, old_node->sorted_count_, offset);
+
+    // set lowest/highest keys
+    offset = CopyLowKeyFrom(old_node, old_node->low_meta_, offset);
+    offset = CopyHighKeyFrom<Node *>(old_node, old_node->high_meta_, offset);
 
     // set an updated header
     StatusWord stat{sorted_count_, kPageSize - offset};
@@ -1088,101 +1104,91 @@ class Node
   /**
    * @brief Create a leaf node with the maximum number of records for bulkloading.
    *
-   * @tparam Payload a target payload class.
    * @tparam Entry a container of a key/payload pair.
    * @param iter the begin position of target records.
    * @param iter_end the end position of target records.
-   * @param is_rightmost a flag for indicating a rightmost node to be created.
+   * @param nodes the container of construcred nodes.
    */
-  template <class Payload, class Entry>
+  template <class Entry>
   void
   Bulkload(  //
       BulkIter<Entry> &iter,
       const BulkIter<Entry> &iter_end,
-      const bool is_rightmost)
+      std::vector<NodeEntry> &nodes)
   {
+    using Payload = std::tuple_element_t<1, Entry>;
+
+    constexpr auto kMaxKeyLen = (IsVarLenData<Key>()) ? kMaxVarDataSize : sizeof(Key);
+
     // extract and insert entries into this node
-    size_t node_size = kHeaderLen;
+    size_t node_size = kHeaderLen + kWordSize + kMaxKeyLen + kMinFreeSpaceSize;
     auto offset = kPageSize;
     for (; iter < iter_end; ++iter) {
-      const auto &[key, payload, key_length] = ParseEntry<Payload>(*iter);
-      const auto [key_len, rec_len] = Align<Key, Payload>(key_length);
+      const auto &[key, payload, key_len] = ParseEntry(*iter);
+      const auto rec_len = key_len + sizeof(Payload);
+      const auto padded_len = Pad<Payload>(rec_len);
 
       // check whether the node has sufficent space
-      node_size += rec_len + kWordSize;
-      if (node_size + key_len > kPageSize - kMinFreeSpaceSize) break;
+      node_size += padded_len + kMetaLen;
+      if (node_size > kPageSize) break;
 
       // insert an entry into this node
       auto tmp_offset = SetPayload(offset, payload);
       tmp_offset = SetKey(tmp_offset, key, key_len);
       meta_array_[sorted_count_++] = Metadata{tmp_offset, key_len, rec_len};
-      offset -= rec_len;
+      offset -= padded_len;
     }
 
-    // set a highest key if needed
-    if (iter < iter_end || !is_rightmost) {
-      const auto high_meta = meta_array_[sorted_count_ - 1];
-      const auto high_key_len = high_meta.GetKeyLength();
-      high_meta_ = Metadata{high_meta.GetOffset(), high_key_len, high_key_len};
-      offset -= high_key_len;  // reduce offset to make room for a highest key
+    // set lowest/highest keys
+    offset = CopyLowKeyFrom(this, meta_array_[0], offset);
+    if (iter < iter_end) {
+      const auto &[key, payload, key_len] = ParseEntry(*iter);
+      offset = SetKey(offset, key, key_len);
+      high_meta_ = Metadata{offset, key_len, key_len};
     }
+    offset = Align<Payload>(offset);
 
     // create the header of the leaf node
     status_ = StatusWord{sorted_count_, kPageSize - offset};
+
+    nodes.emplace_back(GetKey(low_meta_), this, low_meta_.GetKeyLength());
   }
 
   /**
-   * @brief Create an internal node with the maximum number of records for bulkloading.
+   * @brief Remove the leftmost keys from the leftmost nodes.
    *
-   * @param iter the begin position of child nodes.
-   * @param iter_end the end position of child nodes.
+   * @param node a root node.
    */
-  void
-  Bulkload(  //
-      BulkIter<Node *> &iter,
-      const BulkIter<Node *> &iter_end)
+  static void
+  RemoveLeftmostKeys(Node *node)
   {
-    // extract and insert child nodes
-    size_t node_size = kHeaderLen;
-    auto offset = kPageSize;
-    auto is_rightmost = false;
-    for (; iter < iter_end; ++iter) {
-      const auto *child_node = *iter;
-      const auto high_meta = child_node->high_meta_;
-      const auto key_length = high_meta.GetKeyLength();
+    while (true) {
+      // remove the lowest key
+      node->low_meta_ = Metadata{kPageSize, 0, 0};
+      if (node->is_inner_ == 0) return;
 
-      if (key_length == 0) {  // the rightmost node
-        node_size += 2 * kWordSize;
-        if (node_size > kPageSize) break;
+      // remove the leftmost key in a record region of an inner node
+      const auto meta = node->meta_array_[0];
+      const auto key_len = meta.GetKeyLength();
+      const auto rec_len = meta.GetPayloadLength();
+      node->meta_array_[0] = Metadata{meta.GetOffset() + key_len, 0, rec_len};
 
-        offset = SetPayload(offset, child_node);
-        meta_array_[sorted_count_++] = Metadata{offset, 0, kWordSize};
-        is_rightmost = true;
-      } else {  // the other internal nodes
-        const auto [key_len, rec_len] = Align<Key, Node *>(key_length);
-        node_size += rec_len + kWordSize;
-        if (node_size + key_len > kPageSize) break;
-
-        auto tmp_offset = SetPayload(offset, child_node) - key_len;
-        memcpy(ShiftAddr(this, tmp_offset), child_node->GetKeyAddr(high_meta), key_len);
-        meta_array_[sorted_count_++] = Metadata{tmp_offset, key_len, rec_len};
-        offset -= rec_len;
-      }
+      // go down to the lower level
+      node = node->GetChild(0);
     }
-
-    // set a highest key
-    if (!is_rightmost) {
-      const auto high_meta = meta_array_[sorted_count_ - 1];
-      const auto high_key_len = high_meta.GetKeyLength();
-      high_meta_ = Metadata{high_meta.GetOffset(), high_key_len, high_key_len};
-      offset -= high_key_len;  // reduce offset to make room for a highest key
-    }
-
-    // create the header of the leaf node
-    status_ = StatusWord{sorted_count_, kPageSize - offset};
   }
 
  private:
+  /*####################################################################################
+   * Internal constants
+   *##################################################################################*/
+
+  /// the length of child pointers.
+  static constexpr size_t kPtrLen = sizeof(uintptr_t);
+
+  /// the length of record metadata.
+  static constexpr size_t kMetaLen = sizeof(Metadata);
+
   /*####################################################################################
    * Internal classes
    *##################################################################################*/
@@ -1206,12 +1212,12 @@ class Node
    * @retval false otherwise.
    */
   [[nodiscard]] auto
-  IsRightmostOf(const std::optional<std::pair<const Key &, bool>> &end_key) const  //
+  IsRightmostOf(const ScanKey &end_key) const  //
       -> bool
   {
     if (high_meta_.GetKeyLength() == 0) return true;  // the rightmost node
     if (!end_key) return false;                       // perform full scan
-    return !Compare{}(GetKey(high_meta_), end_key->first);
+    return Compare{}(std::get<0>(*end_key), GetKey(high_meta_));
   }
 
   /**
@@ -1223,10 +1229,25 @@ class Node
    * @return metadata.
    */
   [[nodiscard]] auto
-  GetMetadataProtected(const size_t position) const  //
+  GetMetadataWithFence(const size_t position) const  //
       -> Metadata
   {
-    return MwCASDescriptor::Read<Metadata>(&meta_array_[position]);
+    return MwCASDescriptor::Read<Metadata>(&(meta_array_[position]), std::memory_order_acquire);
+  }
+
+  /**
+   * @brief Read metadata with MwCAS read protection.
+   *
+   * This function uses a MwCAS read operation internally, and so it is guaranteed that
+   * read metadata is valid.
+   *
+   * @return metadata.
+   */
+  [[nodiscard]] auto
+  GetMetadataWOFence(const size_t position) const  //
+      -> Metadata
+  {
+    return MwCASDescriptor::Read<Metadata>(&(meta_array_[position]), std::memory_order_relaxed);
   }
 
   /**
@@ -1266,7 +1287,7 @@ class Node
       const size_t pos,
       const Metadata meta)
   {
-    auto *atomic_meta = reinterpret_cast<std::atomic<Metadata> *>(meta_array_ + pos);
+    auto *atomic_meta = reinterpret_cast<std::atomic<Metadata> *>(&(meta_array_[pos]));
     atomic_meta->store(meta, std::memory_order_relaxed);
   }
 
@@ -1286,7 +1307,7 @@ class Node
       -> size_t
   {
     offset -= key_len;
-    if constexpr (IsVariableLengthData<Key>()) {
+    if constexpr (IsVarLenData<Key>()) {
       memcpy(ShiftAddr(this, offset), key, key_len);
     } else {
       memcpy(ShiftAddr(this, offset), &key, sizeof(Key));
@@ -1309,8 +1330,10 @@ class Node
       const Payload &payload)  //
       -> size_t
   {
-    offset -= sizeof(Payload);
-    memcpy(ShiftAddr(this, offset), &payload, sizeof(Payload));
+    constexpr auto kPayLen = sizeof(Payload);
+
+    offset -= kPayLen;
+    memcpy(ShiftAddr(this, offset), &payload, kPayLen);
 
     return offset;
   }
@@ -1319,18 +1342,36 @@ class Node
    * @brief Set an old/new metadata pair to a MwCAS target.
    *
    * @param desc a target MwCAS descriptor.
-   * @param position the position of target metadata.
+   * @param position the pos of target metadata.
    * @param old_meta old metadata for MwCAS.
    * @param new_meta new metadata for MwCAS.
    */
   constexpr void
-  SetMetadataForMwCAS(  //
+  SetMetadataWithFence(  //
       MwCASDescriptor &desc,
-      const size_t position,
+      const size_t pos,
       const Metadata old_meta,
       const Metadata new_meta)
   {
-    desc.AddMwCASTarget(meta_array_ + position, old_meta, new_meta);
+    desc.AddMwCASTarget(&(meta_array_[pos]), old_meta, new_meta, std::memory_order_release);
+  }
+
+  /**
+   * @brief Set an old/new metadata pair to a MwCAS target.
+   *
+   * @param desc a target MwCAS descriptor.
+   * @param position the pos of target metadata.
+   * @param old_meta old metadata for MwCAS.
+   * @param new_meta new metadata for MwCAS.
+   */
+  constexpr void
+  SetMetadataWOFence(  //
+      MwCASDescriptor &desc,
+      const size_t pos,
+      const Metadata old_meta,
+      const Metadata new_meta)
+  {
+    desc.AddMwCASTarget(&(meta_array_[pos]), old_meta, new_meta, std::memory_order_relaxed);
   }
 
   /**
@@ -1348,12 +1389,13 @@ class Node
   SetPayloadForMwCAS(  //
       MwCASDescriptor &desc,
       const Metadata meta,
-      const Payload &new_payload)
+      const Payload new_payload)
   {
     static_assert(CanCASUpdate<Payload>());
 
-    auto &&old_payload = MwCASDescriptor::Read<Payload>(GetPayloadAddr(meta));
-    desc.AddMwCASTarget(GetPayloadAddr(meta), old_payload, new_payload);
+    auto *addr = GetPayloadAddr(meta);
+    auto old_payload = MwCASDescriptor::Read<Payload>(addr, std::memory_order_relaxed);
+    desc.AddMwCASTarget(addr, old_payload, new_payload, std::memory_order_relaxed);
   }
 
   /*####################################################################################
@@ -1370,10 +1412,10 @@ class Node
       -> size_t
   {
     // the length of metadata
-    auto record_min_length = sizeof(Metadata);
+    auto record_min_length = kMetaLen;
 
     // the length of keys
-    if constexpr (IsVariableLengthData<Key>()) {
+    if constexpr (IsVarLenData<Key>()) {
       record_min_length += 1;
     } else {
       record_min_length += sizeof(Key);
@@ -1399,14 +1441,13 @@ class Node
   [[nodiscard]] auto
   SearchUnsortedRecord(  //
       const Key &key,
-      const size_t begin_pos) const  //
+      const size_t begin_pos,
+      Metadata &meta) const  //
       -> std::pair<KeyExistence, size_t>
   {
-    std::atomic_thread_fence(std::memory_order_acquire);
-
     // perform a linear search in revese order
     for (int64_t pos = begin_pos; pos >= sorted_count_; --pos) {
-      const auto meta = GetMetadataProtected(pos);
+      meta = GetMetadataWithFence(pos);
       if (meta.IsInProgress()) {
         if (meta.IsVisible()) return {kUncertain, pos};
         continue;
@@ -1434,23 +1475,24 @@ class Node
   [[nodiscard]] auto
   CheckUniqueness(  //
       const Key &key,
-      const int64_t begin_pos) const  //
+      const int64_t begin_pos,
+      Metadata &meta) const  //
       -> std::pair<KeyExistence, size_t>
   {
     KeyExistence rc{};
     size_t pos{};
 
     if constexpr (CanCASUpdate<Payload>()) {
-      std::tie(rc, pos) = SearchSortedRecord(key);
+      std::tie(rc, pos) = SearchSortedRecord(key, meta);
       if (rc == kNotExist || rc == kDeleted) {
         // a new record may be inserted in an unsorted region
-        std::tie(rc, pos) = SearchUnsortedRecord(key, begin_pos);
+        std::tie(rc, pos) = SearchUnsortedRecord(key, begin_pos, meta);
       }
     } else {
-      std::tie(rc, pos) = SearchUnsortedRecord(key, begin_pos);
+      std::tie(rc, pos) = SearchUnsortedRecord(key, begin_pos, meta);
       if (rc == kNotExist) {
         // a record may be in a sorted region
-        std::tie(rc, pos) = SearchSortedRecord(key);
+        std::tie(rc, pos) = SearchSortedRecord(key, meta);
       }
     }
 
@@ -1470,19 +1512,44 @@ class Node
       size_t offset)  //
       -> size_t
   {
-    auto tmp_offset = SetPayload(offset, child_node);
+    // insert a child node
+    offset = SetPayload(offset, child_node);
 
-    const auto high_meta = child_node->high_meta_;
-    const auto key_length = high_meta.GetKeyLength();
-    if (key_length == 0) {
-      meta_array_[sorted_count_++] = Metadata{tmp_offset, 0, kWordSize};
-      offset -= kWordSize;
+    // the lowest key of a child node is a separator key
+    const auto meta = child_node->low_meta_;
+    const auto key_len = meta.GetKeyLength();
+    offset -= key_len;
+    memcpy(ShiftAddr(this, offset), child_node->GetKeyAddr(meta), key_len);
+    meta_array_[sorted_count_++] = Metadata{offset, key_len, key_len + kPtrLen};
+
+    return Align<Node *>(offset);
+  }
+
+  /**
+   * @brief Copy a lowest key from a given node.
+   *
+   * @param node an original node that has a target key.
+   * @param meta metadata of a target record.
+   * @param offset the current offset of this node.
+   * @return the updated offset value.
+   */
+  auto
+  CopyLowKeyFrom(  //
+      const Node *node,
+      const Metadata meta,
+      size_t offset)  //
+      -> size_t
+  {
+    const auto key_len = meta.GetKeyLength();
+
+    if (is_inner_) {
+      // the lowest key is in a record region
+      low_meta_ = Metadata{meta_array_[0].GetOffset(), key_len, key_len};
     } else {
-      const auto [key_len, rec_len] = Align<Key, Node *>(key_length);
-      tmp_offset -= key_len;
-      memcpy(ShiftAddr(this, tmp_offset), child_node->GetKeyAddr(high_meta), key_len);
-      meta_array_[sorted_count_++] = Metadata{tmp_offset, key_len, rec_len};
-      offset -= rec_len;
+      // copy a key from the given node as a lowest key
+      offset -= key_len;
+      memcpy(ShiftAddr(this, offset), node->GetKeyAddr(meta), key_len);
+      low_meta_ = Metadata{offset, key_len, key_len};
     }
 
     return offset;
@@ -1492,6 +1559,7 @@ class Node
    * @brief Copy a highest key from a given node.
    *
    * @param node an original node that has a target key.
+   * @param meta metadata of a target record.
    * @param offset the current offset of this node.
    * @return the updated offset value.
    */
@@ -1499,96 +1567,69 @@ class Node
   auto
   CopyHighKeyFrom(  //
       const Node *node,
+      const Metadata meta,
       size_t offset)  //
       -> size_t
   {
-    const auto high_meta = node->high_meta_;
-    const auto key_len = high_meta.GetKeyLength();
+    const auto key_len = meta.GetKeyLength();
 
     // copy a highest key from the given node
     offset -= key_len;
-    memcpy(ShiftAddr(this, offset), node->GetKeyAddr(high_meta), key_len);
+    memcpy(ShiftAddr(this, offset), node->GetKeyAddr(meta), key_len);
     high_meta_ = Metadata{offset, key_len, key_len};
 
-    // align offset if needed
-    if constexpr (NeedOffsetAlignment<Key, Payload>()) {
-      if (key_len > 0) {
-        offset = Pad<Key, Payload>(offset);
-      }
-    }
-
-    return offset;
+    return Align<Payload>(offset);
   }
 
   /**
    * @brief Copy a record from a given node to another one.
    *
    * @tparam Payload a class of payload.
-   * @param from_node an original node that has a target record.
-   * @param to_node a destination node for copying.
+   * @param node an original node that has a target record.
    * @param meta the corresponding metadata of a target record.
    * @param offset the current offset of this node.
-   * @param r_node an optional right-split node for splitting.
    * @return the updated offset value.
    */
   template <class Payload>
-  static auto
-  CopyRecord(  //
-      const Node *from_node,
-      Node *&to_node,
+  auto
+  CopyRecordFrom(  //
+      const Node *node,
       const Metadata meta,
-      size_t offset,
-      Node *r_node = nullptr)  //
+      const size_t offset)  //
       -> size_t
   {
     const auto key_len = meta.GetKeyLength();
     const auto rec_len = meta.GetTotalLength();
+    const auto padded_len = Pad<Payload>(rec_len);
     auto tmp_offset = offset;
 
     if constexpr (CanCASUpdate<Payload>()) {
+      constexpr auto kPayLen = sizeof(Payload);
+      constexpr auto kIsInner = std::is_same_v<Payload, Node *>;
+      constexpr auto kFence = (kIsInner) ? std::memory_order_acquire : std::memory_order_relaxed;
+
       // copy a payload with MwCAS read protection
-      tmp_offset -= sizeof(Payload);
-      const auto &payload = MwCASDescriptor::Read<Payload>(from_node->GetPayloadAddr(meta));
-      memcpy(ShiftAddr(to_node, tmp_offset), &payload, sizeof(Payload));
+      const auto *addr = node->GetPayloadAddr(meta);
+      const auto &payload = MwCASDescriptor::Read<Payload>(addr, kFence);
+      tmp_offset -= kPayLen;
+      memcpy(ShiftAddr(this, tmp_offset), &payload, kPayLen);
 
       // copy a correspondng key
       tmp_offset -= key_len;
-      memcpy(ShiftAddr(to_node, tmp_offset), from_node->GetKeyAddr(meta), key_len);
+      memcpy(ShiftAddr(this, tmp_offset), node->GetKeyAddr(meta), key_len);
     } else {
       // copy a record from the given node
-      const auto act_rec_len = key_len + sizeof(Payload);
       tmp_offset -= rec_len;
-      memcpy(ShiftAddr(to_node, tmp_offset), from_node->GetKeyAddr(meta), act_rec_len);
+      memcpy(ShiftAddr(this, tmp_offset), node->GetKeyAddr(meta), rec_len);
     }
 
     // set new metadata
-    to_node->meta_array_[to_node->sorted_count_] = Metadata{tmp_offset, key_len, rec_len};
+    meta_array_[sorted_count_++] = Metadata{tmp_offset, key_len, rec_len};
 
     // update header information
-    ++to_node->sorted_count_;
-    to_node->node_size_ += rec_len + sizeof(Metadata);
+    node_size_ += padded_len + kMetaLen;
 
-    if (to_node->do_splitting_ && to_node->node_size_ > kPageSize / 2) {
-      // finalize copying of a split-left node
-      to_node->do_splitting_ = false;
-      to_node->high_meta_ = Metadata{tmp_offset, key_len, key_len};
-
-      // reduce offset to preserve space for a highest key
-      offset -= rec_len + key_len;
-      if constexpr (NeedOffsetAlignment<Key, Payload>()) {
-        // align offset if needed
-        offset = Pad<Key, Payload>(offset);
-      }
-      to_node->status_ = StatusWord{to_node->sorted_count_, kPageSize - offset};
-
-      // initialize a split-right node
-      to_node = r_node;
-      offset = kPageSize;
-    } else {
-      offset -= rec_len;
-    }
-
-    return offset;
+    return offset - padded_len;
   }
 
   /**
@@ -1614,7 +1655,7 @@ class Node
   {
     // copy records from the given node
     for (size_t i = begin_pos; i < end_pos; ++i) {
-      offset = CopyRecord<Payload>(from_node, to_node, from_node->meta_array_[i], offset);
+      offset = to_node->CopyRecordFrom<Payload>(from_node, from_node->meta_array_[i], offset);
     }
 
     return offset;
@@ -1631,13 +1672,12 @@ class Node
       -> size_t
   {
     const auto rec_count = GetStatusWordProtected().GetRecordCount();
-    std::atomic_thread_fence(std::memory_order_acquire);
 
     // sort unsorted records by insertion sort
     size_t count = 0;
     for (size_t pos = sorted_count_; pos < rec_count; ++pos) {
       // check whether a record has been inserted
-      const auto meta = GetMetadataProtected(pos);
+      const auto meta = GetMetadataWithFence(pos);
       if (meta.IsInProgress()) continue;
 
       // search an inserting position
@@ -1682,7 +1722,7 @@ class Node
     // perform merge-sort to consolidate a node
     size_t j = 0;
     for (size_t i = 0; i < sorted_count_; ++i) {
-      const auto meta = GetMetadataProtected(i);
+      const auto meta = GetMetadataWOFence(i);
       const auto &key = GetKey(meta);
 
       // copy new records
@@ -1692,7 +1732,7 @@ class Node
 
         // check a new record is active
         if (rec_meta.IsVisible()) {
-          offset = CopyRecord<Payload>(this, node, rec_meta, offset);
+          offset = node->CopyRecordFrom<Payload>(this, rec_meta, offset);
         }
       }
 
@@ -1700,10 +1740,10 @@ class Node
       if (j < new_rec_num && IsEqual<Compare>(key, records[j].key)) {
         const auto rec_meta = records[j++].meta;
         if (rec_meta.IsVisible()) {
-          offset = CopyRecord<Payload>(this, node, rec_meta, offset);
+          offset = node->CopyRecordFrom<Payload>(this, rec_meta, offset);
         }
       } else if (meta.IsVisible()) {
-        offset = CopyRecord<Payload>(this, node, meta, offset);
+        offset = node->CopyRecordFrom<Payload>(this, meta, offset);
       }
     }
 
@@ -1711,7 +1751,7 @@ class Node
     for (; j < new_rec_num; ++j) {
       const auto rec_meta = records[j].meta;
       if (rec_meta.IsVisible()) {
-        offset = CopyRecord<Payload>(this, node, rec_meta, offset);
+        offset = node->CopyRecordFrom<Payload>(this, rec_meta, offset);
       }
     }
 
@@ -1728,12 +1768,15 @@ class Node
    * @retval 2nd: a target payload.
    * @retval 3rd: the length of a target key.
    */
-  template <class Payload, class Entry>
+  template <class Entry>
   constexpr auto
   ParseEntry(const Entry &entry)  //
-      -> std::tuple<Key, Payload, size_t>
+      -> std::tuple<Key, std::tuple_element_t<1, Entry>, size_t>
   {
-    if constexpr (IsVariableLengthData<Key>()) {
+    constexpr auto kTupleSize = std::tuple_size_v<Entry>;
+    static_assert(2 <= kTupleSize && kTupleSize <= 3);
+
+    if constexpr (kTupleSize == 3) {
       return entry;
     } else {
       const auto &[key, payload] = entry;
@@ -1752,16 +1795,16 @@ class Node
   uint64_t sorted_count_ : 16;
 
   /// a flag for indicating whether this node is a leaf or internal node.
-  uint64_t is_leaf_ : 1;
-
-  /// a flag for indicating whether this node is being split.
-  uint64_t do_splitting_ : 1;
+  uint64_t is_inner_ : 1;
 
   /// a black block for alignment.
   uint64_t : 0;
 
   /// a status word.
   StatusWord status_{};
+
+  /// the metadata of a lowest key.
+  Metadata low_meta_{};
 
   /// the metadata of a highest key.
   Metadata high_meta_{};

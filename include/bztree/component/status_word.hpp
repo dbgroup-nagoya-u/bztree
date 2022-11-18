@@ -164,7 +164,7 @@ class StatusWord
   NeedSplit() const  //
       -> bool
   {
-    constexpr auto kKeyLen = (IsVariableLengthData<Key>()) ? kMaxVarDataSize : sizeof(Key);
+    constexpr auto kKeyLen = (IsVarLenData<Key>()) ? kMaxVarDataSize : sizeof(Key);
     constexpr auto kRecLen = kWordSize + kKeyLen + sizeof(Payload);
     constexpr auto kMinBlockSize = (kRecLen > kMinFreeSpaceSize) ? kRecLen : kMinFreeSpaceSize;
     constexpr auto kMaxUsedSize = kPageSize - (kHeaderLen + kMinBlockSize);
@@ -182,8 +182,9 @@ class StatusWord
   NeedInternalSplit() const  //
       -> bool
   {
-    constexpr size_t kRecLen = GetMaxInternalRecordSize<Key>();
-    constexpr size_t kMaxUsedSize = kPageSize - (kHeaderLen + kWordSize + kRecLen);
+    constexpr size_t kMaxRecLen = (IsVarLenData<Key>() ? kMaxVarDataSize : sizeof(Key)) + kWordSize;
+    constexpr size_t kPaddedLen = Pad<void *>(kMaxRecLen);
+    constexpr size_t kMaxUsedSize = kPageSize - (kHeaderLen + kWordSize + kPaddedLen);
     const auto this_size = (kWordSize * record_count_) + block_size_;
 
     return this_size > kMaxUsedSize;
@@ -197,7 +198,7 @@ class StatusWord
   NeedMerge() const  //
       -> bool
   {
-    const auto this_size = (kWordSize * record_count_) + block_size_ - deleted_size_;
+    const auto this_size = (kWordSize * record_count_) + block_size_;
 
     return this_size < kMinNodeSize - kHeaderLen;
   }
@@ -211,8 +212,8 @@ class StatusWord
   CanMergeWith(const StatusWord stat) const  //
       -> bool
   {
-    const auto this_size = (kWordSize * record_count_) + block_size_;
-    const auto sib_size = (kWordSize * stat.record_count_) + stat.block_size_;
+    const auto this_size = (kWordSize * record_count_) + block_size_ - deleted_size_;
+    const auto sib_size = (kWordSize * stat.record_count_) + stat.block_size_ - stat.deleted_size_;
 
     return this_size + sib_size < kMaxMergedSize - kHeaderLen;
   }

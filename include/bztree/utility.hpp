@@ -31,40 +31,17 @@ namespace dbgroup::index::bztree
  * Global constants
  *####################################################################################*/
 
-/// Assumes that one word is represented by 8 bytes
-constexpr size_t kWordSize = sizeof(uintptr_t);
+/// the default time interval for garbage collection [us].
+constexpr size_t kDefaultGCTime = 10000;
 
-/*######################################################################################
- * Tuning parameters for BzTree
- *####################################################################################*/
+/// the default number of worker threads for garbage collection.
+constexpr size_t kDefaultGCThreadNum = 1;
 
-/// Header length in bytes.
-constexpr size_t kHeaderLen = 3 * kWordSize;
+/// a flag for indicating closed intervals
+constexpr bool kClosed = true;
 
-/// The page size of each node.
-constexpr size_t kPageSize = BZTREE_PAGE_SIZE;
-
-/// Invoking consolidation if the number of delta records exceeds this threshold.
-constexpr size_t kMaxDeltaRecNum = BZTREE_MAX_DELTA_RECORD_NUM;
-
-/// Invoking consolidation if the size of deleted space exceeds this threshold.
-constexpr size_t kMaxDeletedSpaceSize = BZTREE_MAX_DELETED_SPACE_SIZE;
-
-/// Invoking a split-operation if the size of free space falls below this threshold.
-constexpr size_t kMinFreeSpaceSize = BZTREE_MIN_FREE_SPACE_SIZE;
-
-/// Invoking a merge-operation if the size of a consolidated node falls below this threshold.
-constexpr size_t kMinNodeSize = BZTREE_MIN_NODE_SIZE;
-
-/// Canceling a merge-operation if the size of a merged node exceeds this threshold.
-constexpr size_t kMaxMergedSize = BZTREE_MAX_MERGED_SIZE;
-
-/// the maximun size of variable-length data.
-constexpr size_t kMaxVarDataSize = BZTREE_MAX_VARIABLE_DATA_SIZE;
-
-// Check whether the specified page size is valid
-static_assert(kPageSize % kWordSize == 0);
-static_assert(kMaxVarDataSize * 2 < kPageSize);
+/// a flag for indicating closed intervals
+constexpr bool kOpen = false;
 
 /*######################################################################################
  * Utility enum and classes
@@ -103,12 +80,40 @@ struct CompareAsCString {
  */
 template <class T>
 constexpr auto
-IsVariableLengthData()  //
+IsVarLenData()  //
     -> bool
 {
-  static_assert(std::is_trivially_copyable_v<T>);
-  return false;
+  if constexpr (std::is_same_v<T, char *> || std::is_same_v<T, std::byte *>) {
+    return true;
+  } else {
+    return false;
+  }
 }
+
+/*######################################################################################
+ * Tuning parameters for BzTree
+ *####################################################################################*/
+
+/// The page size of each node.
+constexpr size_t kPageSize = BZTREE_PAGE_SIZE;
+
+/// Invoking consolidation if the number of delta records exceeds this threshold.
+constexpr size_t kMaxDeltaRecNum = BZTREE_MAX_DELTA_RECORD_NUM;
+
+/// Invoking consolidation if the size of deleted space exceeds this threshold.
+constexpr size_t kMaxDeletedSpaceSize = BZTREE_MAX_DELETED_SPACE_SIZE;
+
+/// Invoking a split-operation if the size of free space falls below this threshold.
+constexpr size_t kMinFreeSpaceSize = BZTREE_MIN_FREE_SPACE_SIZE;
+
+/// Invoking a merge-operation if the size of a consolidated node falls below this threshold.
+constexpr size_t kMinNodeSize = BZTREE_MIN_NODE_SIZE;
+
+/// Canceling a merge-operation if the size of a merged node exceeds this threshold.
+constexpr size_t kMaxMergedSize = BZTREE_MAX_MERGED_SIZE;
+
+/// the maximun size of variable-length data.
+constexpr size_t kMaxVarDataSize = BZTREE_MAX_VARIABLE_DATA_SIZE;
 
 }  // namespace dbgroup::index::bztree
 

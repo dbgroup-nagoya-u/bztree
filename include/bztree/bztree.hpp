@@ -50,9 +50,12 @@ class BzTree
   using NodeStack = std::vector<std::pair<Node_t *, size_t>>;
   using MwCASDescriptor = component::MwCASDescriptor;
   using KeyExistence = component::KeyExistence;
+  using ScanKey = std::optional<std::tuple<const Key &, size_t, bool>>;
+
   template <class Entry>
   using BulkIter = typename std::vector<Entry>::const_iterator;
-  using BulkResult = std::pair<size_t, std::vector<Node_t *>>;
+  using NodeEntry = std::tuple<Key, Node_t *, size_t>;
+  using BulkResult = std::pair<size_t, std::vector<NodeEntry>>;
   using BulkPromise = std::promise<BulkResult>;
   using BulkFuture = std::future<BulkResult>;
 
@@ -82,7 +85,7 @@ class BzTree
         Node_t *node,
         const size_t begin_pos,
         const size_t end_pos,
-        const std::optional<std::pair<const Key &, bool>> end_key,
+        const ScanKey end_key,
         const bool is_right_end)
         : bztree_{bztree},
           node_{node},
@@ -121,6 +124,12 @@ class BzTree
      *################################################################################*/
 
     /**
+     * @retval true if this iterator indicates a live record.
+     * @retval false otherwise.
+     */
+    explicit operator bool() { return HasRecord(); }
+
+    /**
      * @return a current key and payload pair
      */
     constexpr auto
@@ -153,8 +162,9 @@ class BzTree
      * @retval true if there are any records or next node left.
      * @retval false if there are no records and node left.
      */
-    bool
-    HasNext()
+    auto
+    HasRecord()  //
+        -> bool
     {
       while (true) {
         if (current_pos_ < record_count_) return true;  // records remain in this node
@@ -162,9 +172,9 @@ class BzTree
 
         // update this iterator with the next scan results
         const auto &next_key = node_->GetHighKey();
-        *this = bztree_->Scan(std::make_pair(next_key, false), end_key_);
+        *this = bztree_->Scan(std::make_tuple(next_key, 0, kClosed), end_key_);
 
-        if constexpr (IsVariableLengthData<Key>()) {
+        if constexpr (IsVarLenData<Key>()) {
           // release a dynamically allocated key
           delete next_key;
         }
@@ -212,19 +222,11 @@ class BzTree
     Metadata current_meta_{};
 
     /// the end key given from a user
-    std::optional<std::pair<const Key &, bool>> end_key_{};
+    ScanKey end_key_{};
 
     /// a flag for indicating whether scan has finished
     bool is_right_end_{};
   };
-
-  /*####################################################################################
-   * Public constants
-   *##################################################################################*/
-
-  static constexpr size_t kDefaultGCTime = 100000;
-
-  static constexpr size_t kDefaultGCThreadNum = 1;
 
   /*####################################################################################
    * Public constructors and assignment operators
@@ -236,8 +238,8 @@ class BzTree
    * @param gc_interval_microsec GC internal [us]
    */
   explicit BzTree(  //
-      const size_t gc_interval_microsec = 10000,
-      const size_t gc_thread_num = 1)
+      const size_t gc_interval_microsec = kDefaultGCTime,
+      const size_t gc_thread_num = kDefaultGCThreadNum)
       : gc_{gc_interval_microsec, gc_thread_num, true}
   {
     // create an initial root node
@@ -272,20 +274,23 @@ class BzTree
    * @brief Read the payload corresponding to a given key if it exists.
    *
    * @param key a target key.
+   * @param key_len the length of a target key.
    * @retval the payload of a given key wrapped with std::optional if it is in this tree.
    * @retval std::nullopt otherwise.
    */
   auto
-  Read(const Key &key)  //
+  Read(  //
+      const Key &key,
+      [[maybe_unused]] const size_t key_len = sizeof(Key))  //
       -> std::optional<Payload>
   {
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
-    const auto *node = SearchLeafNode(key, true);
+    const auto *node = SearchLeafNode(key);
 
     Payload payload{};
     const auto rc = node->Read(key, payload);
-    if (rc == NodeRC::kSuccess) return std::make_optional(payload);
+    if (rc == NodeRC::kSuccess) return payload;
     return std::nullopt;
   }
 
@@ -298,8 +303,8 @@ class BzTree
    */
   auto
   Scan(  //
-      const std::optional<std::pair<const Key &, bool>> &begin_key = std::nullopt,
-      const std::optional<std::pair<const Key &, bool>> &end_key = std::nullopt)  //
+      const ScanKey &begin_key = std::nullopt,
+      const ScanKey &end_key = std::nullopt)  //
       -> RecordIterator
   {
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
@@ -310,12 +315,13 @@ class BzTree
     // sort records in a target node
     size_t begin_pos = 0;
     if (begin_key) {
-      const auto &[b_key, b_closed] = *begin_key;
-      const auto *node = SearchLeafNode(b_key, b_closed);
+      const auto &[b_key, b_key_len, b_closed] = *begin_key;
+      const auto *node = SearchLeafNode(b_key);
       page->template Consolidate<Payload>(node);
 
       // check the begin position for scanning
-      auto [rc, pos] = page->SearchSortedRecord(b_key);
+      Metadata meta{};
+      auto [rc, pos] = page->SearchSortedRecord(b_key, meta);
       begin_pos = (rc == KeyExistence::kNotExist || b_closed) ? pos : pos + 1;
     } else {
       const auto *node = SearchLeftEdgeLeaf();
@@ -354,7 +360,7 @@ class BzTree
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto *node = SearchLeafNode(key, true);
+      auto *node = SearchLeafNode(key);
       const auto rc = node->Write(key, key_len, payload);
 
       switch (rc) {
@@ -392,7 +398,7 @@ class BzTree
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto *node = SearchLeafNode(key, true);
+      auto *node = SearchLeafNode(key);
       const auto rc = node->Insert(key, key_len, payload);
 
       switch (rc) {
@@ -432,7 +438,7 @@ class BzTree
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto *node = SearchLeafNode(key, true);
+      auto *node = SearchLeafNode(key);
       const auto rc = node->Update(key, key_len, payload);
 
       switch (rc) {
@@ -469,7 +475,7 @@ class BzTree
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
     while (true) {
-      auto *node = SearchLeafNode(key, true);
+      auto *node = SearchLeafNode(key);
       const auto rc = node->template Delete<Payload>(key, key_len);
 
       switch (rc) {
@@ -508,42 +514,38 @@ class BzTree
       const size_t thread_num = 1)  //
       -> ReturnCode
   {
-    assert(thread_num > 0);
-    assert(entries.size() >= thread_num);
-
     if (entries.empty()) return ReturnCode::kSuccess;
 
-    std::vector<Node_t *> nodes{};
+    std::vector<NodeEntry> nodes{};
     auto &&iter = entries.cbegin();
-    if (thread_num == 1) {
+    const auto rec_num = entries.size();
+    if (thread_num <= 1 || rec_num < thread_num) {
       // bulkloading with a single thread
-      nodes = BulkloadWithSingleThread<Entry>(iter, entries.size()).second;
+      nodes = BulkloadWithSingleThread<Entry>(iter, rec_num).second;
     } else {
       // bulkloading with multi-threads
       std::vector<BulkFuture> futures{};
       futures.reserve(thread_num);
 
       // a lambda function for bulkloading with multi-threads
-      auto loader = [&](BulkPromise p, BulkIter<Entry> iter, size_t n, bool is_rightmost) {
-        p.set_value(BulkloadWithSingleThread<Entry>(iter, n, is_rightmost));
+      auto loader = [&](BulkPromise p, BulkIter<Entry> iter, size_t n) {
+        p.set_value(BulkloadWithSingleThread<Entry>(iter, n));
       };
 
       // create threads to construct partial BzTrees
-      const auto rec_num = entries.size();
-      const auto rightmost_id = thread_num - 1;
       for (size_t i = 0; i < thread_num; ++i) {
         // create a partial BzTree
         BulkPromise p{};
         futures.emplace_back(p.get_future());
         const size_t n = (rec_num + i) / thread_num;
-        std::thread{loader, std::move(p), iter, n, i == rightmost_id}.detach();
+        std::thread{loader, std::move(p), iter, n}.detach();
 
         // forward the iterator to the next begin position
         iter += n;
       }
 
       // wait for the worker threads to create partial trees
-      std::vector<std::pair<size_t, std::vector<Node_t *>>> partial_trees{};
+      std::vector<BulkResult> partial_trees{};
       partial_trees.reserve(thread_num);
       size_t height = 1;
       for (auto &&future : futures) {
@@ -556,7 +558,7 @@ class BzTree
       nodes.reserve(kInnerNodeCap * thread_num);
       for (auto &&[p_height, p_nodes] : partial_trees) {
         while (p_height < height) {  // NOLINT
-          ConstructUpperLayer(p_nodes);
+          p_nodes = ConstructSingleLayer<NodeEntry>(p_nodes.cbegin(), p_nodes.size());
           ++p_height;
         }
         nodes.insert(nodes.end(), p_nodes.begin(), p_nodes.end());
@@ -565,11 +567,13 @@ class BzTree
 
     // create upper layers until a root node is created
     while (nodes.size() > 1) {
-      ConstructUpperLayer(nodes);
+      nodes = ConstructSingleLayer<NodeEntry>(nodes.cbegin(), nodes.size());
     }
+    auto *new_root = std::get<1>(nodes.front());
+    Node_t::RemoveLeftmostKeys(new_root);
 
     // set a new root
-    auto *old_root = root_.exchange(nodes.front(), std::memory_order_release);
+    auto *old_root = root_.exchange(new_root, std::memory_order_release);
     gc_.AddGarbage(old_root);
 
     return ReturnCode::kSuccess;
@@ -580,28 +584,42 @@ class BzTree
    * Internal constants
    *##################################################################################*/
 
+  /// Assumes that one word is represented by 8 bytes
+  static constexpr size_t kWordSize = component::kWordSize;
+
+  /// Header length in bytes.
+  static constexpr size_t kHeaderLen = component::kHeaderLen;
+
+  /// the maximum length of keys.
+  static constexpr size_t kMaxKeyLen = (IsVarLenData<Key>()) ? kMaxVarDataSize : sizeof(Key);
+
+  /// the length of record metadata.
+  static constexpr size_t kMetaLen = sizeof(Metadata);
+
+  /// the length of payloads.
+  static constexpr size_t kPayLen = sizeof(Payload);
+
+  /// the length of child pointers.
+  static constexpr size_t kPtrLen = sizeof(Node_t *);
+
   /// the expected length of keys for bulkloading.
-  static constexpr size_t kBulkKeyLen = (IsVariableLengthData<Key>()) ? kWordSize : sizeof(Key);
+  static constexpr size_t kBulkKeyLen = (IsVarLenData<Key>()) ? kWordSize : sizeof(Key);
 
   /// the expected length of highest keys in leaf nodes for bulkloading.
-  static constexpr size_t kLeafHKeyLen = component::Align<Key, Payload>(kBulkKeyLen).first;
+  static constexpr size_t kMaxHKeyLen = component::Pad<Payload>(kMaxKeyLen);
 
   /// the expected length of records in leaf nodes for bulkloading.
-  static constexpr size_t kLeafRecLen = component::Align<Key, Payload>(kBulkKeyLen).second;
+  static constexpr size_t kLeafRecLen = component::Pad<Payload>(kBulkKeyLen + kPayLen) + kMetaLen;
 
   /// the expected capacity of leaf nodes for bulkloading.
-  static constexpr size_t kLeafNodeCap = (kPageSize - kHeaderLen - kLeafHKeyLen - kMinFreeSpaceSize)
-                                         / (kLeafRecLen + sizeof(Metadata));
-
-  /// the expected length of highest keys in internal nodes for bulkloading.
-  static constexpr size_t kInnerHKeyLen = component::Align<Key, Node_t *>(kBulkKeyLen).first;
+  static constexpr size_t kLeafNodeCap =
+      (kPageSize - kHeaderLen - kMaxHKeyLen - kMinFreeSpaceSize) / kLeafRecLen;
 
   /// the expected length of records in internal nodes for bulkloading.
-  static constexpr size_t kInnerRecLen = component::Align<Key, Node_t *>(kBulkKeyLen).second;
+  static constexpr size_t kInnerRecLen = component::Pad<Node_t *>(kBulkKeyLen + kPtrLen) + kMetaLen;
 
   /// the expected capacity of internal nodes for bulkloading.
-  static constexpr size_t kInnerNodeCap =
-      (kPageSize - kHeaderLen - kInnerHKeyLen) / (kInnerRecLen + sizeof(Metadata));
+  static constexpr size_t kInnerNodeCap = (kPageSize - kHeaderLen - kMaxHKeyLen) / kInnerRecLen;
 
   /*####################################################################################
    * Internal utility functions
@@ -619,10 +637,10 @@ class BzTree
   CreateNewNode()  //
       -> Node_t *
   {
-    constexpr bool kIsLeaf = std::is_same_v<T, Payload>;
+    constexpr auto kIsInner = static_cast<uint64_t>(std::is_same_v<T, Node_t *>);
 
     auto *page = gc_.template GetPageIfPossible<Node_t>();
-    return (page == nullptr) ? new Node_t{kIsLeaf, 0} : new (page) Node_t{kIsLeaf, 0};
+    return (page == nullptr) ? new Node_t{kIsInner, 0} : new (page) Node_t{kIsInner, 0};
   }
 
   /**
@@ -632,8 +650,7 @@ class BzTree
   GetRoot() const  //
       -> Node_t *
   {
-    auto *root = MwCASDescriptor::Read<Node_t *>(&root_);
-    std::atomic_thread_fence(std::memory_order_acquire);
+    auto *root = MwCASDescriptor::Read<Node_t *>(&root_, std::memory_order_acquire);
 
     return root;
   }
@@ -646,14 +663,12 @@ class BzTree
    * @return a leaf node that may contain a target key.
    */
   [[nodiscard]] auto
-  SearchLeafNode(  //
-      const Key &key,
-      const bool range_is_closed) const  //
+  SearchLeafNode(const Key &key) const  //
       -> Node_t *
   {
     auto *current_node = GetRoot();
     while (!current_node->IsLeaf()) {
-      const auto pos = current_node->Search(key, range_is_closed);
+      const auto pos = current_node->Search(key);
       current_node = current_node->GetChild(pos);
     }
 
@@ -693,13 +708,13 @@ class BzTree
       -> NodeStack
   {
     // trace nodes to a target internal node
-    NodeStack trace;
+    NodeStack trace{};
     size_t index = 0;
     auto *current_node = GetRoot();
 
     /*while (current_node != target_node && !current_node->IsLeaf()) {
       trace.emplace_back(current_node, index);
-      index = current_node->Search(key, true);
+      index = current_node->Search(key);
       current_node = current_node->GetChild(index);
     }
     trace.emplace_back(current_node, index);
@@ -772,11 +787,13 @@ class BzTree
 
     // check other SMOs are needed
     const auto stat = consol_node->GetStatusWord();
+
     if (stat.template NeedSplit<Key, Payload>()) {
       // node->Unfreeze();
       return Split<Payload>(consol_node, node, key);
     }
-    if (stat.NeedMerge() && Merge<Payload>(consol_node, node, key)) {
+    // if (stat.template NeedSplit<Key, Payload>()) return Split<Payload>(consol_node, key);
+    if (stat.NeedMerge() && Merge<Payload>(consol_node, key, node)) {
       node->Unfreeze();
       return;
     }
@@ -810,7 +827,7 @@ class BzTree
      * Phase 1: preparation
      *--------------------------------------------------------------------------------*/
 
-    NodeStack trace;
+    NodeStack trace{};
     Node_t *old_parent = nullptr;
     size_t target_pos{};
     bool root_split = false;
@@ -871,7 +888,7 @@ class BzTree
    *
    * Note that this function may call itself recursively if needed.
    *
-   * @param right_node a target node.
+   * @param l_node a target node.
    * @param key a target key.
    * @retval true if merging succeeds
    * @retval false otherwise
@@ -879,44 +896,49 @@ class BzTree
   template <class T>
   auto
   Merge(  //
-      Node_t *right_node,
+      /*Node_t *right_node,
       Node_t *existing_node,
-      const Key &key)  //
+      const Key &key)  //head*/
+      Node_t *l_node,
+      const Key &key,      //
+      Node_t *old_l_node)  //
       -> bool
   {
-    const auto r_stat = right_node->GetStatusWord();
+    const auto l_stat = l_node->GetStatusWord();
 
     /*----------------------------------------------------------------------------------
      * Phase 1: preparation
      *--------------------------------------------------------------------------------*/
 
-    NodeStack trace;
+    NodeStack trace{};
     Node_t *old_parent{};
-    Node_t *left_node{};
+    Node_t *r_node{};
     size_t target_pos{};
     while (true) {
       // trace and get the embedded index of a target node
-      trace = TraceTargetNode(key, right_node, existing_node);
+      trace = TraceTargetNode(key, l_node, old_l_node);
       if (trace.empty()) return true;
+      // trace = TraceTargetNode(key, old_l_node); main!!!!!!
       target_pos = trace.back().second;
-      if (target_pos <= 0) return false;  // there is no mergeable node
 
       // check a parent node is live
       trace.pop_back();
+      if (trace.empty()) return false;  // a root node cannot be merged
       old_parent = trace.back().first;
-      const auto p_status = old_parent->GetStatusWord();
-      if (p_status.IsFrozen()) continue;
+      if (target_pos == old_parent->GetSortedCount() - 1) return false;  // no mergeable node
+      const auto p_stat = old_parent->GetStatusWord();
+      if (p_stat.IsFrozen()) continue;
 
       // check a right sibling node is live and has sufficent capacity
-      left_node = old_parent->GetChild(target_pos - 1);
-      const auto l_stat = left_node->GetStatusWord();
-      if (!l_stat.CanMergeWith(r_stat)) return false;
-      if (l_stat.IsFrozen()) continue;
+      r_node = old_parent->GetChild(target_pos + 1);
+      const auto r_stat = r_node->GetStatusWord();
+      if (!r_stat.CanMergeWith(l_stat)) return false;  // there is no space for merging
+      if (r_stat.IsFrozen()) continue;
 
       // pre-freezing of SMO targets
       MwCASDescriptor desc{};
-      old_parent->SetStatusForMwCAS(desc, p_status, p_status.Freeze());
-      left_node->SetStatusForMwCAS(desc, l_stat, l_stat.Freeze());
+      old_parent->SetStatusForMwCAS(desc, p_stat, p_stat.Freeze());
+      r_node->SetStatusForMwCAS(desc, r_stat, r_stat.Freeze());
       if (desc.MwCAS()) break;
     }
 
@@ -926,9 +948,9 @@ class BzTree
 
     // create new nodes
     auto *merged_node = CreateNewNode<T>();
-    merged_node->template Merge<T>(left_node, right_node);
+    merged_node->template Merge<T>(l_node, r_node);
     auto *new_parent = CreateNewNode<Node_t *>();
-    bool recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos - 1);
+    auto recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos);
     if (trace.size() <= 1 && new_parent->GetSortedCount() == 1) {
       // the new root node has only one child, use the merged child as a new root
       gc_.AddGarbage(new_parent);
@@ -939,11 +961,11 @@ class BzTree
     ReturnCode rc = InstallNewNode(trace, new_parent, key, old_parent);
     if (rc != ReturnCode::kSuccess) return true;
     gc_.AddGarbage(old_parent);
-    gc_.AddGarbage(left_node);
-    gc_.AddGarbage(right_node);
+    gc_.AddGarbage(l_node);
+    gc_.AddGarbage(r_node);
 
     // merge the new parent node if needed
-    if (recurse_merge && !Merge<Node_t *>(new_parent, new_parent, key)) {
+    if (recurse_merge && !Merge<Node_t *>(new_parent, key, new_parent)) {
       // if the parent node cannot be merged, unfreeze it
       new_parent->Unfreeze();
     }
@@ -975,7 +997,6 @@ class BzTree
       return ReturnCode::kSuccess;
     }
 
-    std::atomic_thread_fence(std::memory_order_release);
     while (true) {
       // prepare installing nodes
       auto [old_node, target_pos] = trace.back();
@@ -1014,7 +1035,6 @@ class BzTree
    *
    * @param iter the begin position of target records.
    * @param n the number of entries to be bulkloaded.
-   * @param is_rightmost a flag for indicating a constructed tree is rightmost one.
    * @retval 1st: the height of a constructed tree.
    * @retval 2nd: constructed nodes in the top layer.
    */
@@ -1022,61 +1042,89 @@ class BzTree
   auto
   BulkloadWithSingleThread(  //
       BulkIter<Entry> &iter,
-      const size_t n,
-      const bool is_rightmost = true)  //
+      const size_t n)  //
       -> BulkResult
   {
-    // reserve space for nodes in the leaf layer
-    std::vector<Node_t *> nodes{};
-    nodes.reserve((n / kLeafNodeCap) + 1);
+    // construct a data layer (leaf nodes)
+    auto &&nodes = ConstructSingleLayer<Entry>(iter, n);
 
-    // load records into leaf nodes
-    const auto &iter_end = iter + n;
-    while (iter < iter_end) {
-      auto *node = CreateNewNode<Payload>();
-      node->template Bulkload<Payload, Entry>(iter, iter_end, is_rightmost);
-      nodes.emplace_back(node);
-    }
-
-    // construct index layers
+    // construct index layers (inner nodes)
     size_t height = 1;
-    if (nodes.size() > 1) {
-      // continue until the number of internal nodes is sufficiently small
-      do {
-        ++height;
-      } while (ConstructUpperLayer(nodes));
+    for (auto n = nodes.size(); n > kInnerNodeCap; n = nodes.size(), ++height) {
+      // continue until the number of inner nodes is sufficiently small
+      nodes = ConstructSingleLayer<NodeEntry>(nodes.cbegin(), n);
     }
 
     return {height, std::move(nodes)};
   }
 
   /**
-   * @brief Construct internal nodes based on given child nodes.
+   * @brief Construct nodes based on given entries.
    *
-   * @param child_nodes child nodes in a lower layer.
-   * @retval true if constructed nodes cannot be contained in a single node.
-   * @retval false otherwise.
+   * @tparam Entry a pair/tuple class to be inserted.
+   * @param iter the begin position of target records.
+   * @param n the number of entries to be bulkloaded.
+   * @return constructed nodes.
    */
+  template <class Entry>
   auto
-  ConstructUpperLayer(std::vector<Node_t *> &child_nodes)  //
-      -> bool
+  ConstructSingleLayer(  //
+      BulkIter<Entry> iter,
+      const size_t n)  //
+      -> std::vector<NodeEntry>
   {
-    // reserve space for nodes in the upper layer
-    std::vector<Node_t *> nodes{};
-    nodes.reserve((child_nodes.size() / kInnerNodeCap) + 1);
+    using T = std::tuple_element_t<1, Entry>;
+    constexpr auto kIsInner = std::is_same_v<T, Node_t *>;
 
-    // load child nodes into parent nodes
-    auto &&iter = child_nodes.cbegin();
-    const auto &iter_end = child_nodes.cend();
+    // reserve space for nodes in the upper layer
+    std::vector<NodeEntry> nodes{};
+    nodes.reserve((n / (kIsInner ? kInnerNodeCap : kLeafNodeCap)) + 1);
+
+    // construct nodes over the current level
+    const auto &iter_end = iter + n;
     while (iter < iter_end) {
-      auto *node = CreateNewNode<Node_t *>();
-      node->Bulkload(iter, iter_end);
-      nodes.emplace_back(node);
+      auto *node = CreateNewNode<T>();
+      node->template Bulkload<Entry>(iter, iter_end, nodes);
     }
 
-    child_nodes = std::move(nodes);
-    return child_nodes.size() > kInnerNodeCap;
+    return nodes;
   }
+
+  /*####################################################################################
+   * Static assertions
+   *##################################################################################*/
+
+  /**
+   * @retval true if a target key class is trivially copyable.
+   * @retval false otherwise.
+   */
+  [[nodiscard]] static constexpr auto
+  KeyIsTriviallyCopyable()  //
+      -> bool
+  {
+    if constexpr (IsVarLenData<Key>()) {
+      // check a base type is trivially copyable
+      return std::is_trivially_copyable_v<std::remove_pointer_t<Key>>;
+    } else {
+      // check a given key type is trivially copyable
+      return std::is_trivially_copyable_v<Key>;
+    }
+  }
+
+  // target keys must be trivially copyable.
+  static_assert(KeyIsTriviallyCopyable());
+
+  // target payloads must be trivially copyable.
+  static_assert(std::is_trivially_copyable_v<Payload>);
+
+  // node pages have sufficient capacity for records.
+  static_assert(kMaxKeyLen + kPayLen <= kPageSize / 4);
+
+  // the bottom of a page must be aligned for in-place updating.
+  static_assert(kPageSize % kWordSize == 0);
+
+  // The member variables in Node class act as a node header.
+  static_assert(sizeof(Node_t) == kHeaderLen);
 
   /*####################################################################################
    * Internal member variables
