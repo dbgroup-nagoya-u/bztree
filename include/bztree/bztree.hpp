@@ -82,9 +82,8 @@ class BzTree
     RecordIterator(  //
         BzTree_t *bztree,
         Node_t *node,
-        std::array<MetaKeyPair, kMaxDeltaRecNum> records,
+        std::array<Metadata, kMaxDeltaRecNum> records,
         const size_t begin_pos,
-        const size_t begin_pos_dif,
         const size_t end_pos,
         const size_t end_pos_dif,
         const ScanKey end_key,
@@ -95,45 +94,30 @@ class BzTree
           record_count_{end_pos},
           record_count_dif_{end_pos_dif},
           current_pos_{begin_pos},
-          current_pos_dif_{begin_pos_dif},
-
           end_key_{std::move(end_key)},
           is_right_end_{is_right_end}
     {
-      for (; current_pos_ < record_count_; ++current_pos_) {
-        const auto meta_sorted = node_->GetMetadataWOFence(current_pos_);
-        const auto key_sorted = node_->GetKey(meta_sorted);
-        bool end_flag = false;
-
-        for (; current_pos_dif_ < record_count_dif_; ++current_pos_dif_) {
-          if (!Compare{}(dif_rec_[current_pos_dif_].key, key_sorted)) break;
-
-          if (dif_rec_[current_pos_dif_].meta.IsVisible()) {
-            current_meta_ = dif_rec_[current_pos_dif_++].meta;
-            end_flag = true;
-            break;
+      do {
+        if (current_pos_ < record_count_ && current_pos_dif_ < record_count_dif_) {
+          const auto meta_sorted = node_->GetMetadata(current_pos_);
+          const auto &key_sorted = node_->GetKey(meta_sorted);
+          if (Compare{}(node_->GetKey(dif_rec_[current_pos_dif_]), key_sorted)) {
+            current_meta_ = dif_rec_[current_pos_dif_++];
+          } else if (Compare{}(key_sorted, node_->GetKey(dif_rec_[current_pos_dif_]))) {
+            current_meta_ = meta_sorted;
+            ++current_pos_;
+          } else {
+            current_meta_ = dif_rec_[current_pos_dif_++];
+            ++current_pos_;
           }
-        }
-        if (end_flag) break;
-        if (current_pos_dif_ < record_count_dif_
-            && IsEqual<Compare>(key_sorted, dif_rec_[current_pos_dif_].key)) {
-          const auto meta_dif = dif_rec_[current_pos_dif_++].meta;
-          if (meta_dif.IsVisible()) {
-            current_meta_ = meta_dif;
-            break;
-          }
-        } else if (meta_sorted.IsVisible()) {
+        } else if (!(current_pos_ < record_count_)) {
+          current_meta_ = dif_rec_[current_pos_dif_++];
+        } else {
+          const auto meta_sorted = node_->GetMetadata(current_pos_);
           current_meta_ = meta_sorted;
           ++current_pos_;
-          break;
         }
-      }
-      for (; current_pos_dif_ < record_count_dif_; ++current_pos_dif_) {
-        if (dif_rec_[current_pos_dif_].meta.IsVisible()) {
-          current_meta_ = dif_rec_[current_pos_dif_++].meta;
-          break;
-        }
-      }
+      } while (!current_meta_.IsVisible());
     }
 
     constexpr RecordIterator &
@@ -188,39 +172,24 @@ class BzTree
     constexpr void
     operator++()
     {
-      for (; current_pos_ < record_count_; ++current_pos_) {
-        const auto meta_sorted = node_->GetMetadataWOFence(current_pos_);
-        const auto key_sorted = node_->GetKey(meta_sorted);
-        bool end_flag = false;
-
-        for (; current_pos_dif_ < record_count_dif_; ++current_pos_dif_) {
-          if (!Compare{}(dif_rec_[current_pos_dif_].key, key_sorted)) break;
-
-          if (dif_rec_[current_pos_dif_].meta.IsVisible()) {
-            current_meta_ = dif_rec_[current_pos_dif_++].meta;
-            end_flag = true;
-            break;
-          }
-        }
-        if (end_flag) break;
-        if (current_pos_dif_ < record_count_dif_
-            && IsEqual<Compare>(key_sorted, dif_rec_[current_pos_dif_].key)) {
-          const auto meta_dif = dif_rec_[current_pos_dif_++].meta;
-          if (meta_dif.IsVisible()) {
-            current_meta_ = meta_dif;
-            break;
-          }
-        } else if (meta_sorted.IsVisible()) {
+      if (current_pos_ < record_count_ && current_pos_dif_ < record_count_dif_) {
+        const auto meta_sorted = node_->GetMetadata(current_pos_);
+        const auto &key_sorted = node_->GetKey(meta_sorted);
+        if (Compare{}(node_->GetKey(dif_rec_[current_pos_dif_]), key_sorted)) {
+          current_meta_ = dif_rec_[current_pos_dif_++];
+        } else if (Compare{}(key_sorted, node_->GetKey(dif_rec_[current_pos_dif_]))) {
           current_meta_ = meta_sorted;
           ++current_pos_;
-          break;
+        } else {
+          current_meta_ = dif_rec_[current_pos_dif_++];
+          ++current_pos_;
         }
-      }
-      for (; current_pos_dif_ < record_count_dif_; ++current_pos_dif_) {
-        if (dif_rec_[current_pos_dif_].meta.IsVisible()) {
-          current_meta_ = dif_rec_[current_pos_dif_++].meta;
-          break;
-        }
+      } else if (!(current_pos_ < record_count_)) {
+        current_meta_ = dif_rec_[current_pos_dif_++];
+      } else {
+        const auto meta_sorted = node_->GetMetadata(current_pos_);
+        current_meta_ = meta_sorted;
+        ++current_pos_;
       }
     }
 
@@ -241,8 +210,9 @@ class BzTree
         -> bool
     {
       while (true) {
-        if (current_pos_ < record_count_ || current_pos_dif_ < record_count_dif_) {
-          return true;  // records remain in this node
+        while (current_pos_ < record_count_ || current_pos_dif_ < record_count_dif_) {
+          if (current_meta_.IsVisible()) return true;
+          ++(*this);
         }
         if (is_right_end_) return false;  // this node is the end of range-scan
 
@@ -278,19 +248,6 @@ class BzTree
     }
 
    private:
-    /*####################################################################################
-     * Internal classes
-     *##################################################################################*/
-
-    /**
-     * @brief A class to sort metadata.
-     *
-     */
-    struct MetaKeyPair {
-      Metadata meta{};
-      Key key{};
-    };
-
     /*##################################################################################
      * Internal member variables
      *################################################################################*/
@@ -302,7 +259,7 @@ class BzTree
     Node_t *node_{nullptr};
 
     /// the array of difference records
-    std::array<MetaKeyPair, kMaxDeltaRecNum> dif_rec_;
+    std::array<Metadata, kMaxDeltaRecNum> dif_rec_{};
 
     /// the number of records in sorted area
     size_t record_count_{0};
@@ -409,73 +366,28 @@ class BzTree
 
     // sort records in a target node
     size_t begin_pos = 0;
-    size_t begin_pos_dif = 0;
     Node_t *node{};
-    thread_local std::array<MetaKeyPair, kMaxDeltaRecNum> records{};
+    thread_local std::array<Metadata, kMaxDeltaRecNum> records{};
     size_t new_rec_num = 0;
     if (begin_key) {
       const auto &[b_key, b_key_len, b_closed] = *begin_key;
       node = SearchLeafNode(b_key);
-      new_rec_num = node->SortNewRecords(records);  // in dif_rec
+      new_rec_num = node->SortNewRecords(records, begin_key, end_key);  // in dif_rec
 
       // check the begin position for scanning (sorted_rec)
       Metadata meta{};
       auto [rc, pos] = node->SearchSortedRecord(b_key, meta);
       begin_pos = (rc == KeyExistence::kNotExist || b_closed) ? pos : pos + 1;
 
-      // check the begin position for scanning (dif_rec)
-      size_t e_pos = new_rec_num - 1;
-      bool exist = false;
-      while (begin_pos_dif <= e_pos) {
-        size_t pos = (begin_pos_dif + e_pos) >> 1UL;  // NOLINT
-        const auto &[index_meta, index_key] = records[pos];
-
-        if (Compare{}(b_key, index_key)) {  // a target key is in a left side
-          e_pos = pos - 1;
-        } else if (Compare{}(index_key, b_key)) {  // a target key is in a right side
-          begin_pos_dif = pos + 1;
-        } else {  // find an equivalent key
-          begin_pos_dif = pos;
-          exist = true;
-          break;
-        }
-      }
-      begin_pos_dif = (!exist || b_closed) ? begin_pos_dif : begin_pos_dif + 1;
-
     } else {
       node = SearchLeftEdgeLeaf();
-      new_rec_num = node->SortNewRecords(records);
+      new_rec_num = node->SortNewRecords(records, begin_key, end_key);
     }
 
     // check the end position of scanning
     const auto [is_end, end_pos] = node->SearchEndPositionFor(end_key);
 
-    size_t end_pos_dif = 0;
-    if (is_end && end_key) {
-      const auto &[e_key, e_key_len, e_closed] = *end_key;
-      size_t e_pos = new_rec_num - 1;
-      bool exist = false;
-      while (end_pos_dif <= e_pos) {
-        size_t pos = (end_pos_dif + e_pos) >> 1UL;  // NOLINT
-        const auto &[index_meta, index_key] = records[pos];
-
-        if (Compare{}(e_key, index_key)) {  // a target key is in a left side
-          e_pos = pos - 1;
-        } else if (Compare{}(index_key, e_key)) {  // a target key is in a right side
-          end_pos_dif = pos + 1;
-        } else {  // find an equivalent key
-          end_pos_dif = pos;
-          exist = true;
-          break;
-        }
-      }
-      end_pos_dif = (exist && e_closed) ? end_pos_dif + 1 : end_pos_dif;
-    } else {
-      end_pos_dif = new_rec_num;
-    }
-
-    return RecordIterator{this,    node,        records, begin_pos, begin_pos_dif,
-                          end_pos, end_pos_dif, end_key, is_end};
+    return RecordIterator{this, node, records, begin_pos, end_pos, new_rec_num, end_key, is_end};
   }
 
   /*####################################################################################

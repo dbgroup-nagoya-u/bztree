@@ -497,6 +497,62 @@ class Node
     return {is_end, end_pos};
   }
 
+  /**
+   * @brief Sort unsorted records by insertion sort.
+   *
+   * @param arr an array for storing sorted new records.
+   * @return the number of new records.
+   */
+  [[nodiscard]] auto
+  SortNewRecords(std::array<Metadata, kMaxDeltaRecNum> &arr,
+                 const ScanKey &begin_k = std::nullopt,
+                 const ScanKey &end_k = std::nullopt) const  //
+      -> size_t
+  {
+    const auto rec_count = GetStatusWordProtected().GetRecordCount();
+
+    // sort unsorted records by insertion sort
+    size_t count = 0;
+    for (size_t pos = sorted_count_; pos < rec_count; ++pos) {
+      // check whether a record has been inserted
+      const auto meta = GetMetadataWithFence(pos);
+      if (meta.IsInProgress()) continue;
+
+      // search an inserting position
+      const auto &cur_key = GetKey(meta);
+      const auto &[b_key, b_key_len, b_closed] = *begin_k;
+      const auto &[e_key, e_key_len, e_closed] = *end_k;
+      if (!((!begin_k || Compare{}(b_key, cur_key)
+           || (b_closed && !Compare{}(cur_key, b_key)))
+          && (!end_k || Compare{}(cur_key, e_key)
+              || (e_closed && !Compare{}(e_key, cur_key))))) {
+        // the current delta record is out of the scan range
+        continue;
+      }
+      auto has_same_key = false;
+      size_t i = 0;
+      for (; i < count; ++i) {
+        const auto &rec_key = GetKey(arr[i]);
+        if (!Compare{}(rec_key, cur_key)) {
+          has_same_key = !Compare{}(cur_key, rec_key);
+          break;
+        }
+      }
+
+      // shift upper records if needed
+      if (i >= count) {
+        ++count;
+      } else if (!has_same_key) {
+        memmove(&(arr[i + 1]), &(arr[i]), sizeof(Metadata) * (count - i));
+        ++count;
+      }
+
+      // insert a new record
+      arr[i] = meta;
+    }
+
+    return count;
+  }
   /*####################################################################################
    * Leaf write operations
    *##################################################################################*/
