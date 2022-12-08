@@ -520,15 +520,7 @@ class Node
 
       // search an inserting position
       const auto &cur_key = GetKey(meta);
-      const auto &[b_key, b_key_len, b_closed] = *begin_k;
-      const auto &[e_key, e_key_len, e_closed] = *end_k;
-      if (!((!begin_k || Compare{}(b_key, cur_key)
-           || (b_closed && !Compare{}(cur_key, b_key)))
-          && (!end_k || Compare{}(cur_key, e_key)
-              || (e_closed && !Compare{}(e_key, cur_key))))) {
-        // the current delta record is out of the scan range
-        continue;
-      }
+      if (IsOutOfRange(cur_key, begin_k, end_k)) continue;
       auto has_same_key = false;
       size_t i = 0;
       for (; i < count; ++i) {
@@ -1488,6 +1480,32 @@ class Node
    *##################################################################################*/
 
   /**
+   * @param key a target key.
+   * @param begin_key the begin key of a scan range.
+   * @param end_key the end key of a scan range.
+   * @retval true if the given key is in a scan range.
+   * @retval false otherwise.
+   */
+  static constexpr auto
+  IsOutOfRange(  //
+      const Key &key,
+      const ScanKey &begin_key,
+      const ScanKey &end_key)  //
+      -> bool
+  {
+    if (begin_key) {
+      const auto &[begin_k, key_size, closed] = *begin_key;
+      if (Compare{}(key, begin_k) || (closed && !Compare{}(begin_k, key))) return true;
+    }
+    if (end_key) {
+      const auto &[end_k, key_size, closed] = *end_key;
+      if (Compare{}(end_k, key) || (closed && !Compare{}(key, end_k))) return true;
+    }
+
+    return false;
+  }
+
+  /**
    * @brief Get the position of a specified key by using lenear search.
    *
    * @param key a target key.
@@ -1718,47 +1736,6 @@ class Node
   }
 
   /**
-   * @brief Sort unsorted records by insertion sort.
-   *
-   * @param arr an array for storing sorted new records.
-   * @return the number of new records.
-   */
-  [[nodiscard]] auto
-  SortNewRecords(std::array<MetaKeyPair, kMaxDeltaRecNum> &arr) const  //
-      -> size_t
-  {
-    const auto rec_count = GetStatusWordProtected().GetRecordCount();
-
-    // sort unsorted records by insertion sort
-    size_t count = 0;
-    for (size_t pos = sorted_count_; pos < rec_count; ++pos) {
-      // check whether a record has been inserted
-      const auto meta = GetMetadataWithFence(pos);
-      if (meta.IsInProgress()) continue;
-
-      // search an inserting position
-      const auto &cur_key = GetKey(meta);
-      size_t i = 0;
-      for (; i < count; ++i) {
-        if (!Compare{}(arr[i].key, cur_key)) break;
-      }
-
-      // shift upper records if needed
-      if (i >= count) {
-        ++count;
-      } else if (Compare{}(cur_key, arr[i].key)) {
-        memmove(&(arr[i + 1]), &(arr[i]), sizeof(MetaKeyPair) * (count - i));
-        ++count;
-      }
-
-      // insert a new record
-      arr[i] = MetaKeyPair{meta, cur_key};
-    }
-
-    return count;
-  }
-
-  /**
    * @brief Consolidate a target leaf node.
    *
    * @tparam Payload a class of payload.
@@ -1772,8 +1749,10 @@ class Node
       -> size_t
   {
     // sort records in an unsorted region
-    thread_local std::array<MetaKeyPair, kMaxDeltaRecNum> records{};
+    thread_local std::array<Metadata, kMaxDeltaRecNum> records{};
     const auto new_rec_num = SortNewRecords(records);
+    Key rec_key{};
+    Metadata rec_meta{};
 
     // perform merge-sort to consolidate a node
     size_t j = 0;
@@ -1783,7 +1762,8 @@ class Node
 
       // copy new records
       for (; j < new_rec_num; ++j) {
-        const auto &[rec_meta, rec_key] = records[j];
+        rec_meta = records[j];
+        rec_key = GetKey(rec_meta);
         if (!Compare{}(rec_key, key)) break;
 
         // check a new record is active
@@ -1793,11 +1773,11 @@ class Node
       }
 
       // check a new record is updated one
-      if (j < new_rec_num && IsEqual<Compare>(key, records[j].key)) {
-        const auto rec_meta = records[j++].meta;
+      if (j < new_rec_num && IsEqual<Compare>(key, rec_key)) {
         if (rec_meta.IsVisible()) {
           offset = node->CopyRecordFrom<Payload>(this, rec_meta, offset);
         }
+        ++j;
       } else if (meta.IsVisible()) {
         offset = node->CopyRecordFrom<Payload>(this, meta, offset);
       }
@@ -1805,9 +1785,8 @@ class Node
 
     // move remaining new records
     for (; j < new_rec_num; ++j) {
-      const auto rec_meta = records[j].meta;
-      if (rec_meta.IsVisible()) {
-        offset = node->CopyRecordFrom<Payload>(this, rec_meta, offset);
+      if (records[j].IsVisible()) {
+        offset = node->CopyRecordFrom<Payload>(this, records[j], offset);
       }
     }
 
