@@ -97,27 +97,7 @@ class BzTree
           end_key_{std::move(end_key)},
           is_right_end_{is_right_end}
     {
-      do {
-        if (current_pos_ < record_count_ && current_pos_dif_ < record_count_dif_) {
-          const auto meta_sorted = node_->GetMetadata(current_pos_);
-          const auto &key_sorted = node_->GetKey(meta_sorted);
-          if (Compare{}(node_->GetKey(dif_rec_[current_pos_dif_]), key_sorted)) {
-            current_meta_ = dif_rec_[current_pos_dif_++];
-          } else if (Compare{}(key_sorted, node_->GetKey(dif_rec_[current_pos_dif_]))) {
-            current_meta_ = meta_sorted;
-            ++current_pos_;
-          } else {
-            current_meta_ = dif_rec_[current_pos_dif_++];
-            ++current_pos_;
-          }
-        } else if (!(current_pos_ < record_count_)) {
-          current_meta_ = dif_rec_[current_pos_dif_++];
-        } else {
-          const auto meta_sorted = node_->GetMetadata(current_pos_);
-          current_meta_ = meta_sorted;
-          ++current_pos_;
-        }
-      } while (!current_meta_.IsVisible());
+      ++(*this);
     }
 
     constexpr RecordIterator &
@@ -172,25 +152,41 @@ class BzTree
     constexpr void
     operator++()
     {
+      if (current_pos_ >= record_count_ && current_pos_dif_ >= record_count_dif_) {
+        // reach the end positions on both targets
+        current_pos_ = std::numeric_limits<size_t>::max();
+        return;
+      }
+
       if (current_pos_ < record_count_ && current_pos_dif_ < record_count_dif_) {
-        const auto meta_sorted = node_->GetMetadata(current_pos_);
-        const auto &key_sorted = node_->GetKey(meta_sorted);
-        if (Compare{}(node_->GetKey(dif_rec_[current_pos_dif_]), key_sorted)) {
-          current_meta_ = dif_rec_[current_pos_dif_++];
-        } else if (Compare{}(key_sorted, node_->GetKey(dif_rec_[current_pos_dif_]))) {
-          current_meta_ = meta_sorted;
+        // records have remained on both a base node and delta records
+        const auto base_meta = node_->GetMetadataWOFence(current_pos_);
+        const auto &base_key = node_->GetKey(base_meta);
+        const auto &delta_key = node_->GetKey(dif_rec_[current_pos_dif_]);
+        if (Compare{}(base_key, delta_key)) {
+          // the next position is on a base node
+          current_meta_ = base_meta;
           ++current_pos_;
         } else {
+          // the next position is on delta records
           current_meta_ = dif_rec_[current_pos_dif_++];
-          ++current_pos_;
+          if (!Compare{}(delta_key, base_key)) {
+            // the record on a base node has the same key with that of the delta record
+            ++current_pos_;
+          }
         }
-      } else if (!(current_pos_ < record_count_)) {
-        current_meta_ = dif_rec_[current_pos_dif_++];
-      } else {
-        const auto meta_sorted = node_->GetMetadata(current_pos_);
-        current_meta_ = meta_sorted;
-        ++current_pos_;
+        return;
       }
+
+      // records have remained on only a base node or delta records
+      if (current_pos_ < record_count_) {
+        // records have remained on only a base node
+        current_meta_ = node_->GetMetadataWOFence(current_pos_++);
+        return;
+      }
+
+      // records have remained on only delta records
+      current_meta_ = dif_rec_[current_pos_dif_++];
     }
 
     /*##################################################################################
@@ -210,7 +206,7 @@ class BzTree
         -> bool
     {
       while (true) {
-        while (current_pos_ < record_count_ || current_pos_dif_ < record_count_dif_) {
+        while (current_pos_ <= record_count_) {
           if (current_meta_.IsVisible()) return true;
           ++(*this);
         }
@@ -636,19 +632,6 @@ class BzTree
   }
 
  private:
-  /*####################################################################################
-   * Internal classes
-   *##################################################################################*/
-
-  /**
-   * @brief A class to sort metadata.
-   *
-   */
-  struct MetaKeyPair {
-    Metadata meta{};
-    Key key{};
-  };
-
   /*####################################################################################
    * Internal constants
    *##################################################################################*/

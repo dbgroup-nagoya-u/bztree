@@ -190,6 +190,21 @@ class Node
   }
 
   /**
+   * @brief Read metadata with MwCAS read protection.
+   *
+   * This function uses a MwCAS read operation internally, and so it is guaranteed that
+   * read metadata is valid.
+   *
+   * @return metadata.
+   */
+  [[nodiscard]] auto
+  GetMetadataWOFence(const size_t position) const  //
+      -> Metadata
+  {
+    return MwCASDescriptor::Read<Metadata>(&(meta_array_[position]), std::memory_order_relaxed);
+  }
+
+  /**
    * @brief Copy and return a highest key for scanning.
    *
    * NOTE: this function does not check the existence of a highest key.
@@ -1281,21 +1296,6 @@ class Node
       -> Metadata
   {
     return MwCASDescriptor::Read<Metadata>(&(meta_array_[position]), std::memory_order_acquire);
-  }
-
-  /**
-   * @brief Read metadata with MwCAS read protection.
-   *
-   * This function uses a MwCAS read operation internally, and so it is guaranteed that
-   * read metadata is valid.
-   *
-   * @return metadata.
-   */
-  [[nodiscard]] auto
-  GetMetadataWOFence(const size_t position) const  //
-      -> Metadata
-  {
-    return MwCASDescriptor::Read<Metadata>(&(meta_array_[position]), std::memory_order_relaxed);
   }
 
   /**
