@@ -37,7 +37,12 @@ class StatusWord
    *
    */
   constexpr StatusWord()
-      : record_count_{0}, block_size_{0}, deleted_size_{0}, frozen_{0}, control_region_{0}
+      : record_count_{0},
+        block_size_{0},
+        deleted_size_{0},
+        frozen_{0},
+        is_removed_{0},
+        control_region_{0}
   {
   }
 
@@ -52,6 +57,7 @@ class StatusWord
         block_size_{block_size},
         deleted_size_{0},
         frozen_{0},
+        is_removed_{0},
         control_region_{0}
   {
   }
@@ -85,7 +91,8 @@ class StatusWord
     return record_count_ == comp.record_count_     //
            && block_size_ == comp.block_size_      //
            && deleted_size_ == comp.deleted_size_  //
-           && frozen_ == comp.frozen_;
+           && frozen_ == comp.frozen_              //
+           && is_removed_ == comp.is_removed_;
   }
 
   /**
@@ -98,7 +105,8 @@ class StatusWord
     return record_count_ != comp.record_count_     //
            || block_size_ != comp.block_size_      //
            || deleted_size_ != comp.deleted_size_  //
-           || frozen_ != comp.frozen_;
+           || frozen_ != comp.frozen_              //
+           || is_removed_ != comp.is_removed_;
   }
 
   /*####################################################################################
@@ -115,6 +123,17 @@ class StatusWord
   {
     return frozen_;
   }
+
+  /**
+   * @retval true if a node is merged right node.
+   * @retval false otherwise.
+   */
+  /*[[nodiscard]] constexpr auto
+  IsRemoved() const  //
+      -> bool
+  {
+    return is_removed_;
+  }*/
 
   /**
    * @return the total number of records in a node.
@@ -281,10 +300,12 @@ class StatusWord
   uint64_t block_size_ : 22;
 
   /// the total byte length of deleted metadata/records in a node.
-  uint64_t deleted_size_ : 22;
+  uint64_t deleted_size_ : 21;
 
   /// a flag to indicate whether a node is frozen (i.e., immutable).
   uint64_t frozen_ : 1;
+
+  uint64_t is_removed_ : 1;
 
   /// control bits to perform PMwCAS.
   uint64_t control_region_ : 3;  // NOLINT

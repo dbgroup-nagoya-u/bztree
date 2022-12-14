@@ -55,7 +55,7 @@ enum ReturnCode {
   kSuccess = 0,
   kKeyNotExist = -2,
   kKeyExist,
-  kNodeNotExist = 3
+  kNodeNotExist = 1
 };
 
 /**

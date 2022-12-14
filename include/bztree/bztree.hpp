@@ -748,6 +748,22 @@ class BzTree
     delete node;
   }
 
+  /*auto
+  CheckParentsSMO(Node_t *node,
+                  NodeStack &trace)  //
+      -> bool
+  {
+    auto *parent = trace.back().first;
+    const auto p_stat = parent->GetStatusWord();
+
+    if (p_stat.IsFrozen()) {
+      trace.pop_back();
+      CheckParentsSMO(parent, trace);
+    } else {
+      // node　がなんで凍ってる？
+    }
+  }*/
+
   /*####################################################################################
    * Internal structure modification functoins
    *##################################################################################*/
@@ -767,6 +783,21 @@ class BzTree
   {
     // freeze a target node and perform consolidation
     node->Freeze();
+
+    /*auto &&trace = TraceTargetNode(key, node);
+    if (trace.empty()) return;
+
+    NodeStack trace_copy = trace;
+    if (trace_copy.size() >= 2) {
+      trace_copy.pop_back();
+      auto *parent = trace_copy.back().first;
+      const auto p_stat = parent->GetStatusWord();
+      if (p_stat.IsFrozen()) {
+        trace_copy.pop_back();
+        CheckParentsSMO(parent, trace_copy);
+        return;
+      }
+    }*/
 
     // create a consolidated node to calculate a correct node size
     auto *consol_node = CreateNewNode<Payload>();
@@ -972,7 +1003,7 @@ class BzTree
       }
     }
 
-    while (true) {
+    while (!trace.empty()) {
       // prepare installing nodes
       auto [old_node, target_pos] = trace.back();
       // if (old_node != target_node) return ReturnCode::kKeyNotExist;
@@ -993,9 +1024,9 @@ class BzTree
 
       // traverse again to get a modified parent
       trace = TraceTargetNode(key, target_node);
-      if (trace.empty()) return ReturnCode::kNodeNotExist;
-      // ココで解凍 or consolidateの最後に解凍
     }
+
+    return ReturnCode::kNodeNotExist;
   }
 
   /*####################################################################################
