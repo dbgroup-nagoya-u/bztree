@@ -1495,11 +1495,11 @@ class Node
   {
     if (begin_key) {
       const auto &[begin_k, key_size, closed] = *begin_key;
-      if (Compare{}(key, begin_k) || (closed && !Compare{}(begin_k, key))) return true;
+      if (Compare{}(key, begin_k) || (!closed && !Compare{}(begin_k, key))) return true;
     }
     if (end_key) {
       const auto &[end_k, key_size, closed] = *end_key;
-      if (Compare{}(end_k, key) || (closed && !Compare{}(key, end_k))) return true;
+      if (Compare{}(end_k, key) || (!closed && !Compare{}(key, end_k))) return true;
     }
 
     return false;
