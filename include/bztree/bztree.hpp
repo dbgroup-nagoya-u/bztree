@@ -748,21 +748,70 @@ class BzTree
     delete node;
   }
 
-  /*auto
-  CheckParentsSMO(Node_t *node,
-                  NodeStack &trace)  //
+  void
+  FollowLnodeMerge(const Key &key,  //
+                   NodeStack &trace)
+  {
+    auto [r_node, target_pos] = trace.back();
+    trace.pop_back();
+    const auto &old_parent = trace.back().first;
+    auto &&l_node = old_parent->GetChild(target_pos - 1);
+
+    // l_nodeのマージを後追い
+    const auto r_stat = r_node->GetStatusWord();
+
+    auto *merged_node = CreateNewNode<Payload>();
+    merged_node->template Merge<Payload>(l_node, r_node);
+
+    auto *new_parent = CreateNewNode<Node_t *>();
+    auto recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos);
+
+    if (trace.size() <= 1 && new_parent->GetSortedCount() == 1) {
+      // the new root node has only one child, use the merged child as a new root
+      gc_.AddGarbage(new_parent);
+      new_parent = merged_node;
+    }
+
+    const auto p_stat = old_parent->GetStatusWord();
+    if (p_stat.IsFrozen()) {
+      auto rc = InstallNewNode(trace, new_parent, key, old_parent);
+      if (rc == ReturnCode::kSuccess) {
+        gc_.AddGarbage(old_parent);
+        gc_.AddGarbage(l_node);
+        gc_.AddGarbage(r_node);
+
+        if (recurse_merge && !Merge<Node_t *>(new_parent, key, new_parent)) {
+          // if the parent node cannot be merged, unfreeze it
+          new_parent->Unfreeze();
+        }
+      }
+    }
+
+    return;
+  }
+
+  auto
+  CheckParentsSMO(NodeStack &trace)  //
       -> bool
   {
-    auto *parent = trace.back().first;
+    auto [old_node, target_pos] = trace.back();
+    trace.pop_back();
+
+    auto &&parent = trace.back().first;
     const auto p_stat = parent->GetStatusWord();
 
     if (p_stat.IsFrozen()) {
-      trace.pop_back();
-      CheckParentsSMO(parent, trace);
+      if (trace.size() <= 1) {
+        // 親に対してsmo
+        // マージ前に右ノードのチェック
+      } else {
+        // 再帰的にcheckparentsmo
+      }
     } else {
-      // node　がなんで凍ってる？
+      // 現在の対象ノード（子）に対してsmo
+      // マージ前に右ノードのチェック
     }
-  }*/
+  }
 
   /*####################################################################################
    * Internal structure modification functoins
@@ -781,28 +830,36 @@ class BzTree
       Node_t *node,
       const Key &key)
   {
-    // freeze a target node and perform consolidation
     node->Freeze();
-
-    /*auto &&trace = TraceTargetNode(key, node);
+    /*
+    auto &&trace = TraceTargetNode(key, node);
     if (trace.empty()) return;
 
-    NodeStack trace_copy = trace;
-    if (trace_copy.size() >= 2) {
-      trace_copy.pop_back();
-      auto *parent = trace_copy.back().first;
-      const auto p_stat = parent->GetStatusWord();
-      if (p_stat.IsFrozen()) {
-        trace_copy.pop_back();
-        CheckParentsSMO(parent, trace_copy);
+    // freeze a target node and perform consolidation
+    if (node->Freeze() != NodeRC::kSuccess && trace.size() > 1) {
+      // freezeの要因をチェック->マージの右ノードなら左ノードのマージを後追い
+      const auto stat = node->GetStatusWord();
+      if (stat.IsRemoved()) {
+        FollowLnodeMerge(key, trace);
         return;
       }
+    }*/
+
+    /*
+    auto &&trace = TraceTargetNode(key, node);
+    if (trace.empty()) return;
+
+    // freeze a target node and perform consolidation
+    if (node->Freeze() != NodeRC::kSuccess && trace.size() < 1) {  // 親だけフリーズもありえる！
+      // 既にfreeze済み->親をチェック
+      NodeStack trace_copy = trace;
+      CheckParentsSMO(trace_copy);
     }*/
 
     // create a consolidated node to calculate a correct node size
     auto *consol_node = CreateNewNode<Payload>();
     consol_node->template Consolidate<Payload>(node);
-    gc_.AddGarbage(node);
+    // gc_.AddGarbage(node); //重複すると良くない？
 
     // check other SMOs are needed
     const auto stat = consol_node->GetStatusWord();
@@ -810,9 +867,10 @@ class BzTree
     if (stat.NeedMerge() && Merge<Payload>(consol_node, key, node)) return;
 
     // install the consolidated node
-    auto &&trace = TraceTargetNode(key, node);
+    auto &&trace = TraceTargetNode(key, node);  // 後で消す!!!!!!!!!!!!!
     if (trace.empty()) return;
-    InstallNewNode(trace, consol_node, key, node);
+    ReturnCode rc = InstallNewNode(trace, consol_node, key, node);
+    if (rc == NodeRC::kSuccess) gc_.AddGarbage(node);
   }
 
   /**
@@ -936,8 +994,8 @@ class BzTree
 
       // pre-freezing of SMO targets
       MwCASDescriptor desc{};
-      old_parent->SetStatusForMwCAS(desc, p_stat, p_stat.Freeze());
-      r_node->SetStatusForMwCAS(desc, r_stat, r_stat.Freeze());
+      old_parent->SetStatusForMwCAS(desc, p_stat, p_stat.Freeze(false));
+      r_node->SetStatusForMwCAS(desc, r_stat, r_stat.Freeze(true));
       if (desc.MwCAS()) break;
     }
 

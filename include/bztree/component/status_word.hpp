@@ -128,12 +128,12 @@ class StatusWord
    * @retval true if a node is merged right node.
    * @retval false otherwise.
    */
-  /*[[nodiscard]] constexpr auto
+  [[nodiscard]] constexpr auto
   IsRemoved() const  //
       -> bool
   {
     return is_removed_;
-  }*/
+  }
 
   /**
    * @return the total number of records in a node.
@@ -241,11 +241,12 @@ class StatusWord
    * @return a frozen status word.
    */
   [[nodiscard]] constexpr auto
-  Freeze() const  //
+  Freeze(const bool is_removed) const  //
       -> StatusWord
   {
     auto frozen_status = *this;
     frozen_status.frozen_ = 1;
+    if (is_removed) frozen_status.is_removed_ = 1;
     return frozen_status;
   }
 
