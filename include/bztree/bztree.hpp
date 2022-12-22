@@ -758,8 +758,6 @@ class BzTree
     auto &&l_node = old_parent->GetChild(target_pos - 1);
 
     // l_nodeのマージを後追い
-    const auto r_stat = r_node->GetStatusWord();
-
     auto *merged_node = CreateNewNode<Payload>();
     merged_node->template Merge<Payload>(l_node, r_node);
 
@@ -772,18 +770,15 @@ class BzTree
       new_parent = merged_node;
     }
 
-    const auto p_stat = old_parent->GetStatusWord();
-    if (p_stat.IsFrozen()) {
-      auto rc = InstallNewNode(trace, new_parent, key, old_parent);
-      if (rc == ReturnCode::kSuccess) {
-        gc_.AddGarbage(old_parent);
-        gc_.AddGarbage(l_node);
-        gc_.AddGarbage(r_node);
+    auto rc = InstallNewNode(trace, new_parent, key, old_parent);
+    if (rc == ReturnCode::kSuccess) {
+      gc_.AddGarbage(old_parent);
+      gc_.AddGarbage(l_node);
+      gc_.AddGarbage(r_node);
 
-        if (recurse_merge && !Merge<Node_t *>(new_parent, key, new_parent)) {
-          // if the parent node cannot be merged, unfreeze it
-          new_parent->Unfreeze();
-        }
+      if (recurse_merge && !Merge<Node_t *>(new_parent, key, new_parent)) {
+        // if the parent node cannot be merged, unfreeze it
+        new_parent->Unfreeze();
       }
     }
 
@@ -830,20 +825,13 @@ class BzTree
       Node_t *node,
       const Key &key)
   {
-    node->Freeze();
-    /*
     auto &&trace = TraceTargetNode(key, node);
     if (trace.empty()) return;
 
-    // freeze a target node and perform consolidation
-    if (node->Freeze() != NodeRC::kSuccess && trace.size() > 1) {
-      // freezeの要因をチェック->マージの右ノードなら左ノードのマージを後追い
-      const auto stat = node->GetStatusWord();
-      if (stat.IsRemoved()) {
-        FollowLnodeMerge(key, trace);
-        return;
-      }
-    }*/
+    if (node->Freeze() == NodeRC::kRemoved) {
+      FollowLnodeMerge(key, trace);
+      return;  // 対象ノードはマージされるのでコンソリデートする必要なし
+    }
 
     /*
     auto &&trace = TraceTargetNode(key, node);
@@ -867,8 +855,8 @@ class BzTree
     if (stat.NeedMerge() && Merge<Payload>(consol_node, key, node)) return;
 
     // install the consolidated node
-    auto &&trace = TraceTargetNode(key, node);  // 後で消す!!!!!!!!!!!!!
-    if (trace.empty()) return;
+    /*auto &&trace = TraceTargetNode(key, node);  // 後で消す!!!!!!!!!!!!!
+    if (trace.empty()) return;*/
     ReturnCode rc = InstallNewNode(trace, consol_node, key, node);
     if (rc == NodeRC::kSuccess) gc_.AddGarbage(node);
   }

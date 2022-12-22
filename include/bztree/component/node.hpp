@@ -379,7 +379,10 @@ class Node
   {
     while (true) {
       const auto current_status = GetStatusWordProtected();
-      if (current_status.IsFrozen()) return kFrozen;
+      if (current_status.IsFrozen()) {
+        if (current_status.IsRemoved()) return kRemoved;
+        return kFrozen;
+      }
 
       MwCASDescriptor desc{};
       SetStatusForMwCAS(desc, current_status, current_status.Freeze(false));

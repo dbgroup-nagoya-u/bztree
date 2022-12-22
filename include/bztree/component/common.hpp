@@ -48,10 +48,11 @@ using ::dbgroup::atomic::mwcas::MwCASDescriptor;
  */
 enum NodeRC {
   kSuccess = 0,
-  kKeyNotExist = -4,
+  kKeyNotExist = -5,
   kKeyExist,
   kFrozen,
-  kNeedConsolidation
+  kNeedConsolidation,
+  kRemoved
 };
 
 /**
