@@ -749,13 +749,14 @@ class BzTree
   }
 
   void
-  FollowLnodeMerge(const Key &key,  //
-                   NodeStack &trace)
+  FollowLeftNodeMerge(NodeStack &trace)
   {
     auto [r_node, target_pos] = trace.back();
     trace.pop_back();
     const auto &old_parent = trace.back().first;
     auto &&l_node = old_parent->GetChild(target_pos - 1);
+
+    const auto &key = l_node->GetHighKey();
 
     // l_nodeのマージを後追い
     auto *merged_node = CreateNewNode<Payload>();
@@ -828,20 +829,28 @@ class BzTree
     auto &&trace = TraceTargetNode(key, node);
     if (trace.empty()) return;
 
+    // freeze a target node and perform consolidation
     if (node->Freeze() == NodeRC::kRemoved) {
-      FollowLnodeMerge(key, trace);
+      FollowLeftNodeMerge(trace);
       return;  // 対象ノードはマージされるのでコンソリデートする必要なし
     }
 
-    /*
-    auto &&trace = TraceTargetNode(key, node);
-    if (trace.empty()) return;
+    /*if (trace.size() > 1) {
+      auto target_pos = trace.back().second;
+      trace.pop_back();
 
-    // freeze a target node and perform consolidation
-    if (node->Freeze() != NodeRC::kSuccess && trace.size() < 1) {  // 親だけフリーズもありえる！
-      // 既にfreeze済み->親をチェック
-      NodeStack trace_copy = trace;
-      CheckParentsSMO(trace_copy);
+      auto &&parent = trace.back().first;
+      const auto p_stat = parent->GetStatusWord();
+
+      if (p_stat.IsFrozen()) {
+        if (p_stat.IsRemoved()) {
+          FollowLeftNodeMerge(key11111, )
+        }
+      } else {
+        trace.emplace_back(node, target_pos);
+      }
+
+      CheckParentsSMO(trace);
     }*/
 
     // create a consolidated node to calculate a correct node size
