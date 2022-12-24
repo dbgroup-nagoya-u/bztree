@@ -835,7 +835,8 @@ class BzTree
       return;  // 対象ノードはマージされるのでコンソリデートする必要なし
     }
 
-    /*if (trace.size() > 1) {
+    /*
+    if (trace.size() > 1) {
       auto target_pos = trace.back().second;
       trace.pop_back();
 
@@ -844,7 +845,9 @@ class BzTree
 
       if (p_stat.IsFrozen()) {
         if (p_stat.IsRemoved()) {
-          FollowLeftNodeMerge(key11111, )
+          node->Unfreeze();
+          FollowLeftNodeMerge(trace);  // trace壊れてる
+          node->Freeze(false);
         }
       } else {
         trace.emplace_back(node, target_pos);
@@ -856,7 +859,6 @@ class BzTree
     // create a consolidated node to calculate a correct node size
     auto *consol_node = CreateNewNode<Payload>();
     consol_node->template Consolidate<Payload>(node);
-    // gc_.AddGarbage(node); //重複すると良くない？
 
     // check other SMOs are needed
     const auto stat = consol_node->GetStatusWord();
@@ -987,7 +989,19 @@ class BzTree
       r_node = old_parent->GetChild(target_pos + 1);
       const auto r_stat = r_node->GetStatusWord();
       if (!r_stat.CanMergeWith(l_stat)) return false;  // there is no space for merging
-      if (r_stat.IsFrozen()) continue;
+      // if (r_stat.IsFrozen()) continue;
+      if (r_stat.IsFrozen() && !r_stat.IsRemoved()) {
+        if (r_node->IsLeaf() && r_stat.NeedConsolidation(r_node->GetSortedCount())) {
+          Consolidate(r_node, r_node->GetHighKey());
+          continue;
+        } else if (r_stat.template NeedSplit<Key, Payload>()) {
+          Split<Payload>(r_node, r_node, r_node->GetHighKey());
+          continue;
+        } else if (r_stat.NeedMerge() && Merge<Payload>(r_node, r_node->GetHighKey(), r_node))
+          continue;
+        else
+          continue;  // 子ノードによる親のフリーズ
+      }
 
       // pre-freezing of SMO targets
       MwCASDescriptor desc{};
