@@ -989,8 +989,8 @@ class BzTree
       r_node = old_parent->GetChild(target_pos + 1);
       const auto r_stat = r_node->GetStatusWord();
       if (!r_stat.CanMergeWith(l_stat)) return false;  // there is no space for merging
-      // if (r_stat.IsFrozen()) continue;
-      if (r_stat.IsFrozen() && !r_stat.IsRemoved()) {
+      if (r_stat.IsFrozen()) continue;
+      /*if (r_stat.IsFrozen() && !r_stat.IsRemoved()) {
         if (r_node->IsLeaf() && r_stat.NeedConsolidation(r_node->GetSortedCount())) {
           Consolidate(r_node, r_node->GetHighKey());
           continue;
@@ -1001,7 +1001,7 @@ class BzTree
           continue;
         else
           continue;  // 子ノードによる親のフリーズ
-      }
+      }*/
 
       // pre-freezing of SMO targets
       MwCASDescriptor desc{};

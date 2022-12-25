@@ -26,7 +26,7 @@ CHECK_INCLUDE_FILE_CXX("xmmintrin.h" BZTREE_HAS_SPINLOCK_HINT)
 # BzTree configurations
 #--------------------------------------------------------------------------------------#
 
-set(BZTREE_PAGE_SIZE "1024" CACHE STRING "Page size in bytes." FORCE)
+set(BZTREE_PAGE_SIZE "4096" CACHE STRING "Page size in bytes." FORCE)
 set(BZTREE_MAX_DELTA_RECORD_NUM "64" CACHE STRING "Invoking consolidation if the number of delta records exceeds this threshold.")
 set(BZTREE_MAX_DELETED_SPACE_SIZE "(kPageSize / 8)" CACHE STRING "Invoking consolidation if the size of deleted space exceeds this threshold.")
 set(BZTREE_MIN_FREE_SPACE_SIZE "(kPageSize / 8)" CACHE STRING "Invoking a split-operation if the size of free space falls below this threshold.")
