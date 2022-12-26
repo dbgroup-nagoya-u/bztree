@@ -830,10 +830,11 @@ class BzTree
     if (trace.empty()) return;
 
     // freeze a target node and perform consolidation
-    if (node->Freeze() == NodeRC::kRemoved) {
+    node->Freeze();
+    /*if (node->Freeze() == NodeRC::kRemoved) {
       FollowLeftNodeMerge(trace);
       return;  // 対象ノードはマージされるのでコンソリデートする必要なし
-    }
+    }*/
 
     /*
     if (trace.size() > 1) {
@@ -869,7 +870,7 @@ class BzTree
     /*auto &&trace = TraceTargetNode(key, node);  // 後で消す!!!!!!!!!!!!!
     if (trace.empty()) return;*/
     ReturnCode rc = InstallNewNode(trace, consol_node, key, node);
-    if (rc == NodeRC::kSuccess) gc_.AddGarbage(node);
+    if (rc == ReturnCode::kSuccess) gc_.AddGarbage(node);
   }
 
   /**
