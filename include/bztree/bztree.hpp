@@ -830,11 +830,10 @@ class BzTree
     if (trace.empty()) return;
 
     // freeze a target node and perform consolidation
-    node->Freeze();
-    /*if (node->Freeze() == NodeRC::kRemoved) {
+    if (node->Freeze() == NodeRC::kRemoved) {
       FollowLeftNodeMerge(trace);
       return;  // 対象ノードはマージされるのでコンソリデートする必要なし
-    }*/
+    }
 
     /*
     if (trace.size() > 1) {
