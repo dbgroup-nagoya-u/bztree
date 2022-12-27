@@ -758,7 +758,7 @@ class BzTree
 
     const auto &key = l_node->GetHighKey();
 
-    auto *merged_node = CreateNewNode<Payload>();
+    /*auto *merged_node = CreateNewNode<Payload>();
     if (r_node->IsLeaf()) {
       auto *consol_r_node = CreateNewNode<Payload>();
       auto *consol_l_node = CreateNewNode<Payload>();
@@ -768,10 +768,10 @@ class BzTree
       merged_node->template Merge<Payload>(consol_l_node, consol_r_node);
     } else {
       merged_node->template Merge<Payload>(l_node, r_node);
-    }
+    }*/
     // l_nodeのマージを後追い
-    // auto *merged_node = CreateNewNode<Payload>();
-    // merged_node->template Merge<Payload>(consol_l_node, consol_r_node);
+    auto *merged_node = CreateNewNode<Payload>();
+    merged_node->template Merge<Payload>(l_node, r_node);
 
     auto *new_parent = CreateNewNode<Node_t *>();
     auto recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos);

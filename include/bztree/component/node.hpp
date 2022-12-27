@@ -1053,11 +1053,14 @@ class Node
     constexpr auto kIsInner = std::is_same_v<Payload, Node *>;
 
     // copy records in left/right nodes
-    auto offset = CopyRecords<Payload>(l_node, this, 0, l_node->sorted_count_, kPageSize);
+    size_t offset;
+    // auto offset = CopyRecords<Payload>(l_node, this, 0, l_node->sorted_count_, kPageSize);
     if constexpr (kIsInner) {
+      offset = CopyRecords<Payload>(l_node, this, 0, l_node->sorted_count_, kPageSize);
       offset = CopyRecords<Payload>(r_node, this, 0, r_node->sorted_count_, offset);
     } else {
       // a leaf node have delta records, so consolidate them
+      offset = l_node->ConsolidateTo<Payload>(offset, this);
       offset = r_node->ConsolidateTo<Payload>(offset, this);
     }
 
