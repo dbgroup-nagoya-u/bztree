@@ -793,8 +793,6 @@ class BzTree
         new_parent->Unfreeze();
       }
     }
-
-    return;
   }
 
   auto

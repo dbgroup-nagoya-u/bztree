@@ -1060,7 +1060,7 @@ class Node
       offset = CopyRecords<Payload>(r_node, this, 0, r_node->sorted_count_, offset);
     } else {
       // a leaf node have delta records, so consolidate them
-      offset = l_node->ConsolidateTo<Payload>(offset, this);
+      offset = l_node->ConsolidateTo<Payload>(kPageSize, this);
       offset = r_node->ConsolidateTo<Payload>(offset, this);
     }
 

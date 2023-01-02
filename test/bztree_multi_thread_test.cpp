@@ -46,11 +46,11 @@ using BzTree = ::dbgroup::index::bztree::BzTree<K, V, C>;
 
 using TestTargets = ::testing::Types<      //
     IndexInfo<BzTree, UInt8, UInt8>,       // fixed-length keys
-    IndexInfo<BzTree, UInt8, Int8>,        // fixed-length keys with append-mode
+    IndexInfo<BzTree, UInt8, Int8>,        // fixed - length keys with append - mode
     IndexInfo<BzTree, UInt4, UInt8>,       // small keys
     IndexInfo<BzTree, UInt4, Int8>,        // small keys with append-mode
     IndexInfo<BzTree, UInt8, UInt4>,       // small payloads with append-mode
-    IndexInfo<BzTree, UInt4, UInt4>,       // small keys/payloads with append-mode
+    IndexInfo<BzTree, UInt4, UInt4>,       // small keys/payloads with append - mode
     IndexInfo<BzTree, Var, UInt8>,         // variable-length keys
     IndexInfo<BzTree, Var, Int8>,          // variable-length keys with append-mode
     IndexInfo<BzTree, Ptr, Ptr>,           // pointer keys/payloads
