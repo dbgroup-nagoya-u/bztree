@@ -758,17 +758,6 @@ class BzTree
 
     const auto &key = l_node->GetHighKey();
 
-    /*auto *merged_node = CreateNewNode<Payload>();
-    if (r_node->IsLeaf()) {
-      auto *consol_r_node = CreateNewNode<Payload>();
-      auto *consol_l_node = CreateNewNode<Payload>();
-      consol_r_node->template Consolidate<Payload>(r_node);
-      consol_l_node->template Consolidate<Payload>(l_node);
-
-      merged_node->template Merge<Payload>(consol_l_node, consol_r_node);
-    } else {
-      merged_node->template Merge<Payload>(l_node, r_node);
-    }*/
     // l_nodeのマージを後追い
     auto *merged_node = CreateNewNode<Payload>();
     merged_node->template Merge<Payload>(l_node, r_node);
@@ -783,15 +772,14 @@ class BzTree
     }
 
     auto rc = InstallNewNode(trace, new_parent, key, old_parent);
-    if (rc == ReturnCode::kSuccess) {
-      gc_.AddGarbage(old_parent);
-      gc_.AddGarbage(l_node);
-      gc_.AddGarbage(r_node);
+    if (rc != ReturnCode::kSuccess) return;
+    gc_.AddGarbage(old_parent);
+    gc_.AddGarbage(l_node);
+    gc_.AddGarbage(r_node);
 
-      if (recurse_merge && !Merge<Node_t *>(new_parent, key, new_parent)) {
-        // if the parent node cannot be merged, unfreeze it
-        new_parent->Unfreeze();
-      }
+    if (recurse_merge && !Merge<Node_t *>(new_parent, key, new_parent)) {
+      // if the parent node cannot be merged, unfreeze it
+      new_parent->Unfreeze();
     }
   }
 
@@ -840,9 +828,11 @@ class BzTree
 
     // freeze a target node and perform consolidation
     if (node->Freeze() == NodeRC::kRemoved) {
-      FollowLeftNodeMerge(trace);
+      // FollowLeftNodeMerge(trace); スキップ
       return;  // 対象ノードはマージされるのでコンソリデートする必要なし
     }
+
+    // node->Freeze();
 
     /*
     if (trace.size() > 1) {
@@ -991,15 +981,15 @@ class BzTree
       if (trace.empty()) return false;  // a root node cannot be merged
       old_parent = trace.back().first;
       if (target_pos == old_parent->GetSortedCount() - 1) return false;  // no mergeable node
-      const auto p_stat = old_parent->GetStatusWord();
+      const auto p_stat = old_parent->GetStatusWordProtected();
       if (p_stat.IsFrozen()) continue;
 
       // check a right sibling node is live and has sufficent capacity
       r_node = old_parent->GetChild(target_pos + 1);
-      const auto r_stat = r_node->GetStatusWord();
+      const auto r_stat = r_node->GetStatusWordProtected();
       if (!r_stat.CanMergeWith(l_stat)) return false;  // there is no space for merging
-      if (r_stat.IsFrozen()) continue;
-      /*if (r_stat.IsFrozen() && !r_stat.IsRemoved()) {
+      // if (r_stat.IsFrozen()) continue;
+      if (r_stat.IsFrozen() && !r_stat.IsRemoved()) {
         if (r_node->IsLeaf() && r_stat.NeedConsolidation(r_node->GetSortedCount())) {
           Consolidate(r_node, r_node->GetHighKey());
           continue;
@@ -1010,7 +1000,7 @@ class BzTree
           continue;
         else
           continue;  // 子ノードによる親のフリーズ
-      }*/
+      }
 
       // pre-freezing of SMO targets
       MwCASDescriptor desc{};
