@@ -827,15 +827,14 @@ class BzTree
     if (trace.empty()) return;
 
     // freeze a target node and perform consolidation
-    if (node->Freeze() == NodeRC::kRemoved) {
+    if (node->Freeze(false) == NodeRC::kRemoved) {
       // FollowLeftNodeMerge(trace); スキップ
       return;  // 対象ノードはマージされるのでコンソリデートする必要なし
     }
 
     // node->Freeze();
 
-    /*
-    if (trace.size() > 1) {
+    /*if (trace.size() > 1) {
       auto target_pos = trace.back().second;
       trace.pop_back();
 
@@ -844,7 +843,7 @@ class BzTree
 
       if (p_stat.IsFrozen()) {
         if (p_stat.IsRemoved()) {
-          node->Unfreeze();
+          node->Unfreeze();            // Unfreezeしていい？
           FollowLeftNodeMerge(trace);  // trace壊れてる
           node->Freeze(false);
         }
@@ -853,7 +852,8 @@ class BzTree
       }
 
       CheckParentsSMO(trace);
-    }*/
+    }
+    */
 
     // create a consolidated node to calculate a correct node size
     auto *consol_node = CreateNewNode<Payload>();
@@ -907,7 +907,7 @@ class BzTree
 
       // pre-freezing of SMO targets
       old_parent = trace.back().first;
-      if (old_parent->Freeze() == NodeRC::kSuccess) break;  // kSuccessの確認を無くすよう変更予定
+      if (old_parent->Freeze(true) == NodeRC::kSuccess) break;
     }
 
     /*----------------------------------------------------------------------------------
@@ -1004,8 +1004,8 @@ class BzTree
 
       // pre-freezing of SMO targets
       MwCASDescriptor desc{};
-      old_parent->SetStatusForMwCAS(desc, p_stat, p_stat.Freeze(false));
-      r_node->SetStatusForMwCAS(desc, r_stat, r_stat.Freeze(true));
+      old_parent->SetStatusForMwCAS(desc, p_stat, p_stat.Freeze(false, true));
+      r_node->SetStatusForMwCAS(desc, r_stat, r_stat.Freeze(true, false));
       if (desc.MwCAS()) break;
     }
 

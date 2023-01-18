@@ -374,18 +374,19 @@ class Node
    * @retval kFrozen if a node has been already frozen.
    */
   auto
-  Freeze()  //
+  Freeze(const bool is_smo_parent)  //
       -> NodeRC
   {
     while (true) {
       const auto current_status = GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         if (current_status.IsRemoved()) return kRemoved;
+        if (current_status.IsSmoParent()) return kSmoParent;
         return kFrozen;
       }
 
       MwCASDescriptor desc{};
-      SetStatusForMwCAS(desc, current_status, current_status.Freeze(false));
+      SetStatusForMwCAS(desc, current_status, current_status.Freeze(false, is_smo_parent));
       if (desc.MwCAS()) break;
       BZTREE_SPINLOCK_HINT
     }
@@ -1012,7 +1013,7 @@ class Node
     // set an updated header
     StatusWord stat{sorted_count_, kPageSize - offset};
     if (stat.NeedInternalSplit<Key>()) {
-      status_ = stat.Freeze(false);
+      status_ = stat.Freeze(false, false);
       return true;
     }
     status_ = stat;
@@ -1096,7 +1097,7 @@ class Node
     // set an updated header
     StatusWord stat{sorted_count_, kPageSize - offset};
     if (stat.NeedMerge()) {
-      status_ = stat.Freeze(false);
+      status_ = stat.Freeze(false, false);
       return true;
     }
     status_ = stat;

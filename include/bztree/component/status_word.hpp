@@ -41,7 +41,8 @@ class StatusWord
         block_size_{0},
         deleted_size_{0},
         frozen_{0},
-        is_removed_{0},
+        removed_{0},
+        smo_parent_{0},
         control_region_{0}
   {
   }
@@ -57,7 +58,8 @@ class StatusWord
         block_size_{block_size},
         deleted_size_{0},
         frozen_{0},
-        is_removed_{0},
+        removed_{0},
+        smo_parent_{0},
         control_region_{0}
   {
   }
@@ -92,7 +94,8 @@ class StatusWord
            && block_size_ == comp.block_size_      //
            && deleted_size_ == comp.deleted_size_  //
            && frozen_ == comp.frozen_              //
-           && is_removed_ == comp.is_removed_;
+           && removed_ == comp.removed_            //
+           && smo_parent_ == comp.smo_parent_;
   }
 
   /**
@@ -106,7 +109,8 @@ class StatusWord
            || block_size_ != comp.block_size_      //
            || deleted_size_ != comp.deleted_size_  //
            || frozen_ != comp.frozen_              //
-           || is_removed_ != comp.is_removed_;
+           || removed_ != comp.removed_            //
+           || smo_parent_ == comp.smo_parent_;
   }
 
   /*####################################################################################
@@ -132,7 +136,18 @@ class StatusWord
   IsRemoved() const  //
       -> bool
   {
-    return is_removed_;
+    return removed_;
+  }
+
+  /**
+   * @retval true if a node is a parent of the smo node.
+   * @retval false otherwise.
+   */
+  [[nodiscard]] constexpr auto
+  IsSmoParent() const  //
+      -> bool
+  {
+    return smo_parent_;
   }
 
   /**
@@ -241,12 +256,14 @@ class StatusWord
    * @return a frozen status word.
    */
   [[nodiscard]] constexpr auto
-  Freeze(const bool is_removed) const  //
+  Freeze(const bool is_removed,
+         const bool is_smo_parent) const  //
       -> StatusWord
   {
     auto frozen_status = *this;
     frozen_status.frozen_ = 1;
-    if (is_removed) frozen_status.is_removed_ = 1;
+    if (is_removed) frozen_status.removed_ = 1;
+    if (is_smo_parent) frozen_status.smo_parent_ = 1;
     return frozen_status;
   }
 
@@ -259,6 +276,8 @@ class StatusWord
   {
     auto unfrozen_status = *this;
     unfrozen_status.frozen_ = 0;
+    unfrozen_status.removed_ = 0;
+    unfrozen_status.smo_parent_ = 0;
     return unfrozen_status;
   }
 
@@ -301,12 +320,14 @@ class StatusWord
   uint64_t block_size_ : 22;
 
   /// the total byte length of deleted metadata/records in a node.
-  uint64_t deleted_size_ : 21;
+  uint64_t deleted_size_ : 20;  //-2
 
   /// a flag to indicate whether a node is frozen (i.e., immutable).
   uint64_t frozen_ : 1;
 
-  uint64_t is_removed_ : 1;
+  uint64_t removed_ : 1;
+
+  uint64_t smo_parent_ : 1;
 
   /// control bits to perform PMwCAS.
   uint64_t control_region_ : 3;  // NOLINT
