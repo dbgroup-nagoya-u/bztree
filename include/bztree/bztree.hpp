@@ -990,6 +990,22 @@ class BzTree
       if (!r_stat.CanMergeWith(l_stat)) return false;  // there is no space for merging
       // if (r_stat.IsFrozen()) continue;
       if (r_stat.IsFrozen() && !r_stat.IsRemoved()) {
+        if (r_stat.IsSmoParent()) {
+          continue;
+        } else if (r_node->IsLeaf() && r_stat.NeedConsolidation(r_node->GetSortedCount())) {
+          Consolidate(r_node, r_node->GetHighKey());
+          continue;
+        } else if (r_stat.template NeedSplit<Key, Payload>()) {
+          Split<Payload>(r_node, r_node, r_node->GetHighKey());
+          continue;
+        } else if (r_stat.NeedMerge()) {
+          Merge<Payload>(r_node, r_node->GetHighKey(), r_node);
+          continue;
+        } else
+          continue;  //?????
+      }
+
+      /*if (r_stat.IsFrozen() && !r_stat.IsRemoved()) {
         if (r_node->IsLeaf() && r_stat.NeedConsolidation(r_node->GetSortedCount())) {
           Consolidate(r_node, r_node->GetHighKey());
           continue;
@@ -1000,7 +1016,7 @@ class BzTree
           continue;
         else
           continue;  // 子ノードによる親のフリーズ
-      }
+      }*/
 
       // pre-freezing of SMO targets
       MwCASDescriptor desc{};
