@@ -555,12 +555,19 @@ class BzTree
 
       // align the height of partial trees
       nodes.reserve(kInnerNodeCap * thread_num);
+      Node_t *prev_node = nullptr;
       for (auto &&[p_height, p_nodes] : partial_trees) {
         while (p_height < height) {  // NOLINT
           p_nodes = ConstructSingleLayer<NodeEntry>(p_nodes.cbegin(), p_nodes.size());
           ++p_height;
         }
         nodes.insert(nodes.end(), p_nodes.begin(), p_nodes.end());
+
+        // set high_key of partial tree
+        if (prev_node != nullptr) {
+          Node_t::SetHighKeyOfPartialTree(prev_node, std::get<1>(p_nodes.front()));
+        }
+        prev_node = std::get<1>(p_nodes.back());
       }
     }
 
