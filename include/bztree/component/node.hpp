@@ -1170,7 +1170,7 @@ class Node
       auto offset = kPageSize - l_node->GetStatusWord().GetBlockSize();
       offset = l_node->SetKey(offset, r_node->GetKey(meta), high_key_len);
       l_node->high_meta_ = Metadata{offset, high_key_len, high_key_len};
-      l_node->status_ = StatusWord{l_node->sorted_count_, kPageSize - offset};
+      l_node->status_ = StatusWord{l_node->sorted_count_, kPageSize - Align<Payload>(offset)};
 
       if (!l_node->is_inner_) {
         return;
