@@ -565,7 +565,8 @@ class BzTree
 
         // set high_key of partial tree
         if (prev_node != nullptr) {
-          Node_t::SetHighKeyOfPartialTree(prev_node, std::get<1>(p_nodes.front()));
+          auto *cur_node = std::get<1>(p_nodes.front());
+          Node_t::template SetHighKeyOfPartialTree<Payload>(prev_node, cur_node);
         }
         prev_node = std::get<1>(p_nodes.back());
       }
