@@ -1155,6 +1155,37 @@ class Node
   }
 
   /**
+   * @param l_node a highest border node in a left tree.
+   * @param r_node a highest border node in a right tree.
+   *
+   * @tparam Payload a class of payloads in leaf nodes.
+   */
+  template <class Payload>
+  static void
+  SetHighKeyOfPartialTree(  //
+      Node *l_node,
+      Node *r_node)
+  {
+    while (true) {
+      // set a highest key in a left node
+      const auto meta = r_node->meta_array_[0];
+      const auto high_key_len = meta.GetKeyLength();
+      auto offset = kPageSize - l_node->status_.GetBlockSize();
+      offset = l_node->SetKey(offset, r_node->GetKey(meta), high_key_len);
+      l_node->high_meta_ = Metadata{offset, high_key_len, high_key_len};
+
+      // update the block size with alignment
+      offset = (l_node->is_inner_) ? Align<Node *>(offset) : Align<Payload>(offset);
+      l_node->status_ = StatusWord{l_node->sorted_count_, kPageSize - offset};
+      if (!l_node->is_inner_) return;  // reach the leaf node
+
+      // go down to the lower level
+      l_node = l_node->template GetPayload<Node *>(l_node->meta_array_[l_node->sorted_count_ - 1]);
+      r_node = r_node->template GetPayload<Node *>(r_node->meta_array_[0]);
+    }
+  }
+
+  /**
    * @brief Remove the leftmost keys from the leftmost nodes.
    *
    * @param node a root node.
