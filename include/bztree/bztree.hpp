@@ -869,7 +869,7 @@ class BzTree
       Node_t *old_l_node)  //
       -> bool
   {
-    const auto l_stat = l_node->GetStatusWord();
+    const auto l_stat = l_node->GetStatusWordProtected();
 
     /*----------------------------------------------------------------------------------
      * Phase 1: preparation
@@ -889,12 +889,12 @@ class BzTree
       if (trace.empty()) return false;  // a root node cannot be merged
       old_parent = trace.back().first;
       if (target_pos == old_parent->GetSortedCount() - 1) return false;  // no mergeable node
-      const auto p_stat = old_parent->GetStatusWord();
+      const auto p_stat = old_parent->GetStatusWordProtected();
       if (p_stat.IsFrozen()) continue;
 
       // check a right sibling node is live and has sufficent capacity
       r_node = old_parent->GetChild(target_pos + 1);
-      const auto r_stat = r_node->GetStatusWord();
+      const auto r_stat = r_node->GetStatusWordProtected();
       if (!r_stat.CanMergeWith(l_stat)) return false;  // there is no space for merging
       if (r_stat.IsFrozen()) continue;
 
