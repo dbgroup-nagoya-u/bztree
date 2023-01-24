@@ -256,11 +256,14 @@ class StatusWord
    * @return a frozen status word.
    */
   [[nodiscard]] constexpr auto
-  Freeze() const  //
+  Freeze(const bool is_removed,
+         const bool is_smo_parent) const  //
       -> StatusWord
   {
     auto frozen_status = *this;
     frozen_status.frozen_ = 1;
+    if (is_removed) frozen_status.removed_ = 1;
+    if (is_smo_parent) frozen_status.smo_parent_ = 1;
     return frozen_status;
   }
 
@@ -273,6 +276,8 @@ class StatusWord
   {
     auto unfrozen_status = *this;
     unfrozen_status.frozen_ = 0;
+    // unfrozen_status.removed_ = 0; //後々，手を加える必要あり？？？？？？？？？？？？？？
+    //  unfrozen_status.smo_parent_ = 0;
     return unfrozen_status;
   }
 

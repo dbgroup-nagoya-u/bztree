@@ -766,7 +766,7 @@ class BzTree
       const Key &key)
   {
     // freeze a target node and perform consolidation
-    if (node->Freeze() != NodeRC::kSuccess) return;
+    if (node->Freeze(false) != NodeRC::kSuccess) return;
 
     // create a consolidated node to calculate a correct node size
     auto *consol_node = CreateNewNode<Payload>();
@@ -817,7 +817,7 @@ class BzTree
 
       // pre-freezing of SMO targets
       old_parent = trace.back().first;
-      if (old_parent->Freeze() == NodeRC::kSuccess) break;
+      if (old_parent->Freeze(true) == NodeRC::kSuccess) break;
     }
 
     /*----------------------------------------------------------------------------------
@@ -900,8 +900,8 @@ class BzTree
 
       // pre-freezing of SMO targets
       MwCASDescriptor desc{};
-      old_parent->SetStatusForMwCAS(desc, p_stat, p_stat.Freeze());
-      r_node->SetStatusForMwCAS(desc, r_stat, r_stat.Freeze());
+      old_parent->SetStatusForMwCAS(desc, p_stat, p_stat.Freeze(false, true));
+      r_node->SetStatusForMwCAS(desc, r_stat, r_stat.Freeze(true, false));
       if (desc.MwCAS()) break;
     }
 
@@ -929,7 +929,8 @@ class BzTree
     // merge the new parent node if needed
     if (recurse_merge && !Merge<Node_t *>(new_parent, key, new_parent)) {
       // if the parent node cannot be merged, unfreeze it
-      new_parent->Unfreeze();
+      const auto np_stat = new_parent->GetStatusWordProtected();
+      if (!np_stat.IsRemoved() && !np_stat.IsSmoParent()) new_parent->Unfreeze();
     }
 
     return true;
