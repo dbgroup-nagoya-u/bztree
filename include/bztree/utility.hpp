@@ -53,8 +53,9 @@ constexpr bool kOpen = false;
  */
 enum ReturnCode {
   kSuccess = 0,
-  kKeyNotExist = -2,
-  kKeyExist
+  kKeyNotExist = -3,
+  kKeyExist,
+  kNodeNotExist
 };
 
 /**

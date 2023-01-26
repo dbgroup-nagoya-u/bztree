@@ -722,7 +722,12 @@ class BzTree
       index = current_node->Search(key);
       current_node = current_node->GetChild(index);
     }
-    trace.emplace_back(current_node, index);
+
+    if (current_node != target_node) {
+      trace.clear();
+    } else {
+      trace.emplace_back(current_node, index);
+    }
 
     return trace;
   }
@@ -766,21 +771,22 @@ class BzTree
       const Key &key)
   {
     // freeze a target node and perform consolidation
-    if (node->Freeze(false) != NodeRC::kSuccess) return;
+    if (node->Freeze(false) == NodeRC::kRemoved) return;
 
     // create a consolidated node to calculate a correct node size
     auto *consol_node = CreateNewNode<Payload>();
     consol_node->template Consolidate<Payload>(node);
-    gc_.AddGarbage(node);
 
     // check other SMOs are needed
     const auto stat = consol_node->GetStatusWord();
-    if (stat.template NeedSplit<Key, Payload>()) return Split<Payload>(consol_node, key);
+    if (stat.template NeedSplit<Key, Payload>()) return Split<Payload>(consol_node, node, key);
     if (stat.NeedMerge() && Merge<Payload>(consol_node, key, node)) return;
 
     // install the consolidated node
     auto &&trace = TraceTargetNode(key, node);
-    InstallNewNode(trace, consol_node, key, node);
+    if (trace.empty()) return;
+    const auto &rc = InstallNewNode(trace, consol_node, key, node);
+    if (rc == ReturnCode::kSuccess) gc_.AddGarbage(node);
   }
 
   /**
@@ -789,12 +795,14 @@ class BzTree
    * Note that this function may call a split function for internal nodes if needed.
    *
    * @param node a target node.
+   * @param old_node a original node existing in BzTree.
    * @param key a target key.
    */
   template <class T>
   void
   Split(  //
       Node_t *node,
+      Node_t *old_node,
       const Key &key)
   {
     /*----------------------------------------------------------------------------------
@@ -807,7 +815,8 @@ class BzTree
     bool root_split = false;
     while (true) {
       // trace and get the embedded index of a target node
-      trace = TraceTargetNode(key, node);
+      trace = TraceTargetNode(key, old_node);
+      if (trace.empty()) return;
       if (trace.size() <= 1) {
         root_split = true;
         break;
@@ -839,15 +848,18 @@ class BzTree
     }
 
     // install new nodes to the index and register garbages
-    InstallNewNode(trace, new_parent, key, old_parent);
+    const auto &rc = InstallNewNode(trace, new_parent, key, old_parent);
+    if (rc == ReturnCode::kNodeNotExist) return;
     gc_.AddGarbage(node);
     if (!root_split) {
       gc_.AddGarbage(old_parent);
     }
 
     // split the new parent node if needed
-    if (recurse_split) {
-      Split<Node_t *>(new_parent, key);
+    if (recurse_split) {  // 後に不必要となる処理
+      // const auto np_stat = new_parent->GetStatusWordProtected();
+      // if (!np_stat.IsRemoved() && !np_stat.IsSmoParent())
+      Split<Node_t *>(new_parent, new_parent, key);
     }
   }
 
@@ -882,6 +894,7 @@ class BzTree
     while (true) {
       // trace and get the embedded index of a target node
       trace = TraceTargetNode(key, old_l_node);
+      if (trace.empty()) return true;
       target_pos = trace.back().second;
 
       // check a parent node is live
@@ -921,7 +934,9 @@ class BzTree
     }
 
     // install new nodes to the index and register garbages
-    InstallNewNode(trace, new_parent, key, old_parent);
+    const auto &rc = InstallNewNode(trace, new_parent, key, old_parent);
+    if (rc == ReturnCode::kNodeNotExist) return true;
+
     gc_.AddGarbage(old_parent);
     gc_.AddGarbage(l_node);
     gc_.AddGarbage(r_node);
@@ -929,8 +944,9 @@ class BzTree
     // merge the new parent node if needed
     if (recurse_merge && !Merge<Node_t *>(new_parent, key, new_parent)) {
       // if the parent node cannot be merged, unfreeze it
-      const auto np_stat = new_parent->GetStatusWordProtected();
-      if (!np_stat.IsRemoved() && !np_stat.IsSmoParent()) new_parent->Unfreeze();
+      // const auto np_stat = new_parent->GetStatusWordProtected();
+      // if (!np_stat.IsRemoved() && !np_stat.IsSmoParent())
+      new_parent->Unfreeze();
     }
 
     return true;
@@ -946,20 +962,27 @@ class BzTree
    * @param key a target key.
    * @param target_node an old node to be swapped.
    */
-  void
+  auto
   InstallNewNode(  //
       NodeStack &trace,
       Node_t *new_node,
       const Key &key,
-      const Node_t *target_node)
+      const Node_t *target_node)  //
+      -> ReturnCode
   {
     if (trace.size() <= 1) {
       // root swapping
-      root_.store(new_node, std::memory_order_release);
-      return;
+      auto old_node = trace.front().first;
+      bool cas_success =
+          root_.compare_exchange_strong(old_node, new_node, std::memory_order_release);
+      if (cas_success) {
+        return ReturnCode::kSuccess;
+      } else {
+        return ReturnCode::kNodeNotExist;
+      }
     }
 
-    while (true) {
+    while (!trace.empty()) {
       // prepare installing nodes
       auto [old_node, target_pos] = trace.back();
       trace.pop_back();
@@ -972,12 +995,14 @@ class BzTree
         MwCASDescriptor desc{};
         parent->SetStatusForMwCAS(desc, parent_status, parent_status);
         parent->SetChildForMwCAS(desc, target_pos, old_node, new_node);
-        if (desc.MwCAS()) return;
+        if (desc.MwCAS()) return ReturnCode::kSuccess;
       }
 
       // traverse again to get a modified parent
       trace = TraceTargetNode(key, target_node);
     }
+
+    return ReturnCode::kNodeNotExist;
   }
 
   /*####################################################################################
