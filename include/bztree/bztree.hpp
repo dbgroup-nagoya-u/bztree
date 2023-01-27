@@ -908,16 +908,25 @@ class BzTree
       // check a right sibling node is live and has sufficent capacity
       r_node = old_parent->GetChild(target_pos + 1);
       const auto r_stat = r_node->GetStatusWordProtected();
+
+      auto *consol_r_node = CreateNewNode<Payload>();
+      consol_r_node->template Consolidate<Payload>(r_node);
+      const auto consol_r_stat = consol_r_node->GetStatusWord();
+      const auto &r_key = r_node->GetHighKey();
+
       if (!r_stat.CanMergeWith(l_stat)) return false;  // there is no space for merging
       if (r_stat.IsFrozen() && !r_stat.IsRemoved()) {
         if (r_stat.IsSmoParent()) {
           ;
+        } else if (consol_r_stat.template NeedSplit<Key, Payload>()) {  // consol必須
+          Split<Payload>(consol_r_node, r_node, r_key);
+        } else if (consol_r_stat.NeedMerge()) {  // consol必須
+          Merge<Payload>(consol_r_node, r_key, r_node);
         } else if (r_node->IsLeaf() && r_stat.NeedConsolidation(r_node->GetSortedCount())) {
-          Consolidate(r_node, r_node->GetHighKey());
-        } else if (r_stat.template NeedSplit<Key, Payload>()) {
-          Split<Payload>(r_node, r_node, r_node->GetHighKey());
-        } else if (r_stat.NeedMerge()) {
-          Merge<Payload>(r_node, r_node->GetHighKey(), r_node);
+          // Consolidate(r_node, r_key);
+          trace.emplace_back(r_node, target_pos + 1);
+          const auto &rc = InstallNewNode(trace, consol_r_node, r_key, r_node);
+          if (rc == ReturnCode::kSuccess) gc_.AddGarbage(r_node);
         }
         continue;
       }
