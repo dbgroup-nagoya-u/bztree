@@ -826,7 +826,14 @@ class BzTree
 
       // pre-freezing of SMO targets
       old_parent = trace.back().first;
+
       if (old_parent->Freeze(true) == NodeRC::kSuccess) break;
+
+      // const auto &rc = old_parent->Freeze(true);
+      //  if (rc == NodeRC::kSuccess) break;
+      //  if (rc == NodeRC::kRemoved || rc == NodeRC::kSmoParent) continue;
+
+      // if rc == kFrozen
     }
 
     /*----------------------------------------------------------------------------------
@@ -909,26 +916,45 @@ class BzTree
       r_node = old_parent->GetChild(target_pos + 1);
       const auto r_stat = r_node->GetStatusWordProtected();
 
-      auto *consol_r_node = CreateNewNode<Payload>();
-      consol_r_node->template Consolidate<Payload>(r_node);
-      const auto consol_r_stat = consol_r_node->GetStatusWord();
+      if (!r_stat.CanMergeWith(l_stat)) return false;  // there is no space for merging
+
       const auto &r_key = r_node->GetHighKey();
 
-      if (!r_stat.CanMergeWith(l_stat)) return false;  // there is no space for merging
-      if (r_stat.IsFrozen() && !r_stat.IsRemoved()) {
-        if (r_stat.IsSmoParent()) {
-          ;
-        } else if (consol_r_stat.template NeedSplit<Key, Payload>()) {  // consol必須
-          Split<Payload>(consol_r_node, r_node, r_key);
-        } else if (consol_r_stat.NeedMerge()) {  // consol必須
-          Merge<Payload>(consol_r_node, r_key, r_node);
-        } else if (r_node->IsLeaf() && r_stat.NeedConsolidation(r_node->GetSortedCount())) {
-          // Consolidate(r_node, r_key);
-          trace.emplace_back(r_node, target_pos + 1);
-          const auto &rc = InstallNewNode(trace, consol_r_node, r_key, r_node);
-          if (rc == ReturnCode::kSuccess) gc_.AddGarbage(r_node);
+      if (!r_node->IsLeaf()) {
+        if (r_stat.IsFrozen() && !r_stat.IsRemoved()) {
+          if (r_stat.IsSmoParent()) {
+            ;
+          } else if (r_stat.template NeedSplit<Key, Payload>()) {
+            Split<Payload>(r_node, r_node, r_key);
+          } else if (r_stat.NeedMerge()) {
+            Merge<Payload>(r_node, r_key, r_node);
+          } else {
+            ;  ///////////////////////////////////////
+          }
+
+          continue;
         }
-        continue;
+      } else {  // r_node is leaf
+        auto *consol_r_node = CreateNewNode<Payload>();
+        consol_r_node->template Consolidate<Payload>(r_node);
+        const auto consol_r_stat = consol_r_node->GetStatusWord();
+
+        if (r_stat.IsFrozen() && !r_stat.IsRemoved()) {
+          if (consol_r_stat.template NeedSplit<Key, Payload>()) {  // consol必須
+            Split<Payload>(consol_r_node, r_node, r_key);
+          } else if (consol_r_stat.NeedMerge()) {  // consol必須
+            Merge<Payload>(consol_r_node, r_key, r_node);
+          } else if (r_node->IsLeaf() && r_stat.NeedConsolidation(r_node->GetSortedCount())) {
+            // Consolidate
+            trace.emplace_back(r_node, target_pos + 1);
+            const auto &rc = InstallNewNode(trace, consol_r_node, r_key, r_node);
+            if (rc == ReturnCode::kSuccess) gc_.AddGarbage(r_node);
+          } else {
+            ;  //////////////////////////////////////////////////////////////
+          }
+
+          continue;
+        }
       }
 
       // pre-freezing of SMO targets
