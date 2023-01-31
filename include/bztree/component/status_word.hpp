@@ -43,6 +43,7 @@ class StatusWord
         frozen_{0},
         removed_{0},
         smo_parent_{0},
+        smo_child_{0},
         control_region_{0}
   {
   }
@@ -60,6 +61,7 @@ class StatusWord
         frozen_{0},
         removed_{0},
         smo_parent_{0},
+        smo_child_{0},
         control_region_{0}
   {
   }
@@ -95,7 +97,8 @@ class StatusWord
            && deleted_size_ == comp.deleted_size_  //
            && frozen_ == comp.frozen_              //
            && removed_ == comp.removed_            //
-           && smo_parent_ == comp.smo_parent_;
+           && smo_parent_ == comp.smo_parent_      //
+           && smo_child_ == comp.smo_child_;
   }
 
   /**
@@ -110,7 +113,8 @@ class StatusWord
            || deleted_size_ != comp.deleted_size_  //
            || frozen_ != comp.frozen_              //
            || removed_ != comp.removed_            //
-           || smo_parent_ == comp.smo_parent_;
+           || smo_parent_ == comp.smo_parent_      //
+           || smo_child_ == comp.smo_child_;
   }
 
   /*####################################################################################
@@ -148,6 +152,17 @@ class StatusWord
       -> bool
   {
     return smo_parent_;
+  }
+
+  /**
+   * @retval true if a node is a child of the smo node.
+   * @retval false otherwise.
+   */
+  [[nodiscard]] constexpr auto
+  IsSmoChild() const  //
+      -> bool
+  {
+    return smo_child_;
   }
 
   /**
@@ -320,7 +335,7 @@ class StatusWord
   uint64_t block_size_ : 22;
 
   /// the total byte length of deleted metadata/records in a node.
-  uint64_t deleted_size_ : 20;  //-2
+  uint64_t deleted_size_ : 19;  //-3
 
   /// a flag to indicate whether a node is frozen (i.e., immutable).
   uint64_t frozen_ : 1;
@@ -328,6 +343,8 @@ class StatusWord
   uint64_t removed_ : 1;
 
   uint64_t smo_parent_ : 1;
+
+  uint64_t smo_child_ : 1;
 
   /// control bits to perform PMwCAS.
   uint64_t control_region_ : 3;  // NOLINT
