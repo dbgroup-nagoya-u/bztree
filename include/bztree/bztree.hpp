@@ -827,7 +827,9 @@ class BzTree
       // pre-freezing of SMO targets
       old_parent = trace.back().first;
 
-      if (old_parent->Freeze(true) == NodeRC::kSuccess) break;
+      // if (old_parent->Freeze(true) == NodeRC::kSuccess) break;
+
+      if (old_parent->FreezeForSplit(old_node) == NodeRC::kSuccess) break;
 
       // const auto &rc = old_parent->Freeze(true);
       //  if (rc == NodeRC::kSuccess) break;

@@ -394,6 +394,29 @@ class Node
     return kSuccess;
   }
 
+  auto
+  FreezeForSplit(Node *child_node)  //
+      -> NodeRC
+  {
+    while (true) {
+      const auto current_status = GetStatusWordProtected();
+      if (current_status.IsFrozen()) {
+        if (current_status.IsRemoved()) return kRemoved;
+        if (current_status.IsSmoParent()) return kSmoParent;
+        return kFrozen;
+      }
+
+      MwCASDescriptor desc{};
+      const auto child_stat = child_node->GetStatusWordProtected();
+      SetStatusForMwCAS(desc, current_status, current_status.Freeze(false, true));
+      child_node->SetStatusForMwCAS(desc, child_stat, child_stat.SetSmoChild());
+      if (desc.MwCAS()) break;
+      BZTREE_SPINLOCK_HINT
+    }
+
+    return kSuccess;
+  }
+
   /**
    * @brief Unfreeze this node for accepting other modification.
    *

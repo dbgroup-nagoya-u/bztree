@@ -296,6 +296,15 @@ class StatusWord
     return unfrozen_status;
   }
 
+  [[nodiscard]] constexpr auto
+  SetSmoChild() const  //
+      -> StatusWord
+  {
+    auto smo_child_status = *this;
+    smo_child_status.smo_child_ = 1;
+    return smo_child_status;
+  }
+
   /**
    * @param rec_size the byte length of an added record.
    * @return a new status word with added records.
