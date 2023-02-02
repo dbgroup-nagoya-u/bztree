@@ -829,13 +829,16 @@ class BzTree
 
       // if (old_parent->Freeze(true) == NodeRC::kSuccess) break;
 
-      if (old_parent->FreezeForSplit(old_node) == NodeRC::kSuccess) break;
+      // if (old_parent->FreezeForSplit(old_node) == NodeRC::kSuccess) break;
 
-      // const auto &rc = old_parent->Freeze(true);
-      //  if (rc == NodeRC::kSuccess) break;
-      //  if (rc == NodeRC::kRemoved || rc == NodeRC::kSmoParent) continue;
+      const auto &rc = old_parent->FreezeForSplit(old_node);
 
-      // if rc == kFrozen
+      if (rc == NodeRC::kSuccess) break;
+
+      const auto stat = old_node->GetStatusWordProtected();
+      if (stat.IsSmoChild()) break;
+
+      // if (rc == NodeRC::kRemoved || rc == NodeRC::kSmoParent) continue;
     }
 
     /*----------------------------------------------------------------------------------
