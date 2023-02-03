@@ -395,7 +395,7 @@ class Node
   }
 
   auto
-  FreezeForSplit(Node *child_node)  //
+  FreezeForParent(Node *child_node)  //
       -> NodeRC
   {
     while (true) {

@@ -826,19 +826,23 @@ class BzTree
 
       // pre-freezing of SMO targets
       old_parent = trace.back().first;
-
-      // if (old_parent->Freeze(true) == NodeRC::kSuccess) break;
-
-      // if (old_parent->FreezeForSplit(old_node) == NodeRC::kSuccess) break;
-
-      const auto &rc = old_parent->FreezeForSplit(old_node);
+      const auto &rc = old_parent->FreezeForParent(old_node);
 
       if (rc == NodeRC::kSuccess) break;
-
       const auto stat = old_node->GetStatusWordProtected();
       if (stat.IsSmoChild()) break;
 
-      // if (rc == NodeRC::kRemoved || rc == NodeRC::kSmoParent) continue;
+      if (rc == NodeRC::kRemoved || rc == NodeRC::kSmoParent) continue;
+
+      // if parentがsmo_childの場合を確認し，祖先の後追いを行うことも可能
+
+      // 親のsmoを後追い
+      const auto p_stat = old_parent->GetStatusWordProtected();
+      if (p_stat.template NeedSplit<Key, Payload>()) {
+        Split<Payload>(old_parent, old_parent, key);
+      } else {  // NeedMerge
+        Merge<Payload>(old_parent, key, old_parent);
+      }
     }
 
     /*----------------------------------------------------------------------------------
@@ -955,7 +959,7 @@ class BzTree
             const auto &rc = InstallNewNode(trace, consol_r_node, r_key, r_node);
             if (rc == ReturnCode::kSuccess) gc_.AddGarbage(r_node);
           } else {
-            ;  //////////////////////////////////////////////////////////////
+            ;  /////////////////////////////////////////
           }
 
           continue;
