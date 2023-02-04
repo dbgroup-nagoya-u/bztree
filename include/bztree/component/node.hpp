@@ -374,42 +374,18 @@ class Node
    * @retval kFrozen if a node has been already frozen.
    */
   auto
-  Freeze(const bool is_smo_parent)  //
+  Freeze(const bool is_removed)  //
       -> NodeRC
   {
     while (true) {
       const auto current_status = GetStatusWordProtected();
       if (current_status.IsFrozen()) {
         if (current_status.IsRemoved()) return kRemoved;
-        if (current_status.IsSmoParent()) return kSmoParent;
         return kFrozen;
       }
 
       MwCASDescriptor desc{};
-      SetStatusForMwCAS(desc, current_status, current_status.Freeze(false, is_smo_parent));
-      if (desc.MwCAS()) break;
-      BZTREE_SPINLOCK_HINT
-    }
-
-    return kSuccess;
-  }
-
-  auto
-  FreezeForParent(Node *child_node)  //
-      -> NodeRC
-  {
-    while (true) {
-      const auto current_status = GetStatusWordProtected();
-      if (current_status.IsFrozen()) {
-        if (current_status.IsRemoved()) return kRemoved;
-        if (current_status.IsSmoParent()) return kSmoParent;
-        return kFrozen;
-      }
-
-      MwCASDescriptor desc{};
-      const auto child_stat = child_node->GetStatusWordProtected();
-      SetStatusForMwCAS(desc, current_status, current_status.Freeze(false, true));
-      child_node->SetStatusForMwCAS(desc, child_stat, child_stat.SetSmoChild());
+      SetStatusForMwCAS(desc, current_status, current_status.Freeze(is_removed));
       if (desc.MwCAS()) break;
       BZTREE_SPINLOCK_HINT
     }
@@ -422,10 +398,16 @@ class Node
    *
    */
   void
-  Unfreeze()
+  Unfreeze(const StatusWord old_stat)
   {
-    auto *atomic_stat = reinterpret_cast<std::atomic<StatusWord> *>(&status_);
-    atomic_stat->store(status_.Unfreeze(), std::memory_order_relaxed);
+    while (true) {
+      auto cur_stat = GetStatusWordProtected();
+      if (cur_stat != old_stat) break;
+
+      MwCASDescriptor desc{};
+      SetStatusForMwCAS(desc, cur_stat, cur_stat.Unfreeze());
+      if (desc.MwCAS()) break;
+    }
   }
 
   /*####################################################################################
@@ -1036,7 +1018,7 @@ class Node
     // set an updated header
     StatusWord stat{sorted_count_, kPageSize - offset};
     if (stat.NeedInternalSplit<Key>()) {
-      status_ = stat.Freeze(false, false);
+      status_ = stat.Freeze(!kRemoveFlag);
       return true;
     }
     status_ = stat;
@@ -1103,7 +1085,7 @@ class Node
       const Node *old_node,
       const Node *merged_child,
       const size_t position)  //
-      -> bool
+      -> StatusWord
   {
     // copy records without a deleted node
     auto offset = CopyRecords<Node *>(old_node, this, 0, position, kPageSize);
@@ -1116,12 +1098,8 @@ class Node
 
     // set an updated header
     StatusWord stat{sorted_count_, kPageSize - offset};
-    if (stat.NeedMerge()) {
-      status_ = stat.Freeze(false, false);
-      return true;
-    }
-    status_ = stat;
-    return false;
+    status_ = (stat.NeedMerge()) ? stat.Freeze(!kRemoveFlag) : stat;
+    return status_;
   }
 
   /*####################################################################################

@@ -42,8 +42,6 @@ class StatusWord
         deleted_size_{0},
         frozen_{0},
         removed_{0},
-        smo_parent_{0},
-        smo_child_{0},
         control_region_{0}
   {
   }
@@ -60,8 +58,6 @@ class StatusWord
         deleted_size_{0},
         frozen_{0},
         removed_{0},
-        smo_parent_{0},
-        smo_child_{0},
         control_region_{0}
   {
   }
@@ -129,28 +125,6 @@ class StatusWord
       -> bool
   {
     return removed_;
-  }
-
-  /**
-   * @retval true if a node is a parent of the smo node.
-   * @retval false otherwise.
-   */
-  [[nodiscard]] constexpr auto
-  IsSmoParent() const  //
-      -> bool
-  {
-    return smo_parent_;
-  }
-
-  /**
-   * @retval true if a node is a child of the smo node.
-   * @retval false otherwise.
-   */
-  [[nodiscard]] constexpr auto
-  IsSmoChild() const  //
-      -> bool
-  {
-    return smo_child_;
   }
 
   /**
@@ -259,14 +233,12 @@ class StatusWord
    * @return a frozen status word.
    */
   [[nodiscard]] constexpr auto
-  Freeze(const bool is_removed,
-         const bool is_smo_parent) const  //
+  Freeze(const bool is_removed) const  //
       -> StatusWord
   {
     auto frozen_status = *this;
     frozen_status.frozen_ = 1;
-    if (is_removed) frozen_status.removed_ = 1;
-    if (is_smo_parent) frozen_status.smo_parent_ = 1;
+    frozen_status.removed_ = is_removed;
     return frozen_status;
   }
 
@@ -279,18 +251,7 @@ class StatusWord
   {
     auto unfrozen_status = *this;
     unfrozen_status.frozen_ = 0;
-    // unfrozen_status.removed_ = 0; //後々，手を加える必要あり？？？？？？？？？？？？？？
-    //  unfrozen_status.smo_parent_ = 0;
     return unfrozen_status;
-  }
-
-  [[nodiscard]] constexpr auto
-  SetSmoChild() const  //
-      -> StatusWord
-  {
-    auto smo_child_status = *this;
-    smo_child_status.smo_child_ = 1;
-    return smo_child_status;
   }
 
   /**
@@ -332,16 +293,13 @@ class StatusWord
   uint64_t block_size_ : 22;
 
   /// the total byte length of deleted metadata/records in a node.
-  uint64_t deleted_size_ : 19;  //-3
+  uint64_t deleted_size_ : 21;  //-1
 
   /// a flag to indicate whether a node is frozen (i.e., immutable).
   uint64_t frozen_ : 1;
 
+  /// a flag for indicating this node is removed.
   uint64_t removed_ : 1;
-
-  uint64_t smo_parent_ : 1;
-
-  uint64_t smo_child_ : 1;
 
   /// control bits to perform PMwCAS.
   uint64_t control_region_ : 3;  // NOLINT

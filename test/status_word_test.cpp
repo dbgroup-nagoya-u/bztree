@@ -213,7 +213,7 @@ TEST_F(StatusWordFixture, CanMergeWithLargeSiblingNodeReturnFalse)
 TEST_F(StatusWordFixture, FreezeWithUnfrozenStatusMakeFrozenStatus)
 {
   const StatusWord stat{kExpectedRecordCount, kExpectedBlockSize};
-  const auto frozen_stat = stat.Freeze(false, false);
+  const auto frozen_stat = stat.Freeze(!kRemoveFlag);
 
   EXPECT_TRUE(frozen_stat.IsFrozen());
   EXPECT_EQ(stat.GetRecordCount(), frozen_stat.GetRecordCount());
@@ -223,7 +223,7 @@ TEST_F(StatusWordFixture, FreezeWithUnfrozenStatusMakeFrozenStatus)
 TEST_F(StatusWordFixture, UnfreezeWithFrozenStatusMakeUnfrozenStatus)
 {
   const auto frozen_stat =
-      StatusWord{kExpectedRecordCount, kExpectedBlockSize}.Freeze(false, false);
+      StatusWord{kExpectedRecordCount, kExpectedBlockSize}.Freeze(!kRemoveFlag);
   const auto stat = frozen_stat.Unfreeze();
 
   EXPECT_FALSE(stat.IsFrozen());

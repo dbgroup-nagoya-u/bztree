@@ -76,6 +76,9 @@ constexpr size_t kAlignMask = ~7UL;
 /// Header length in bytes.
 constexpr size_t kHeaderLen = 32;
 
+/// A flag for indicating a node is removed.
+constexpr bool kRemoveFlag = true;
+
 /*######################################################################################
  * Internal utility functions
  *####################################################################################*/

@@ -365,6 +365,7 @@ class BzTree
       switch (rc) {
         case NodeRC::kSuccess:
           return ReturnCode::kSuccess;
+        case NodeRC::kFrozen:
         case NodeRC::kNeedConsolidation:
           Consolidate(node, key);
         default:
@@ -405,6 +406,7 @@ class BzTree
           return ReturnCode::kSuccess;
         case NodeRC::kKeyExist:
           return ReturnCode::kKeyExist;
+        case NodeRC::kFrozen:
         case NodeRC::kNeedConsolidation:
           Consolidate(node, key);
         default:
@@ -445,6 +447,7 @@ class BzTree
           return ReturnCode::kSuccess;
         case NodeRC::kKeyNotExist:
           return ReturnCode::kKeyNotExist;
+        case NodeRC::kFrozen:
         case NodeRC::kNeedConsolidation:
           Consolidate(node, key);
         default:
@@ -482,6 +485,7 @@ class BzTree
           return ReturnCode::kSuccess;
         case NodeRC::kKeyNotExist:
           return ReturnCode::kKeyNotExist;
+        case NodeRC::kFrozen:
         case NodeRC::kNeedConsolidation:
           Consolidate(node, key);
         default:
@@ -590,6 +594,9 @@ class BzTree
   /*####################################################################################
    * Internal constants
    *##################################################################################*/
+
+  /// A flag for indicating a node is removed.
+  static constexpr bool kRemoveFlag = true;
 
   /// Assumes that one word is represented by 8 bytes
   static constexpr size_t kWordSize = component::kWordSize;
@@ -771,7 +778,7 @@ class BzTree
       const Key &key)
   {
     // freeze a target node and perform consolidation
-    if (node->Freeze(false) == NodeRC::kRemoved) return;
+    if (node->Freeze(!kRemoveFlag) == NodeRC::kRemoved) return;
 
     // create a consolidated node to calculate a correct node size
     auto *consol_node = CreateNewNode<Payload>();
@@ -826,23 +833,11 @@ class BzTree
 
       // pre-freezing of SMO targets
       old_parent = trace.back().first;
-      const auto &rc = old_parent->FreezeForParent(old_node);
+      const auto &rc = old_parent->Freeze(kRemoveFlag);
+      if (rc != NodeRC::kFrozen) break;
 
-      if (rc == NodeRC::kSuccess) break;
-      const auto stat = old_node->GetStatusWordProtected();
-      if (stat.IsSmoChild()) break;
-
-      if (rc == NodeRC::kRemoved || rc == NodeRC::kSmoParent) continue;
-
-      // if parentがsmo_childの場合を確認し，祖先の後追いを行うことも可能
-
-      // 親のsmoを後追い
-      const auto p_stat = old_parent->GetStatusWordProtected();
-      if (p_stat.template NeedSplit<Key, Node_t *>()) {
-        Split<Node_t *>(old_parent, old_parent, key);
-      } else {  // NeedMerge
-        Merge<Node_t *>(old_parent, key, old_parent);
-      }
+      // found the frozen parent, so chase its SMO
+      ChaseSMO<Node_t *>(old_parent, key, trace);
     }
 
     /*----------------------------------------------------------------------------------
@@ -872,9 +867,7 @@ class BzTree
     }
 
     // split the new parent node if needed
-    if (recurse_split) {  // 後に不必要となる処理
-      // const auto np_stat = new_parent->GetStatusWordProtected();
-      // if (!np_stat.IsRemoved() && !np_stat.IsSmoParent())
+    if (recurse_split) {
       Split<Node_t *>(new_parent, new_parent, key);
     }
   }
@@ -919,57 +912,39 @@ class BzTree
       old_parent = trace.back().first;
       if (target_pos == old_parent->GetSortedCount() - 1) return false;  // no mergeable node
       const auto p_stat = old_parent->GetStatusWordProtected();
-      if (p_stat.IsFrozen()) continue;
+      const auto p_frozen = p_stat.IsFrozen();
+      const auto p_removed = p_stat.IsRemoved();
+      if (p_frozen && !p_removed) {  // found the frozen parent, so chase its SMO
+        ChaseSMO<Node_t *>(old_parent, key, trace);
+        continue;
+      }
 
       // check a right sibling node is live and has sufficent capacity
       r_node = old_parent->GetChild(target_pos + 1);
       const auto r_stat = r_node->GetStatusWordProtected();
-
       if (!r_stat.CanMergeWith(l_stat)) return false;  // there is no space for merging
-
-      const auto &r_key = r_node->GetHighKey();
-
-      if (!r_node->IsLeaf()) {
-        if (r_stat.IsFrozen() && !r_stat.IsRemoved()) {
-          if (r_stat.IsSmoParent()) {
-            ;
-          } else if (r_stat.template NeedSplit<Key, Payload>()) {
-            Split<Payload>(r_node, r_node, r_key);
-          } else if (r_stat.NeedMerge()) {
-            Merge<Payload>(r_node, r_key, r_node);
-          } else {
-            ;  ///////////////////////////////////////
-          }
-
-          continue;
+      const auto r_removed = r_stat.IsRemoved();
+      if (p_removed && r_removed) break;  // chase the merge operation of this node
+      if (r_removed) continue;            // the right node is being swapped, so retry
+      if (r_stat.IsFrozen()) {
+        // found the frozen sinling, so chase its SMO
+        const auto &r_key = l_node->GetHighKey();
+        if (r_node->IsLeaf()) {
+          auto *consol_r_node = CreateNewNode<Payload>();
+          consol_r_node->template Consolidate<Payload>(r_node);
+          trace.emplace_back(r_node, target_pos + 1);
+          ChaseSMO<T>(consol_r_node, r_key, trace);
+        } else {
+          ChaseSMO<Node_t *>(r_node, r_key, trace);
         }
-      } else {  // r_node is leaf
-        auto *consol_r_node = CreateNewNode<Payload>();
-        consol_r_node->template Consolidate<Payload>(r_node);
-        const auto consol_r_stat = consol_r_node->GetStatusWord();
-
-        if (r_stat.IsFrozen() && !r_stat.IsRemoved()) {
-          if (consol_r_stat.template NeedSplit<Key, Payload>()) {  // consol必須
-            Split<Payload>(consol_r_node, r_node, r_key);
-          } else if (consol_r_stat.NeedMerge()) {  // consol必須
-            Merge<Payload>(consol_r_node, r_key, r_node);
-          } else if (r_node->IsLeaf() && r_stat.NeedConsolidation(r_node->GetSortedCount())) {
-            // Consolidate
-            trace.emplace_back(r_node, target_pos + 1);
-            const auto &rc = InstallNewNode(trace, consol_r_node, r_key, r_node);
-            if (rc == ReturnCode::kSuccess) gc_.AddGarbage(r_node);
-          } else {
-            ;  /////////////////////////////////////////
-          }
-
-          continue;
-        }
+        continue;
       }
+      if (p_removed) continue;  // the parent is being swapped, so retry
 
       // pre-freezing of SMO targets
       MwCASDescriptor desc{};
-      old_parent->SetStatusForMwCAS(desc, p_stat, p_stat.Freeze(false, true));
-      r_node->SetStatusForMwCAS(desc, r_stat, r_stat.Freeze(true, false));
+      old_parent->SetStatusForMwCAS(desc, p_stat, p_stat.Freeze(kRemoveFlag));
+      r_node->SetStatusForMwCAS(desc, r_stat, r_stat.Freeze(kRemoveFlag));
       if (desc.MwCAS()) break;
     }
 
@@ -981,7 +956,7 @@ class BzTree
     auto *merged_node = CreateNewNode<T>();
     merged_node->template Merge<T>(l_node, r_node);
     auto *new_parent = CreateNewNode<Node_t *>();
-    auto recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos);
+    const auto new_p_stat = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos);
     if (trace.size() <= 1 && new_parent->GetSortedCount() == 1) {
       // the new root node has only one child, use the merged child as a new root
       gc_.AddGarbage(new_parent);
@@ -997,11 +972,8 @@ class BzTree
     gc_.AddGarbage(r_node);
 
     // merge the new parent node if needed
-    if (recurse_merge && !Merge<Node_t *>(new_parent, key, new_parent)) {
-      // if the parent node cannot be merged, unfreeze it
-      // const auto np_stat = new_parent->GetStatusWordProtected();
-      // if (!np_stat.IsRemoved() && !np_stat.IsSmoParent())
-      new_parent->Unfreeze();
+    if (new_p_stat.IsFrozen() && !Merge<Node_t *>(new_parent, key, new_parent)) {
+      new_parent->Unfreeze(new_p_stat);
     }
 
     return true;
@@ -1047,6 +1019,8 @@ class BzTree
         parent->SetStatusForMwCAS(desc, parent_status, parent_status);
         parent->SetChildForMwCAS(desc, target_pos, old_node, new_node);
         if (desc.MwCAS()) return ReturnCode::kSuccess;
+      } else if (!parent_status.IsRemoved()) {
+        ChaseSMO<Node_t *>(parent, key, trace);
       }
 
       // traverse again to get a modified parent
@@ -1054,6 +1028,32 @@ class BzTree
     }
 
     return ReturnCode::kNodeNotExist;
+  }
+
+  template <class T>
+  void
+  ChaseSMO(  //
+      Node_t *node,
+      const Key &key,
+      [[maybe_unused]] NodeStack &trace)
+  {
+    const auto stat = node->GetStatusWordProtected();
+    if (stat.template NeedSplit<Key, T>()) {
+      Split<T>(node, node, key);
+      return;
+    }
+    if (stat.NeedMerge()) {
+      Merge<T>(node, key, node);
+      return;
+    }
+
+    // consolidate a leaf node
+    if constexpr (!std::is_same_v<T, Node_t *>) {
+      auto *old_node = trace.back().first;
+      const auto &rc = InstallNewNode(trace, node, key, old_node);
+      auto *gc_node = (rc == ReturnCode::kSuccess) ? old_node : node;
+      gc_.AddGarbage(gc_node);
+    }
   }
 
   /*####################################################################################
