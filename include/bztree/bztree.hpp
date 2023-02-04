@@ -838,10 +838,10 @@ class BzTree
 
       // 親のsmoを後追い
       const auto p_stat = old_parent->GetStatusWordProtected();
-      if (p_stat.template NeedSplit<Key, Payload>()) {
-        Split<Payload>(old_parent, old_parent, key);
+      if (p_stat.template NeedSplit<Key, Node_t *>()) {
+        Split<Node_t *>(old_parent, old_parent, key);
       } else {  // NeedMerge
-        Merge<Payload>(old_parent, key, old_parent);
+        Merge<Node_t *>(old_parent, key, old_parent);
       }
     }
 
