@@ -1027,14 +1027,10 @@ class BzTree
   {
     if (trace.size() <= 1) {
       // root swapping
-      auto old_node = trace.front().first;
-      bool cas_success =
+      auto *old_node = trace.front().first;
+      auto cas_success =
           root_.compare_exchange_strong(old_node, new_node, std::memory_order_release);
-      if (cas_success) {
-        return ReturnCode::kSuccess;
-      } else {
-        return ReturnCode::kNodeNotExist;
-      }
+      return (cas_success) ? ReturnCode::kSuccess : ReturnCode::kNodeNotExist;
     }
 
     while (!trace.empty()) {
