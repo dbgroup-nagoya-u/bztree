@@ -88,33 +88,21 @@ class StatusWord
   /**
    * @brief An operator to check equality.
    */
-  constexpr auto
+  auto
   operator==(const StatusWord &comp) const  //
       -> bool
   {
-    return record_count_ == comp.record_count_     //
-           && block_size_ == comp.block_size_      //
-           && deleted_size_ == comp.deleted_size_  //
-           && frozen_ == comp.frozen_              //
-           && removed_ == comp.removed_            //
-           && smo_parent_ == comp.smo_parent_      //
-           && smo_child_ == comp.smo_child_;
+    return memcmp(this, &comp, sizeof(StatusWord)) == 0;
   }
 
   /**
    * @brief An operator to check inequality.
    */
-  constexpr auto
+  auto
   operator!=(const StatusWord &comp) const  //
       -> bool
   {
-    return record_count_ != comp.record_count_     //
-           || block_size_ != comp.block_size_      //
-           || deleted_size_ != comp.deleted_size_  //
-           || frozen_ != comp.frozen_              //
-           || removed_ != comp.removed_            //
-           || smo_parent_ == comp.smo_parent_      //
-           || smo_child_ == comp.smo_child_;
+    return memcmp(this, &comp, sizeof(StatusWord)) != 0;
   }
 
   /*####################################################################################
