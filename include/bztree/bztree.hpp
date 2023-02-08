@@ -793,7 +793,10 @@ class BzTree
     auto &&trace = TraceTargetNode(key, node);
     if (trace.empty()) return;
     const auto &rc = InstallNewNode(trace, consol_node, key, node);
-    if (rc == ReturnCode::kSuccess) gc_.AddGarbage(node);
+    if (rc == ReturnCode::kSuccess)
+      gc_.AddGarbage(node);
+    else
+      delete consol_node;
   }
 
   /**
@@ -860,7 +863,13 @@ class BzTree
 
     // install new nodes to the index and register garbages
     const auto &rc = InstallNewNode(trace, new_parent, key, old_parent);
-    if (rc == ReturnCode::kNodeNotExist) return;
+    if (rc == ReturnCode::kNodeNotExist) {
+      if (node->IsLeaf()) delete node;
+      delete l_node;
+      delete r_node;
+      delete new_parent;
+      return;
+    }
     gc_.AddGarbage(node);
     if (!root_split) {
       gc_.AddGarbage(old_parent);
@@ -965,7 +974,12 @@ class BzTree
 
     // install new nodes to the index and register garbages
     const auto &rc = InstallNewNode(trace, new_parent, key, old_parent);
-    if (rc == ReturnCode::kNodeNotExist) return true;
+    if (rc == ReturnCode::kNodeNotExist) {
+      if (l_node->IsLeaf()) delete l_node;
+      delete merged_node;
+      delete new_parent;
+      return true;
+    }
 
     gc_.AddGarbage(old_parent);
     gc_.AddGarbage(l_node);
