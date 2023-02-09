@@ -864,7 +864,9 @@ class BzTree
     // install new nodes to the index and register garbages
     const auto &rc = InstallNewNode(trace, new_parent, key, old_parent);
     if (rc == ReturnCode::kNodeNotExist) {
-      if (node->IsLeaf()) delete node;
+      if (node->IsLeaf()) {
+        delete node;
+      }
       delete l_node;
       delete r_node;
       delete new_parent;
