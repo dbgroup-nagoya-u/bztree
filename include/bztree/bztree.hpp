@@ -793,10 +793,11 @@ class BzTree
     auto &&trace = TraceTargetNode(key, node);
     if (trace.empty()) return;
     const auto &rc = InstallNewNode(trace, consol_node, key, node);
-    if (rc == ReturnCode::kSuccess)
+    if (rc == ReturnCode::kSuccess) {
       gc_.AddGarbage(node);
-    else
+    } else {
       delete consol_node;
+    }
   }
 
   /**
