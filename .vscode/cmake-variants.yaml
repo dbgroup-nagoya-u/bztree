@@ -37,4 +37,4 @@ buildType:
         BZTREE_TEST_THREAD_NUM: 8
         BZTREE_TEST_RANDOM_SEED: 10
         BZTREE_TEST_EXEC_NUM: 1E6
-        BZTREE_TEST_OVERRIDE_MIMALLOC: OFF  jjjjjjjjjjjjjjjjjjjjjjon giants 56 普通にdelete できればaddgarbageと比較したい
+        BZTREE_TEST_OVERRIDE_MIMALLOC: OFF
