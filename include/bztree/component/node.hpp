@@ -79,38 +79,7 @@ class Node
    * @brief Destroy the node object.
    *
    */
-  ~Node()
-  {
-    // fill a metadata region with zeros
-    for (size_t i = 0; i < GetMaxRecordNum(); ++i) {
-      auto *dummy_p = reinterpret_cast<size_t *>(&meta_array_[i]);
-      *dummy_p = 0UL;
-    }
-  }
-
-  /*####################################################################################
-   * new/delete operators
-   *##################################################################################*/
-
-  static auto
-  operator new([[maybe_unused]] std::size_t n)  //
-      -> void *
-  {
-    return calloc(1UL, kPageSize);
-  }
-
-  static auto
-  operator new([[maybe_unused]] std::size_t n, void *where)  //
-      -> void *
-  {
-    return where;
-  }
-
-  static void
-  operator delete(void *p) noexcept
-  {
-    free(p);
-  }
+  ~Node() = default;
 
   /*####################################################################################
    * Public getters/setters

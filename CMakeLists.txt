@@ -13,11 +13,6 @@ project(
   LANGUAGES "CXX"
 )
 
-# define source directories
-set(BZTREE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-set(MWCAS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/mwcas")
-set(MEMORY_MANAGER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/memory-manager")
-
 # check SSE support for spinlock hints
 include(CheckIncludeFileCXX)
 CHECK_INCLUDE_FILE_CXX("xmmintrin.h" BZTREE_HAS_SPINLOCK_HINT)
@@ -43,26 +38,26 @@ if(NOT DEFINED MWCAS_CAPACITY)
   set(MWCAS_CAPACITY "3" CACHE STRING "BzTree uses three-words CAS." FORCE)
 endif()
 
-add_subdirectory("${MWCAS_SOURCE_DIR}")
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/mwcas")
 
 if(MWCAS_CAPACITY LESS 3)
   message(FATAL_ERROR "BzTree requires at least three-words CAS.")
 endif()
 
 # configure GC
-add_subdirectory("${MEMORY_MANAGER_SOURCE_DIR}")
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/memory-manager")
 
 #--------------------------------------------------------------------------------------#
 # Build targets
 #--------------------------------------------------------------------------------------#
 
-if(NOT TARGET bztree::bztree)
-  add_library(bztree INTERFACE)
-  add_library(bztree::bztree ALIAS bztree)
-  target_compile_features(bztree INTERFACE
+if(NOT TARGET dbgroup::${PROJECT_NAME})
+  add_library(${PROJECT_NAME} INTERFACE)
+  add_library(dbgroup::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
+  target_compile_features(${PROJECT_NAME} INTERFACE
     "cxx_std_17"
   )
-  target_compile_definitions(bztree INTERFACE
+  target_compile_definitions(${PROJECT_NAME} INTERFACE
     BZTREE_PAGE_SIZE=${BZTREE_PAGE_SIZE}
     BZTREE_MAX_DELTA_RECORD_NUM=${BZTREE_MAX_DELTA_RECORD_NUM}
     BZTREE_MAX_DELETED_SPACE_SIZE=${BZTREE_MAX_DELETED_SPACE_SIZE}
@@ -72,12 +67,12 @@ if(NOT TARGET bztree::bztree)
     BZTREE_MAX_VARIABLE_DATA_SIZE=${BZTREE_MAX_VARIABLE_DATA_SIZE}
     $<$<BOOL:${BZTREE_HAS_SPINLOCK_HINT}>:BZTREE_HAS_SPINLOCK_HINT>
   )
-  target_include_directories(bztree INTERFACE
-    "${BZTREE_SOURCE_DIR}/include"
+  target_include_directories(${PROJECT_NAME} INTERFACE
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
   )
-  target_link_libraries(bztree INTERFACE
-    mwcas::mwcas
-    memory_manager::memory_manager
+  target_link_libraries(${PROJECT_NAME} INTERFACE
+    dbgroup::mwcas
+    dbgroup::memory_manager
   )
 endif()
 

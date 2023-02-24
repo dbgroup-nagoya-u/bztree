@@ -161,6 +161,7 @@
     "cfenv": "cpp",
     "typeindex": "cpp",
     "valarray": "cpp",
-    "*.txx": "cpp"
+    "*.txx": "cpp",
+    "source_location": "cpp"
   }
 }

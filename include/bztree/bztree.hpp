@@ -41,11 +41,12 @@ namespace dbgroup::index::bztree
 template <class Key, class Payload, class Compare = std::less<Key>>
 class BzTree
 {
+  using PageTarget = component::PageTarget;
   using Metadata = component::Metadata;
   using StatusWord = component::StatusWord;
   using Node_t = component::Node<Key, Compare>;
   using NodeRC = component::NodeRC;
-  using NodeGC_t = ::dbgroup::memory::EpochBasedGC<Node_t>;
+  using NodeGC_t = ::dbgroup::memory::EpochBasedGC<PageTarget>;
   using NodeStack = std::vector<std::pair<Node_t *, size_t>>;
   using MwCASDescriptor = component::MwCASDescriptor;
   using KeyExistence = component::KeyExistence;
@@ -239,7 +240,7 @@ class BzTree
   explicit BzTree(  //
       const size_t gc_interval_microsec = kDefaultGCTime,
       const size_t gc_thread_num = kDefaultGCThreadNum)
-      : gc_{gc_interval_microsec, gc_thread_num, true}
+      : gc_{gc_interval_microsec, gc_thread_num}
   {
     // create an initial root node
     auto *leaf = CreateNewNode<Payload>();
@@ -581,7 +582,7 @@ class BzTree
 
     // set a new root
     auto *old_root = root_.exchange(new_root, std::memory_order_release);
-    gc_.AddGarbage(old_root);
+    gc_.AddGarbage<PageTarget>(old_root);
 
     return ReturnCode::kSuccess;
   }
@@ -646,8 +647,8 @@ class BzTree
   {
     constexpr auto kIsInner = static_cast<uint64_t>(std::is_same_v<T, Node_t *>);
 
-    auto *page = gc_.template GetPageIfPossible<Node_t>();
-    return (page == nullptr) ? new Node_t{kIsInner, 0} : new (page) Node_t{kIsInner, 0};
+    auto *page = gc_.template GetPageIfPossible<PageTarget>();
+    return new (page ? page : std::calloc(1UL, kPageSize)) Node_t{kIsInner, 0};
   }
 
   /**
@@ -771,7 +772,7 @@ class BzTree
     // create a consolidated node to calculate a correct node size
     auto *consol_node = CreateNewNode<Payload>();
     consol_node->template Consolidate<Payload>(node);
-    gc_.AddGarbage(node);
+    gc_.AddGarbage<PageTarget>(node);
 
     // check other SMOs are needed
     const auto stat = consol_node->GetStatusWord();
@@ -840,9 +841,9 @@ class BzTree
 
     // install new nodes to the index and register garbages
     InstallNewNode(trace, new_parent, key, old_parent);
-    gc_.AddGarbage(node);
+    gc_.AddGarbage<PageTarget>(node);
     if (!root_split) {
-      gc_.AddGarbage(old_parent);
+      gc_.AddGarbage<PageTarget>(old_parent);
     }
 
     // split the new parent node if needed
@@ -916,15 +917,15 @@ class BzTree
     auto recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos);
     if (trace.size() <= 1 && new_parent->GetSortedCount() == 1) {
       // the new root node has only one child, use the merged child as a new root
-      gc_.AddGarbage(new_parent);
+      gc_.AddGarbage<PageTarget>(new_parent);
       new_parent = merged_node;
     }
 
     // install new nodes to the index and register garbages
     InstallNewNode(trace, new_parent, key, old_parent);
-    gc_.AddGarbage(old_parent);
-    gc_.AddGarbage(l_node);
-    gc_.AddGarbage(r_node);
+    gc_.AddGarbage<PageTarget>(old_parent);
+    gc_.AddGarbage<PageTarget>(l_node);
+    gc_.AddGarbage<PageTarget>(r_node);
 
     // merge the new parent node if needed
     if (recurse_merge && !Merge<Node_t *>(new_parent, key, new_parent)) {
@@ -1090,7 +1091,7 @@ class BzTree
   std::atomic<Node_t *> root_{nullptr};
 
   /// garbage collector
-  NodeGC_t gc_{kDefaultGCTime, kDefaultGCThreadNum, true};
+  NodeGC_t gc_{kDefaultGCTime, kDefaultGCThreadNum};
 };
 
 }  // namespace dbgroup::index::bztree
