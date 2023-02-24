@@ -16,6 +16,7 @@
 
 #include "bztree/component/metadata.hpp"
 
+// external sources
 #include "gtest/gtest.h"
 
 namespace dbgroup::index::bztree::component::test

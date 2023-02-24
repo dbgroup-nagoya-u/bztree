@@ -16,14 +16,13 @@
 
 #include "bztree/component/node.hpp"
 
+// C++ standard libraries
 #include <functional>
 #include <memory>
 
-// external libraries
-#include "gtest/gtest.h"
-
-// local external libraries
+// external sources
 #include "external/index-fixtures/common.hpp"
+#include "gtest/gtest.h"
 
 /*######################################################################################
  * Overriding for testing

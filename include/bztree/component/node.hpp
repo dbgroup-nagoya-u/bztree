@@ -17,6 +17,7 @@
 #ifndef BZTREE_COMPONENT_NODE_HPP
 #define BZTREE_COMPONENT_NODE_HPP
 
+// C++ standard libraries
 #include <atomic>
 #include <cstdlib>
 #include <functional>
@@ -24,8 +25,9 @@
 #include <tuple>
 #include <utility>
 
-#include "metadata.hpp"
-#include "status_word.hpp"
+// local sources
+#include "bztree/component/metadata.hpp"
+#include "bztree/component/status_word.hpp"
 
 namespace dbgroup::index::bztree::component
 {

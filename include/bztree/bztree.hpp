@@ -17,6 +17,7 @@
 #ifndef BZTREE_BZTREE_HPP
 #define BZTREE_BZTREE_HPP
 
+// C++ standard libraries
 #include <array>
 #include <atomic>
 #include <functional>
@@ -25,9 +26,12 @@
 #include <optional>
 #include <utility>
 
-#include "component/node.hpp"
+// external sources
 #include "memory/epoch_based_gc.hpp"
-#include "utility.hpp"
+
+// local sources
+#include "bztree/component/node.hpp"
+#include "bztree/utility.hpp"
 
 namespace dbgroup::index::bztree
 {

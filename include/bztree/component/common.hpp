@@ -17,15 +17,24 @@
 #ifndef BZTREE_COMPONENT_COMMON_HPP
 #define BZTREE_COMPONENT_COMMON_HPP
 
+// C++ standard libraries
 #include <cstring>
 #include <functional>
 #include <memory>
 
-#include "bztree/utility.hpp"
-#include "mwcas/mwcas_descriptor.hpp"
-
+// external system libraries
 #ifdef BZTREE_HAS_SPINLOCK_HINT
 #include <xmmintrin.h>
+#endif
+
+// external sources
+#include "mwcas/mwcas_descriptor.hpp"
+
+// local sources
+#include "bztree/utility.hpp"
+
+// macro definitions
+#ifdef BZTREE_HAS_SPINLOCK_HINT
 #define BZTREE_SPINLOCK_HINT _mm_pause();  // NOLINT
 #else
 #define BZTREE_SPINLOCK_HINT /* do nothing */

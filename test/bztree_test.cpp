@@ -16,7 +16,7 @@
 
 #include "bztree/bztree.hpp"
 
-// local external libraries
+// external sources
 #include "external/index-fixtures/index_fixture.hpp"
 
 namespace dbgroup::atomic::mwcas

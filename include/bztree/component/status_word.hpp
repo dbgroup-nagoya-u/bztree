@@ -17,7 +17,8 @@
 #ifndef BZTREE_COMPONENT_STATUS_WORD_HPP
 #define BZTREE_COMPONENT_STATUS_WORD_HPP
 
-#include "common.hpp"
+// local sources
+#include "bztree/component/common.hpp"
 
 namespace dbgroup::index::bztree::component
 {

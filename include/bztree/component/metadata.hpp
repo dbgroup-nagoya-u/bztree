@@ -17,7 +17,8 @@
 #ifndef BZTREE_COMPONENT_METADATA_HPP
 #define BZTREE_COMPONENT_METADATA_HPP
 
-#include "common.hpp"
+// local sources
+#include "bztree/component/common.hpp"
 
 namespace dbgroup::index::bztree::component
 {
