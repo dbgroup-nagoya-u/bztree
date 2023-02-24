@@ -109,6 +109,17 @@ class Node
   }
 
   /**
+   * @return the data usage of this node.
+   */
+  [[nodiscard]] constexpr auto
+  GetNodeUsage() const  //
+      -> size_t
+  {
+    const auto stat = GetStatusWordProtected();
+    return kHeaderLen + (stat.GetRecordCount() * kMetaLen) + stat.GetBlockSize();
+  }
+
+  /**
    * @brief Read a status word without MwCAS read protection.
    *
    * This function assumes that there are no other threads modify this node

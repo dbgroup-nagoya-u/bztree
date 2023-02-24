@@ -591,6 +591,29 @@ class BzTree
     return ReturnCode::kSuccess;
   }
 
+  /*####################################################################################
+   * Public utilities
+   *##################################################################################*/
+
+  /**
+   * @brief Collect statistical data of this tree.
+   *
+   * @retval 1st: the number of nodes.
+   * @retval 2nd: the actual usage in bytes.
+   * @retval 3rd: the virtual usage in bytes.
+   */
+  auto
+  CollectStatisticalData()  //
+      -> std::vector<std::tuple<size_t, size_t, size_t>>
+  {
+    std::vector<std::tuple<size_t, size_t, size_t>> stat_data{};
+    auto *node = root_.load(std::memory_order_acquire);
+
+    CollectStatisticalData(node, 0, stat_data);
+
+    return stat_data;
+  }
+
  private:
   /*####################################################################################
    * Internal constants
@@ -751,6 +774,39 @@ class BzTree
     }
 
     delete node;
+  }
+
+  /**
+   * @brief Collect statistical data recursively.
+   *
+   * @param node a target node.
+   * @param level the current level in the tree.
+   * @param stat_data an output statistical data.
+   */
+  static void
+  CollectStatisticalData(  //
+      Node_t *node,
+      const size_t level,
+      std::vector<std::tuple<size_t, size_t, size_t>> &stat_data)
+  {
+    // add an element for a new level
+    if (stat_data.size() <= level) {
+      stat_data.emplace_back(0, 0, 0);
+    }
+
+    // add statistical data of this node
+    auto &[node_num, actual_usage, virtual_usage] = stat_data.at(level);
+    ++node_num;
+    actual_usage += node->GetNodeUsage();
+    virtual_usage += kPageSize;
+
+    // collect data recursively
+    if (!node->IsLeaf()) {
+      for (size_t i = 0; i < node->GetSortedCount(); ++i) {
+        auto *child = node->GetChild(i);
+        CollectStatisticalData(child, level + 1, stat_data);
+      }
+    }
   }
 
   /*####################################################################################
