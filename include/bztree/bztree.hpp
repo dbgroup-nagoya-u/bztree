@@ -254,8 +254,9 @@ class BzTree
   }
 
   BzTree(const BzTree &) = delete;
-  BzTree &operator=(const BzTree &) = delete;
   BzTree(BzTree &&) = delete;
+
+  BzTree &operator=(const BzTree &) = delete;
   BzTree &operator=(BzTree &&) = delete;
 
   /*####################################################################################
@@ -1153,7 +1154,7 @@ class BzTree
   std::atomic<Node_t *> root_{nullptr};
 
   /// garbage collector
-  NodeGC_t gc_{kDefaultGCTime, kDefaultGCThreadNum};
+  NodeGC_t gc_{};
 };
 
 }  // namespace dbgroup::index::bztree

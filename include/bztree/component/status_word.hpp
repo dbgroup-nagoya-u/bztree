@@ -58,8 +58,9 @@ class StatusWord
   }
 
   constexpr StatusWord(const StatusWord &) = default;
-  constexpr StatusWord &operator=(const StatusWord &) = default;
   constexpr StatusWord(StatusWord &&) = default;
+
+  constexpr StatusWord &operator=(const StatusWord &) = default;
   constexpr StatusWord &operator=(StatusWord &&) = default;
 
   /*####################################################################################

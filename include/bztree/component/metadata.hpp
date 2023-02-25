@@ -81,8 +81,9 @@ class Metadata
   }
 
   constexpr Metadata(const Metadata &) = default;
-  constexpr Metadata &operator=(const Metadata &) = default;
   constexpr Metadata(Metadata &&) = default;
+
+  constexpr Metadata &operator=(const Metadata &) = default;
   constexpr Metadata &operator=(Metadata &&) = default;
 
   /*####################################################################################
