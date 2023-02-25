@@ -249,6 +249,8 @@ class BzTree
     // create an initial root node
     auto *leaf = CreateNewNode<Payload>();
     root_.store(leaf, std::memory_order_release);
+
+    gc_.StartGC();
   }
 
   BzTree(const BzTree &) = delete;
