@@ -17,7 +17,8 @@
 #ifndef BZTREE_COMPONENT_METADATA_HPP
 #define BZTREE_COMPONENT_METADATA_HPP
 
-#include "common.hpp"
+// local sources
+#include "bztree/component/common.hpp"
 
 namespace dbgroup::index::bztree::component
 {
@@ -80,8 +81,9 @@ class Metadata
   }
 
   constexpr Metadata(const Metadata &) = default;
-  constexpr Metadata &operator=(const Metadata &) = default;
   constexpr Metadata(Metadata &&) = default;
+
+  constexpr Metadata &operator=(const Metadata &) = default;
   constexpr Metadata &operator=(Metadata &&) = default;
 
   /*####################################################################################

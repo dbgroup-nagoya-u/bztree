@@ -33,7 +33,7 @@ jobs:
     - name: Configure CMake
       shell: bash
       working-directory: ${{github.workspace}}/build
-      run: cmake ${GITHUB_WORKSPACE} -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DBZTREE_PAGE_SIZE=${{matrix.page-size}} -DBZTREE_BUILD_TESTS=ON -DBZTREE_TEST_THREAD_NUM=${THREAD_NUM}
+      run: cmake ${GITHUB_WORKSPACE} -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DBZTREE_PAGE_SIZE=${{matrix.page-size}} -DBZTREE_BUILD_TESTS=ON -DDBGROUP_TEST_THREAD_NUM=${THREAD_NUM}
 
     - name: Build
       shell: bash

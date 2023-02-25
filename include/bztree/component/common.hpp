@@ -17,14 +17,24 @@
 #ifndef BZTREE_COMPONENT_COMMON_HPP
 #define BZTREE_COMPONENT_COMMON_HPP
 
+// C++ standard libraries
 #include <cstring>
+#include <functional>
 #include <memory>
 
-#include "bztree/utility.hpp"
-#include "mwcas/mwcas_descriptor.hpp"
-
+// external system libraries
 #ifdef BZTREE_HAS_SPINLOCK_HINT
 #include <xmmintrin.h>
+#endif
+
+// external sources
+#include "mwcas/mwcas_descriptor.hpp"
+
+// local sources
+#include "bztree/utility.hpp"
+
+// macro definitions
+#ifdef BZTREE_HAS_SPINLOCK_HINT
 #define BZTREE_SPINLOCK_HINT _mm_pause();  // NOLINT
 #else
 #define BZTREE_SPINLOCK_HINT /* do nothing */
@@ -73,6 +83,39 @@ constexpr size_t kAlignMask = ~7UL;
 
 /// Header length in bytes.
 constexpr size_t kHeaderLen = 32;
+
+/*######################################################################################
+ * Internal utility classes
+ *####################################################################################*/
+
+/**
+ * @brief A dummy class for defining destruction.
+ *
+ */
+struct DestructByZeroFill {
+  DestructByZeroFill() = default;
+  DestructByZeroFill(const DestructByZeroFill &) = default;
+  DestructByZeroFill(DestructByZeroFill &&) = default;
+  DestructByZeroFill &operator=(const DestructByZeroFill &) = default;
+  DestructByZeroFill &operator=(DestructByZeroFill &&) = default;
+
+  ~DestructByZeroFill() { std::memset(reinterpret_cast<void *>(this), 0, kPageSize); }
+};
+
+/**
+ * @brief A struct for representing GC targets.
+ *
+ */
+struct PageTarget {
+  // fill zeros as destruction
+  using T = DestructByZeroFill;
+
+  // reuse pages
+  static constexpr bool kReusePages = true;
+
+  // use the standard free function to release garbage
+  static const inline std::function<void(void *)> deleter = [](void *ptr) { std::free(ptr); };
+};
 
 /*######################################################################################
  * Internal utility functions

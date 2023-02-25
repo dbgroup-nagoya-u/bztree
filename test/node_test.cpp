@@ -16,14 +16,13 @@
 
 #include "bztree/component/node.hpp"
 
+// C++ standard libraries
 #include <functional>
 #include <memory>
 
-// external libraries
-#include "gtest/gtest.h"
-
-// local external libraries
+// external sources
 #include "external/index-fixtures/common.hpp"
+#include "gtest/gtest.h"
 
 /*######################################################################################
  * Overriding for testing
@@ -97,7 +96,8 @@ class NodeFixture : public testing::Test  // NOLINT
   {
     if (kPageSize < kMaxRecSize * kMaxDeltaRecNum * 2 + kHeaderLen) GTEST_SKIP();
 
-    node_ = std::make_unique<Node_t>(kLeafFlag, 0);
+    auto *node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
+    node_ = std::unique_ptr<Node_t>{node};
 
     keys_ = ::dbgroup::index::test::PrepareTestData<Key>(kKeyNumForTest);
     payloads_ = ::dbgroup::index::test::PrepareTestData<Payload>(kKeyNumForTest);
@@ -163,7 +163,7 @@ class NodeFixture : public testing::Test  // NOLINT
   void
   Consolidate()
   {
-    auto *consolidated_node = new Node_t{kLeafFlag, 0};
+    auto *consolidated_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
     consolidated_node->template Consolidate<Payload>(node_.get());
     node_.reset(consolidated_node);
   }
@@ -275,8 +275,8 @@ class NodeFixture : public testing::Test  // NOLINT
 
     PrepareConsolidatedNode();
 
-    auto *left_node = new Node_t{kLeafFlag, 0};
-    auto *right_node = new Node_t{kLeafFlag, 0};
+    auto *left_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
+    auto *right_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(left_node, right_node);
 
     node_.reset(left_node);
@@ -295,11 +295,11 @@ class NodeFixture : public testing::Test  // NOLINT
   {
     PrepareConsolidatedNode();
 
-    auto *left_node = new Node_t{kLeafFlag, 0};
-    auto *right_node = new Node_t{kLeafFlag, 0};
+    auto *left_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
+    auto *right_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(left_node, right_node);
 
-    auto *merged_node = new Node_t{kLeafFlag, 0};
+    auto *merged_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
     merged_node->template Merge<Payload>(left_node, right_node);
 
     node_.reset(merged_node);
@@ -316,10 +316,10 @@ class NodeFixture : public testing::Test  // NOLINT
   {
     PrepareConsolidatedNode();
 
-    auto *left_node = new Node_t{kLeafFlag, 0};
-    auto *right_node = new Node_t{kLeafFlag, 0};
+    auto *left_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
+    auto *right_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(left_node, right_node);
-    auto *root = new Node_t{!kLeafFlag, 0};
+    auto *root = new (std::calloc(1, kPageSize)) Node_t{!kLeafFlag, 0};
     root->InitAsRoot(left_node, right_node);
 
     EXPECT_EQ(left_node, root->GetChild(0));
@@ -335,15 +335,15 @@ class NodeFixture : public testing::Test  // NOLINT
   {
     PrepareConsolidatedNode();
 
-    auto *l_node = new Node_t{kLeafFlag, 0};
-    auto *r_node = new Node_t{kLeafFlag, 0};
+    auto *l_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
+    auto *r_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(l_node, r_node);
-    auto *old_parent = new Node_t{!kLeafFlag, 0};
+    auto *old_parent = new (std::calloc(1, kPageSize)) Node_t{!kLeafFlag, 0};
     old_parent->InitAsRoot(l_node, r_node);
-    auto *r_l_node = new Node_t{kLeafFlag, 0};
-    auto *r_r_node = new Node_t{kLeafFlag, 0};
+    auto *r_l_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
+    auto *r_r_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
     r_node->template Split<Payload>(r_l_node, r_r_node);
-    auto *new_parent = new Node_t{!kLeafFlag, 0};
+    auto *new_parent = new (std::calloc(1, kPageSize)) Node_t{!kLeafFlag, 0};
     new_parent->InitAsSplitParent(old_parent, r_node, r_r_node, 1);
 
     EXPECT_EQ(l_node, new_parent->GetChild(0));
@@ -363,14 +363,14 @@ class NodeFixture : public testing::Test  // NOLINT
   {
     PrepareConsolidatedNode();
 
-    auto *l_node = new Node_t{kLeafFlag, 0};
-    auto *r_node = new Node_t{kLeafFlag, 0};
+    auto *l_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
+    auto *r_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(l_node, r_node);
-    auto *old_parent = new Node_t{!kLeafFlag, 0};
+    auto *old_parent = new (std::calloc(1, kPageSize)) Node_t{!kLeafFlag, 0};
     old_parent->InitAsRoot(l_node, r_node);
-    auto *merged_node = new Node_t{kLeafFlag, 0};
+    auto *merged_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
     merged_node->template Merge<Payload>(l_node, r_node);
-    auto *new_parent = new Node_t{!kLeafFlag, 0};
+    auto *new_parent = new (std::calloc(1, kPageSize)) Node_t{!kLeafFlag, 0};
     new_parent->InitAsMergeParent(old_parent, merged_node, 0);
 
     EXPECT_EQ(merged_node, new_parent->GetChild(0));

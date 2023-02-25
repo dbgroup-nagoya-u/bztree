@@ -16,6 +16,7 @@
 
 #include "bztree/component/status_word.hpp"
 
+// external sources
 #include "gtest/gtest.h"
 
 namespace dbgroup::index::bztree::component::test

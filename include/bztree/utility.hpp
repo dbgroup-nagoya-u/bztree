@@ -17,12 +17,14 @@
 #ifndef BZTREE_UTILITY_HPP
 #define BZTREE_UTILITY_HPP
 
+// C++ standard libraries
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <type_traits>
 
+// external sources
 #include "mwcas/utility.hpp"
 
 namespace dbgroup::index::bztree

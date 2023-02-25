@@ -17,7 +17,8 @@
 #ifndef BZTREE_COMPONENT_STATUS_WORD_HPP
 #define BZTREE_COMPONENT_STATUS_WORD_HPP
 
-#include "common.hpp"
+// local sources
+#include "bztree/component/common.hpp"
 
 namespace dbgroup::index::bztree::component
 {
@@ -57,8 +58,9 @@ class StatusWord
   }
 
   constexpr StatusWord(const StatusWord &) = default;
-  constexpr StatusWord &operator=(const StatusWord &) = default;
   constexpr StatusWord(StatusWord &&) = default;
+
+  constexpr StatusWord &operator=(const StatusWord &) = default;
   constexpr StatusWord &operator=(StatusWord &&) = default;
 
   /*####################################################################################

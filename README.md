@@ -30,10 +30,10 @@ sudo apt update && sudo apt install -y build-essential cmake
 ### Build Options for Unit Testing
 
 - `BZTREE_BUILD_TESTS`: Building unit tests for this library if `ON` (default `OFF`).
-- `BZTREE_TEST_THREAD_NUM`: The maximum number of threads for testing (default `8`).
-- `BZTREE_TEST_RANDOM_SEED`: A fixed seed value to reproduce unit tests (default `10`).
-- `BZTREE_TEST_EXEC_NUM`: The number of executions per a thread (default `1E5`).
-- `BZTREE_TEST_OVERRIDE_MIMALLOC`: Override entire memory allocation with mimalloc (default `OFF`).
+- `DBGROUP_TEST_THREAD_NUM`: The maximum number of threads for testing (default `8`).
+- `DBGROUP_TEST_RANDOM_SEED`: A fixed seed value to reproduce unit tests (default `10`).
+- `DBGROUP_TEST_EXEC_NUM`: The number of executions per a thread (default `1E5`).
+- `DBGROUP_TEST_OVERRIDE_MIMALLOC`: Override entire memory allocation with mimalloc (default `OFF`).
     - NOTE: we use `find_package(mimalloc 1.7 REQUIRED)` to link mimalloc.
 
 ### Build and Run Unit Tests
@@ -68,7 +68,7 @@ ctest -C Release
     )
     target_link_libraries(
       <target_bin_name> PRIVATE
-      bztree::bztree
+      dbgroup::bztree
     )
     ```
 

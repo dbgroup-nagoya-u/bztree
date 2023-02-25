@@ -16,7 +16,7 @@
 
 #include "bztree/bztree.hpp"
 
-// local external libraries
+// external sources
 #include "external/index-fixtures/index_fixture.hpp"
 
 namespace dbgroup::atomic::mwcas
@@ -63,5 +63,16 @@ TYPED_TEST_SUITE(IndexFixture, TestTargets);
  *####################################################################################*/
 
 #include "external/index-fixtures/index_fixture_test_definitions.hpp"
+
+TYPED_TEST(IndexFixture, CollectStatisticalDataReturnsReasonableValues)
+{
+  TestFixture::FillIndex();
+  const auto &stat_data = TestFixture::index_->CollectStatisticalData();
+  for (size_t level = 0; level < stat_data.size(); ++level) {
+    const auto &[node_num, actual_usage, virtual_usage] = stat_data.at(level);
+    EXPECT_EQ(node_num * bztree::kPageSize, virtual_usage);
+    EXPECT_LE(actual_usage, virtual_usage);
+  }
+}
 
 }  // namespace dbgroup::index::test

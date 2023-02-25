@@ -17,6 +17,7 @@
 #ifndef BZTREE_COMPONENT_NODE_HPP
 #define BZTREE_COMPONENT_NODE_HPP
 
+// C++ standard libraries
 #include <atomic>
 #include <cstdlib>
 #include <functional>
@@ -24,8 +25,9 @@
 #include <tuple>
 #include <utility>
 
-#include "metadata.hpp"
-#include "status_word.hpp"
+// local sources
+#include "bztree/component/metadata.hpp"
+#include "bztree/component/status_word.hpp"
 
 namespace dbgroup::index::bztree::component
 {
@@ -67,8 +69,9 @@ class Node
   }
 
   Node(const Node &) = delete;
-  Node &operator=(const Node &) = delete;
   Node(Node &&) = delete;
+
+  Node &operator=(const Node &) = delete;
   Node &operator=(Node &&) = delete;
 
   /*####################################################################################
@@ -79,38 +82,7 @@ class Node
    * @brief Destroy the node object.
    *
    */
-  ~Node()
-  {
-    // fill a metadata region with zeros
-    for (size_t i = 0; i < GetMaxRecordNum(); ++i) {
-      auto *dummy_p = reinterpret_cast<size_t *>(&meta_array_[i]);
-      *dummy_p = 0UL;
-    }
-  }
-
-  /*####################################################################################
-   * new/delete operators
-   *##################################################################################*/
-
-  static auto
-  operator new([[maybe_unused]] std::size_t n)  //
-      -> void *
-  {
-    return calloc(1UL, kPageSize);
-  }
-
-  static auto
-  operator new([[maybe_unused]] std::size_t n, void *where)  //
-      -> void *
-  {
-    return where;
-  }
-
-  static void
-  operator delete(void *p) noexcept
-  {
-    free(p);
-  }
+  ~Node() = default;
 
   /*####################################################################################
    * Public getters/setters
@@ -135,6 +107,17 @@ class Node
       -> size_t
   {
     return sorted_count_;
+  }
+
+  /**
+   * @return the data usage of this node.
+   */
+  [[nodiscard]] constexpr auto
+  GetNodeUsage() const  //
+      -> size_t
+  {
+    const auto stat = GetStatusWordProtected();
+    return kHeaderLen + (stat.GetRecordCount() * kMetaLen) + stat.GetBlockSize();
   }
 
   /**
