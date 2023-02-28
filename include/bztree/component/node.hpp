@@ -1102,9 +1102,11 @@ class Node
     using Payload = std::tuple_element_t<1, Entry>;
 
     constexpr auto kMaxKeyLen = (IsVarLenData<Key>()) ? kMaxVarDataSize : sizeof(Key);
+    const auto is_leaf = static_cast<size_t>(!is_inner_);
+    const size_t node_capacity = kPageSize * (is_leaf ? 1.0 : 0.9);
 
     // extract and insert entries into this node
-    size_t node_size = kHeaderLen + kWordSize + kMaxKeyLen + kMinFreeSpaceSize;
+    size_t node_size = kHeaderLen + kWordSize + kMaxKeyLen + is_leaf * kMinFreeSpaceSize;
     auto offset = kPageSize;
     for (; iter < iter_end; ++iter) {
       const auto &[key, payload, key_len] = ParseEntry(*iter);
@@ -1113,7 +1115,7 @@ class Node
 
       // check whether the node has sufficent space
       node_size += padded_len + kMetaLen;
-      if (node_size > kPageSize) break;
+      if (node_size > node_capacity) break;
 
       // insert an entry into this node
       auto tmp_offset = SetPayload(offset, payload);
