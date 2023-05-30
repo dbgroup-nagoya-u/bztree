@@ -27,7 +27,7 @@ set(BZTREE_MAX_DELETED_SPACE_SIZE "(kPageSize / 8)" CACHE STRING "Invoking conso
 set(BZTREE_MIN_FREE_SPACE_SIZE "(kPageSize / 8)" CACHE STRING "Invoking a split-operation if the size of free space falls below this threshold.")
 set(BZTREE_MIN_NODE_SIZE  "(kPageSize / 16)" CACHE STRING "Invoking a merge-operation if the size of a consolidated node falls below this threshold.")
 set(BZTREE_MAX_MERGED_SIZE "(kPageSize / 2)" CACHE STRING "Canceling a merge-operation if the size of a merged node exceeds this threshold.")
-set(BZTREE_MAX_VARIABLE_DATA_SIZE "128" CACHE STRING "The maximun size of variable-length data.")
+set(BZTREE_MAX_VARIABLE_DATA_SIZE "128" CACHE STRING "The expected maximum size of a variable-length data.")
 
 #--------------------------------------------------------------------------------------#
 # Configure external libraries
