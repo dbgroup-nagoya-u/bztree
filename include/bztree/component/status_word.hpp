@@ -158,6 +158,8 @@ class StatusWord
   }
 
   /**
+   * @tparam Key a target key class.
+   * @tparam Payload a target payload class.
    * @retval true if this node does not have sufficient free space.
    * @retval false otherwise.
    */
@@ -176,6 +178,7 @@ class StatusWord
   }
 
   /**
+   * @tparam Key a target key class.
    * @retval true if this node does not have sufficient free space.
    * @retval false otherwise.
    */

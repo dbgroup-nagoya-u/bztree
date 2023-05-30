@@ -239,7 +239,8 @@ class BzTree
   /**
    * @brief Construct a new BzTree object.
    *
-   * @param gc_interval_microsec GC internal [us]
+   * @param gc_interval_microsec GC internal [us] (default: 10ms).
+   * @param gc_thread_num the number of GC threads (default: 1).
    */
   explicit BzTree(  //
       const size_t gc_interval_microsec = kDefaultGCTime,
@@ -281,7 +282,7 @@ class BzTree
    * @brief Read the payload corresponding to a given key if it exists.
    *
    * @param key a target key.
-   * @param key_len the length of a target key.
+   * @param key_len the length of the target key.
    * @retval the payload of a given key wrapped with std::optional if it is in this tree.
    * @retval std::nullopt otherwise.
    */
@@ -348,13 +349,12 @@ class BzTree
   /**
    * @brief Write (i.e., put) a given key/payload pair.
    *
-   * If a given key does not exist in this tree, this function performs an insert
-   * operation. If a given key has been already inserted, this function perfroms an
-   * update operation. Thus, this function always returns kSuccess as a return code.
+   * This function always overwrites a payload and can be optimized for that purpose;
+   * the procedure may omit the key uniqueness check.
    *
-   * @param key a target key to be written.
-   * @param payload a target payload to be written.
-   * @param key_len the length of a target key.
+   * @param key a target key.
+   * @param payload a target payload.
+   * @param key_len the length of the target key.
    * @return kSuccess.
    */
   auto
@@ -384,15 +384,14 @@ class BzTree
   /**
    * @brief Insert a given key/payload pair.
    *
-   * This function performs a uniqueness check in its processing. If a given key does
-   * not exist in this tree, this function inserts a target payload to this tree. If
-   * there is a given key in this tree, this function does nothing and returns kKeyExist
-   * as a return code.
+   * This function performs a uniqueness check on its processing. If the given key does
+   * not exist in this tree, this function inserts a target payload into this tree. If
+   * the given key exists in this tree, this function does nothing and returns kKeyExist.
    *
-   * @param key a target key to be inserted.
-   * @param payload a target payload to be inserted.
-   * @param key_len the length of a target key.
-   * @retval.kSuccess if inserted.
+   * @param key a target key.
+   * @param payload a target payload.
+   * @param key_len the length of the target key.
+   * @retval kSuccess if inserted.
    * @retval kKeyExist otherwise.
    */
   auto
@@ -424,14 +423,14 @@ class BzTree
   /**
    * @brief Update the record corresponding to a given key with a given payload.
    *
-   * This function performs a uniqueness check in its processing. If there is a given
-   * key in this tree, this function updates the corresponding record. If a given key
-   * does not exist in this tree, this function does nothing and returns kKeyNotExist as
-   * a return code.
+   * This function performs a uniqueness check on its processing. If the given key
+   * exists in this tree, this function updates the corresponding payload. If the given
+   * key does not exist in this tree, this function does nothing and returns
+   * kKeyNotExist.
    *
-   * @param key a target key to be updated.
-   * @param payload a payload for updating.
-   * @param key_len the length of a target key.
+   * @param key a target key.
+   * @param payload a target payload.
+   * @param key_len the length of the target key.
    * @retval kSuccess if updated.
    * @retval kKeyNotExist otherwise.
    */
@@ -464,12 +463,12 @@ class BzTree
   /**
    * @brief Delete the record corresponding to a given key from this tree.
    *
-   * This function performs a uniqueness check in its processing. If there is a given
-   * key in this tree, this function deletes it. If a given key does not exist in this
-   * tree, this function does nothing and returns kKeyNotExist as a return code.
+   * This function performs a uniqueness check on its processing. If the given key
+   * exists in this tree, this function deletes it. If the given key does not exist in
+   * this tree, this function does nothing and returns kKeyNotExist.
    *
-   * @param key a target key to be deleted.
-   * @param key_len the length of a target key.
+   * @param key a target key.
+   * @param key_len the length of the target key.
    * @retval kSuccess if deleted.
    * @retval kKeyNotExist otherwise.
    */
@@ -505,13 +504,14 @@ class BzTree
   /**
    * @brief Bulkload specified kay/payload pairs.
    *
-   * This function bulkloads given entries into this index. The entries are assumed to
-   * be given as a vector of pairs of Key and Payload (or key/payload/key-length for
-   * variable-length keys). Note that keys in records are assumed to be unique and
+   * This function loads the given entries into this index, assuming that the entries
+   * are given as a vector of key/payload pairs (or the tuples key/payload/key-length
+   * for variable-length keys). Note that keys in records are assumed to be unique and
    * sorted.
    *
-   * @param entries vector of entries to be bulkloaded.
-   * @param thread_num the number of threads to perform bulkloading.
+   * @tparam Entry a container of a key/payload pair.
+   * @param entries the vector of entries to be bulkloaded.
+   * @param thread_num the number of threads used for bulk loading.
    * @return kSuccess.
    */
   template <class Entry>
@@ -603,7 +603,7 @@ class BzTree
    *
    * @retval 1st: the number of nodes.
    * @retval 2nd: the actual usage in bytes.
-   * @retval 3rd: the virtual usage in bytes.
+   * @retval 3rd: the virtual usage (i.e., reserved memory) in bytes.
    */
   auto
   CollectStatisticalData()  //
@@ -697,7 +697,6 @@ class BzTree
    * @brief Search a leaf node with a specified key.
    *
    * @param key a target key.
-   * @param range_is_closed a flag to indicate whether a key is included.
    * @return a leaf node that may contain a target key.
    */
   [[nodiscard]] auto
@@ -852,6 +851,7 @@ class BzTree
    *
    * Note that this function may call a split function for internal nodes if needed.
    *
+   * @tparam T a target payload class.
    * @param node a target node.
    * @param key a target key.
    */
@@ -920,6 +920,7 @@ class BzTree
    *
    * Note that this function may call itself recursively if needed.
    *
+   * @tparam T a target payload class.
    * @param l_node a target node.
    * @param key a target key.
    * @retval true if merging succeeds
@@ -956,7 +957,7 @@ class BzTree
       const auto p_stat = old_parent->GetStatusWord();
       if (p_stat.IsFrozen()) continue;
 
-      // check a right sibling node is live and has sufficent capacity
+      // check a right sibling node is live and has sufficient capacity
       r_node = old_parent->GetChild(target_pos + 1);
       const auto r_stat = r_node->GetStatusWord();
       if (!r_stat.CanMergeWith(l_stat)) return false;  // there is no space for merging
@@ -1053,6 +1054,7 @@ class BzTree
    * Note that this function does not create a root node. The main process must create a
    * root node by using the nodes constructed by this function.
    *
+   * @tparam Entry a container of a key/payload pair.
    * @param iter the begin position of target records.
    * @param n the number of entries to be bulkloaded.
    * @retval 1st: the height of a constructed tree.
