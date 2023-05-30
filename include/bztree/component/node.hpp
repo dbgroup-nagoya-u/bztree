@@ -35,7 +35,6 @@ namespace dbgroup::index::bztree::component
  * @brief A class to represent nodes in BzTree.
  *
  * @tparam Key a target key class.
- * @tparam Payload a target payload class.
  * @tparam Compare a comparetor class for keys.
  */
 template <class Key, class Compare>
@@ -320,6 +319,7 @@ class Node
    * specified key
    *
    * @param key a target key.
+   * @param [out] meta the metadata of a found record
    * @return a pair of key existence and a key position.
    */
   [[nodiscard]] auto
@@ -1053,6 +1053,8 @@ class Node
    * @param old_node an old parent node.
    * @param merged_child a merged child node.
    * @param position the position of a merged child node.
+   * @retval true if this node needs recursive merging
+   * @retval false otherwise.
    */
   auto
   InitAsMergeParent(  //
@@ -1113,7 +1115,7 @@ class Node
       const auto rec_len = key_len + sizeof(Payload);
       const auto padded_len = Pad<Payload>(rec_len);
 
-      // check whether the node has sufficent space
+      // check whether the node has sufficient space
       node_size += padded_len + kMetaLen;
       if (node_size > node_capacity) break;
 
@@ -1242,6 +1244,7 @@ class Node
    * This function uses a MwCAS read operation internally, and so it is guaranteed that
    * read metadata is valid.
    *
+   * @param position the position of a target metadata.
    * @return metadata.
    */
   [[nodiscard]] auto
@@ -1310,10 +1313,10 @@ class Node
   /**
    * @brief Set a target key directly.
    *
-   * @tparam Key a class of targets.
    * @param offset an offset to set a target key.
    * @param key a target key to be set.
    * @param key_len the length of a target key.
+   * @return an offset to the set key.
    */
   auto
   SetKey(  //
@@ -1338,6 +1341,7 @@ class Node
    * @tparam Payload a class of targets.
    * @param offset an offset to set a target payload.
    * @param payload a target payload to be set.
+   * @return an offset to the set payload.
    */
   template <class Payload>
   auto
@@ -1452,6 +1456,7 @@ class Node
    *
    * @param key a target key.
    * @param begin_pos the begin position for searching.
+   * @param [out] meta the metadata of a found record
    * @return a pair of key existence and a key position.
    */
   [[nodiscard]] auto
@@ -1484,7 +1489,8 @@ class Node
    *
    * @tparam Payload a class of payload.
    * @param key a target key.
-   * @param rec_count the total number of records in a node.
+   * @param begin_pos the total number of records in a node.
+   * @param [out] meta the metadata of a found record
    * @return a pair of key existence and a key position.
    */
   template <class Payload>
@@ -1574,6 +1580,7 @@ class Node
   /**
    * @brief Copy a highest key from a given node.
    *
+   * @tparam Payload a target payload class.
    * @param node an original node that has a target key.
    * @param meta metadata of a target record.
    * @param offset the current offset of this node.
@@ -1722,7 +1729,8 @@ class Node
    * @brief Consolidate a target leaf node.
    *
    * @tparam Payload a class of payload.
-   * @param old_node an original node.
+   * @param offset the current offset of this node.
+   * @param node a target node.
    */
   template <class Payload>
   auto
@@ -1777,7 +1785,6 @@ class Node
   /**
    * @brief Parse an entry of bulkload according to key's type.
    *
-   * @tparam Payload a payload type.
    * @tparam Entry std::pair or std::tuple for containing entries.
    * @param entry a bulkload entry.
    * @retval 1st: a target key.
