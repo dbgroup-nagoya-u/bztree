@@ -1,6 +1,6 @@
 # BzTree
 
-![example workflow name](https://github.com/dbgroup-nagoya-u/bztree/workflows/Ubuntu-20.04/badge.svg?branch=main)
+[![Ubuntu-20.04](https://github.com/dbgroup-nagoya-u/bztree/actions/workflows/unit_tests.yaml/badge.svg)](https://github.com/dbgroup-nagoya-u/bztree/actions/workflows/unit_tests.yaml)
 
 This repository is an open source implementation of a BzTree[^1] for research use. The purpose of this implementation is to reproduce a BzTree and measure its performance. However, the concurrency controls proposed in the paper are insufficient, so we have modified them to guarantee consistent read/write operations. Moreover, some tuning parameters have been changed for convenience.
 
