@@ -18,6 +18,7 @@
 #define BZTREE_COMPONENT_NODE_HPP
 
 // C++ standard libraries
+#include <array>
 #include <atomic>
 #include <cstdlib>
 #include <functional>
@@ -44,6 +45,7 @@ class Node
    * Type aliases
    *##################################################################################*/
 
+  using KeyWOPtr = std::remove_pointer_t<Key>;
   using ScanKey = std::optional<std::tuple<const Key &, size_t, bool>>;
   template <class Entry>
   using BulkIter = typename std::vector<Entry>::const_iterator;
@@ -184,16 +186,18 @@ class Node
   GetHighKey() const  //
       -> Key
   {
-    Key high_key{};
+    Key key;
     if constexpr (IsVarLenData<Key>()) {
-      const auto key_len = high_meta_.GetKeyLength();
-      high_key = reinterpret_cast<Key>(::operator new(key_len));
-      memcpy(high_key, GetKeyAddr(high_meta_), key_len);
-    } else {
-      memcpy(&high_key, GetKeyAddr(high_meta_), sizeof(Key));
-    }
+      thread_local std::unique_ptr<KeyWOPtr, std::function<void(Key)>>  //
+          tls_key{::dbgroup::memory::Allocate<KeyWOPtr>(kMaxVarDataSize),
+                  ::dbgroup::memory::Release<KeyWOPtr>};
 
-    return high_key;
+      key = reinterpret_cast<Key>(tls_key.get());
+      memcpy(key, GetKeyAddr(high_meta_), high_meta_.GetKeyLength());
+    } else {
+      memcpy(&key, GetKeyAddr(high_meta_), sizeof(Key));
+    }
+    return key;
   }
 
   /**
@@ -204,13 +208,18 @@ class Node
   GetKey(const Metadata meta) const  //
       -> Key
   {
+    Key key;
     if constexpr (IsVarLenData<Key>()) {
-      return reinterpret_cast<Key>(GetKeyAddr(meta));
+      thread_local std::unique_ptr<KeyWOPtr, std::function<void(Key)>>  //
+          tls_key{::dbgroup::memory::Allocate<KeyWOPtr>(kMaxVarDataSize),
+                  ::dbgroup::memory::Release<KeyWOPtr>};
+
+      key = reinterpret_cast<Key>(tls_key.get());
+      memcpy(key, GetKeyAddr(meta), meta.GetKeyLength());
     } else {
-      Key key{};
       memcpy(&key, GetKeyAddr(meta), sizeof(Key));
-      return key;
     }
+    return key;
   }
 
   /**
@@ -1424,37 +1433,31 @@ class Node
   }
 
   /*####################################################################################
-   * Internal functions for destruction
+   * Internal utility functions
    *##################################################################################*/
 
   /**
-   * @brief Compute the maximum number of records in a node.
+   * @brief Create a temporary array for sorting delta records.
    *
-   * @return the expected maximum number of records.
    */
-  static constexpr auto
-  GetMaxRecordNum()  //
-      -> size_t
+  static auto
+  CreateTempRecords()
   {
-    // the length of metadata
-    auto record_min_length = kMetaLen;
+    thread_local std::array<MetaKeyPair, kMaxDeltaRecNum> arr{};
 
-    // the length of keys
     if constexpr (IsVarLenData<Key>()) {
-      record_min_length += 1;
-    } else {
-      record_min_length += sizeof(Key);
+      thread_local std::unique_ptr<KeyWOPtr, std::function<void(Key)>>  //
+          page{::dbgroup::memory::Allocate<KeyWOPtr>(kMaxVarDataSize * kMaxDeltaRecNum),
+               ::dbgroup::memory::Release<KeyWOPtr>};
+
+      const auto *top_addr = page.get();
+      for (size_t i = 0; i < kMaxDeltaRecNum; ++i) {
+        arr[i].key = reinterpret_cast<Key>(ShiftAddr(top_addr, i * kMaxVarDataSize));
+      }
     }
 
-    // the minimum length of payloads
-    record_min_length += 1;
-
-    return (kPageSize - kHeaderLen) / record_min_length;
+    return arr;
   }
-
-  /*####################################################################################
-   * Internal utility functions
-   *##################################################################################*/
 
   /**
    * @brief Get the position of a specified key by using lenear search.
@@ -1704,28 +1707,36 @@ class Node
 
     // sort unsorted records by insertion sort
     size_t count = 0;
-    for (size_t pos = sorted_count_; pos < rec_count; ++pos) {
+    for (int64_t pos = rec_count - 1; pos >= sorted_count_; --pos) {
       // check whether a record has been inserted
       const auto meta = GetMetadataWithFence(pos);
       if (meta.IsInProgress()) continue;
 
+      // copy a current key
+      MetaKeyPair cur{meta, Key{}};
+      if constexpr (IsVarLenData<Key>()) {
+        cur.key = arr[count].key;
+        memcpy(cur.key, GetKeyAddr(meta), meta.GetKeyLength());
+      } else {
+        cur.key = GetKey(meta);
+      }
+
       // search an inserting position
-      const auto &cur_key = GetKey(meta);
       size_t i = 0;
-      for (; i < count; ++i) {
-        if (!Compare{}(arr[i].key, cur_key)) break;
+      for (; i < count && Compare{}(arr[i].key, cur.key); ++i) {
+        // skip lower keys
       }
 
       // shift upper records if needed
       if (i >= count) {
         ++count;
-      } else if (Compare{}(cur_key, arr[i].key)) {
+      } else if (Compare{}(cur.key, arr[i].key)) {
         memmove(&(arr[i + 1]), &(arr[i]), sizeof(MetaKeyPair) * (count - i));
         ++count;
+      } else {  // there is the latest record
+        continue;
       }
-
-      // insert a new record
-      arr[i] = MetaKeyPair{meta, cur_key};
+      arr[i] = std::move(cur);
     }
 
     return count;
@@ -1746,7 +1757,7 @@ class Node
       -> size_t
   {
     // sort records in an unsorted region
-    thread_local std::array<MetaKeyPair, kMaxDeltaRecNum> records{};
+    auto &&records = CreateTempRecords();
     const auto new_rec_num = SortNewRecords(records);
 
     // perform merge-sort to consolidate a node

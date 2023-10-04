@@ -181,11 +181,6 @@ class BzTree
         // update this iterator with the next scan results
         const auto &next_key = node_->GetHighKey();
         *this = bztree_->Scan(std::make_tuple(next_key, 0, kClosed), end_key_);
-
-        if constexpr (IsVarLenData<Key>()) {
-          // release a dynamically allocated key
-          delete next_key;
-        }
       }
     }
 
