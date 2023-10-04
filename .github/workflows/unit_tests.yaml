@@ -19,6 +19,10 @@ jobs:
         page-size: [1024, 2048, 4096, 8192]
     steps:
 
+    - name: Log CPU information
+      shell: bash
+      run: head -n 26 /proc/cpuinfo
+
     - name: Clone Repository
       uses: actions/checkout@v4
       with:
