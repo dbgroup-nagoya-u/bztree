@@ -22,6 +22,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <iostream>
+#include <sstream>
+#include <string>
 #include <type_traits>
 
 // external sources
@@ -124,6 +127,20 @@ constexpr size_t kMaxMergedSize = BZTREE_MAX_MERGED_SIZE;
 
 /// the maximun size of variable-length data.
 constexpr size_t kMaxVarDataSize = BZTREE_MAX_VARIABLE_DATA_SIZE;
+
+inline void
+Log(const std::string &message)
+{
+  std::cerr << "[dbgroup] " << message << std::endl;
+}
+
+inline auto
+ToAddressStr(const void *ptr)
+{
+  std::stringstream ss{};
+  ss << ptr;
+  return ss.str();
+}
 
 }  // namespace dbgroup::index::bztree
 

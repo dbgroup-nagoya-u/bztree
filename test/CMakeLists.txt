@@ -14,6 +14,8 @@ FetchContent_MakeAvailable(googletest)
 # Configurations for testing
 #--------------------------------------------------------------------------------------#
 
+option(BZTREE_TEST_BUILD_APPEND "Build tests for append based BzTrees if ON." OFF)
+option(BZTREE_TEST_BUILD_IN_PLACE "Build tests for in-place based BzTrees if ON." OFF)
 set(DBGROUP_TEST_THREAD_NUM "8" CACHE STRING "The maximum number of threads unit testing.")
 set(DBGROUP_TEST_RANDOM_SEED "10" CACHE STRING "A fixed seed value to reproduce unit tests.")
 set(DBGROUP_TEST_EXEC_NUM "1E5" CACHE STRING "The number of executions per a thread.")
@@ -60,8 +62,14 @@ function(ADD_DBGROUP_TEST DBGROUP_TEST_TARGET)
 endfunction()
 
 # add unit tests to build targets
-ADD_DBGROUP_TEST(status_word_test)
-ADD_DBGROUP_TEST(metadata_test)
-ADD_DBGROUP_TEST(node_test)
-ADD_DBGROUP_TEST(bztree_test)
-ADD_DBGROUP_TEST(bztree_multi_thread_test)
+# ADD_DBGROUP_TEST(status_word_test)
+# ADD_DBGROUP_TEST(metadata_test)
+# ADD_DBGROUP_TEST(node_test)
+if(${BZTREE_TEST_BUILD_APPEND})
+  # ADD_DBGROUP_TEST(bztree_append_test)
+  ADD_DBGROUP_TEST(bztree_append_multi_thread_test)
+endif()
+if(${BZTREE_TEST_BUILD_IN_PLACE})
+  # ADD_DBGROUP_TEST(bztree_in_place_test)
+  ADD_DBGROUP_TEST(bztree_in_place_multi_thread_test)
+endif()

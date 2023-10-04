@@ -12,16 +12,15 @@ env:
 
 jobs:
   unit_test:
-    runs-on: ubuntu-20.04
-    timeout-minutes: 20
     strategy:
       matrix:
+        os: [ubuntu-20.04]
+        # os: [ubuntu-20.04, ubuntu-22.04, macos-latest]
         page-size: [1024, 2048, 4096, 8192]
+        mode: ["APPEND", "IN_PLACE"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
-
-    - name: Log CPU information
-      shell: bash
-      run: head -n 26 /proc/cpuinfo
 
     - name: Clone Repository
       uses: actions/checkout@v4
@@ -35,7 +34,7 @@ jobs:
     - name: Configure CMake
       shell: bash
       working-directory: ${{github.workspace}}/build
-      run: cmake ${GITHUB_WORKSPACE} -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DBZTREE_PAGE_SIZE=${{matrix.page-size}} -DBZTREE_BUILD_TESTS=ON -DDBGROUP_TEST_THREAD_NUM=${THREAD_NUM}
+      run: cmake ${GITHUB_WORKSPACE} -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DBZTREE_PAGE_SIZE=${{matrix.page-size}} -DBZTREE_BUILD_TESTS=ON -DBZTREE_TEST_BUILD_${{matrix.mode}}=ON -DDBGROUP_TEST_THREAD_NUM=${THREAD_NUM}
 
     - name: Build
       shell: bash
