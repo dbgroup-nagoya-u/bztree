@@ -28,6 +28,7 @@
 #endif
 
 // external sources
+#include "memory/utility.hpp"
 #include "mwcas/mwcas_descriptor.hpp"
 
 // local sources
@@ -75,46 +76,48 @@ enum KeyExistence {
   kUncertain
 };
 
-/// Assumes that one word is represented by 8 bytes
-constexpr size_t kWordSize = sizeof(uintptr_t);
-
 /// A bit mask for record alignments.
 constexpr size_t kAlignMask = ~7UL;
 
 /// Header length in bytes.
 constexpr size_t kHeaderLen = 32;
 
+/// The alignment size for internal pages.
+constexpr size_t kPageAlign = kPageSize < kVMPageSize ? kPageSize : kVMPageSize;
+
 /*######################################################################################
  * Internal utility classes
  *####################################################################################*/
 
 /**
- * @brief A dummy class for defining destruction.
+ * @brief A dummy struct for filling zeros in garbage collection.
  *
  */
-struct DestructByZeroFill {
-  DestructByZeroFill() = default;
-  DestructByZeroFill(const DestructByZeroFill &) = default;
-  DestructByZeroFill(DestructByZeroFill &&) = default;
-  DestructByZeroFill &operator=(const DestructByZeroFill &) = default;
-  DestructByZeroFill &operator=(DestructByZeroFill &&) = default;
+struct ZeroFilling {
+  // Do not use as a general class.
+  ZeroFilling() = delete;
+  ZeroFilling(const ZeroFilling &) = delete;
+  ZeroFilling(ZeroFilling &&) = delete;
+  auto operator=(const ZeroFilling &) -> ZeroFilling & = delete;
+  auto operator=(ZeroFilling &&) -> ZeroFilling & = delete;
 
-  ~DestructByZeroFill() { std::memset(reinterpret_cast<void *>(this), 0, kPageSize); }
+  /// @brief Fill this page with zeros.
+  ~ZeroFilling() { memset(reinterpret_cast<void *>(this), 0, kPageSize); }
 };
 
 /**
  * @brief A struct for representing GC targets.
  *
  */
-struct PageTarget {
+struct alignas(kPageAlign) Page : public ::dbgroup::memory::DefaultTarget {
   // fill zeros as destruction
-  using T = DestructByZeroFill;
+  using T = ZeroFilling;
 
   // reuse pages
   static constexpr bool kReusePages = true;
 
-  // use the standard free function to release garbage
-  static const inline std::function<void(void *)> deleter = [](void *ptr) { std::free(ptr); };
+  /// @brief A dummy member variable to ensure the page size.
+  uint8_t dummy[kPageSize];
 };
 
 /*######################################################################################

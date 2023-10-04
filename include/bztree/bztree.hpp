@@ -45,12 +45,12 @@ namespace dbgroup::index::bztree
 template <class Key, class Payload, class Compare = std::less<Key>>
 class BzTree
 {
-  using PageTarget = component::PageTarget;
+  using Page = component::Page;
   using Metadata = component::Metadata;
   using StatusWord = component::StatusWord;
   using Node_t = component::Node<Key, Compare>;
   using NodeRC = component::NodeRC;
-  using NodeGC_t = ::dbgroup::memory::EpochBasedGC<PageTarget>;
+  using NodeGC_t = ::dbgroup::memory::EpochBasedGC<Page>;
   using NodeStack = std::vector<std::pair<Node_t *, size_t>>;
   using MwCASDescriptor = component::MwCASDescriptor;
   using KeyExistence = component::KeyExistence;
@@ -599,7 +599,7 @@ class BzTree
 
     // set a new root
     auto *old_root = root_.exchange(new_root, std::memory_order_release);
-    gc_.AddGarbage<PageTarget>(old_root);
+    gc_.AddGarbage<Page>(old_root);
 
     return ReturnCode::kSuccess;
   }
@@ -631,9 +631,6 @@ class BzTree
   /*####################################################################################
    * Internal constants
    *##################################################################################*/
-
-  /// Assumes that one word is represented by 8 bytes
-  static constexpr size_t kWordSize = component::kWordSize;
 
   /// Header length in bytes.
   static constexpr size_t kHeaderLen = component::kHeaderLen;
@@ -687,8 +684,12 @@ class BzTree
   {
     constexpr auto kIsInner = static_cast<uint64_t>(std::is_same_v<T, Node_t *>);
 
-    auto *page = gc_.template GetPageIfPossible<PageTarget>();
-    return new (page ? page : std::calloc(1UL, kPageSize)) Node_t{kIsInner, 0};
+    auto *page = gc_.template GetPageIfPossible<Page>();
+    if (page == nullptr) {
+      page = ::dbgroup::memory::Allocate<Page>();
+      memset(page, 0, kPageSize);
+    }
+    return new (page) Node_t{kIsInner, 0};
   }
 
   /**
@@ -785,7 +786,7 @@ class BzTree
       }
     }
 
-    delete node;
+    ::dbgroup::memory::Release<Page>(node);
   }
 
   /**
@@ -844,7 +845,7 @@ class BzTree
     // create a consolidated node to calculate a correct node size
     auto *consol_node = CreateNewNode<Payload>();
     consol_node->template Consolidate<Payload>(node);
-    gc_.AddGarbage<PageTarget>(node);
+    gc_.AddGarbage<Page>(node);
 
     // check other SMOs are needed
     const auto stat = consol_node->GetStatusWord();
@@ -914,9 +915,9 @@ class BzTree
 
     // install new nodes to the index and register garbages
     InstallNewNode(trace, new_parent, key, old_parent);
-    gc_.AddGarbage<PageTarget>(node);
+    gc_.AddGarbage<Page>(node);
     if (!root_split) {
-      gc_.AddGarbage<PageTarget>(old_parent);
+      gc_.AddGarbage<Page>(old_parent);
     }
 
     // split the new parent node if needed
@@ -991,15 +992,15 @@ class BzTree
     auto recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos);
     if (trace.size() <= 1 && new_parent->GetSortedCount() == 1) {
       // the new root node has only one child, use the merged child as a new root
-      gc_.AddGarbage<PageTarget>(new_parent);
+      gc_.AddGarbage<Page>(new_parent);
       new_parent = merged_node;
     }
 
     // install new nodes to the index and register garbages
     InstallNewNode(trace, new_parent, key, old_parent);
-    gc_.AddGarbage<PageTarget>(old_parent);
-    gc_.AddGarbage<PageTarget>(l_node);
-    gc_.AddGarbage<PageTarget>(r_node);
+    gc_.AddGarbage<Page>(old_parent);
+    gc_.AddGarbage<Page>(l_node);
+    gc_.AddGarbage<Page>(r_node);
 
     // merge the new parent node if needed
     if (recurse_merge && !Merge<Node_t *>(new_parent, key, new_parent)) {
