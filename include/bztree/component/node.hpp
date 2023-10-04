@@ -404,6 +404,7 @@ class Node
       Payload &out_payload) const  //
       -> NodeRC
   {
+    constexpr auto kRead = true;
     constexpr auto kPayLen = sizeof(Payload);
     Metadata meta{};
 
@@ -419,7 +420,7 @@ class Node
 
       // a new record may be inserted in an unsorted region
       const auto status = GetStatusWordProtected();
-      std::tie(rc, pos) = SearchUnsortedRecord(key, status.GetRecordCount() - 1, meta);
+      std::tie(rc, pos) = SearchUnsortedRecord(key, status.GetRecordCount() - 1, meta, kRead);
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
       // copy a written payload to a given address
@@ -429,7 +430,10 @@ class Node
       return kSuccess;
     } else {
       const auto status = GetStatusWordProtected();
-      auto [rc, pos] = CheckUniqueness<Payload>(key, status.GetRecordCount() - 1, meta);
+      auto [rc, pos] = SearchUnsortedRecord(key, status.GetRecordCount() - 1, meta, kRead);
+      if (rc == kNotExist) {
+        std::tie(rc, pos) = SearchSortedRecord(key, meta);
+      }
       if (rc == kNotExist || rc == kDeleted) return kKeyNotExist;
 
       // copy a written payload to a given address
@@ -1106,12 +1110,13 @@ class Node
     constexpr auto kMaxKeyLen = (IsVarLenData<Key>()) ? kMaxVarDataSize : sizeof(Key);
     const auto is_leaf = static_cast<size_t>(!is_inner_);
     const size_t node_capacity = kPageSize * (is_leaf ? 1.0 : 0.9);
+    const auto &[leftmost_key, leftmost_key_len] = ParseKey(*iter);
 
     // extract and insert entries into this node
     size_t node_size = kHeaderLen + kWordSize + kMaxKeyLen + is_leaf * kMinFreeSpaceSize;
     auto offset = kPageSize;
     for (; iter < iter_end; ++iter) {
-      const auto &[key, payload, key_len] = ParseEntry(*iter);
+      const auto &[key, payload, key_len, pay_len] = ParseEntry(*iter);
       const auto rec_len = key_len + sizeof(Payload);
       const auto padded_len = Pad<Payload>(rec_len);
 
@@ -1129,7 +1134,7 @@ class Node
     // set lowest/highest keys
     offset = CopyLowKeyFrom(this, meta_array_[0], offset);
     if (iter < iter_end) {
-      const auto &[key, payload, key_len] = ParseEntry(*iter);
+      const auto &[key, payload, key_len, pay_len] = ParseEntry(*iter);
       offset = SetKey(offset, key, key_len);
       high_meta_ = Metadata{offset, key_len, key_len};
     }
@@ -1138,7 +1143,7 @@ class Node
     // create the header of the leaf node
     status_ = StatusWord{sorted_count_, kPageSize - offset};
 
-    nodes.emplace_back(GetKey(low_meta_), this, low_meta_.GetKeyLength());
+    nodes.emplace_back(leftmost_key, this, leftmost_key_len);
   }
 
   /**
@@ -1463,14 +1468,15 @@ class Node
   SearchUnsortedRecord(  //
       const Key &key,
       const size_t begin_pos,
-      Metadata &meta) const  //
+      Metadata &meta,
+      const bool is_read = false) const  //
       -> std::pair<KeyExistence, size_t>
   {
     // perform a linear search in revese order
     for (int64_t pos = begin_pos; pos >= sorted_count_; --pos) {
       meta = GetMetadataWithFence(pos);
       if (meta.IsInProgress()) {
-        if (meta.IsVisible()) return {kUncertain, pos};
+        if (!is_read && meta.IsVisible()) return {kUncertain, pos};
         continue;
       }
 
@@ -1780,31 +1786,6 @@ class Node
     }
 
     return offset;
-  }
-
-  /**
-   * @brief Parse an entry of bulkload according to key's type.
-   *
-   * @tparam Entry std::pair or std::tuple for containing entries.
-   * @param entry a bulkload entry.
-   * @retval 1st: a target key.
-   * @retval 2nd: a target payload.
-   * @retval 3rd: the length of a target key.
-   */
-  template <class Entry>
-  constexpr auto
-  ParseEntry(const Entry &entry)  //
-      -> std::tuple<Key, std::tuple_element_t<1, Entry>, size_t>
-  {
-    constexpr auto kTupleSize = std::tuple_size_v<Entry>;
-    static_assert(2 <= kTupleSize && kTupleSize <= 3);
-
-    if constexpr (kTupleSize == 3) {
-      return entry;
-    } else {
-      const auto &[key, payload] = entry;
-      return {key, payload, sizeof(Key)};
-    }
   }
 
   /*####################################################################################

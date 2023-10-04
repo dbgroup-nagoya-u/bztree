@@ -66,6 +66,8 @@ TYPED_TEST_SUITE(IndexFixture, TestTargets);
 
 TYPED_TEST(IndexFixture, CollectStatisticalDataReturnsReasonableValues)
 {
+  TestFixture::PrepareData();
+
   TestFixture::FillIndex();
   const auto &stat_data = TestFixture::index_->CollectStatisticalData();
   for (size_t level = 0; level < stat_data.size(); ++level) {
@@ -73,6 +75,8 @@ TYPED_TEST(IndexFixture, CollectStatisticalDataReturnsReasonableValues)
     EXPECT_EQ(node_num * bztree::kPageSize, virtual_usage);
     EXPECT_LE(actual_usage, virtual_usage);
   }
+
+  TestFixture::DestroyData();
 }
 
 }  // namespace dbgroup::index::test
