@@ -675,16 +675,18 @@ class BzTree
     // create a consolidated node to calculate a correct node size
     auto *consol_node = CreateNewNode<Payload>();
     consol_node->template Consolidate<Payload>(node);
-    gc_.AddGarbage<Page>(node);
 
     // check other SMOs are needed
     const auto stat = consol_node->GetStatusWord();
-    if (stat.template NeedSplit<Key, Payload>()) return Split<Payload>(consol_node, key);
-    if (stat.NeedMerge() && Merge<Payload>(consol_node, key, node)) return;
+    if (stat.template NeedSplit<Key, Payload>()) {
+      Split<Payload>(consol_node, key);
+    } else if (!stat.NeedMerge() || !Merge<Payload>(consol_node, key)) {
+      // install the consolidated node
+      auto &&trace = TraceTargetNode(key, node);
+      InstallNewNode(trace, consol_node, key, node);
+    }
 
-    // install the consolidated node
-    auto &&trace = TraceTargetNode(key, node);
-    InstallNewNode(trace, consol_node, key, node);
+    gc_.AddGarbage<Page>(node);
   }
 
   /**
@@ -771,8 +773,7 @@ class BzTree
   auto
   Merge(  //
       Node_t *l_node,
-      const Key &key,      //
-      Node_t *old_l_node)  //
+      const Key &key)  //
       -> bool
   {
     const auto l_stat = l_node->GetStatusWord();
@@ -787,7 +788,7 @@ class BzTree
     size_t target_pos{};
     while (true) {
       // trace and get the embedded index of a target node
-      trace = TraceTargetNode(key, old_l_node);
+      trace = TraceTargetNode(key, l_node);
       target_pos = trace.back().second;
 
       // check a parent node is live
@@ -833,7 +834,7 @@ class BzTree
     gc_.AddGarbage<Page>(r_node);
 
     // merge the new parent node if needed
-    if (recurse_merge && !Merge<Node_t *>(new_parent, key, new_parent)) {
+    if (recurse_merge && !Merge<Node_t *>(new_parent, key)) {
       // if the parent node cannot be merged, unfreeze it
       new_parent->Unfreeze();
     }
