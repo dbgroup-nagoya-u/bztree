@@ -95,6 +95,15 @@ IsVarLenData()  //
  * Tuning parameters for BzTree
  *####################################################################################*/
 
+/// The page size of virtual memory address.
+constexpr size_t kVMPageSize = 4096;
+
+/// Assumes that one word is represented by 8 bytes (64bits).
+constexpr size_t kWordSize = 8;
+
+/// Assumes that one cache line is represented by 64 bytes.
+constexpr size_t kCacheLineSize = 64;
+
 /// The page size of each node.
 constexpr size_t kPageSize = BZTREE_PAGE_SIZE;
 

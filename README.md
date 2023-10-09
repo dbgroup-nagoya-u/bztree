@@ -1,6 +1,6 @@
 # BzTree
 
-![example workflow name](https://github.com/dbgroup-nagoya-u/bztree/workflows/Ubuntu-20.04/badge.svg?branch=main)
+[![Ubuntu-20.04](https://github.com/dbgroup-nagoya-u/bztree/actions/workflows/unit_tests.yaml/badge.svg)](https://github.com/dbgroup-nagoya-u/bztree/actions/workflows/unit_tests.yaml)
 
 This repository is an open source implementation of a BzTree[^1] for research use. The purpose of this implementation is to reproduce a BzTree and measure its performance. However, the concurrency controls proposed in the paper are insufficient, so we have modified them to guarantee consistent read/write operations. Moreover, some tuning parameters have been changed for convenience.
 
@@ -41,8 +41,10 @@ sudo apt update && sudo apt install -y build-essential cmake
 ### Build Options for Unit Testing
 
 - `BZTREE_BUILD_TESTS`: Building unit tests for this library if `ON` (default `OFF`).
+- `BZTREE_TEST_BUILD_APPEND`: Build tests for append based BzTrees if `ON` (default `OFF`).
+- `BZTREE_TEST_BUILD_IN_PLACE`: Build tests for in-place based BzTrees if `ON` (default `OFF`).
 - `DBGROUP_TEST_THREAD_NUM`: The maximum number of threads for testing (default `8`).
-- `DBGROUP_TEST_RANDOM_SEED`: A fixed seed value to reproduce unit tests (default `10`).
+- `DBGROUP_TEST_RANDOM_SEED`: A fixed seed value to reproduce unit tests (default `0`).
 - `DBGROUP_TEST_EXEC_NUM`: The number of executions per a thread (default `1E5`).
 - `DBGROUP_TEST_OVERRIDE_MIMALLOC`: Override entire memory allocation with mimalloc (default `OFF`).
     - NOTE: we use `find_package(mimalloc 1.7 REQUIRED)` to link mimalloc.

@@ -96,8 +96,9 @@ class NodeFixture : public testing::Test  // NOLINT
   {
     if (kPageSize < kMaxRecSize * kMaxDeltaRecNum * 2 + kHeaderLen) GTEST_SKIP();
 
-    auto *node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
-    node_ = std::unique_ptr<Node_t>{node};
+    auto *node = new (AllocPage()) Node_t{kLeafFlag, 0};
+    node_ = std::unique_ptr<Node_t, std::function<void(void *)>>  //
+        {node, ::dbgroup::memory::Release<Page>};
 
     keys_ = ::dbgroup::index::test::PrepareTestData<Key>(kKeyNumForTest);
     payloads_ = ::dbgroup::index::test::PrepareTestData<Payload>(kKeyNumForTest);
@@ -163,7 +164,7 @@ class NodeFixture : public testing::Test  // NOLINT
   void
   Consolidate()
   {
-    auto *consolidated_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
+    auto *consolidated_node = new (AllocPage()) Node_t{kLeafFlag, 0};
     consolidated_node->template Consolidate<Payload>(node_.get());
     node_.reset(consolidated_node);
   }
@@ -171,6 +172,15 @@ class NodeFixture : public testing::Test  // NOLINT
   /*####################################################################################
    * Utility functions
    *##################################################################################*/
+
+  [[nodiscard]] auto
+  AllocPage()  //
+      -> void *
+  {
+    auto *page = ::dbgroup::memory::Allocate<Page>();
+    memset(page, 0, kPageSize);
+    return page;
+  }
 
   void
   PrepareConsolidatedNode()
@@ -275,8 +285,8 @@ class NodeFixture : public testing::Test  // NOLINT
 
     PrepareConsolidatedNode();
 
-    auto *left_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
-    auto *right_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
+    auto *left_node = new (AllocPage()) Node_t{kLeafFlag, 0};
+    auto *right_node = new (AllocPage()) Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(left_node, right_node);
 
     node_.reset(left_node);
@@ -295,11 +305,11 @@ class NodeFixture : public testing::Test  // NOLINT
   {
     PrepareConsolidatedNode();
 
-    auto *left_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
-    auto *right_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
+    auto *left_node = new (AllocPage()) Node_t{kLeafFlag, 0};
+    auto *right_node = new (AllocPage()) Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(left_node, right_node);
 
-    auto *merged_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
+    auto *merged_node = new (AllocPage()) Node_t{kLeafFlag, 0};
     merged_node->template Merge<Payload>(left_node, right_node);
 
     node_.reset(merged_node);
@@ -307,8 +317,8 @@ class NodeFixture : public testing::Test  // NOLINT
       VerifyRead(i, i, kExpectSuccess);
     }
 
-    delete left_node;
-    delete right_node;
+    ::dbgroup::memory::Release<Page>(left_node);
+    ::dbgroup::memory::Release<Page>(right_node);
   }
 
   void
@@ -316,18 +326,18 @@ class NodeFixture : public testing::Test  // NOLINT
   {
     PrepareConsolidatedNode();
 
-    auto *left_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
-    auto *right_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
+    auto *left_node = new (AllocPage()) Node_t{kLeafFlag, 0};
+    auto *right_node = new (AllocPage()) Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(left_node, right_node);
-    auto *root = new (std::calloc(1, kPageSize)) Node_t{!kLeafFlag, 0};
+    auto *root = new (AllocPage()) Node_t{!kLeafFlag, 0};
     root->InitAsRoot(left_node, right_node);
 
     EXPECT_EQ(left_node, root->GetChild(0));
     EXPECT_EQ(right_node, root->GetChild(1));
 
-    delete left_node;
-    delete right_node;
-    delete root;
+    ::dbgroup::memory::Release<Page>(left_node);
+    ::dbgroup::memory::Release<Page>(right_node);
+    ::dbgroup::memory::Release<Page>(root);
   }
 
   void
@@ -335,27 +345,27 @@ class NodeFixture : public testing::Test  // NOLINT
   {
     PrepareConsolidatedNode();
 
-    auto *l_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
-    auto *r_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
+    auto *l_node = new (AllocPage()) Node_t{kLeafFlag, 0};
+    auto *r_node = new (AllocPage()) Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(l_node, r_node);
-    auto *old_parent = new (std::calloc(1, kPageSize)) Node_t{!kLeafFlag, 0};
+    auto *old_parent = new (AllocPage()) Node_t{!kLeafFlag, 0};
     old_parent->InitAsRoot(l_node, r_node);
-    auto *r_l_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
-    auto *r_r_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
+    auto *r_l_node = new (AllocPage()) Node_t{kLeafFlag, 0};
+    auto *r_r_node = new (AllocPage()) Node_t{kLeafFlag, 0};
     r_node->template Split<Payload>(r_l_node, r_r_node);
-    auto *new_parent = new (std::calloc(1, kPageSize)) Node_t{!kLeafFlag, 0};
+    auto *new_parent = new (AllocPage()) Node_t{!kLeafFlag, 0};
     new_parent->InitAsSplitParent(old_parent, r_node, r_r_node, 1);
 
     EXPECT_EQ(l_node, new_parent->GetChild(0));
     EXPECT_EQ(r_node, new_parent->GetChild(1));
     EXPECT_EQ(r_r_node, new_parent->GetChild(2));
 
-    delete l_node;
-    delete r_node;
-    delete r_l_node;
-    delete r_r_node;
-    delete old_parent;
-    delete new_parent;
+    ::dbgroup::memory::Release<Page>(l_node);
+    ::dbgroup::memory::Release<Page>(r_node);
+    ::dbgroup::memory::Release<Page>(r_l_node);
+    ::dbgroup::memory::Release<Page>(r_r_node);
+    ::dbgroup::memory::Release<Page>(old_parent);
+    ::dbgroup::memory::Release<Page>(new_parent);
   }
 
   void
@@ -363,23 +373,23 @@ class NodeFixture : public testing::Test  // NOLINT
   {
     PrepareConsolidatedNode();
 
-    auto *l_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
-    auto *r_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
+    auto *l_node = new (AllocPage()) Node_t{kLeafFlag, 0};
+    auto *r_node = new (AllocPage()) Node_t{kLeafFlag, 0};
     node_->template Split<Payload>(l_node, r_node);
-    auto *old_parent = new (std::calloc(1, kPageSize)) Node_t{!kLeafFlag, 0};
+    auto *old_parent = new (AllocPage()) Node_t{!kLeafFlag, 0};
     old_parent->InitAsRoot(l_node, r_node);
-    auto *merged_node = new (std::calloc(1, kPageSize)) Node_t{kLeafFlag, 0};
+    auto *merged_node = new (AllocPage()) Node_t{kLeafFlag, 0};
     merged_node->template Merge<Payload>(l_node, r_node);
-    auto *new_parent = new (std::calloc(1, kPageSize)) Node_t{!kLeafFlag, 0};
+    auto *new_parent = new (AllocPage()) Node_t{!kLeafFlag, 0};
     new_parent->InitAsMergeParent(old_parent, merged_node, 0);
 
     EXPECT_EQ(merged_node, new_parent->GetChild(0));
 
-    delete l_node;
-    delete r_node;
-    delete merged_node;
-    delete old_parent;
-    delete new_parent;
+    ::dbgroup::memory::Release<Page>(l_node);
+    ::dbgroup::memory::Release<Page>(r_node);
+    ::dbgroup::memory::Release<Page>(merged_node);
+    ::dbgroup::memory::Release<Page>(old_parent);
+    ::dbgroup::memory::Release<Page>(new_parent);
   }
 
   /*####################################################################################
@@ -395,7 +405,8 @@ class NodeFixture : public testing::Test  // NOLINT
   // the length of a record and its maximum number
   size_t max_del_num_{};
 
-  std::unique_ptr<Node_t> node_{nullptr};
+  std::unique_ptr<Node_t, std::function<void(void *)>>  //
+      node_{nullptr, ::dbgroup::memory::Release<Page>};
 };
 
 /*######################################################################################

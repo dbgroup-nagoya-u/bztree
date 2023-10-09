@@ -31,6 +31,7 @@
 
 // local sources
 #include "bztree/component/node.hpp"
+#include "bztree/component/record_iterator.hpp"
 #include "bztree/utility.hpp"
 
 namespace dbgroup::index::bztree
@@ -45,12 +46,13 @@ namespace dbgroup::index::bztree
 template <class Key, class Payload, class Compare = std::less<Key>>
 class BzTree
 {
-  using PageTarget = component::PageTarget;
+  using Page = component::Page;
   using Metadata = component::Metadata;
   using StatusWord = component::StatusWord;
   using Node_t = component::Node<Key, Compare>;
+  using RecordIterator_t = component::RecordIterator<Key, Payload, Compare>;
   using NodeRC = component::NodeRC;
-  using NodeGC_t = ::dbgroup::memory::EpochBasedGC<PageTarget>;
+  using NodeGC_t = ::dbgroup::memory::EpochBasedGC<Page>;
   using NodeStack = std::vector<std::pair<Node_t *, size_t>>;
   using MwCASDescriptor = component::MwCASDescriptor;
   using KeyExistence = component::KeyExistence;
@@ -64,174 +66,6 @@ class BzTree
   using BulkFuture = std::future<BulkResult>;
 
  public:
-  /*####################################################################################
-   * Public classes
-   *##################################################################################*/
-
-  /**
-   * @brief A class to represent a iterator for scan results.
-   *
-   * @tparam Key a target key class
-   * @tparam Payload a target payload class
-   * @tparam Compare a key-comparator class
-   */
-  class RecordIterator
-  {
-    using BzTree_t = BzTree<Key, Payload, Compare>;
-
-   public:
-    /*##################################################################################
-     * Public constructors and assignment operators
-     *################################################################################*/
-
-    RecordIterator(  //
-        BzTree_t *bztree,
-        Node_t *node,
-        const size_t begin_pos,
-        const size_t end_pos,
-        const ScanKey end_key,
-        const bool is_right_end)
-        : bztree_{bztree},
-          node_{node},
-          record_count_{end_pos},
-          current_pos_{begin_pos},
-          current_meta_{node->GetMetadata(current_pos_)},
-          end_key_{std::move(end_key)},
-          is_right_end_{is_right_end}
-    {
-    }
-
-    constexpr RecordIterator &
-    operator=(RecordIterator &&obj) noexcept
-    {
-      node_ = obj.node_;
-      record_count_ = obj.record_count_;
-      current_pos_ = obj.current_pos_;
-      current_meta_ = obj.current_meta_;
-      is_right_end_ = obj.is_right_end_;
-
-      return *this;
-    }
-
-    RecordIterator(const RecordIterator &) = delete;
-    RecordIterator &operator=(const RecordIterator &) = delete;
-    RecordIterator(RecordIterator &&) = delete;
-
-    /*##################################################################################
-     * Public destructors
-     *################################################################################*/
-
-    ~RecordIterator() = default;
-
-    /*##################################################################################
-     * Public operators for iterators
-     *################################################################################*/
-
-    /**
-     * @retval true if this iterator indicates a live record.
-     * @retval false otherwise.
-     */
-    explicit operator bool() { return HasRecord(); }
-
-    /**
-     * @return a current key and payload pair
-     */
-    constexpr auto
-    operator*() const  //
-        -> std::pair<Key, Payload>
-    {
-      return {GetKey(), GetPayload()};
-    }
-
-    /**
-     * @brief Forward an iterator.
-     *
-     */
-    constexpr void
-    operator++()
-    {
-      ++current_pos_;
-      current_meta_ = node_->GetMetadata(current_pos_);
-    }
-
-    /*##################################################################################
-     * Public getters/setters
-     *################################################################################*/
-
-    /**
-     * @brief Check if there are any records left.
-     *
-     * function may call a scan function internally to get a next leaf node.
-     *
-     * @retval true if there are any records or next node left.
-     * @retval false if there are no records and node left.
-     */
-    auto
-    HasRecord()  //
-        -> bool
-    {
-      while (true) {
-        if (current_pos_ < record_count_) return true;  // records remain in this node
-        if (is_right_end_) return false;                // this node is the end of range-scan
-
-        // update this iterator with the next scan results
-        const auto &next_key = node_->GetHighKey();
-        *this = bztree_->Scan(std::make_tuple(next_key, 0, kClosed), end_key_);
-
-        if constexpr (IsVarLenData<Key>()) {
-          // release a dynamically allocated key
-          delete next_key;
-        }
-      }
-    }
-
-    /**
-     * @return a key of a current record
-     */
-    [[nodiscard]] constexpr auto
-    GetKey() const  //
-        -> Key
-    {
-      return node_->GetKey(current_meta_);
-    }
-
-    /**
-     * @return a payload of a current record
-     */
-    [[nodiscard]] constexpr auto
-    GetPayload() const  //
-        -> Payload
-    {
-      return node_->template GetPayload<Payload>(current_meta_);
-    }
-
-   private:
-    /*##################################################################################
-     * Internal member variables
-     *################################################################################*/
-
-    /// a pointer to BwTree to perform continuous scan
-    BzTree_t *bztree_{nullptr};
-
-    /// the pointer to a node that includes partial scan results
-    Node_t *node_{nullptr};
-
-    /// the number of records in this node
-    size_t record_count_{0};
-
-    /// the position of a current record
-    size_t current_pos_{0};
-
-    /// the metadata of a current record
-    Metadata current_meta_{};
-
-    /// the end key given from a user
-    ScanKey end_key_{};
-
-    /// a flag for indicating whether scan has finished
-    bool is_right_end_{};
-  };
-
   /*####################################################################################
    * Public constructors and assignment operators
    *##################################################################################*/
@@ -313,7 +147,7 @@ class BzTree
   Scan(  //
       const ScanKey &begin_key = std::nullopt,
       const ScanKey &end_key = std::nullopt)  //
-      -> RecordIterator
+      -> RecordIterator_t
   {
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
 
@@ -339,7 +173,7 @@ class BzTree
     // check the end position of scanning
     const auto [is_end, end_pos] = page->SearchEndPositionFor(end_key);
 
-    return RecordIterator{this, page.get(), begin_pos, end_pos, end_key, is_end};
+    return RecordIterator_t{this, page.get(), begin_pos, end_pos, end_key, is_end};
   }
 
   /*####################################################################################
@@ -355,13 +189,15 @@ class BzTree
    * @param key a target key.
    * @param payload a target payload.
    * @param key_len the length of the target key.
+   * @param pay_len the length of the target payload.
    * @return kSuccess.
    */
   auto
   Write(  //
       const Key &key,
       const Payload &payload,
-      const size_t key_len = sizeof(Key))  //
+      const size_t key_len = sizeof(Key),
+      [[maybe_unused]] const size_t pay_len = sizeof(Payload))  //
       -> ReturnCode
   {
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
@@ -391,6 +227,7 @@ class BzTree
    * @param key a target key.
    * @param payload a target payload.
    * @param key_len the length of the target key.
+   * @param pay_len the length of the target payload.
    * @retval kSuccess if inserted.
    * @retval kKeyExist otherwise.
    */
@@ -398,7 +235,8 @@ class BzTree
   Insert(  //
       const Key &key,
       const Payload &payload,
-      const size_t key_len = sizeof(Key))  //
+      const size_t key_len = sizeof(Key),
+      [[maybe_unused]] const size_t pay_len = sizeof(Payload))  //
       -> ReturnCode
   {
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
@@ -431,6 +269,7 @@ class BzTree
    * @param key a target key.
    * @param payload a target payload.
    * @param key_len the length of the target key.
+   * @param pay_len the length of the target payload.
    * @retval kSuccess if updated.
    * @retval kKeyNotExist otherwise.
    */
@@ -438,7 +277,8 @@ class BzTree
   Update(  //
       const Key &key,
       const Payload &payload,
-      const size_t key_len = sizeof(Key))  //
+      const size_t key_len = sizeof(Key),
+      [[maybe_unused]] const size_t pay_len = sizeof(Payload))  //
       -> ReturnCode
   {
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
@@ -589,7 +429,7 @@ class BzTree
 
     // set a new root
     auto *old_root = root_.exchange(new_root, std::memory_order_release);
-    gc_.AddGarbage<PageTarget>(old_root);
+    gc_.AddGarbage<Page>(old_root);
 
     return ReturnCode::kSuccess;
   }
@@ -621,9 +461,6 @@ class BzTree
   /*####################################################################################
    * Internal constants
    *##################################################################################*/
-
-  /// Assumes that one word is represented by 8 bytes
-  static constexpr size_t kWordSize = component::kWordSize;
 
   /// Header length in bytes.
   static constexpr size_t kHeaderLen = component::kHeaderLen;
@@ -677,8 +514,12 @@ class BzTree
   {
     constexpr auto kIsInner = static_cast<uint64_t>(std::is_same_v<T, Node_t *>);
 
-    auto *page = gc_.template GetPageIfPossible<PageTarget>();
-    return new (page ? page : std::calloc(1UL, kPageSize)) Node_t{kIsInner, 0};
+    auto *page = gc_.template GetPageIfPossible<Page>();
+    if (page == nullptr) {
+      page = ::dbgroup::memory::Allocate<Page>();
+      memset(page, 0, kPageSize);
+    }
+    return new (page) Node_t{kIsInner, 0};
   }
 
   /**
@@ -775,7 +616,7 @@ class BzTree
       }
     }
 
-    delete node;
+    ::dbgroup::memory::Release<Page>(node);
   }
 
   /**
@@ -834,16 +675,18 @@ class BzTree
     // create a consolidated node to calculate a correct node size
     auto *consol_node = CreateNewNode<Payload>();
     consol_node->template Consolidate<Payload>(node);
-    gc_.AddGarbage<PageTarget>(node);
 
     // check other SMOs are needed
     const auto stat = consol_node->GetStatusWord();
-    if (stat.template NeedSplit<Key, Payload>()) return Split<Payload>(consol_node, key);
-    if (stat.NeedMerge() && Merge<Payload>(consol_node, key, node)) return;
+    if (stat.template NeedSplit<Key, Payload>()) {
+      Split<Payload>(consol_node, key);
+    } else if (!stat.NeedMerge() || !Merge<Payload>(consol_node, key)) {
+      // install the consolidated node
+      auto &&trace = TraceTargetNode(key, node);
+      InstallNewNode(trace, consol_node, key, node);
+    }
 
-    // install the consolidated node
-    auto &&trace = TraceTargetNode(key, node);
-    InstallNewNode(trace, consol_node, key, node);
+    gc_.AddGarbage<Page>(node);
   }
 
   /**
@@ -904,9 +747,9 @@ class BzTree
 
     // install new nodes to the index and register garbages
     InstallNewNode(trace, new_parent, key, old_parent);
-    gc_.AddGarbage<PageTarget>(node);
+    gc_.AddGarbage<Page>(node);
     if (!root_split) {
-      gc_.AddGarbage<PageTarget>(old_parent);
+      gc_.AddGarbage<Page>(old_parent);
     }
 
     // split the new parent node if needed
@@ -930,8 +773,7 @@ class BzTree
   auto
   Merge(  //
       Node_t *l_node,
-      const Key &key,      //
-      Node_t *old_l_node)  //
+      const Key &key)  //
       -> bool
   {
     const auto l_stat = l_node->GetStatusWord();
@@ -946,7 +788,7 @@ class BzTree
     size_t target_pos{};
     while (true) {
       // trace and get the embedded index of a target node
-      trace = TraceTargetNode(key, old_l_node);
+      trace = TraceTargetNode(key, l_node);
       target_pos = trace.back().second;
 
       // check a parent node is live
@@ -981,18 +823,18 @@ class BzTree
     auto recurse_merge = new_parent->InitAsMergeParent(old_parent, merged_node, target_pos);
     if (trace.size() <= 1 && new_parent->GetSortedCount() == 1) {
       // the new root node has only one child, use the merged child as a new root
-      gc_.AddGarbage<PageTarget>(new_parent);
+      gc_.AddGarbage<Page>(new_parent);
       new_parent = merged_node;
     }
 
     // install new nodes to the index and register garbages
     InstallNewNode(trace, new_parent, key, old_parent);
-    gc_.AddGarbage<PageTarget>(old_parent);
-    gc_.AddGarbage<PageTarget>(l_node);
-    gc_.AddGarbage<PageTarget>(r_node);
+    gc_.AddGarbage<Page>(old_parent);
+    gc_.AddGarbage<Page>(l_node);
+    gc_.AddGarbage<Page>(r_node);
 
     // merge the new parent node if needed
-    if (recurse_merge && !Merge<Node_t *>(new_parent, key, new_parent)) {
+    if (recurse_merge && !Merge<Node_t *>(new_parent, key)) {
       // if the parent node cannot be merged, unfreeze it
       new_parent->Unfreeze();
     }

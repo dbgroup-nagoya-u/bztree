@@ -17,7 +17,7 @@
 #include "bztree/bztree.hpp"
 
 // external sources
-#include "external/index-fixtures/index_fixture.hpp"
+#include "external/index-fixtures/index_fixture_multi_thread.hpp"
 
 namespace dbgroup::atomic::mwcas
 {
@@ -46,33 +46,17 @@ using BzTree = ::dbgroup::index::bztree::BzTree<K, V, C>;
 
 using TestTargets = ::testing::Types<      //
     IndexInfo<BzTree, UInt8, UInt8>,       // fixed-length keys
-    IndexInfo<BzTree, UInt8, Int8>,        // fixed-length keys with append-mode
     IndexInfo<BzTree, UInt4, UInt8>,       // small keys
-    IndexInfo<BzTree, UInt4, Int8>,        // small keys with append-mode
-    IndexInfo<BzTree, UInt8, UInt4>,       // small payloads with append-mode
-    IndexInfo<BzTree, UInt4, UInt4>,       // small keys/payloads with append-mode
     IndexInfo<BzTree, Var, UInt8>,         // variable-length keys
-    IndexInfo<BzTree, Var, Int8>,          // variable-length keys with append-mode
     IndexInfo<BzTree, Ptr, Ptr>,           // pointer keys/payloads
     IndexInfo<BzTree, Original, Original>  // original class keys/payloads
     >;
-TYPED_TEST_SUITE(IndexFixture, TestTargets);
+TYPED_TEST_SUITE(IndexMultiThreadFixture, TestTargets);
 
 /*######################################################################################
  * Unit test definitions
  *####################################################################################*/
 
-#include "external/index-fixtures/index_fixture_test_definitions.hpp"
-
-TYPED_TEST(IndexFixture, CollectStatisticalDataReturnsReasonableValues)
-{
-  TestFixture::FillIndex();
-  const auto &stat_data = TestFixture::index_->CollectStatisticalData();
-  for (size_t level = 0; level < stat_data.size(); ++level) {
-    const auto &[node_num, actual_usage, virtual_usage] = stat_data.at(level);
-    EXPECT_EQ(node_num * bztree::kPageSize, virtual_usage);
-    EXPECT_LE(actual_usage, virtual_usage);
-  }
-}
+#include "external/index-fixtures/index_fixture_multi_thread_test_definitions.hpp"
 
 }  // namespace dbgroup::index::test

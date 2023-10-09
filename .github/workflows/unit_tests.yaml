@@ -12,28 +12,28 @@ env:
 
 jobs:
   unit_test:
-    runs-on: ubuntu-20.04
-    timeout-minutes: 15
     strategy:
       matrix:
+        os: [ubuntu-20.04]
         page-size: [1024, 2048, 4096, 8192]
+        mode: ["APPEND", "IN_PLACE"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
 
     - name: Clone Repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
       with:
         submodules: recursive
 
     - name: Create Build Environment
       shell: bash
-      run: |
-        sudo apt-get install -y build-essential cmake
-        cmake -E make_directory ${{github.workspace}}/build
+      run: cmake -E make_directory ${{github.workspace}}/build
 
     - name: Configure CMake
       shell: bash
       working-directory: ${{github.workspace}}/build
-      run: cmake ${GITHUB_WORKSPACE} -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DBZTREE_PAGE_SIZE=${{matrix.page-size}} -DBZTREE_BUILD_TESTS=ON -DDBGROUP_TEST_THREAD_NUM=${THREAD_NUM}
+      run: cmake ${GITHUB_WORKSPACE} -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DBZTREE_PAGE_SIZE=${{matrix.page-size}} -DBZTREE_BUILD_TESTS=ON -DBZTREE_TEST_BUILD_${{matrix.mode}}=ON -DDBGROUP_TEST_THREAD_NUM=${THREAD_NUM}
 
     - name: Build
       shell: bash
