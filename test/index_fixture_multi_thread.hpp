@@ -425,9 +425,7 @@ class IndexMultiThreadFixture : public testing::Test
     PrepareData();
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
-      ::dbgroup::index::bztree::in_construction = true;
       VerifyWrite(!kWriteTwice, pattern);
-      ::dbgroup::index::bztree::in_construction = false;
       if (with_delete) VerifyDelete(kExpectSuccess, pattern);
       if (write_twice) VerifyWrite(kWriteTwice, pattern);
       VerifyRead(kExpectSuccess, write_twice, pattern);
@@ -458,9 +456,7 @@ class IndexMultiThreadFixture : public testing::Test
     const auto is_updated = with_delete && write_twice;
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
-      ::dbgroup::index::bztree::in_construction = true;
       VerifyInsert(kExpectSuccess, !kWriteTwice, pattern);
-      ::dbgroup::index::bztree::in_construction = false;
       if (with_delete) VerifyDelete(kExpectSuccess, pattern);
       if (write_twice) VerifyInsert(with_delete, write_twice, pattern);
       VerifyRead(expect_success, is_updated, pattern);
@@ -491,9 +487,7 @@ class IndexMultiThreadFixture : public testing::Test
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
       if (with_write) {
-        ::dbgroup::index::bztree::in_construction = true;
         VerifyWrite(!kWriteTwice, pattern);
-        ::dbgroup::index::bztree::in_construction = false;
       }
       if (with_delete) VerifyDelete(with_write, pattern);
       VerifyUpdate(expect_success, pattern);
@@ -524,9 +518,7 @@ class IndexMultiThreadFixture : public testing::Test
 
     for (size_t i = 0; i < kRepeatNum; ++i) {
       if (with_write) {
-        ::dbgroup::index::bztree::in_construction = true;
         VerifyWrite(!kWriteTwice, pattern);
-        ::dbgroup::index::bztree::in_construction = false;
       }
       if (with_delete) VerifyDelete(with_write, pattern);
       VerifyDelete(expect_success, pattern);

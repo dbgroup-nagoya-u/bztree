@@ -110,11 +110,11 @@ struct ZeroFilling {
  *
  */
 struct alignas(kPageAlign) Page : public ::dbgroup::memory::DefaultTarget {
-  // // fill zeros as destruction
-  // using T = ZeroFilling;
+  // fill zeros as destruction
+  using T = ZeroFilling;
 
-  // // reuse pages
-  // static constexpr bool kReusePages = true;
+  // reuse pages
+  static constexpr bool kReusePages = true;
 
   /// @brief A dummy member variable to ensure the page size.
   uint8_t dummy[kPageSize];

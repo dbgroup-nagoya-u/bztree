@@ -22,7 +22,6 @@
 #include <atomic>
 #include <functional>
 #include <future>
-#include <iostream>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -84,7 +83,7 @@ class BzTree
   {
     // create an initial root node
     auto *leaf = CreateNewNode<Payload>();
-    root_.store(leaf);
+    root_.store(leaf, std::memory_order_release);
 
     gc_.StartGC();
   }
@@ -128,9 +127,6 @@ class BzTree
       -> std::optional<Payload>
   {
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
-    ops_type_ = "read";
-    retry_num_frozen_ = 0;
-    retry_num_no_space_ = 0;
 
     const auto *node = SearchLeafNode(key);
 
@@ -205,9 +201,6 @@ class BzTree
       -> ReturnCode
   {
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
-    ops_type_ = "write";
-    retry_num_frozen_ = 0;
-    retry_num_no_space_ = 0;
 
     while (true) {
       auto *node = SearchLeafNode(key);
@@ -218,10 +211,7 @@ class BzTree
           return ReturnCode::kSuccess;
         case NodeRC::kNeedConsolidation:
           Consolidate(node, key);
-          ++retry_num_no_space_;
-          break;
         default:
-          ++retry_num_frozen_;
           break;
       }
     }
@@ -250,9 +240,6 @@ class BzTree
       -> ReturnCode
   {
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
-    ops_type_ = "insert";
-    retry_num_frozen_ = 0;
-    retry_num_no_space_ = 0;
 
     while (true) {
       auto *node = SearchLeafNode(key);
@@ -265,10 +252,7 @@ class BzTree
           return ReturnCode::kKeyExist;
         case NodeRC::kNeedConsolidation:
           Consolidate(node, key);
-          ++retry_num_no_space_;
-          break;
         default:
-          ++retry_num_frozen_;
           break;
       }
     }
@@ -298,9 +282,6 @@ class BzTree
       -> ReturnCode
   {
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
-    ops_type_ = "update";
-    retry_num_frozen_ = 0;
-    retry_num_no_space_ = 0;
 
     while (true) {
       auto *node = SearchLeafNode(key);
@@ -313,10 +294,7 @@ class BzTree
           return ReturnCode::kKeyNotExist;
         case NodeRC::kNeedConsolidation:
           Consolidate(node, key);
-          ++retry_num_no_space_;
-          break;
         default:
-          ++retry_num_frozen_;
           break;
       }
     }
@@ -341,9 +319,6 @@ class BzTree
       -> ReturnCode
   {
     [[maybe_unused]] const auto &guard = gc_.CreateEpochGuard();
-    ops_type_ = "delete";
-    retry_num_frozen_ = 0;
-    retry_num_no_space_ = 0;
 
     while (true) {
       auto *node = SearchLeafNode(key);
@@ -356,10 +331,7 @@ class BzTree
           return ReturnCode::kKeyNotExist;
         case NodeRC::kNeedConsolidation:
           Consolidate(node, key);
-          ++retry_num_no_space_;
-          break;
         default:
-          ++retry_num_frozen_;
           break;
       }
     }
@@ -456,7 +428,7 @@ class BzTree
     Node_t::RemoveLeftmostKeys(new_root);
 
     // set a new root
-    auto *old_root = root_.exchange(new_root);
+    auto *old_root = root_.exchange(new_root, std::memory_order_release);
     gc_.AddGarbage<Page>(old_root);
 
     return ReturnCode::kSuccess;
@@ -542,11 +514,11 @@ class BzTree
   {
     constexpr auto kIsInner = static_cast<uint64_t>(std::is_same_v<T, Node_t *>);
 
-    // auto *page = gc_.template GetPageIfPossible<Page>();
-    // if (page == nullptr) {
-    auto *page = ::dbgroup::memory::Allocate<Page>();
-    memset(page, 0, kPageSize);
-    // }
+    auto *page = gc_.template GetPageIfPossible<Page>();
+    if (page == nullptr) {
+      page = ::dbgroup::memory::Allocate<Page>();
+      memset(page, 0, kPageSize);
+    }
     return new (page) Node_t{kIsInner, 0};
   }
 
@@ -557,7 +529,7 @@ class BzTree
   GetRoot() const  //
       -> Node_t *
   {
-    auto *root = MwCASDescriptor::Read<Node_t *>(&root_);
+    auto *root = MwCASDescriptor::Read<Node_t *>(&root_, std::memory_order_acquire);
 
     return root;
   }
@@ -572,104 +544,13 @@ class BzTree
   SearchLeafNode(const Key &key) const  //
       -> Node_t *
   {
-    constexpr size_t kExpectedTreeHeight = 8;
-    NodeStack trace{};
-    trace.reserve(kExpectedTreeHeight);
-
-    // trace nodes to a target internal node
-    trace.clear();
-    size_t pos = 0;
-    auto *node = GetRoot();
-    while (!node->IsLeaf()) {
-      trace.emplace_back(node, pos);
-
-      pos = node->Search(key);
-      auto *child = node->GetChild(pos);
-      const auto diff = child->CheckKeyRange(key);
-      if (diff != 0) {
-        trace.emplace_back(child, pos);
-        Log("Key check failed during the traverse.");
-        Log("Search key: " + std::to_string(key));
-        ShowStack(trace);
-        Log("The latest tree state.");
-        ShowTree(key);
-      }
-      node = child;
+    auto *current_node = GetRoot();
+    while (!current_node->IsLeaf()) {
+      const auto pos = current_node->Search(key);
+      current_node = current_node->GetChild(pos);
     }
 
-    return node;
-  }
-
-  void
-  ShowDebugInfo(  //
-      const Key &key,
-      const Node_t *node,
-      const size_t pos,
-      const bool terminate = true) const
-  {
-    Log("Ops type : " + ops_type_);
-    Log("retry_num (frozen): " + std::to_string(retry_num_frozen_));
-    Log("retry_num (no space): " + std::to_string(retry_num_no_space_));
-    Log("");
-    Log("Search key    : " + std::to_string(key));
-    Log("Child position: " + std::to_string(pos));
-    Log("");
-    Log("# Parent");
-    node->ShowHeader();
-    Log("");
-    node->ShowChildren();
-
-    if (terminate) {
-      std::terminate();
-    }
-  }
-
-  void
-  ShowTree(const Key &key) const
-  {
-    auto f = [&](const Node_t *node, const size_t pos) {
-      Log("");
-      Log("# Parent" + ToAddressStr(node));
-      node->ShowHeader();
-      Log("");
-      Log("Child position: " + std::to_string(pos));
-      Log("");
-      node->ShowChildren();
-    };
-
-    Log("Ops type : " + ops_type_);
-    Log("retry_num (frozen): " + std::to_string(retry_num_frozen_));
-    Log("retry_num (no space): " + std::to_string(retry_num_no_space_));
-    Log("");
-    Log("Search key    : " + std::to_string(key));
-
-    auto *node = GetRoot();
-    while (!node->IsLeaf()) {
-      const auto pos = node->Search(key);
-      f(node, pos);
-      node = node->GetChild(pos);
-    }
-
-    std::terminate();
-  }
-
-  void
-  ShowStack(const NodeStack &stack) const
-  {
-    auto f = [&](const Node_t *node, const size_t pos) {
-      Log("");
-      Log("# Parent" + ToAddressStr(node));
-      node->ShowHeader();
-      Log("");
-      Log("Child position: " + std::to_string(pos));
-      Log("");
-      node->ShowChildren();
-    };
-
-    for (size_t i = 0; i < stack.size() - 1; ++i) {
-      const auto &[node, pos] = stack.at(i);
-      f(node, pos);
-    }
+    return current_node;
   }
 
   /**
@@ -703,26 +584,16 @@ class BzTree
       const Node_t *target_node) const  //
       -> NodeStack
   {
-    constexpr size_t kExpectedTreeHeight = 8;
-    NodeStack trace{};
-    trace.reserve(kExpectedTreeHeight);
-
     // trace nodes to a target internal node
-    trace.clear();
-    size_t pos = 0;
-    auto *node = GetRoot();
-    while (node != target_node && !node->IsLeaf()) {
-      trace.emplace_back(node, pos);
-      pos = node->Search(key);
-      auto *child = node->GetChild(pos);
-      const auto diff = child->CheckKeyRange(key);
-      if (diff != 0) {
-        Log("Key check failed during the trace.");
-        ShowDebugInfo(key, node, pos);
-      }
-      node = child;
+    NodeStack trace{};
+    size_t index = 0;
+    auto *current_node = GetRoot();
+    while (current_node != target_node && !current_node->IsLeaf()) {
+      trace.emplace_back(current_node, index);
+      index = current_node->Search(key);
+      current_node = current_node->GetChild(index);
     }
-    trace.emplace_back(node, pos);
+    trace.emplace_back(current_node, index);
 
     return trace;
   }
@@ -807,12 +678,14 @@ class BzTree
 
     // check other SMOs are needed
     const auto stat = consol_node->GetStatusWord();
-    if (stat.template NeedSplit<Key, Payload>()) return Split<Payload>(node, consol_node, key);
-    if (stat.NeedMerge() && Merge<Payload>(consol_node, key, node)) return;
+    if (stat.template NeedSplit<Key, Payload>()) {
+      Split<Payload>(consol_node, key);
+    } else if (!stat.NeedMerge() || !Merge<Payload>(consol_node, key)) {
+      // install the consolidated node
+      auto &&trace = TraceTargetNode(key, node);
+      InstallNewNode(trace, consol_node, key, node);
+    }
 
-    // install the consolidated node
-    auto &&trace = TraceTargetNode(key, node);
-    InstallNewNode(trace, consol_node, key, node);
     gc_.AddGarbage<Page>(node);
   }
 
@@ -828,7 +701,6 @@ class BzTree
   template <class T>
   void
   Split(  //
-      const Node_t *old_node,
       Node_t *node,
       const Key &key)
   {
@@ -842,7 +714,7 @@ class BzTree
     bool root_split = false;
     while (true) {
       // trace and get the embedded index of a target node
-      trace = TraceTargetNode(key, old_node);
+      trace = TraceTargetNode(key, node);
       if (trace.size() <= 1) {
         root_split = true;
         break;
@@ -872,34 +744,17 @@ class BzTree
     } else {
       recurse_split = new_parent->InitAsSplitParent(old_parent, l_node, r_node, target_pos);
     }
-    if (!new_parent->CheckChildRanges()) {
-      Log("A new split parent node was corruptted.");
-      Log("The old node before splitting.");
-      if (old_node->IsLeaf()) {
-        old_node->ShowHeader();
-        Log("");
-        Log("The old leaf node after consolidation.");
-        node->ShowHeader();
-      } else {
-        node->ShowHeader();
-      }
-      Log("");
-      ShowStack(trace);
-    }
 
     // install new nodes to the index and register garbages
     InstallNewNode(trace, new_parent, key, old_parent);
     gc_.AddGarbage<Page>(node);
-    if (old_node != node) {
-      gc_.AddGarbage<Page>(old_node);
-    }
     if (!root_split) {
       gc_.AddGarbage<Page>(old_parent);
     }
 
     // split the new parent node if needed
     if (recurse_split) {
-      Split<Node_t *>(new_parent, new_parent, key);
+      Split<Node_t *>(new_parent, key);
     }
   }
 
@@ -918,8 +773,7 @@ class BzTree
   auto
   Merge(  //
       Node_t *l_node,
-      const Key &key,      //
-      Node_t *old_l_node)  //
+      const Key &key)  //
       -> bool
   {
     const auto l_stat = l_node->GetStatusWord();
@@ -934,7 +788,7 @@ class BzTree
     size_t target_pos{};
     while (true) {
       // trace and get the embedded index of a target node
-      trace = TraceTargetNode(key, old_l_node);
+      trace = TraceTargetNode(key, l_node);
       target_pos = trace.back().second;
 
       // check a parent node is live
@@ -972,22 +826,15 @@ class BzTree
       gc_.AddGarbage<Page>(new_parent);
       new_parent = merged_node;
     }
-    if (!new_parent->CheckChildRanges()) {
-      Log("A new merged parent node was corruptted.");
-      ShowDebugInfo(key, new_parent, target_pos);
-    }
 
     // install new nodes to the index and register garbages
     InstallNewNode(trace, new_parent, key, old_parent);
     gc_.AddGarbage<Page>(old_parent);
     gc_.AddGarbage<Page>(l_node);
     gc_.AddGarbage<Page>(r_node);
-    if (old_l_node != l_node) {
-      gc_.AddGarbage<Page>(old_l_node);
-    }
 
     // merge the new parent node if needed
-    if (recurse_merge && !Merge<Node_t *>(new_parent, key, new_parent)) {
+    if (recurse_merge && !Merge<Node_t *>(new_parent, key)) {
       // if the parent node cannot be merged, unfreeze it
       new_parent->Unfreeze();
     }
@@ -1014,9 +861,7 @@ class BzTree
   {
     if (trace.size() <= 1) {
       // root swapping
-      auto *old_root = trace.front().first;
-      if (root_.compare_exchange_strong(old_root, new_node)) return;
-      std::cerr << "[dbgroup] A root node cannot be swapped." << std::endl;
+      root_.store(new_node, std::memory_order_release);
       return;
     }
 
@@ -1033,14 +878,7 @@ class BzTree
         MwCASDescriptor desc{};
         parent->SetStatusForMwCAS(desc, parent_status, parent_status);
         parent->SetChildForMwCAS(desc, target_pos, old_node, new_node);
-        if (desc.MwCAS()) {
-          if (!parent->CheckSibRanges(new_node, target_pos)) {
-            Log("The range of a new node was corrupted.");
-            ShowDebugInfo(key, parent, target_pos);
-          }
-          TraceTargetNode(key, new_node);
-          return;
-        }
+        if (desc.MwCAS()) return;
       }
 
       // traverse again to get a modified parent
@@ -1161,10 +999,6 @@ class BzTree
 
   /// garbage collector
   NodeGC_t gc_{};
-
-  static inline thread_local std::string ops_type_{};
-  static inline thread_local size_t retry_num_frozen_{0};
-  static inline thread_local size_t retry_num_no_space_{0};
 };
 
 }  // namespace dbgroup::index::bztree

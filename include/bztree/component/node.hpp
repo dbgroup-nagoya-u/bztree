@@ -22,7 +22,6 @@
 #include <atomic>
 #include <cstdlib>
 #include <functional>
-#include <iostream>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -32,11 +31,7 @@
 #include "bztree/component/metadata.hpp"
 #include "bztree/component/status_word.hpp"
 
-namespace dbgroup::index::bztree
-{
-inline std::atomic_bool in_construction = false;
-
-namespace component
+namespace dbgroup::index::bztree::component
 {
 /**
  * @brief A class to represent nodes in BzTree.
@@ -94,86 +89,6 @@ class Node
   /*####################################################################################
    * Public getters/setters
    *##################################################################################*/
-
-  void
-  ShowHeader() const
-  {
-    const auto stat = GetStatusWordProtected();
-
-    // show header
-    Log("is_inner  : " + std::to_string(is_inner_));
-    Log("is_frozen : " + std::to_string(stat.IsFrozen()));
-    Log("rec_num   : " + std::to_string(sorted_count_));
-    Log("delta_num : " + std::to_string(stat.GetRecordCount() - sorted_count_));
-    Log("block_size: " + std::to_string(stat.GetBlockSize()));
-    if (low_meta_.GetKeyLength() == 0) {
-      Log("low_key   : null");
-    } else {
-      Log("low_key   : " + std::to_string(GetKey(low_meta_)));
-    }
-    if (high_meta_.GetKeyLength() == 0) {
-      Log("high_key  : null");
-    } else {
-      Log("high_key  : " + std::to_string(GetKey(high_meta_)));
-    }
-  }
-
-  void
-  ShowChildren() const
-  {
-    for (size_t i = 0; i < sorted_count_; ++i) {
-      auto *child = GetChild(i);
-      Log("## Child " + std::to_string(i) + ": " + ToAddressStr(child));
-      child->ShowHeader();
-      Log("");
-    }
-  }
-
-  auto
-  CheckKeyRange(const Key &key) const  //
-      -> int64_t
-  {
-    if (low_meta_.GetKeyLength() != 0 && Compare{}(key, GetKey(low_meta_))) {
-      return -1;
-    }
-    if (high_meta_.GetKeyLength() != 0 && !Compare{}(key, GetKey(high_meta_))) {
-      return 1;
-    }
-    return 0;
-  }
-
-  auto
-  CheckChildRanges() const
-  {
-    for (size_t i = 0; i < sorted_count_ - 1; ++i) {
-      const auto *l_child = GetChild(i);
-      const auto *r_child = GetChild(i + 1);
-      const auto &high_key = l_child->GetHighKey();
-      const auto &low_key = r_child->GetKey(r_child->low_meta_);
-      if (!IsEqual<Compare>(high_key, low_key)) return false;
-    }
-    return true;
-  }
-
-  auto
-  CheckSibRanges(  //
-      const Node *child,
-      const size_t pos) const
-  {
-    if (pos > 0) {
-      const auto *l_child = GetChild(pos - 1);
-      const auto &high_key = l_child->GetHighKey();
-      const auto &low_key = child->GetKey(child->low_meta_);
-      if (!IsEqual<Compare>(high_key, low_key)) return false;
-    }
-    if (pos < sorted_count_ - 1) {
-      const auto *r_child = GetChild(pos + 1);
-      const auto &high_key = child->GetHighKey();
-      const auto &low_key = r_child->GetKey(r_child->low_meta_);
-      if (!IsEqual<Compare>(high_key, low_key)) return false;
-    }
-    return true;
-  }
 
   /**
    * @retval true if this is a leaf node.
@@ -234,7 +149,7 @@ class Node
   GetStatusWordProtected() const  //
       -> StatusWord
   {
-    return MwCASDescriptor::Read<StatusWord>(&status_, std::memory_order_acquire);
+    return MwCASDescriptor::Read<StatusWord>(&status_, std::memory_order_relaxed);
   }
 
   /**
@@ -351,7 +266,7 @@ class Node
       const StatusWord old_status,
       const StatusWord new_status)
   {
-    desc.AddMwCASTarget(&status_, old_status, new_status, std::memory_order_release);
+    desc.AddMwCASTarget(&status_, old_status, new_status, std::memory_order_relaxed);
   }
 
   /**
@@ -476,7 +391,7 @@ class Node
   Unfreeze()
   {
     auto *atomic_stat = reinterpret_cast<std::atomic<StatusWord> *>(&status_);
-    atomic_stat->store(status_.Unfreeze());
+    atomic_stat->store(status_.Unfreeze(), std::memory_order_relaxed);
   }
 
   /*####################################################################################
@@ -666,6 +581,7 @@ class Node
     // check conflicts (concurrent SMOs)
     while (true) {
       const auto status = GetStatusWordProtected();
+      if (status.IsFrozen()) return kFrozen;
 
       // perform MwCAS to complete a write
       MwCASDescriptor desc{};
@@ -754,6 +670,7 @@ class Node
     // check concurrent SMOs
     while (true) {
       const auto status = GetStatusWordProtected();
+      if (status.IsFrozen()) return kFrozen;
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
@@ -866,6 +783,7 @@ class Node
     // check conflicts (concurrent SMOs)
     while (true) {
       const auto status = GetStatusWordProtected();
+      if (status.IsFrozen()) return kFrozen;
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
@@ -976,6 +894,7 @@ class Node
     // check concurrent SMOs
     while (true) {
       const auto status = GetStatusWordProtected();
+      if (status.IsFrozen()) return kFrozen;
 
       // recheck uniqueness if required
       if (rc == kUncertain) {
@@ -1403,7 +1322,7 @@ class Node
       const Metadata meta)
   {
     auto *atomic_meta = reinterpret_cast<std::atomic<Metadata> *>(&(meta_array_[pos]));
-    atomic_meta->store(meta);
+    atomic_meta->store(meta, std::memory_order_relaxed);
   }
 
   /**
@@ -1791,10 +1710,7 @@ class Node
     size_t count = 0;
     for (int64_t pos = rec_count - 1; pos >= sorted_count_; --pos) {
       // check whether a record has been inserted
-      auto meta = GetMetadataWithFence(pos);
-      while (meta.IsInProgress() && meta.IsVisible()) {
-        meta = GetMetadataWithFence(pos);
-      }
+      const auto meta = GetMetadataWithFence(pos);
       if (meta.IsInProgress()) continue;
 
       // copy a current key
@@ -1913,7 +1829,6 @@ class Node
   Metadata meta_array_[0];
 };
 
-}  // namespace component
-}  // namespace dbgroup::index::bztree
+}  // namespace dbgroup::index::bztree::component
 
 #endif  // BZTREE_COMPONENT_NODE_HPP
